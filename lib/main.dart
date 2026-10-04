@@ -8,7 +8,7 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
-
+import 'ui/routines_tab.dart';
 import 'data/database.dart';
 import 'data/journal_repository.dart';
 import 'data/operational_layer.dart';
@@ -182,42 +182,51 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       reloadI18n: _reloadI18n,
     );
 
-    return MaterialApp(
-      title: _i18n!.t('app.title'),
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: brightness,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: fg,
-          brightness: brightness,
-        ).copyWith(surface: bg, onSurface: fg),
-        scaffoldBackgroundColor: bg,
-        textTheme: TextTheme(
-          bodyMedium: TextStyle(color: fg),
-          bodyLarge: TextStyle(color: fg),
-          labelLarge: TextStyle(color: fg),
-          titleMedium: TextStyle(color: fg),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          border: OutlineInputBorder(borderSide: BorderSide(color: fg)),
-          enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: fg)),
-          focusedBorder:
-              OutlineInputBorder(borderSide: BorderSide(color: fg, width: 2)),
-          hintStyle: TextStyle(color: _bort.currentDim(brightness)),
-        ),
-        iconTheme: IconThemeData(color: fg),
-      ),
-      home: Builder(builder: (context) {
-        return MediaQuery(
+    // AppScope и PultScope — выше MaterialApp, дабы маршруты их видели.
+    return AppScope(
+      appContext: appContext,
+      child: PultScope(
+        state: _pultState,
+        child: MediaQuery(
           data: MediaQuery.of(context).copyWith(
             textScaler: TextScaler.linear(_bort.scale),
           ),
-          child: AppScope(
-            appContext: appContext,
-            child: PultScope(
-              state: _pultState,
-              child: Scaffold(
+          child: MaterialApp(
+            title: _i18n!.t('app.title'),
+            debugShowCheckedModeBanner: false,
+            theme: ThemeData(
+              useMaterial3: true,
+              brightness: brightness,
+              colorScheme: ColorScheme.fromSeed(
+                seedColor: fg,
+                brightness: brightness,
+              ).copyWith(surface: bg, onSurface: fg),
+              scaffoldBackgroundColor: bg,
+              textTheme: TextTheme(
+                bodyMedium: TextStyle(color: fg),
+                bodyLarge: TextStyle(color: fg),
+                labelLarge: TextStyle(color: fg),
+                titleMedium: TextStyle(color: fg),
+              ),
+              inputDecorationTheme: InputDecorationTheme(
+                border: OutlineInputBorder(borderSide: BorderSide(color: fg)),
+                enabledBorder:
+                    OutlineInputBorder(borderSide: BorderSide(color: fg)),
+                focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: fg, width: 2)),
+                hintStyle: TextStyle(color: _bort.currentDim(brightness)),
+              ),
+              iconTheme: IconThemeData(color: fg),
+            ),
+            // Слой подпультов оборачивает ВСЕ маршруты.
+            builder: (context, child) => PultLayer(
+              fg: fg,
+              bg: bg,
+              signal: signal,
+              child: child ?? const SizedBox.shrink(),
+            ),
+            home: Builder(builder: (context) {
+              return Scaffold(
                 body: SafeArea(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
@@ -232,39 +241,34 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                             _anchorPosition(_bort.anchor, size, side);
                       }
 
-                      return PultLayer(
-                        fg: fg,
-                        bg: bg,
-                        signal: signal,
-                        child: Stack(
-                          children: [
-                            IndexedStack(
-                              index: _tab,
-                              children: const [
-                                StubTab(), // поле
-                                StubTab(), // рутины
-                                ActorTab(), // актор
-                                RubkaTab(),
-                                JournalTab(),
-                              ],
-                            ),
-                            Positioned(
-                              left: pos.dx,
-                              top: pos.dy,
-                              child: _buildRootPult(
-                                  fg, bg, signal, size, side, pos),
-                            ),
-                          ],
-                        ),
+                      return Stack(
+                        children: [
+                          IndexedStack(
+                            index: _tab,
+                            children: const [
+                              StubTab(), // поле
+                              RoutinesTab(), // рутины
+                              ActorTab(), // актор
+                              RubkaTab(),
+                              JournalTab(),
+                            ],
+                          ),
+                          Positioned(
+                            left: pos.dx,
+                            top: pos.dy,
+                            child:
+                                _buildRootPult(fg, bg, signal, size, side, pos),
+                          ),
+                        ],
                       );
                     },
                   ),
                 ),
-              ),
-            ),
+              );
+            }),
           ),
-        );
-      }),
+        ),
+      ),
     );
   }
 

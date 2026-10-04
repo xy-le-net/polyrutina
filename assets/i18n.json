@@ -60,16 +60,22 @@
     "type.timer": "таймер",
     "type.actor": "актор",
     "type.bort": "борт",
-
+    "routine.not_found": "рутина не найдена",
+    "routine.in_work": "в работе",
     "flag.urgent": "срочно",
     "flag.emergency": "аварийно",
     "flag.important": "важно",
     "flag.disputable": "спорно",
     "flag.complexOp": "сложно",
     "flag.local": "локальное",
-    "flag.synced": "синхронизировано"
+    "flag.synced": "синхронизировано",
+    "routine.none": "рутин нет",
+    "routine.no_name": "без имени",
+    "routine.waiting": "ждёт"
   },
   "en": {
+    "routine.none": "no routines",
+    "routine.no_name": "no name",
     "app.title": "polyrutina",
     "tab.field": "field",
     "tab.routines": "routines",
@@ -80,7 +86,8 @@
     "button.send": "send",
     "button.type": "record type",
     "button.flags": "flags",
-
+    "routine.not_found": "routine not found",
+    "routine.in_work": "in work",
     "bort.title": "operational layer — bridge",
     "bort.bg_day": "day background",
     "bort.bg_night": "night background",
@@ -107,7 +114,7 @@
     "bort.brightness": "system brightness",
     "bort.brightness.dark": "dark",
     "bort.brightness.light": "light",
-
+    "routine.waiting": "waiting",
     "theme.system": "system",
     "theme.dark": "dark",
     "theme.light": "light",

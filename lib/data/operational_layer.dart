@@ -1,12 +1,11 @@
 // ═══════════════════════════════════════════════════════════════════
 // operational_layer.dart — оперативный слой («борт»).
 //
-// Держит состояние интерфейса и рабочие данные, включая общее время
-// работы (сумма всех смен).
-//
+// Держит состояние интерфейса, смену и рабочие данные: рутины.
 // Умолчания — в assets/defaults.json.
 // Рабочие настройки — в operational_layer.json.
-// Сохранение — при сворачивании или закрытии приложения (saveNow).
+// Сохранение — при сворачивании или закрытии приложения (saveNow),
+// а также тотчас при создании рутины.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:convert';
@@ -18,6 +17,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'journal_repository.dart';
+import 'routine.dart';
 
 class OperationalLayer extends ChangeNotifier {
   // ─── Умолчания ───
@@ -67,12 +67,13 @@ class OperationalLayer extends ChangeNotifier {
   int selectedFlags = 0;
 
   // ─── Смена ───
-  // На смене либо не на смене.
   bool onShift = false;
-  // Общее время работы (сумма всех прошлых смен), секунды.
   int totalShiftSeconds = 0;
-  // Момент начала текущей смены (unix-секунды), null — не на смене.
   int? shiftStartedAt;
+
+  // ─── Рутины ───
+  List<Routine> routines = [];
+  int nextRoutineId = 1;
 
   Map<String, String> drafts = {};
 
@@ -151,6 +152,8 @@ class OperationalLayer extends ChangeNotifier {
     onShift = false;
     totalShiftSeconds = 0;
     shiftStartedAt = null;
+    routines = [];
+    nextRoutineId = 1;
     drafts = {};
   }
 
@@ -185,6 +188,14 @@ class OperationalLayer extends ChangeNotifier {
           (data['total_shift_seconds'] as num?)?.toInt() ?? totalShiftSeconds;
       shiftStartedAt =
           (data['shift_started_at'] as num?)?.toInt() ?? shiftStartedAt;
+
+      final r = data['routines'];
+      if (r is List) {
+        routines =
+            r.map((e) => Routine.fromJson(e as Map<String, dynamic>)).toList();
+      }
+      nextRoutineId = (data['next_routine_id'] as num?)?.toInt() ?? 1;
+
       final d = data['drafts'];
       if (d is Map) {
         drafts = d.map((k, v) => MapEntry(k.toString(), v.toString()));
@@ -193,8 +204,6 @@ class OperationalLayer extends ChangeNotifier {
     } catch (_) {}
   }
 
-  // ─── Пересчёт времени смены из журнала ───
-  // Идёт по записям рода «актор», считает shift_start / shift_stop.
   Future<void> _recomputeShiftFromJournal() async {
     if (_journal == null) return;
     final entries = await _journal!.entriesAfter(0, type: JournalType.actor);
@@ -300,7 +309,36 @@ class OperationalLayer extends ChangeNotifier {
     drafts.remove(key);
   }
 
-  // ─── Смена: начало и окончание ───
+  // ─── Рутины ───
+  // Создать новую рутину: заводится в борте, ложится запись в журнал,
+  // список тотчас сохраняется в файл.
+  Future<Routine> createRoutine() async {
+    final r = Routine.create(nextRoutineId);
+    nextRoutineId += 1;
+    routines.add(r);
+    if (_journal != null) {
+      await _journal!.log(
+        type: JournalType.routine,
+        body: '{"action":"create","routine":${r.id}}',
+      );
+    }
+    await saveNow();
+    notifyListeners();
+    return r;
+  }
+
+  Routine? findRoutine(int id) {
+    for (final r in routines) {
+      if (r.id == id) return r;
+    }
+    return null;
+  }
+
+  void touchRoutine(Routine r) {
+    notifyListeners();
+  }
+
+  // ─── Смена ───
   void startShift() {
     if (onShift) return;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -320,7 +358,6 @@ class OperationalLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Общее время работы в сей миг: сумма прошлого плюс текущая смена.
   int get shiftSecondsNow {
     final base = totalShiftSeconds;
     if (shiftStartedAt == null) return base;
@@ -429,6 +466,8 @@ class OperationalLayer extends ChangeNotifier {
       'on_shift': onShift,
       'total_shift_seconds': totalShiftSeconds,
       'shift_started_at': shiftStartedAt,
+      'routines': routines.map((r) => r.toJson()).toList(),
+      'next_routine_id': nextRoutineId,
       'drafts': drafts,
       'last_id': _lastAppliedId,
     };
