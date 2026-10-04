@@ -77,6 +77,7 @@ class _RubkaTabState extends State<RubkaTab> {
   Future<void> _resetCache() async {
     final app = AppScope.of(context);
     await app.bort.resetCache();
+    await app.routineLayer.resetAll();
     await app.reloadI18n();
     await _loadSize();
   }

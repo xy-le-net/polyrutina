@@ -1,18 +1,20 @@
 // ═══════════════════════════════════════════════════════════════════
 // app_scope.dart — контекст приложения для вкладок.
 //
-// Вкладки не тянут всё чрез конструктор. Они берут из сего контекста:
-// борт, журнал, i18n, обратные вызовы (перечесть данные, сменить язык).
+// Вкладки берут из сего контекста: борт, слой рутин, журнал, i18n,
+// обратные вызовы (перечесть данные, сменить язык).
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 
 import '../data/journal_repository.dart';
 import '../data/operational_layer.dart';
+import '../data/routine_layer.dart';
 import '../data/i18n.dart';
 
 class AppContext {
   final OperationalLayer bort;
+  final RoutineLayer routineLayer;
   final JournalRepository journal;
   final I18n i18n;
   final Future<void> Function() refresh;
@@ -20,6 +22,7 @@ class AppContext {
 
   const AppContext({
     required this.bort,
+    required this.routineLayer,
     required this.journal,
     required this.i18n,
     required this.refresh,

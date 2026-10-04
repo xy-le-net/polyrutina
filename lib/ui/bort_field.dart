@@ -2,6 +2,7 @@
 // bort_field.dart — поле ввода значения борта.
 //
 // Свой контроллер, свой фокус. Правка — при потере фокуса либо Enter.
+// Необязательная подсказка показывается, покуда поле пусто.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ class BortField extends StatefulWidget {
   final String initial;
   final Color fg;
   final bool readOnly;
+  final String? hint;
   final void Function(String value)? onChanged;
   final Future<void> Function(String value) onCommit;
 
@@ -19,6 +21,7 @@ class BortField extends StatefulWidget {
     required this.fg,
     required this.readOnly,
     required this.onCommit,
+    this.hint,
     this.onChanged,
   });
 
@@ -67,10 +70,11 @@ class _BortFieldState extends State<BortField> {
       focusNode: _focus,
       readOnly: widget.readOnly,
       style: TextStyle(color: widget.fg),
-      decoration: const InputDecoration(
+      decoration: InputDecoration(
         isDense: true,
-        border: OutlineInputBorder(),
-        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        border: const OutlineInputBorder(),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        hintText: widget.hint,
       ),
       onChanged: widget.onChanged,
       onSubmitted: (_) => _commit(),

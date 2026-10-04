@@ -1,14 +1,11 @@
 // ═══════════════════════════════════════════════════════════════════
 // routine.dart — модель рутины и её блоков.
 //
-// Рутина: идентификатор, имя (может быть пусто), время создания,
-// пять блоков. Время рутины = сумма её блоков.
+// Рутина: идентификатор, имя, время создания, пять блоков.
+// Время рутины = сумма её блоков.
 //
-// Блок: род (подготовка, переход, выполнение, переход, завершение),
-// накопленные секунды, метка старта (если идёт).
-//
-// Блоки взаимоисключающие — сие поведение обеспечивает UI,
-// модель лишь хранит состояния.
+// Блок: род, накопленные секунды, метка старта. Методы start и pause
+// принимают необязательный час — для исторического пробега журнала.
 // ═══════════════════════════════════════════════════════════════════
 
 class RoutineBlock {
@@ -22,7 +19,7 @@ class RoutineBlock {
 
   final String kind;
   int accumulatorSeconds;
-  int? startedAt; // unix-секунды, null — стоит
+  int? startedAt;
 
   RoutineBlock({
     required this.kind,
@@ -32,21 +29,25 @@ class RoutineBlock {
 
   bool get isRunning => startedAt != null;
 
-  int get secondsNow {
+  int secondsNowAt(int now) {
     if (startedAt == null) return accumulatorSeconds;
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     return accumulatorSeconds + (now - startedAt!);
   }
 
-  void start() {
+  int get secondsNow =>
+      secondsNowAt(DateTime.now().millisecondsSinceEpoch ~/ 1000);
+
+  // Пуск. Ежели at задан — час берётся из него (импорт журнала).
+  void start({int? at}) {
     if (startedAt != null) return;
-    startedAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    startedAt = at ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
   }
 
-  void pause() {
+  // Остановка. Ежели at задан — час из него.
+  void pause({int? at}) {
     if (startedAt == null) return;
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    accumulatorSeconds += now - startedAt!;
+    final t = at ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    accumulatorSeconds += t - startedAt!;
     startedAt = null;
   }
 
@@ -76,14 +77,17 @@ class Routine {
     required this.blocks,
   });
 
-  factory Routine.create(int id) => Routine(
+  factory Routine.create(int id, {int? at}) => Routine(
         id: id,
         name: '',
-        createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        createdAt: at ?? DateTime.now().millisecondsSinceEpoch ~/ 1000,
         blocks: RoutineBlock.kinds.map((k) => RoutineBlock(kind: k)).toList(),
       );
 
-  int get totalSeconds => blocks.fold(0, (s, b) => s + b.secondsNow);
+  int get totalSeconds {
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    return blocks.fold(0, (s, b) => s + b.secondsNowAt(now));
+  }
 
   RoutineBlock? blockOf(String kind) {
     for (final b in blocks) {
@@ -92,7 +96,6 @@ class Routine {
     return null;
   }
 
-  // Ежели идёт один блок — вернуть его.
   RoutineBlock? get runningBlock {
     for (final b in blocks) {
       if (b.isRunning) return b;

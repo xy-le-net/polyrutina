@@ -71,6 +71,13 @@ class JournalRepository {
         .watch();
   }
 
+  // Поток всех записей: используется слоями, применяющими журнал
+  // (RoutineLayer и подобные). Обновляется при всяком изменении базы.
+  Stream<List<JournalData>> watchAll() {
+    return (db.select(db.journal)..orderBy([(t) => OrderingTerm.asc(t.id)]))
+        .watch();
+  }
+
   Future<List<JournalData>> entriesAfter(int fromId, {int? type}) {
     return (db.select(db.journal)
           ..where((t) {

@@ -71,9 +71,17 @@
     "flag.synced": "синхронизировано",
     "routine.none": "рутин нет",
     "routine.no_name": "без имени",
-    "routine.waiting": "ждёт"
+    "routine.waiting": "ждёт",
+    "routine.block.prep": "подготовка",
+    "routine.block.trans1": "переход туда",
+    "routine.block.work": "работа",
+    "routine.block.trans2": "переход обратно",
+    "routine.block.closeout": "закрытие",
+    "routine.summary": "сводка",
+    "bort.delete": "удалить"
   },
   "en": {
+    "bort.delete": "remove",
     "routine.none": "no routines",
     "routine.no_name": "no name",
     "app.title": "polyrutina",
@@ -144,6 +152,13 @@
     "flag.disputable": "disputable",
     "flag.complexOp": "complex",
     "flag.local": "local",
-    "flag.synced": "synced"
+    "flag.synced": "synced",
+
+    "routine.block.prep": "prep",
+    "routine.block.trans1": "transit in",
+    "routine.block.work": "work",
+    "routine.block.trans2": "transit out",
+    "routine.block.closeout": "closeout",
+    "routine.summary": "summary"
   }
 }

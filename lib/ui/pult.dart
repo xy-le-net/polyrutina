@@ -9,7 +9,9 @@ class PultSpec {
   final String id;
   final IconData icon;
   final String? label;
-  final Widget? labelWidget; // своя подпись; перебивает label
+  final Widget? labelWidget;
+  final Color? labelBg; // заливка подписи; без заданья — цвет ядра
+  final double? labelWidth; // ширина подписи; без заданья — оценка по длине
   final bool selected;
   final List<PultSpec> Function()? subsBuilder;
   final bool confirm;
@@ -21,6 +23,8 @@ class PultSpec {
     required this.icon,
     this.label,
     this.labelWidget,
+    this.labelBg,
+    this.labelWidth,
     this.selected = false,
     this.subsBuilder,
     this.confirm = false,
@@ -183,18 +187,23 @@ class _PultState extends State<Pult> {
     if (!hasLabel || maxLabelW < side * 1.5) {
       content = core;
     } else {
-      final estimate = widget.spec.label?.length ??
-          (widget.spec.labelWidget is Text
-              ? ((widget.spec.labelWidget as Text).data?.length ?? 0)
-              : 6);
-      final desired = estimate * side * 0.4 + 16;
-      final labelWidth = desired.clamp(side * 1.5, maxLabelW);
+      final double labelWidth;
+      if (widget.spec.labelWidth != null) {
+        labelWidth = widget.spec.labelWidth!.clamp(side * 1.5, maxLabelW);
+      } else {
+        final estimate = widget.spec.label?.length ??
+            (widget.spec.labelWidget is Text
+                ? ((widget.spec.labelWidget as Text).data?.length ?? 0)
+                : 6);
+        final desired = estimate * side * 0.4 + 16;
+        labelWidth = desired.clamp(side * 1.5, maxLabelW);
+      }
 
-      final labelWidget = Container(
+      final labelContainer = Container(
         height: side * 0.75,
         width: labelWidth,
         decoration: BoxDecoration(
-          color: coreColor,
+          color: widget.spec.labelBg ?? coreColor,
           borderRadius: const BorderRadius.horizontal(
             right: Radius.circular(6),
           ),
@@ -214,7 +223,7 @@ class _PultState extends State<Pult> {
       );
       content = Row(
         mainAxisSize: MainAxisSize.min,
-        children: [core, labelWidget],
+        children: [core, labelContainer],
       );
     }
 

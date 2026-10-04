@@ -1,22 +1,49 @@
 // ═══════════════════════════════════════════════════════════════════
 // routines_tab.dart — вкладка рутин.
 //
-// Список рутин плашками. Каждая плашка: имя (либо место под него),
-// время создания, суммарное время; пульт входа справа.
-// В левом нижнем углу — пульт создания рутины.
-//
-// При создании рутина заводится в борте, ложится запись в журнал,
-// и тотчас открывается карточка.
+// Плашка: имя слева вверху; коли имени нет — время создания вместо
+// него; под этим — время пульса (суммарное время рутины). Пульс
+// удаления — в правом-нижнем углу, уменьшен на треть, с подтверждением.
+// При ходе рутины имя и время пульса — сигнальным цветом, двоеточие
+// мелькает. Касание по телу плашки открывает карточку.
 // ═══════════════════════════════════════════════════════════════════
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 
 import 'app_scope.dart';
 import 'pult.dart';
 import 'routine_card.dart';
+import 'timer_text.dart';
 
-class RoutinesTab extends StatelessWidget {
+class RoutinesTab extends StatefulWidget {
   const RoutinesTab({super.key});
+
+  @override
+  State<RoutinesTab> createState() => _RoutinesTabState();
+}
+
+class _RoutinesTabState extends State<RoutinesTab> {
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(milliseconds: 100), (_) {
+      if (!mounted) return;
+      final app = AppScope.of(context);
+      final anyRunning =
+          app.routineLayer.routines.any((r) => r.runningBlock != null);
+      if (anyRunning) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
 
   String _fmtDate(int unixSec) {
     final d = DateTime.fromMillisecondsSinceEpoch(unixSec * 1000);
@@ -26,20 +53,9 @@ class RoutinesTab extends StatelessWidget {
         '${d.minute.toString().padLeft(2, '0')}';
   }
 
-  String _fmtTime(int sec) {
-    if (sec < 0) sec = 0;
-    final h = sec ~/ 3600;
-    final m = (sec % 3600) ~/ 60;
-    final s = sec % 60;
-    if (h > 0) {
-      return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
-    }
-    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-  }
-
   Future<void> _create(BuildContext context) async {
     final app = AppScope.of(context);
-    final r = await app.bort.createRoutine();
+    final r = await app.routineLayer.createRoutine();
     if (context.mounted) {
       Navigator.of(context).push(
         MaterialPageRoute(
@@ -53,6 +69,7 @@ class RoutinesTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final bort = app.bort;
+    final routines = app.routineLayer.routinesNewestFirst;
     final brightness = Theme.of(context).brightness;
     final fg = bort.currentFg(brightness);
     final bg = bort.currentBg(brightness);
@@ -60,10 +77,15 @@ class RoutinesTab extends StatelessWidget {
     final dim = bort.currentDim(brightness);
     final side = PultScope.of(context).smallSide;
 
+    final ms = DateTime.now().millisecond;
+    final colonVisible = ms < 333;
+
+    final pultSide = side * 2 / 3;
+    final numberSize = side * 0.3;
+
     return Stack(
       children: [
-        // Список рутин.
-        if (bort.routines.isEmpty)
+        if (routines.isEmpty)
           Center(
             child: Text(
               app.i18n.t('routine.none'),
@@ -73,9 +95,11 @@ class RoutinesTab extends StatelessWidget {
         else
           ListView.builder(
             padding: const EdgeInsets.fromLTRB(8, 80, 8, 80),
-            itemCount: bort.routines.length,
+            itemCount: routines.length,
             itemBuilder: (context, i) {
-              final r = bort.routines[i];
+              final r = routines[i];
+              final running = r.runningBlock != null;
+
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: GestureDetector(
@@ -89,52 +113,62 @@ class RoutinesTab extends StatelessWidget {
                   },
                   child: Container(
                     decoration: BoxDecoration(
-                      border: Border.all(color: dim),
+                      color: fg.withValues(alpha: 0.05),
+                      border: Border.all(color: dim, width: 0.5),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     padding: const EdgeInsets.all(10),
-                    child: Row(
+                    child: Stack(
                       children: [
-                        Expanded(
+                        Padding(
+                          padding: EdgeInsets.only(
+                            right: pultSide + 8,
+                            top: 2,
+                          ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              // Имя; коли пусто — время создания вместо него.
                               Text(
-                                r.name.isEmpty
-                                    ? app.i18n.t('routine.no_name')
-                                    : r.name,
-                                style: TextStyle(color: fg, fontSize: 16),
+                                r.name.isEmpty ? _fmtDate(r.createdAt) : r.name,
+                                style: TextStyle(
+                                  color: running ? signal : fg,
+                                  fontSize: 16,
+                                ),
                               ),
                               const SizedBox(height: 4),
-                              Text(
-                                _fmtDate(r.createdAt),
-                                style: TextStyle(color: dim, fontSize: 11),
+                              // Время пульса — суммарное время рутины.
+                              TimerText(
+                                seconds: r.totalSeconds,
+                                running: running,
+                                fg: fg,
+                                dim: dim,
+                                signal: signal,
+                                numberSize: numberSize,
+                                colonVisible: colonVisible,
                               ),
                             ],
                           ),
                         ),
-                        Text(
-                          _fmtTime(r.totalSeconds),
-                          style: TextStyle(color: fg, fontFamily: 'monospace'),
-                        ),
-                        const SizedBox(width: 8),
-                        // Пульт входа.
-                        Pult(
-                          spec: PultSpec(
-                            id: 'open_${r.id}',
-                            icon: Icons.chevron_right,
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => RoutineCard(routineId: r.id),
-                                ),
-                              );
-                            },
+                        // Пульт удаления — в правом-нижнем углу.
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: Pult(
+                            spec: PultSpec(
+                              id: 'delete_${r.id}',
+                              icon: Icons.delete_outline,
+                              selected: running,
+                              confirm: true,
+                              onTap: () {
+                                app.routineLayer.deleteRoutine(r.id);
+                              },
+                            ),
+                            fg: dim,
+                            bg: bg,
+                            signal: signal,
+                            overrideSize: pultSide,
                           ),
-                          fg: fg,
-                          bg: bg,
-                          signal: signal,
-                          overrideSize: side,
                         ),
                       ],
                     ),
@@ -143,8 +177,6 @@ class RoutinesTab extends StatelessWidget {
               );
             },
           ),
-
-        // Пульт создания — левый нижний угол.
         Positioned(
           left: 12,
           bottom: 12,

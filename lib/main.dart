@@ -12,6 +12,7 @@ import 'ui/routines_tab.dart';
 import 'data/database.dart';
 import 'data/journal_repository.dart';
 import 'data/operational_layer.dart';
+import 'data/routine_layer.dart';
 import 'data/i18n.dart';
 import 'ui/app_scope.dart';
 import 'ui/pult.dart';
@@ -39,6 +40,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   late final AppDb _db;
   late final JournalRepository _journal;
   late final OperationalLayer _bort;
+  late final RoutineLayer _routineLayer;
   final _pultState = PultState();
 
   I18n? _i18n;
@@ -65,7 +67,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _db = AppDb();
     _journal = JournalRepository(_db);
     _bort = OperationalLayer();
+    _routineLayer = RoutineLayer();
     _bort.addListener(_onBortChanged);
+    _routineLayer.addListener(_onRoutineChanged);
     _init();
   }
 
@@ -73,10 +77,17 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     if (mounted) setState(() => _tab = _bort.tab);
   }
 
+  void _onRoutineChanged() {
+    if (mounted) setState(() {});
+  }
+
   Future<void> _init() async {
     await _bort.init(_journal);
+    await _routineLayer.init(_journal);
     _i18n = await I18n.load(_bort.lang);
-    _tab = _bort.tab;
+    if (mounted) {
+      setState(() => _tab = _bort.tab);
+    }
   }
 
   Future<void> _reloadI18n() async {
@@ -92,6 +103,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _bort.removeListener(_onBortChanged);
+    _routineLayer.removeListener(_onRoutineChanged);
+    _routineLayer.dispose();
     _db.close();
     _pultState.dispose();
     super.dispose();
@@ -103,6 +116,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
         state == AppLifecycleState.detached ||
         state == AppLifecycleState.inactive) {
       _bort.saveNow();
+      _routineLayer.saveNow();
     }
   }
 
@@ -176,6 +190,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
     final appContext = AppContext(
       bort: _bort,
+      routineLayer: _routineLayer,
       journal: _journal,
       i18n: _i18n!,
       refresh: _refreshAll,
