@@ -1,0 +1,34 @@
+# flutter/dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# android
+android/.gradle/
+android/local.properties
+android/key.properties
+*.jks
+*.keystore
+
+# ios/macos
+ios/Pods/
+ios/.symlinks/
+macos/Pods/
+
+# windows/linux
+windows/flutter/ephemeral/
+linux/flutter/ephemeral/
+
+# ide
+.idea/
+*.iml
+
+# os
+.DS_Store
+Thumbs.db
+
+# локальное
+operational_layer.json
+*.sqlite

@@ -1,0 +1,22 @@
+{
+  "bg_day": "#EFEFEF",
+  "bg_night": "#101010",
+  "fg_day": "#101010",
+  "fg_night": "#EFEFEF",
+  "dim_day": "#303030",
+  "dim_night": "#CFCFCF",
+  "theme": "system",
+  "scale": 1.4,
+  "lang": "ru",
+  "tab": 4,
+  "anchor": "tl",
+  "labels_system": true,
+  "labels_field": true,
+  "block_appearance": false,
+  "block_interface": false,
+  "block_data": false,
+  "selected_type": 4,
+  "selected_flags": 0,
+  "console_draft": "",
+  "drafts": {}
+}
