@@ -6,6 +6,7 @@
 // Все прочие пульты — единый класс Pult.
 // ═══════════════════════════════════════════════════════════════════
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'data/database.dart';
@@ -15,6 +16,7 @@ import 'data/i18n.dart';
 import 'ui/app_scope.dart';
 import 'ui/pult.dart';
 import 'ui/stub_tab.dart';
+import 'ui/actor_tab.dart';
 import 'ui/rubka_tab.dart';
 import 'ui/journal_tab.dart';
 
@@ -113,7 +115,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     await _bort.setSilent('tab', i.toString());
   }
 
-  // ─── Якоря корневого пульта ───
   Offset _anchorPosition(String anchor, Size size, double s) {
     const m = 6.0;
     switch (anchor) {
@@ -242,7 +243,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                               children: const [
                                 StubTab(), // поле
                                 StubTab(), // рутины
-                                StubTab(), // актор
+                                ActorTab(), // актор
                                 RubkaTab(),
                                 JournalTab(),
                               ],
@@ -267,9 +268,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     );
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // Корневой пульт — перетаскиваемый по восьми якорям.
-  // ═══════════════════════════════════════════════════════════════
   Widget _buildRootPult(
     Color fg,
     Color bg,
@@ -300,7 +298,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       );
     }
 
-    // Раскрытый корневой ряд.
     final items = <Widget>[];
     for (var i = 0; i < _tabs.length; i++) {
       final t = _tabs[i];
@@ -353,7 +350,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     );
   }
 
-  // ─── Квадрат пульта (только знак) ───
   Widget _pultCore(
     IconData icon,
     bool selected,

@@ -1,17 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════
 // pult.dart — единый пульт, контекст и слой.
-//
-// Правила:
-// · фон — цвет текста, значок — цвет подложки; выбранный — сигнальный.
-// · рамки двойные, 1/16 стороны, скруглены.
-// · подпись справа; обрезается многоточием; убирается, коли тесно.
-// · подпульты выезжают НАД родителем, столбцами, центрированы.
-// · родитель в подпультах НЕ повторяется.
-// · подпульт может не сворачивать родителя (stayOpen).
-// · необратимые действия подтверждаются: касание раскрывает крупный
-//   подтверждающий пульт того же знака НАД родителем.
-// · слой подпультов берёт спецификации чрез функцию-построитель —
-//   оттого откликается на всякую смену борта.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -21,6 +9,7 @@ class PultSpec {
   final String id;
   final IconData icon;
   final String? label;
+  final Widget? labelWidget; // своя подпись; перебивает label
   final bool selected;
   final List<PultSpec> Function()? subsBuilder;
   final bool confirm;
@@ -31,6 +20,7 @@ class PultSpec {
     required this.id,
     required this.icon,
     this.label,
+    this.labelWidget,
     this.selected = false,
     this.subsBuilder,
     this.confirm = false,
@@ -183,14 +173,21 @@ class _PultState extends State<Pult> {
       child: core,
     );
 
-    // Подпись: обрезается; убирается, коли места вовсе нет.
+    // Подпись: строка либо свой виджет.
     Widget content;
     final screenW = MediaQuery.of(context).size.width;
     final maxLabelW = screenW - side - 32;
-    if (widget.spec.label == null || maxLabelW < side * 1.5) {
+    final hasLabel =
+        widget.spec.label != null || widget.spec.labelWidget != null;
+
+    if (!hasLabel || maxLabelW < side * 1.5) {
       content = core;
     } else {
-      final desired = widget.spec.label!.length * side * 0.4 + 16;
+      final estimate = widget.spec.label?.length ??
+          (widget.spec.labelWidget is Text
+              ? ((widget.spec.labelWidget as Text).data?.length ?? 0)
+              : 6);
+      final desired = estimate * side * 0.4 + 16;
       final labelWidth = desired.clamp(side * 1.5, maxLabelW);
 
       final labelWidget = Container(
@@ -205,13 +202,14 @@ class _PultState extends State<Pult> {
         padding: const EdgeInsets.symmetric(horizontal: 8),
         child: Align(
           alignment: Alignment.centerLeft,
-          child: Text(
-            widget.spec.label!,
-            style: TextStyle(color: iconColor),
-            softWrap: false,
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1,
-          ),
+          child: widget.spec.labelWidget ??
+              Text(
+                widget.spec.label!,
+                style: TextStyle(color: iconColor),
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
         ),
       );
       content = Row(
@@ -230,9 +228,7 @@ class _PultState extends State<Pult> {
   void _handleTap(PultState state) {
     if (widget.insideLayer) {
       widget.spec.onTap?.call();
-      if (!widget.spec.stayOpen) {
-        state.close();
-      }
+      if (!widget.spec.stayOpen) state.close();
       return;
     }
 
@@ -328,7 +324,6 @@ class _PultLayerState extends State<PultLayer> {
     final size = _parentSize(state.parentKey);
     if (local == null || size == null) return const SizedBox.shrink();
 
-    // Берём спецификации заново — на всякое изменение борта.
     final subs = state.subsBuilder!.call();
     if (subs.isEmpty) return const SizedBox.shrink();
 
@@ -340,7 +335,6 @@ class _PultLayerState extends State<PultLayer> {
     final rowsPerCol = (availAbove / itemH).floor().clamp(1, subs.length);
     final cols = (subs.length / rowsPerCol).ceil();
 
-    // Проверяем, влезают ли подписи.
     bool anyLabel = false;
     double maxLabelW = 0;
     for (final s in subs) {

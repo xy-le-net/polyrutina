@@ -4,11 +4,15 @@
 // Сверху таблица записей, под нею консоль ручного ввода,
 // внизу ряд пультов: род записи, флаги, отправка.
 //
+// Таблица обновляется чрез поток watchRecent — всякая запись
+// в журнал является тотчас.
+//
 // Подпульты строятся чрез функцию-построитель — оттого откликаются
-// на всякую смену борта (выбор рода, переключение флагов).
-// Текущий род в подпультах не дублируется.
+// на всякую смену борта. Текущий род не дублируется.
 // Флаги — выбор множественный, подпульты не сворачиваются (stayOpen).
 // ═══════════════════════════════════════════════════════════════════
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:table_view_ex/table_view_ex.dart';
@@ -28,24 +32,27 @@ class JournalTab extends StatefulWidget {
 class _JournalTabState extends State<JournalTab> {
   final _inputController = TextEditingController();
   List<JournalData> _entries = [];
+  StreamSubscription<List<JournalData>>? _journalSub;
   final _widthCalc = _JournalWidthCalculator();
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _subscribe());
+  }
+
+  void _subscribe() {
+    final app = AppScope.of(context);
+    _journalSub = app.journal.watchRecent(limit: 50).listen((entries) {
+      if (mounted) setState(() => _entries = entries);
+    });
   }
 
   @override
   void dispose() {
+    _journalSub?.cancel();
     _inputController.dispose();
     super.dispose();
-  }
-
-  Future<void> _refresh() async {
-    final app = AppScope.of(context);
-    final entries = await app.journal.recent(limit: 50);
-    if (mounted) setState(() => _entries = entries);
   }
 
   Future<void> _send() async {
@@ -70,8 +77,7 @@ class _JournalTabState extends State<JournalTab> {
     if (bort.selectedType == JournalType.bort && text.contains('lang=')) {
       await app.reloadI18n();
     }
-
-    await _refresh();
+    // Таблица обновится сама чрез поток.
   }
 
   // ─── Ячейка таблицы ───
@@ -135,8 +141,6 @@ class _JournalTabState extends State<JournalTab> {
   }
 
   // ─── Построитель подпультов рода ───
-  // Вызывается слоем при каждом раскрытии. Берёт свежие данные из борта.
-  // Текущий род НЕ дублируется.
   List<PultSpec> _buildTypeSubs(BuildContext context) {
     final app = AppScope.of(context);
     final bort = app.bort;
@@ -174,7 +178,6 @@ class _JournalTabState extends State<JournalTab> {
   }
 
   // ─── Построитель подпультов флагов ───
-  // Выбор множественный, оттого stayOpen — подпульты не сворачиваются.
   List<PultSpec> _buildFlagSubs(BuildContext context) {
     final app = AppScope.of(context);
     final bort = app.bort;

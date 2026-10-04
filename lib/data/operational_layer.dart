@@ -1,17 +1,12 @@
 // ═══════════════════════════════════════════════════════════════════
 // operational_layer.dart — оперативный слой («борт»).
 //
-// Держит состояние интерфейса и рабочие данные: цвета, масштаб,
-// язык, вкладку, якорь, тумблеры подписей, тему, блоки рубки,
-// выбранные род и флаги, черновики полей.
+// Держит состояние интерфейса и рабочие данные, включая общее время
+// работы (сумма всех смен).
 //
 // Умолчания — в assets/defaults.json.
 // Рабочие настройки — в operational_layer.json.
 // Сохранение — при сворачивании или закрытии приложения (saveNow).
-//
-// Обновление данных — reloadFromJournal: борт перечитывает журнал
-// с нуля и пересобирает состояние.
-// Очистка кэша — resetCache: удаление файла борта, возврат к умолчаниям.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:convert';
@@ -71,7 +66,14 @@ class OperationalLayer extends ChangeNotifier {
   int selectedType = 4;
   int selectedFlags = 0;
 
-  // Черновики: ключ настройки → текст, ещё не поданный.
+  // ─── Смена ───
+  // На смене либо не на смене.
+  bool onShift = false;
+  // Общее время работы (сумма всех прошлых смен), секунды.
+  int totalShiftSeconds = 0;
+  // Момент начала текущей смены (unix-секунды), null — не на смене.
+  int? shiftStartedAt;
+
   Map<String, String> drafts = {};
 
   JournalRepository? _journal;
@@ -80,13 +82,13 @@ class OperationalLayer extends ChangeNotifier {
 
   OperationalLayer();
 
-  // ─── Инициализация ───
   Future<void> init(JournalRepository journal) async {
     _journal = journal;
     await _loadDefaults();
     final dir = await getApplicationDocumentsDirectory();
     _file = File(p.join(dir.path, 'operational_layer.json'));
     await _loadFromFile();
+    await _recomputeShiftFromJournal();
     await applyJournalDeltas();
     notifyListeners();
   }
@@ -146,6 +148,9 @@ class OperationalLayer extends ChangeNotifier {
     blockData = _defBlockData;
     selectedType = _defSelectedType;
     selectedFlags = _defSelectedFlags;
+    onShift = false;
+    totalShiftSeconds = 0;
+    shiftStartedAt = null;
     drafts = {};
   }
 
@@ -175,6 +180,11 @@ class OperationalLayer extends ChangeNotifier {
       selectedType = (data['selected_type'] as num?)?.toInt() ?? selectedType;
       selectedFlags =
           (data['selected_flags'] as num?)?.toInt() ?? selectedFlags;
+      onShift = data['on_shift'] as bool? ?? onShift;
+      totalShiftSeconds =
+          (data['total_shift_seconds'] as num?)?.toInt() ?? totalShiftSeconds;
+      shiftStartedAt =
+          (data['shift_started_at'] as num?)?.toInt() ?? shiftStartedAt;
       final d = data['drafts'];
       if (d is Map) {
         drafts = d.map((k, v) => MapEntry(k.toString(), v.toString()));
@@ -183,7 +193,28 @@ class OperationalLayer extends ChangeNotifier {
     } catch (_) {}
   }
 
-  // ─── Догон дельт из журнала ───
+  // ─── Пересчёт времени смены из журнала ───
+  // Идёт по записям рода «актор», считает shift_start / shift_stop.
+  Future<void> _recomputeShiftFromJournal() async {
+    if (_journal == null) return;
+    final entries = await _journal!.entriesAfter(0, type: JournalType.actor);
+    int total = 0;
+    int? started;
+    for (final e in entries) {
+      if (e.body.contains('shift_start')) {
+        started = e.time;
+      } else if (e.body.contains('shift_stop')) {
+        if (started != null) {
+          total += e.time - started;
+          started = null;
+        }
+      }
+    }
+    totalShiftSeconds = total;
+    shiftStartedAt = started;
+    onShift = (started != null);
+  }
+
   Future<void> applyJournalDeltas() async {
     if (_journal == null) return;
     final entries = await _journal!.entriesAfter(
@@ -206,33 +237,21 @@ class OperationalLayer extends ChangeNotifier {
     _apply(key, value ?? '');
   }
 
-  // ─── Обновление данных ───
-  //
-  // Перечитать журнал с нуля: сбросить состояние в памяти,
-  // взять ВСЕ записи рода «борт», применить по порядку.
-  // Файл после сего перезаписывается.
-  // Журнал и рабочие данные не трогаются — только пересборка состояния.
   Future<void> reloadFromJournal() async {
     if (_journal == null) return;
-    // Сбрасываем к умолчаниям и черновики.
     _resetToDefaultsInMemory();
     _lastAppliedId = 0;
 
-    // Читаем все записи рода «борт» по возрастанию id.
     final entries = await _journal!.entriesAfter(0, type: JournalType.bort);
     for (final e in entries) {
       _applyBody(e.body);
       _lastAppliedId = e.id;
     }
+    await _recomputeShiftFromJournal();
     await saveNow();
     notifyListeners();
   }
 
-  // ─── Очистка кэша ───
-  //
-  // Удаление файла борта и возврат всего состояния к умолчаниям.
-  // Журнал не трогается. Рабочие данные о рутинах и таймерах —
-  // в сей версии не в борте, потому здесь терять нечего.
   Future<void> resetCache() async {
     if (_file != null && await _file!.exists()) {
       await _file!.delete();
@@ -251,7 +270,6 @@ class OperationalLayer extends ChangeNotifier {
     await resetCache();
   }
 
-  // ─── Прямые правки (в память, файл — при saveNow) ───
   Future<void> set(String key, String value) async {
     _apply(key, value);
     notifyListeners();
@@ -280,6 +298,34 @@ class OperationalLayer extends ChangeNotifier {
 
   void clearDraft(String key) {
     drafts.remove(key);
+  }
+
+  // ─── Смена: начало и окончание ───
+  void startShift() {
+    if (onShift) return;
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    onShift = true;
+    shiftStartedAt = now;
+    notifyListeners();
+  }
+
+  void stopShift() {
+    if (!onShift) return;
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (shiftStartedAt != null) {
+      totalShiftSeconds += now - shiftStartedAt!;
+    }
+    onShift = false;
+    shiftStartedAt = null;
+    notifyListeners();
+  }
+
+  // Общее время работы в сей миг: сумма прошлого плюс текущая смена.
+  int get shiftSecondsNow {
+    final base = totalShiftSeconds;
+    if (shiftStartedAt == null) return base;
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    return base + (now - shiftStartedAt!);
   }
 
   void _apply(String key, String value) {
@@ -344,6 +390,9 @@ class OperationalLayer extends ChangeNotifier {
       case 'selected_flags':
         selectedFlags = int.tryParse(value) ?? selectedFlags;
         break;
+      case 'on_shift':
+        onShift = _parseBool(value) ?? onShift;
+        break;
     }
   }
 
@@ -377,13 +426,15 @@ class OperationalLayer extends ChangeNotifier {
       'block_data': blockData,
       'selected_type': selectedType,
       'selected_flags': selectedFlags,
+      'on_shift': onShift,
+      'total_shift_seconds': totalShiftSeconds,
+      'shift_started_at': shiftStartedAt,
       'drafts': drafts,
       'last_id': _lastAppliedId,
     };
     await _file!.writeAsString(jsonEncode(data));
   }
 
-  // ─── Утилиты ───
   String? _extract(String body, String field) {
     final re = RegExp('"$field"\\s*:\\s*"([^"]*)"');
     return re.firstMatch(body)?.group(1);
