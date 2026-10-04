@@ -1,13 +1,17 @@
 // ═══════════════════════════════════════════════════════════════════
 // operational_layer.dart — оперативный слой («борт»).
 //
-// Держит всё состояние интерфейса: цвета, масштаб, язык, вкладку,
-// якорь, тумблеры подписей, тему, блоки рубки, выбор рода и флагов,
-// черновики полей, сигнальные цвета.
+// Держит состояние интерфейса и рабочие данные: цвета, масштаб,
+// язык, вкладку, якорь, тумблеры подписей, тему, блоки рубки,
+// выбранные род и флаги, черновики полей.
 //
 // Умолчания — в assets/defaults.json.
 // Рабочие настройки — в operational_layer.json.
 // Сохранение — при сворачивании или закрытии приложения (saveNow).
+//
+// Обновление данных — reloadFromJournal: борт перечитывает журнал
+// с нуля и пересобирает состояние.
+// Очистка кэша — resetCache: удаление файла борта, возврат к умолчаниям.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:convert';
@@ -76,6 +80,7 @@ class OperationalLayer extends ChangeNotifier {
 
   OperationalLayer();
 
+  // ─── Инициализация ───
   Future<void> init(JournalRepository journal) async {
     _journal = journal;
     await _loadDefaults();
@@ -178,6 +183,7 @@ class OperationalLayer extends ChangeNotifier {
     } catch (_) {}
   }
 
+  // ─── Догон дельт из журнала ───
   Future<void> applyJournalDeltas() async {
     if (_journal == null) return;
     final entries = await _journal!.entriesAfter(
@@ -200,23 +206,52 @@ class OperationalLayer extends ChangeNotifier {
     _apply(key, value ?? '');
   }
 
+  // ─── Обновление данных ───
+  //
+  // Перечитать журнал с нуля: сбросить состояние в памяти,
+  // взять ВСЕ записи рода «борт», применить по порядку.
+  // Файл после сего перезаписывается.
+  // Журнал и рабочие данные не трогаются — только пересборка состояния.
+  Future<void> reloadFromJournal() async {
+    if (_journal == null) return;
+    // Сбрасываем к умолчаниям и черновики.
+    _resetToDefaultsInMemory();
+    _lastAppliedId = 0;
+
+    // Читаем все записи рода «борт» по возрастанию id.
+    final entries = await _journal!.entriesAfter(0, type: JournalType.bort);
+    for (final e in entries) {
+      _applyBody(e.body);
+      _lastAppliedId = e.id;
+    }
+    await saveNow();
+    notifyListeners();
+  }
+
+  // ─── Очистка кэша ───
+  //
+  // Удаление файла борта и возврат всего состояния к умолчаниям.
+  // Журнал не трогается. Рабочие данные о рутинах и таймерах —
+  // в сей версии не в борте, потому здесь терять нечего.
+  Future<void> resetCache() async {
+    if (_file != null && await _file!.exists()) {
+      await _file!.delete();
+    }
+    _resetToDefaultsInMemory();
+    _lastAppliedId = 0;
+    await _saveToFile();
+    notifyListeners();
+  }
+
   Future<void> saveNow() async {
     await _saveToFile();
   }
 
   Future<void> resetToDefaults() async {
-    if (_file != null && await _file!.exists()) {
-      await _file!.delete();
-    }
-    _resetToDefaultsInMemory();
-    if (_journal != null) {
-      final last = await _journal!.recent(limit: 1);
-      if (last.isNotEmpty) _lastAppliedId = last.first.id;
-    }
-    await _saveToFile();
-    notifyListeners();
+    await resetCache();
   }
 
+  // ─── Прямые правки (в память, файл — при saveNow) ───
   Future<void> set(String key, String value) async {
     _apply(key, value);
     notifyListeners();
@@ -348,6 +383,7 @@ class OperationalLayer extends ChangeNotifier {
     await _file!.writeAsString(jsonEncode(data));
   }
 
+  // ─── Утилиты ───
   String? _extract(String body, String field) {
     final re = RegExp('"$field"\\s*:\\s*"([^"]*)"');
     return re.firstMatch(body)?.group(1);

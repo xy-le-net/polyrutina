@@ -4,8 +4,7 @@
 // Пять вкладок: поле, рутины, актор, рубка, журнал.
 // Корневой пульт перетаскивается по восьми якорям, не уходит за экран.
 // Рубка делится на блоки: оформление, интерфейс, данные.
-// Размер пультов: корневой — полный, прочие — две трети от него.
-// При раскрытии к правому краю строки выравниваются по правому краю.
+// Блок данных: перечитать, очистить (журнал), сброс (кэш борта).
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -75,8 +74,12 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   bool _menuOpen = false;
   bool _typeMenuOpen = false;
   bool _flagsMenuOpen = false;
-  bool _cleanupOpen = false;
-  String? _cleanupTarget;
+
+  // Блок «данные».
+  // _dataSub: null | 'journal' | 'cache'.
+  // _journalMode: null | 'synced' | 'all'.
+  String? _dataSub;
+  String? _journalMode;
 
   List<TableViewExColumnConfig> _columns = [];
   final _widthCalculator = _JournalWidthCalculator();
@@ -111,7 +114,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   static const double _pultMaxSide = 64.0;
   static const double _smallPultRatio = 2.0 / 3.0;
   static const double _pultRowHeight = 52.0;
-  static const double _labelGap = 8.0;
 
   @override
   void initState() {
@@ -171,14 +173,13 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     bool menu = false,
     bool type = false,
     bool flags = false,
-    bool cleanup = false,
   }) {
     setState(() {
       _menuOpen = menu;
       _typeMenuOpen = type;
       _flagsMenuOpen = flags;
-      _cleanupOpen = cleanup;
-      if (!cleanup) _cleanupTarget = null;
+      _dataSub = null;
+      _journalMode = null;
     });
   }
 
@@ -327,19 +328,38 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     return bestKey;
   }
 
-  Future<void> _doCleanup() async {
-    if (_cleanupTarget == 'journal') {
+  // ─── Обработчики блока «данные» ───
+
+  Future<void> _onReload() async {
+    await _bort.reloadFromJournal();
+    _i18n = await I18n.load(_bort.lang);
+    _rebuildColumns();
+    _inputController.text = _bort.draft('console');
+    await _refresh();
+  }
+
+  Future<void> _onJournalCleanup() async {
+    if (_journalMode == 'synced') {
+      await _journal.deleteSynced();
+    } else if (_journalMode == 'all') {
       await _journal.clearAll();
-      _closeAll();
-      await _refresh();
-    } else if (_cleanupTarget == 'bort') {
-      await _bort.resetToDefaults();
-      _i18n = await I18n.load(_bort.lang);
-      _rebuildColumns();
-      _inputController.text = _bort.draft('console');
-      _closeAll();
-      setState(() => _tab = _bort.tab);
     }
+    setState(() {
+      _dataSub = null;
+      _journalMode = null;
+    });
+    await _refresh();
+  }
+
+  Future<void> _onCacheCleanup() async {
+    await _bort.resetCache();
+    _i18n = await I18n.load(_bort.lang);
+    _rebuildColumns();
+    _inputController.text = _bort.draft('console');
+    setState(() {
+      _dataSub = null;
+      _tab = _bort.tab;
+    });
   }
 
   String _fmtNum(int n) {
@@ -356,7 +376,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapUp: (_) {
-        if (_menuOpen || _cleanupOpen || _typeMenuOpen || _flagsMenuOpen) {
+        if (_menuOpen || _dataSub != null || _typeMenuOpen || _flagsMenuOpen) {
           _closeAll();
         }
       },
@@ -366,10 +386,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   // ═══════════════════════════════════════════════════════════════
   // Пульт — единая отрисовка.
-  //
-  // Сердцевина: сигнальная у выбранного, цвет текста у прочего.
-  // Рамки двойные, толщина каждой — 1/16 стороны пульта.
-  // Подложка подписи сжимается по содержимому.
   // ═══════════════════════════════════════════════════════════════
   Widget _pult(
     IconData icon,
@@ -423,13 +439,11 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
     if (label == null) return core;
 
-    // Оценка ширины текста — приблизительно.
     final labelWidth = (label.length * s * 0.4 + 16).clamp(s * 1.5, s * 6);
     final right = availRight ?? 0;
     final left = availLeft ?? 0;
     final placeLeft = (right < labelWidth) && (left >= labelWidth);
 
-    // Подложка: сжимается по содержимому, ширина = текст + отступы.
     final labelWidget = Container(
       height: s * 0.75,
       decoration: BoxDecoration(
@@ -443,6 +457,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
         label,
         style: TextStyle(color: iconColor),
         softWrap: false,
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
       ),
     );
 
@@ -529,11 +545,11 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
             : BorderRadius.horizontal(right: Radius.circular(rOuter)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Text(
-        label,
-        style: TextStyle(color: iconColor),
-        softWrap: false,
-      ),
+      child: Text(label,
+          style: TextStyle(color: iconColor),
+          softWrap: false,
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1),
     );
 
     if (placeLeft) {
@@ -550,11 +566,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     );
   }
 
-  // ─── Раскладка списка пультов ───
-  //
-  // alignEnd — выравнивать элементы по правому краю столбца.
-  // Нужно, когда раскладка растёт влево от корневого пульта:
-  // тогда квадраты пультов выстраиваются по правому краю.
   Widget _layoutPults(
     List<Widget> items,
     Size available,
@@ -607,6 +618,78 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   }
 
   double _smallPultSide() => _pultSide() * _smallPultRatio;
+
+  // ═══════════════════════════════════════════════════════════════
+  // Пульт с подпультами над собою.
+  //
+  // Родитель стоит внизу. Подпульты — над ним, столбцом.
+  // Столбец центрируется по родителю (не по всей строке).
+  // Подписи обрезаются многоточием, не вылезают за экран.
+  // ═══════════════════════════════════════════════════════════════
+  Widget _pultWithSubs({
+    required String label,
+    required IconData parentIcon,
+    required bool parentActive,
+    required VoidCallback onParentTap,
+    required Color fg,
+    required Color bg,
+    required Color signal,
+    required double side,
+    required List<Widget>? subs,
+    required VoidCallback? onConfirm,
+    required bool confirmMode,
+  }) {
+    // Родительский пульт.
+    final parent = GestureDetector(
+      onTap: () {
+        if (confirmMode && onConfirm != null) {
+          onConfirm();
+        } else {
+          onParentTap();
+        }
+      },
+      child: confirmMode
+          ? _pult(Icons.delete_forever, true, fg, bg, signal, side * 1.3)
+          : _pult(parentIcon, parentActive, fg, bg, signal, side),
+    );
+
+    // Узел «подпульты + родитель» — центрируется по горизонтали.
+    final pultColumn = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        if (subs != null && subs.isNotEmpty) ...[
+          for (final s in subs)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: s,
+            ),
+        ],
+        parent,
+      ],
+    );
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        SizedBox(
+          width: 140,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(label, style: TextStyle(color: fg)),
+          ),
+        ),
+        // Место под пульт и подпульты: ограничено остатком ширины,
+        // дабы подписи подпультов обрезались, а не вылезали.
+        Expanded(
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: pultColumn,
+          ),
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -744,7 +827,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       'tab.journal',
     ];
 
-    // Направление раскрытия: к свободной стороне.
     final centerX = pos.dx + rootSide / 2;
     final centerY = pos.dy + rootSide / 2;
     final pushRight = centerX > size.width / 2;
@@ -785,11 +867,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       ),
     );
 
-    // Смещение раскладки относительно позиции корневого пульта.
-    // Ежели вправо — прижимаем правый край раскладки к правому краю пульта.
-    // Ежели влево — левый край раскладки к левому краю пульта.
-    // Ежели вниз — верх раскладки под пультом.
-    // Ежели вверх — низ раскладки над пультом.
     final dx = pushRight ? (rootSide - maxW) : 0.0;
     final dy = pushDown ? rootSide : -maxH;
 
@@ -1049,6 +1126,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           dim: dim,
           brightness: brightness,
           children: [
+            // ─── Размер журнала ───
             Row(
               children: [
                 SizedBox(
@@ -1065,53 +1143,112 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
+
+            // ─── 1. Перечитать ───
             Row(
               children: [
                 SizedBox(
                   width: 140,
-                  child: Text(_i18n!.t('bort.cleanup'),
+                  child: Text(_i18n!.t('bort.reload'),
                       style: TextStyle(color: fg)),
                 ),
                 GestureDetector(
-                  onTap: () => _openOnly(cleanup: !_cleanupOpen),
-                  child: _pult(Icons.delete_outline, _cleanupOpen, fg, bg,
-                      signal, smallSide),
+                  onTap: _onReload,
+                  child: _pult(Icons.refresh, false, fg, bg, signal, smallSide),
                 ),
               ],
             ),
-            if (_cleanupOpen) ...[
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const SizedBox(width: 140),
-                  GestureDetector(
-                    onTap: () => setState(() => _cleanupTarget = 'journal'),
-                    child: _pult(Icons.list, _cleanupTarget == 'journal', fg,
-                        bg, signal, smallSide),
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: () => setState(() => _cleanupTarget = 'bort'),
-                    child: _pult(Icons.tune, _cleanupTarget == 'bort', fg, bg,
-                        signal, smallSide),
-                  ),
-                ],
-              ),
-              if (_cleanupTarget != null) ...[
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const SizedBox(width: 140),
-                    GestureDetector(
-                      onTap: _doCleanup,
-                      child: _pult(Icons.delete_forever, true, fg, bg, signal,
-                          smallSide * 1.3),
-                    ),
-                  ],
-                ),
-              ],
-            ],
+            const SizedBox(height: 12),
+
+            // ─── 2. Очистить (журнал) ───
+            _pultWithSubs(
+              label: _i18n!.t('bort.cleanup'),
+              parentIcon: Icons.delete_outline,
+              parentActive: _dataSub == 'journal',
+              onParentTap: () => setState(() {
+                _dataSub = (_dataSub == 'journal') ? null : 'journal';
+                _journalMode = null;
+              }),
+              fg: fg,
+              bg: bg,
+              signal: signal,
+              side: smallSide,
+              confirmMode: false,
+              onConfirm: null,
+              subs: _dataSub == 'journal'
+                  ? [
+                      // Синхронизированное
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          if (_journalMode == 'synced') {
+                            _onJournalCleanup();
+                          } else {
+                            setState(() => _journalMode = 'synced');
+                          }
+                        },
+                        child: _journalMode == 'synced'
+                            ? _pult(Icons.delete_forever, true, fg, bg, signal,
+                                smallSide * 1.3)
+                            : _pult(
+                                Icons.cloud_done,
+                                false,
+                                fg,
+                                bg,
+                                signal,
+                                smallSide,
+                                label: _bort.labelsSystem
+                                    ? _i18n!.t('bort.synced')
+                                    : null,
+                              ),
+                      ),
+                      // Всё
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          if (_journalMode == 'all') {
+                            _onJournalCleanup();
+                          } else {
+                            setState(() => _journalMode = 'all');
+                          }
+                        },
+                        child: _journalMode == 'all'
+                            ? _pult(Icons.delete_forever, true, fg, bg, signal,
+                                smallSide * 1.3)
+                            : _pult(
+                                Icons.select_all,
+                                false,
+                                fg,
+                                bg,
+                                signal,
+                                smallSide,
+                                label: _bort.labelsSystem
+                                    ? _i18n!.t('bort.all')
+                                    : null,
+                              ),
+                      ),
+                    ]
+                  : null,
+            ),
+            const SizedBox(height: 12),
+
+            // ─── 3. Сброс (кэш) ───
+            _pultWithSubs(
+              label: _i18n!.t('bort.reset'),
+              parentIcon: Icons.cleaning_services,
+              parentActive: _dataSub == 'cache',
+              onParentTap: () => setState(() {
+                _dataSub = (_dataSub == 'cache') ? null : 'cache';
+              }),
+              fg: fg,
+              bg: bg,
+              signal: signal,
+              side: smallSide,
+              confirmMode: _dataSub == 'cache',
+              onConfirm: _onCacheCleanup,
+              subs: null,
+            ),
           ],
         ),
       ];
