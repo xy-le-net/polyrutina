@@ -5,6 +5,8 @@
   "fg_night": "#EFEFEF",
   "dim_day": "#303030",
   "dim_night": "#CFCFCF",
+  "signal_day": "#000000",
+  "signal_night": "#FFFFFF",
   "theme": "system",
   "scale": 1.4,
   "lang": "ru",

@@ -2,12 +2,10 @@
 // main.dart — точка входа приложения.
 //
 // Пять вкладок: поле, рутины, актор, рубка, журнал.
-// Переключение — корневым пультом, перетаскиваемым по восьми якорям.
+// Корневой пульт перетаскивается по восьми якорям, не уходит за экран.
 // Рубка делится на блоки: оформление, интерфейс, данные.
-// Внизу журнала: поле ввода, пульт рода, пульт флагов, отправка.
-//
-// Состояние интерфейса хранится полностью в борте: блоки рубки,
-// выбор рода и флагов, черновики полей и консоли, тема.
+// Размер пультов: корневой — полный, прочие — две трети от него.
+// При раскрытии к правому краю строки выравниваются по правому краю.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -69,18 +67,16 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   int _journalCount = 0;
   int _journalBytes = 0;
 
-  // Контроллер консоли. Черновик хранится в борте: 'console'.
   final _inputController = TextEditingController();
 
   int _tab = 4;
   Offset? _dragOffset;
+
   bool _menuOpen = false;
-
-  bool _cleanupOpen = false;
-  String? _cleanupTarget;
-
   bool _typeMenuOpen = false;
   bool _flagsMenuOpen = false;
+  bool _cleanupOpen = false;
+  String? _cleanupTarget;
 
   List<TableViewExColumnConfig> _columns = [];
   final _widthCalculator = _JournalWidthCalculator();
@@ -113,6 +109,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   static const double _basePultSide = 32.0;
   static const double _pultMaxSide = 64.0;
+  static const double _smallPultRatio = 2.0 / 3.0;
   static const double _pultRowHeight = 52.0;
   static const double _labelGap = 8.0;
 
@@ -136,7 +133,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _i18n = await I18n.load(_bort.lang);
     _rebuildColumns();
     _tab = _bort.tab;
-    // Восстановим черновик консоли.
     _inputController.text = _bort.draft('console');
     await _refresh();
   }
@@ -171,14 +167,26 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     }
   }
 
-  Future<void> _switchTab(int i) async {
+  void _openOnly({
+    bool menu = false,
+    bool type = false,
+    bool flags = false,
+    bool cleanup = false,
+  }) {
     setState(() {
-      _tab = i;
-      _cleanupOpen = false;
-      _cleanupTarget = null;
-      _typeMenuOpen = false;
-      _flagsMenuOpen = false;
+      _menuOpen = menu;
+      _typeMenuOpen = type;
+      _flagsMenuOpen = flags;
+      _cleanupOpen = cleanup;
+      if (!cleanup) _cleanupTarget = null;
     });
+  }
+
+  void _closeAll() => _openOnly();
+
+  Future<void> _switchTab(int i) async {
+    _closeAll();
+    setState(() => _tab = i);
     await _bort.setSilent('tab', i.toString());
   }
 
@@ -319,54 +327,18 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     return bestKey;
   }
 
-  Offset _expandedPosition(
-      String anchor, Size size, bool horizontal, double s) {
-    const m = 6.0;
-    const gap = 4.0;
-    final one = s + 2 * gap;
-    final five = 5 * one;
-    final w = horizontal ? five : one;
-    final h = horizontal ? one : five;
-
-    double left;
-    if (anchor == 'tl' || anchor == 'bl' || anchor == 'lc') {
-      left = m;
-    } else if (anchor == 'tr' || anchor == 'br' || anchor == 'rc') {
-      left = size.width - m - w;
-    } else {
-      left = (size.width - w) / 2;
-    }
-
-    double top;
-    if (anchor == 'tl' || anchor == 'tr' || anchor == 'tc') {
-      top = m;
-    } else if (anchor == 'bl' || anchor == 'br' || anchor == 'bc') {
-      top = size.height - m - h;
-    } else {
-      top = (size.height - h) / 2;
-    }
-
-    return Offset(left, top);
-  }
-
   Future<void> _doCleanup() async {
     if (_cleanupTarget == 'journal') {
       await _journal.clearAll();
-      setState(() {
-        _cleanupOpen = false;
-        _cleanupTarget = null;
-      });
+      _closeAll();
       await _refresh();
     } else if (_cleanupTarget == 'bort') {
       await _bort.resetToDefaults();
       _i18n = await I18n.load(_bort.lang);
       _rebuildColumns();
       _inputController.text = _bort.draft('console');
-      setState(() {
-        _cleanupOpen = false;
-        _cleanupTarget = null;
-        _tab = _bort.tab;
-      });
+      _closeAll();
+      setState(() => _tab = _bort.tab);
     }
   }
 
@@ -385,13 +357,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       behavior: HitTestBehavior.opaque,
       onTapUp: (_) {
         if (_menuOpen || _cleanupOpen || _typeMenuOpen || _flagsMenuOpen) {
-          setState(() {
-            _menuOpen = false;
-            _cleanupOpen = false;
-            _cleanupTarget = null;
-            _typeMenuOpen = false;
-            _flagsMenuOpen = false;
-          });
+          _closeAll();
         }
       },
       child: child,
@@ -400,60 +366,97 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   // ═══════════════════════════════════════════════════════════════
   // Пульт — единая отрисовка.
+  //
+  // Сердцевина: сигнальная у выбранного, цвет текста у прочего.
+  // Рамки двойные, толщина каждой — 1/16 стороны пульта.
+  // Подложка подписи сжимается по содержимому.
   // ═══════════════════════════════════════════════════════════════
   Widget _pult(
     IconData icon,
     bool selected,
     Color fg,
     Color bg,
+    Color signal,
     double s, {
     String? label,
+    double? availLeft,
+    double? availRight,
   }) {
-    BoxBorder? border;
-    if (selected) {
-      border = Border.all(color: bg, width: 2);
-    }
+    final coreColor = selected ? signal : fg;
+    final iconColor = bg;
+    final borderW = s / 16;
+
+    final innerBorderColor = selected ? iconColor : coreColor;
+    final outerBorderColor = coreColor;
+
+    final rOuter = s * 0.18;
+    final rInner = s * 0.14;
+    final rCore = s * 0.10;
 
     Widget core = Container(
       width: s,
       height: s,
       decoration: BoxDecoration(
-        color: fg,
-        border: border,
-        borderRadius: BorderRadius.circular(6),
+        color: coreColor,
+        borderRadius: BorderRadius.circular(rCore),
       ),
-      child: Icon(icon, color: bg, size: s * 0.55),
+      child: Center(
+        child: Icon(icon, color: iconColor, size: s * 0.45),
+      ),
     );
 
-    if (selected) {
-      core = Container(
-        decoration: BoxDecoration(
-          border: Border.all(color: fg, width: 2),
-          borderRadius: BorderRadius.circular(7),
-        ),
-        child: core,
-      );
-    }
+    core = Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(rInner),
+        border: Border.all(color: innerBorderColor, width: borderW),
+      ),
+      child: core,
+    );
+
+    core = Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(rOuter),
+        border: Border.all(color: outerBorderColor, width: borderW),
+      ),
+      child: core,
+    );
 
     if (label == null) return core;
 
+    // Оценка ширины текста — приблизительно.
+    final labelWidth = (label.length * s * 0.4 + 16).clamp(s * 1.5, s * 6);
+    final right = availRight ?? 0;
+    final left = availLeft ?? 0;
+    final placeLeft = (right < labelWidth) && (left >= labelWidth);
+
+    // Подложка: сжимается по содержимому, ширина = текст + отступы.
+    final labelWidget = Container(
+      height: s * 0.75,
+      decoration: BoxDecoration(
+        color: coreColor,
+        borderRadius: placeLeft
+            ? BorderRadius.horizontal(left: Radius.circular(rOuter))
+            : BorderRadius.horizontal(right: Radius.circular(rOuter)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Text(
+        label,
+        style: TextStyle(color: iconColor),
+        softWrap: false,
+      ),
+    );
+
+    if (placeLeft) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [labelWidget, core],
+      );
+    }
     return Row(
       mainAxisSize: MainAxisSize.min,
-      children: [
-        core,
-        Container(
-          height: s * 0.75,
-          decoration: BoxDecoration(
-            color: fg,
-            borderRadius: const BorderRadius.horizontal(
-              right: Radius.circular(6),
-            ),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          alignment: Alignment.centerLeft,
-          child: Text(label, style: TextStyle(color: bg)),
-        ),
-      ],
+      mainAxisAlignment: MainAxisAlignment.start,
+      children: [core, labelWidget],
     );
   }
 
@@ -462,95 +465,161 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     bool selected,
     Color fg,
     Color bg,
+    Color signal,
     double s, {
     String? label,
+    double? availLeft,
+    double? availRight,
   }) {
-    BoxBorder? border;
-    if (selected) {
-      border = Border.all(color: bg, width: 2);
-    }
+    final coreColor = selected ? signal : fg;
+    final iconColor = bg;
+    final borderW = s / 16;
+
+    final innerBorderColor = selected ? iconColor : coreColor;
+    final outerBorderColor = coreColor;
+
+    final rOuter = s * 0.18;
+    final rInner = s * 0.14;
+    final rCore = s * 0.10;
 
     Widget core = Container(
       width: s,
       height: s,
       decoration: BoxDecoration(
-        color: fg,
-        border: border,
-        borderRadius: BorderRadius.circular(6),
+        color: coreColor,
+        borderRadius: BorderRadius.circular(rCore),
       ),
       child: Center(
         child: Text(
           number,
-          style: TextStyle(color: bg, fontFamily: 'monospace'),
+          style: TextStyle(color: iconColor, fontFamily: 'monospace'),
         ),
       ),
     );
 
-    if (selected) {
-      core = Container(
-        decoration: BoxDecoration(
-          border: Border.all(color: fg, width: 2),
-          borderRadius: BorderRadius.circular(7),
-        ),
-        child: core,
-      );
-    }
+    core = Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(rInner),
+        border: Border.all(color: innerBorderColor, width: borderW),
+      ),
+      child: core,
+    );
+
+    core = Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(rOuter),
+        border: Border.all(color: outerBorderColor, width: borderW),
+      ),
+      child: core,
+    );
 
     if (label == null) return core;
 
+    final labelWidth = (label.length * s * 0.4 + 16).clamp(s * 1.5, s * 6);
+    final right = availRight ?? 0;
+    final left = availLeft ?? 0;
+    final placeLeft = (right < labelWidth) && (left >= labelWidth);
+
+    final labelWidget = Container(
+      height: s * 0.75,
+      decoration: BoxDecoration(
+        color: coreColor,
+        borderRadius: placeLeft
+            ? BorderRadius.horizontal(left: Radius.circular(rOuter))
+            : BorderRadius.horizontal(right: Radius.circular(rOuter)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Text(
+        label,
+        style: TextStyle(color: iconColor),
+        softWrap: false,
+      ),
+    );
+
+    if (placeLeft) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [labelWidget, core],
+      );
+    }
     return Row(
       mainAxisSize: MainAxisSize.min,
-      children: [
-        core,
-        Container(
-          height: s * 0.75,
-          decoration: BoxDecoration(
-            color: fg,
-            borderRadius: const BorderRadius.horizontal(
-              right: Radius.circular(6),
-            ),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          alignment: Alignment.centerLeft,
-          child: Text(label, style: TextStyle(color: bg)),
-        ),
-      ],
+      mainAxisAlignment: MainAxisAlignment.start,
+      children: [core, labelWidget],
     );
   }
 
+  // ─── Раскладка списка пультов ───
+  //
+  // alignEnd — выравнивать элементы по правому краю столбца.
+  // Нужно, когда раскладка растёт влево от корневого пульта:
+  // тогда квадраты пультов выстраиваются по правому краю.
   Widget _layoutPults(
     List<Widget> items,
     Size available,
-    double itemHeight,
-  ) {
-    final columnHeight = items.length * itemHeight;
-    if (columnHeight <= available.height) {
+    double itemHeight, {
+    bool alignEnd = false,
+  }) {
+    final n = items.length;
+    if (n == 0) return const SizedBox.shrink();
+
+    final cross = alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start;
+
+    if (n * itemHeight <= available.height) {
       return Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: cross,
         children: items,
       );
     }
-    return Wrap(
-      spacing: 4,
-      runSpacing: 4,
-      children: items,
+
+    final maxRows = (available.height / itemHeight).floor().clamp(1, n);
+    final cols = (n / maxRows).ceil();
+
+    final colWidgets = <Widget>[];
+    for (var c = 0; c < cols; c++) {
+      final colItems = <Widget>[];
+      for (var r = 0; r < maxRows; r++) {
+        final i = c * maxRows + r;
+        if (i < n) colItems.add(items[i]);
+      }
+      colWidgets.add(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: cross,
+          children: colItems,
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: colWidgets,
     );
   }
+
+  double _pultSide() {
+    final systemScale = MediaQuery.textScalerOf(context).scale(1.0);
+    final raw = _basePultSide * systemScale * _bort.scale;
+    return raw > _pultMaxSide ? _pultMaxSide : raw;
+  }
+
+  double _smallPultSide() => _pultSide() * _smallPultRatio;
 
   @override
   Widget build(BuildContext context) {
     if (_i18n == null) return const SizedBox.shrink();
 
-    // Системная яркость + тема из борта = эффективная.
     final systemBrightness = MediaQuery.platformBrightnessOf(context);
     final brightness = _bort.effectiveBrightness(systemBrightness);
     final bg = _bort.currentBg(brightness);
     final fg = _bort.currentFg(brightness);
+    final signal = _bort.currentSignal(brightness);
 
-    final systemScale = MediaQuery.textScalerOf(context).scale(1.0);
-    final rawSide = _basePultSide * systemScale * _bort.scale;
-    final pultSide = rawSide > _pultMaxSide ? _pultMaxSide : rawSide;
+    final rootSide = _pultSide();
+    final smallSide = _smallPultSide();
 
     return MaterialApp(
       title: _i18n!.t('app.title'),
@@ -592,12 +661,10 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
                   final Offset pos;
                   if (_menuOpen && _dragOffset == null) {
-                    final horizontal = _expandHorizontal(_bort.anchor, size);
-                    pos = _expandedPosition(
-                        _bort.anchor, size, horizontal, pultSide);
+                    pos = _anchorPosition(_bort.anchor, size, rootSide);
                   } else {
                     pos = _dragOffset ??
-                        _anchorPosition(_bort.anchor, size, pultSide);
+                        _anchorPosition(_bort.anchor, size, rootSide);
                   }
 
                   return Stack(
@@ -608,14 +675,23 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                           _wrapTab(_buildStub(fg, brightness)),
                           _wrapTab(_buildStub(fg, brightness)),
                           _wrapTab(_buildStub(fg, brightness)),
-                          _wrapTab(_buildRubkaTab(fg, brightness)),
-                          _wrapTab(_buildJournalTab(fg, brightness)),
+                          _wrapTab(_buildRubkaTab(
+                              fg, brightness, smallSide, bg, signal)),
+                          _wrapTab(_buildJournalTab(fg, brightness, smallSide)),
                         ],
                       ),
                       Positioned(
                         left: pos.dx,
                         top: pos.dy,
-                        child: _buildMultiPult(fg, bg, size, pultSide),
+                        child: _buildMultiPult(
+                          fg,
+                          bg,
+                          signal,
+                          size,
+                          rootSide,
+                          smallSide,
+                          pos: pos,
+                        ),
                       ),
                     ],
                   );
@@ -628,13 +704,15 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     );
   }
 
-  bool _expandHorizontal(String anchor, Size size) {
-    if (anchor == 'tc' || anchor == 'bc') return true;
-    if (anchor == 'lc' || anchor == 'rc') return false;
-    return size.width < size.height;
-  }
-
-  Widget _buildMultiPult(Color fg, Color bg, Size size, double s) {
+  Widget _buildMultiPult(
+    Color fg,
+    Color bg,
+    Color signal,
+    Size size,
+    double rootSide,
+    double smallSide, {
+    required Offset pos,
+  }) {
     if (!_menuOpen) {
       final current = _tabs[_tab];
       return GestureDetector(
@@ -642,18 +720,18 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
         onPanStart: (_) {},
         onPanUpdate: (d) {
           setState(() {
-            final base = _dragOffset ?? _anchorPosition(_bort.anchor, size, s);
+            final base = _dragOffset ?? pos;
             _dragOffset = base + d.delta;
           });
         },
         onPanEnd: (d) {
-          final pos = _dragOffset ?? Offset.zero;
-          final nearest = _nearestAnchor(pos, size, s);
+          final p = _dragOffset ?? Offset.zero;
+          final nearest = _nearestAnchor(p, size, rootSide);
           setState(() => _dragOffset = null);
           _bort.setSilent('anchor', nearest);
         },
-        onTapUp: (_) => setState(() => _menuOpen = true),
-        child: _pult(current.icon, false, fg, bg, s),
+        onTapUp: (_) => _openOnly(menu: true),
+        child: _pult(current.icon, false, fg, bg, signal, rootSide),
       );
     }
 
@@ -666,6 +744,16 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       'tab.journal',
     ];
 
+    // Направление раскрытия: к свободной стороне.
+    final centerX = pos.dx + rootSide / 2;
+    final centerY = pos.dy + rootSide / 2;
+    final pushRight = centerX > size.width / 2;
+    final pushDown = centerY <= size.height / 2;
+
+    final maxW = pushRight ? (pos.dx + rootSide) : (size.width - pos.dx);
+    final maxH =
+        pushDown ? (size.height - pos.dy - rootSide) : (pos.dy + rootSide);
+
     final items = <Widget>[];
     for (var i = 0; i < _tabs.length; i++) {
       final t = _tabs[i];
@@ -677,27 +765,53 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           child: GestureDetector(
             onTap: () {
               _switchTab(i);
-              setState(() => _menuOpen = false);
             },
-            child: _pult(t.icon, active, fg, bg, s, label: label),
+            child: _pult(t.icon, active, fg, bg, signal, smallSide,
+                label: label,
+                availLeft: pos.dx,
+                availRight: size.width - pos.dx - rootSide),
           ),
         ),
       );
     }
 
-    final availW = size.width - _labelGap;
-    final availH = size.height - _labelGap;
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: availW, maxHeight: availH),
-      child: _layoutPults(items, Size(availW, availH), s + 8),
+    final layout = ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxW, maxHeight: maxH),
+      child: _layoutPults(
+        items,
+        Size(maxW, maxH),
+        smallSide + 8,
+        alignEnd: pushRight,
+      ),
+    );
+
+    // Смещение раскладки относительно позиции корневого пульта.
+    // Ежели вправо — прижимаем правый край раскладки к правому краю пульта.
+    // Ежели влево — левый край раскладки к левому краю пульта.
+    // Ежели вниз — верх раскладки под пультом.
+    // Ежели вверх — низ раскладки над пультом.
+    final dx = pushRight ? (rootSide - maxW) : 0.0;
+    final dy = pushDown ? rootSide : -maxH;
+
+    return Transform.translate(
+      offset: Offset(dx, dy),
+      child: SizedBox(
+        width: maxW,
+        height: maxH,
+        child: Align(
+          alignment: Alignment(
+            pushRight ? 1.0 : -1.0,
+            pushDown ? -1.0 : 1.0,
+          ),
+          child: layout,
+        ),
+      ),
     );
   }
 
-  Widget _buildJournalTab(Color fg, Brightness brightness) {
+  Widget _buildJournalTab(Color fg, Brightness brightness, double smallSide) {
     final bg = _bort.currentBg(brightness);
-    final systemScale = MediaQuery.textScalerOf(context).scale(1.0);
-    final rawSide = _basePultSide * systemScale * _bort.scale;
-    final pultSide = rawSide > _pultMaxSide ? _pultMaxSide : rawSide;
+    final signal = _bort.currentSignal(brightness);
 
     return LayoutBuilder(builder: (context, constraints) {
       final availForPanelH = constraints.maxHeight - _pultRowHeight - 16;
@@ -745,31 +859,35 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                   child: Row(
                     children: [
                       GestureDetector(
-                        onTap: () => setState(() {
-                          _typeMenuOpen = !_typeMenuOpen;
-                          _flagsMenuOpen = false;
-                        }),
+                        onTap: () => _openOnly(type: !_typeMenuOpen),
                         child: _pult(
                           _typeIcons[
                               JournalType.all.indexOf(_bort.selectedType)],
                           _typeMenuOpen,
                           fg,
                           bg,
-                          pultSide,
+                          signal,
+                          smallSide,
+                          availLeft: 8,
+                          availRight: constraints.maxWidth - 8 - smallSide,
                         ),
                       ),
                       const SizedBox(width: 8),
                       GestureDetector(
-                        onTap: () => setState(() {
-                          _flagsMenuOpen = !_flagsMenuOpen;
-                          _typeMenuOpen = false;
-                        }),
+                        onTap: () => _openOnly(flags: !_flagsMenuOpen),
                         child: _pultNumber(
                           '${_bort.selectedFlags}',
                           _flagsMenuOpen,
                           fg,
                           bg,
-                          pultSide,
+                          signal,
+                          smallSide,
+                          availLeft: 8 + smallSide + 8,
+                          availRight: constraints.maxWidth -
+                              8 -
+                              smallSide -
+                              8 -
+                              smallSide,
                         ),
                       ),
                       const Spacer(),
@@ -793,9 +911,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                 color: bg,
                 padding: const EdgeInsets.all(8),
                 child: _layoutPults(
-                  _buildTypePanelItems(fg, bg, pultSide),
+                  _buildTypePanelItems(fg, bg, signal, smallSide),
                   Size(availForPanelW, availForPanelH),
-                  pultSide + 8,
+                  smallSide + 8,
                 ),
               ),
             ),
@@ -808,9 +926,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                 color: bg,
                 padding: const EdgeInsets.all(8),
                 child: _layoutPults(
-                  _buildFlagsPanelItems(fg, bg, pultSide),
+                  _buildFlagsPanelItems(fg, bg, signal, smallSide),
                   Size(availForPanelW, availForPanelH),
-                  pultSide + 8,
+                  smallSide + 8,
                 ),
               ),
             ),
@@ -819,7 +937,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     });
   }
 
-  List<Widget> _buildTypePanelItems(Color fg, Color bg, double pultSide) {
+  List<Widget> _buildTypePanelItems(
+      Color fg, Color bg, Color signal, double side) {
     const typeKeys = [
       'type.trace',
       'type.routine',
@@ -839,7 +958,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           }),
           child: Padding(
             padding: const EdgeInsets.all(2),
-            child: _pult(_typeIcons[i], active, fg, bg, pultSide,
+            child: _pult(_typeIcons[i], active, fg, bg, signal, side,
                 label: _bort.labelsSystem ? _i18n!.t(typeKeys[i]) : null),
           ),
         ),
@@ -848,7 +967,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     return items;
   }
 
-  List<Widget> _buildFlagsPanelItems(Color fg, Color bg, double pultSide) {
+  List<Widget> _buildFlagsPanelItems(
+      Color fg, Color bg, Color signal, double side) {
     const flagKeys = [
       'flag.urgent',
       'flag.emergency',
@@ -869,7 +989,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           }),
           child: Padding(
             padding: const EdgeInsets.all(2),
-            child: _pult(_flagIcons[i], active, fg, bg, pultSide,
+            child: _pult(_flagIcons[i], active, fg, bg, signal, side,
                 label: _bort.labelsSystem ? _i18n!.t(flagKeys[i]) : null),
           ),
         ),
@@ -878,10 +998,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     return items;
   }
 
-  // ─── Вкладка «рубка» ───
-  Widget _buildRubkaTab(Color fg, Brightness brightness) {
+  Widget _buildRubkaTab(Color fg, Brightness brightness, double smallSide,
+      Color bg, Color signal) {
     final dim = _bort.currentDim(brightness);
-    final bg = _bort.currentBg(brightness);
 
     return LayoutBuilder(builder: (context, constraints) {
       final wide = constraints.maxWidth > 640;
@@ -896,14 +1015,15 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           dim: dim,
           brightness: brightness,
           children: <Widget>[
-            // Пульт выбора темы: три варианта.
-            _themeRow(fg, dim, brightness, bg),
-            _settingRow('bg_day', fg, dim, brightness),
-            _settingRow('bg_night', fg, dim, brightness),
-            _settingRow('fg_day', fg, dim, brightness),
-            _settingRow('fg_night', fg, dim, brightness),
-            _settingRow('dim_day', fg, dim, brightness),
-            _settingRow('dim_night', fg, dim, brightness),
+            _themeRow(fg, dim, brightness, bg, signal, smallSide),
+            _settingRow('bg_day', fg, dim, brightness, smallSide),
+            _settingRow('bg_night', fg, dim, brightness, smallSide),
+            _settingRow('fg_day', fg, dim, brightness, smallSide),
+            _settingRow('fg_night', fg, dim, brightness, smallSide),
+            _settingRow('dim_day', fg, dim, brightness, smallSide),
+            _settingRow('dim_night', fg, dim, brightness, smallSide),
+            _settingRow('signal_day', fg, dim, brightness, smallSide),
+            _settingRow('signal_night', fg, dim, brightness, smallSide),
           ],
         ),
         _buildBlock(
@@ -915,10 +1035,10 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           dim: dim,
           brightness: brightness,
           children: <Widget>[
-            _settingRow('scale', fg, dim, brightness),
-            _settingRow('lang', fg, dim, brightness),
-            _settingRow('labels_system', fg, dim, brightness),
-            _settingRow('labels_field', fg, dim, brightness),
+            _settingRow('scale', fg, dim, brightness, smallSide),
+            _settingRow('lang', fg, dim, brightness, smallSide),
+            _settingRow('labels_system', fg, dim, brightness, smallSide),
+            _settingRow('labels_field', fg, dim, brightness, smallSide),
           ],
         ),
         _buildBlock(
@@ -954,8 +1074,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                       style: TextStyle(color: fg)),
                 ),
                 GestureDetector(
-                  onTap: () => setState(() => _cleanupOpen = !_cleanupOpen),
-                  child: _pult(Icons.delete_outline, _cleanupOpen, fg, bg, 32),
+                  onTap: () => _openOnly(cleanup: !_cleanupOpen),
+                  child: _pult(Icons.delete_outline, _cleanupOpen, fg, bg,
+                      signal, smallSide),
                 ),
               ],
             ),
@@ -966,14 +1087,14 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                   const SizedBox(width: 140),
                   GestureDetector(
                     onTap: () => setState(() => _cleanupTarget = 'journal'),
-                    child: _pult(
-                        Icons.list, _cleanupTarget == 'journal', fg, bg, 32),
+                    child: _pult(Icons.list, _cleanupTarget == 'journal', fg,
+                        bg, signal, smallSide),
                   ),
                   const SizedBox(width: 8),
                   GestureDetector(
                     onTap: () => setState(() => _cleanupTarget = 'bort'),
-                    child:
-                        _pult(Icons.tune, _cleanupTarget == 'bort', fg, bg, 32),
+                    child: _pult(Icons.tune, _cleanupTarget == 'bort', fg, bg,
+                        signal, smallSide),
                   ),
                 ],
               ),
@@ -984,7 +1105,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                     const SizedBox(width: 140),
                     GestureDetector(
                       onTap: _doCleanup,
-                      child: _pult(Icons.delete_forever, true, fg, bg, 44),
+                      child: _pult(Icons.delete_forever, true, fg, bg, signal,
+                          smallSide * 1.3),
                     ),
                   ],
                 ),
@@ -1015,8 +1137,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     });
   }
 
-  // ─── Строка выбора темы ───
-  Widget _themeRow(Color fg, Color dim, Brightness brightness, Color bg) {
+  Widget _themeRow(Color fg, Color dim, Brightness brightness, Color bg,
+      Color signal, double side) {
     const options = ['system', 'dark', 'light'];
     const optionLabels = {
       'system': 'theme.system',
@@ -1056,7 +1178,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                     active,
                     fg,
                     bg,
-                    32,
+                    signal,
+                    side,
                     label:
                         _bort.labelsSystem ? _i18n!.t(optionLabels[o]!) : null,
                   ),
@@ -1125,10 +1248,12 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     );
   }
 
-  Widget _settingRow(String key, Color fg, Color dim, Brightness brightness) {
+  Widget _settingRow(
+      String key, Color fg, Color dim, Brightness brightness, double side) {
     final type = OperationalLayer.settingTypes[key] ?? 'string';
     final value = _bort.allAsStrings[key] ?? '';
     final bg = _bort.currentBg(brightness);
+    final signal = _bort.currentSignal(brightness);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -1146,8 +1271,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
             ),
           ),
           Expanded(
-            child:
-                _buildSettingField(key, type, value, fg, dim, brightness, bg),
+            child: _buildSettingField(
+                key, type, value, fg, dim, brightness, bg, signal, side),
           ),
         ],
       ),
@@ -1162,6 +1287,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     Color dim,
     Brightness brightness,
     Color bg,
+    Color signal,
+    double side,
   ) {
     switch (type) {
       case 'bool':
@@ -1170,8 +1297,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           alignment: Alignment.centerLeft,
           child: GestureDetector(
             onTap: () => _bort.setBool(key, !b),
-            child:
-                _pult(b ? Icons.check : Icons.circle_outlined, b, fg, bg, 32),
+            child: _pult(b ? Icons.check : Icons.circle_outlined, b, fg, bg,
+                signal, side),
           ),
         );
       case 'color':
@@ -1247,10 +1374,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// _BortField — поле значения одного параметра борта.
-// Поддерживает черновик: текст, ещё не поданный.
-// ═══════════════════════════════════════════════════════════════════
 class _BortField extends StatefulWidget {
   final String keyName;
   final String initial;

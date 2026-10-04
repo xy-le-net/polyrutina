@@ -3,7 +3,7 @@
 //
 // Держит всё состояние интерфейса: цвета, масштаб, язык, вкладку,
 // якорь, тумблеры подписей, тему, блоки рубки, выбор рода и флагов,
-// черновики полей.
+// черновики полей, сигнальные цвета.
 //
 // Умолчания — в assets/defaults.json.
 // Рабочие настройки — в operational_layer.json.
@@ -28,6 +28,8 @@ class OperationalLayer extends ChangeNotifier {
   Color _defFgNight = const Color(0xFFEFEFEF);
   Color _defDimDay = const Color(0xFF303030);
   Color _defDimNight = const Color(0xFFCFCFCF);
+  Color _defSignalDay = const Color(0xFF000000);
+  Color _defSignalNight = const Color(0xFFFFFFFF);
   String _defTheme = 'system';
   double _defScale = 1.4;
   String _defLang = 'ru';
@@ -48,6 +50,8 @@ class OperationalLayer extends ChangeNotifier {
   Color fgNight = const Color(0xFFEFEFEF);
   Color dimDay = const Color(0xFF303030);
   Color dimNight = const Color(0xFFCFCFCF);
+  Color signalDay = const Color(0xFF000000);
+  Color signalNight = const Color(0xFFFFFFFF);
   String theme = 'system';
   double scale = 1.4;
   String lang = 'ru';
@@ -64,7 +68,6 @@ class OperationalLayer extends ChangeNotifier {
   int selectedFlags = 0;
 
   // Черновики: ключ настройки → текст, ещё не поданный.
-  // Для консоли — ключ 'console'.
   Map<String, String> drafts = {};
 
   JournalRepository? _journal;
@@ -93,6 +96,10 @@ class OperationalLayer extends ChangeNotifier {
       _defFgNight = _parseColor(data['fg_night'] as String?) ?? _defFgNight;
       _defDimDay = _parseColor(data['dim_day'] as String?) ?? _defDimDay;
       _defDimNight = _parseColor(data['dim_night'] as String?) ?? _defDimNight;
+      _defSignalDay =
+          _parseColor(data['signal_day'] as String?) ?? _defSignalDay;
+      _defSignalNight =
+          _parseColor(data['signal_night'] as String?) ?? _defSignalNight;
       _defTheme = data['theme'] as String? ?? _defTheme;
       _defScale = (data['scale'] as num?)?.toDouble() ?? _defScale;
       _defLang = data['lang'] as String? ?? _defLang;
@@ -120,6 +127,8 @@ class OperationalLayer extends ChangeNotifier {
     fgNight = _defFgNight;
     dimDay = _defDimDay;
     dimNight = _defDimNight;
+    signalDay = _defSignalDay;
+    signalNight = _defSignalNight;
     theme = _defTheme;
     scale = _defScale;
     lang = _defLang;
@@ -146,6 +155,8 @@ class OperationalLayer extends ChangeNotifier {
       fgNight = _parseColor(data['fg_night'] as String?) ?? fgNight;
       dimDay = _parseColor(data['dim_day'] as String?) ?? dimDay;
       dimNight = _parseColor(data['dim_night'] as String?) ?? dimNight;
+      signalDay = _parseColor(data['signal_day'] as String?) ?? signalDay;
+      signalNight = _parseColor(data['signal_night'] as String?) ?? signalNight;
       theme = data['theme'] as String? ?? theme;
       scale = (data['scale'] as num?)?.toDouble() ?? scale;
       lang = data['lang'] as String? ?? lang;
@@ -206,7 +217,6 @@ class OperationalLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ─── Правки (в память, файл — при saveNow) ───
   Future<void> set(String key, String value) async {
     _apply(key, value);
     notifyListeners();
@@ -217,7 +227,6 @@ class OperationalLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ─── Прямая установка булевых, целых ───
   void setBool(String key, bool v) {
     _apply(key, v ? 'true' : 'false');
     notifyListeners();
@@ -228,7 +237,6 @@ class OperationalLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ─── Черновики ───
   void setDraft(String key, String text) {
     drafts[key] = text;
   }
@@ -258,6 +266,12 @@ class OperationalLayer extends ChangeNotifier {
         break;
       case 'dim_night':
         dimNight = _parseColor(value) ?? dimNight;
+        break;
+      case 'signal_day':
+        signalDay = _parseColor(value) ?? signalDay;
+        break;
+      case 'signal_night':
+        signalNight = _parseColor(value) ?? signalNight;
         break;
       case 'theme':
         theme = value;
@@ -314,6 +328,8 @@ class OperationalLayer extends ChangeNotifier {
       'fg_night': colorToHex(fgNight),
       'dim_day': colorToHex(dimDay),
       'dim_night': colorToHex(dimNight),
+      'signal_day': colorToHex(signalDay),
+      'signal_night': colorToHex(signalNight),
       'theme': theme,
       'scale': scale,
       'lang': lang,
@@ -332,7 +348,6 @@ class OperationalLayer extends ChangeNotifier {
     await _file!.writeAsString(jsonEncode(data));
   }
 
-  // ─── Утилиты ───
   String? _extract(String body, String field) {
     final re = RegExp('"$field"\\s*:\\s*"([^"]*)"');
     return re.firstMatch(body)?.group(1);
@@ -355,7 +370,6 @@ class OperationalLayer extends ChangeNotifier {
     return '#$r$g$b';
   }
 
-  // ─── Эффективная яркость по теме ───
   Brightness effectiveBrightness(Brightness system) {
     switch (theme) {
       case 'dark':
@@ -371,6 +385,8 @@ class OperationalLayer extends ChangeNotifier {
   Color currentBg(Brightness b) => b == Brightness.dark ? bgNight : bgDay;
   Color currentFg(Brightness b) => b == Brightness.dark ? fgNight : fgDay;
   Color currentDim(Brightness b) => b == Brightness.dark ? dimNight : dimDay;
+  Color currentSignal(Brightness b) =>
+      b == Brightness.dark ? signalNight : signalDay;
 
   Map<String, String> get allAsStrings => {
         'bg_day': colorToHex(bgDay),
@@ -379,6 +395,8 @@ class OperationalLayer extends ChangeNotifier {
         'fg_night': colorToHex(fgNight),
         'dim_day': colorToHex(dimDay),
         'dim_night': colorToHex(dimNight),
+        'signal_day': colorToHex(signalDay),
+        'signal_night': colorToHex(signalNight),
         'theme': theme,
         'scale': scale.toStringAsFixed(2),
         'lang': lang,
@@ -393,6 +411,8 @@ class OperationalLayer extends ChangeNotifier {
     'fg_night': 'color',
     'dim_day': 'color',
     'dim_night': 'color',
+    'signal_day': 'color',
+    'signal_night': 'color',
     'theme': 'theme',
     'scale': 'string',
     'lang': 'string',
