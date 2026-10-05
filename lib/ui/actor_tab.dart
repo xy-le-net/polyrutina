@@ -1,11 +1,26 @@
 // ═══════════════════════════════════════════════════════════════════
 // actor_tab.dart — вкладка актора.
 //
-// Первый полевой пульс: «на смене / пауза».
-// На пульсе — ОБЩЕЕ время работы за всю историю, две старшие единицы
-// из четырёх (месяцы, дни, часы, минуты). Рядом с каждым числом —
-// приглушённая подпись единицы (на треть меньше).
-// Двоеточие мигает: треть секунды горит, две трети — нет.
+// Назначение: полевой пульс «на смене / пауза». Один пульт во весь
+// экран: икона (играть либо пауза) и рядом — общее время работы
+// за всю историю, двумя старшими единицами из четырёх.
+//
+// Время смены считается по журналу: записи рода actor с телами
+// «shift_start» и «shift_stop» образуют пары; незакрытый старт
+// означает идущую смену. При перезапуске состояние восстанавливается
+// из журнала — сие делает operational_layer._recomputeShiftFromJournal.
+//
+// Таймер берётся из общего вида TimerText: две старшие единицы,
+// подписи единиц уменьшены на треть, двоеточие мелькает.
+// Тик — сто миллисекунд, но перерисовка зовётся токмо когда смена
+// идёт; в покое тиканий нет.
+//
+// Цвет подписи пульта: bg — ибо подпись сидит на ядре, окрашенном
+// в fg (покой) либо signal (ход). Оба цвета ядра читаются токмо
+// с цветом фона. Полутон для подписей единиц изгнан вместе
+// с прозрачностью: различие делается кеглем.
+//
+// Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:async';
@@ -15,6 +30,7 @@ import 'package:flutter/material.dart';
 import '../data/journal_repository.dart';
 import 'app_scope.dart';
 import 'pult.dart';
+import 'timer_text.dart';
 
 class ActorTab extends StatefulWidget {
   const ActorTab({super.key});
@@ -24,6 +40,8 @@ class ActorTab extends StatefulWidget {
 }
 
 class _ActorTabState extends State<ActorTab> {
+  // Тик для мелькания двоеточия. Перерисовка зовётся токмо покуда
+  // смена идёт: в покое тик молчит, и лишней работы нет.
   Timer? _tick;
 
   @override
@@ -42,25 +60,9 @@ class _ActorTabState extends State<ActorTab> {
     super.dispose();
   }
 
-  // ─── Формат: две старшие единицы ───
-  (String, String, String, String) _fmtParts(int sec) {
-    if (sec < 0) sec = 0;
-    const monthSec = 2629746;
-    const daySec = 86400;
-    const hourSec = 3600;
-
-    String two(int n) => n.toString().padLeft(2, '0');
-
-    final month = sec ~/ monthSec;
-    final day = (sec % monthSec) ~/ daySec;
-    final hour = (sec % daySec) ~/ hourSec;
-    final minute = (sec % hourSec) ~/ 60;
-
-    if (month > 0) return (two(month), 'мес', two(day), 'дн');
-    if (day > 0) return (two(day), 'дн', two(hour), 'ч');
-    return (two(hour), 'ч', two(minute), 'мин');
-  }
-
+  // Пуск либо остановка смены. Запись в журнал кладётся первою —
+  // дабы при всяком сбое состояние смены было восстановимо.
+  // Локальное состояние борта меняется после записи.
   Future<void> _toggle() async {
     final app = AppScope.of(context);
     final bort = app.bort;
@@ -88,61 +90,33 @@ class _ActorTabState extends State<ActorTab> {
     final fg = bort.currentFg(brightness);
     final bg = bort.currentBg(brightness);
     final signal = bort.currentSignal(brightness);
+    // side — полный размер пульта (не smallSide): пульс актора —
+    // главный на своей вкладке и стоит в полную величину.
     final side = PultScope.of(context).side;
 
     final onShift = bort.onShift;
     final icon = onShift ? Icons.pause : Icons.play_arrow;
 
-    final (a, ua, b, ub) = _fmtParts(bort.shiftSecondsNow);
+    // Кегль числа — от коэффициента борта. Подписи единиц будут
+    // на треть меньше — сие делает TimerText сам.
+    final numberSize = side * bort.kNumber;
 
-    // Текст пульта — цветом знака, то есть цветом подложки.
-    // Сие обратный цвет к фону пульта (фон = цвет текста).
-    final primaryColor = bg;
-    // Второстепенные подписи — тем же цветом, но приглушённые.
-    final secondaryColor = bg.withValues(alpha: 0.6);
-
-    final numberSize = side * 0.35;
-    final unitSize = numberSize * 2 / 3;
-
+    // Мелькание двоеточия: треть секунды видно, две трети нет.
     final ms = DateTime.now().millisecond;
-    final colonVisible = onShift && (ms < 333);
+    final colonVisible = ms < 333;
 
-    final labelWidget = Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.baseline,
-      textBaseline: TextBaseline.alphabetic,
-      children: [
-        Text(a,
-            style: TextStyle(
-                color: primaryColor,
-                fontFamily: 'monospace',
-                fontSize: numberSize)),
-        const SizedBox(width: 2),
-        Text(ua,
-            style: TextStyle(
-                color: secondaryColor,
-                fontFamily: 'monospace',
-                fontSize: unitSize)),
-        Opacity(
-          opacity: colonVisible ? 1.0 : 0.0,
-          child: Text(':',
-              style: TextStyle(
-                  color: primaryColor,
-                  fontFamily: 'monospace',
-                  fontSize: numberSize)),
-        ),
-        Text(b,
-            style: TextStyle(
-                color: primaryColor,
-                fontFamily: 'monospace',
-                fontSize: numberSize)),
-        const SizedBox(width: 2),
-        Text(ub,
-            style: TextStyle(
-                color: secondaryColor,
-                fontFamily: 'monospace',
-                fontSize: unitSize)),
-      ],
+    // ─── Подпись пульта ───
+    // Три цвета ролей — все равны bg. Обоснование: подпись сидит
+    // на ядре пульта, кое окрашено в fg (покой) либо signal (ход);
+    // при обоих цветах ядра читается токмо цвет фона.
+    final labelWidget = TimerText(
+      seconds: bort.shiftSecondsNow,
+      running: onShift,
+      fg: bg,
+      dim: bg,
+      signal: bg,
+      numberSize: numberSize,
+      colonVisible: colonVisible,
     );
 
     return Center(

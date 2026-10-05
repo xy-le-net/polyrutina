@@ -1,9 +1,23 @@
 // ═══════════════════════════════════════════════════════════════════
 // main.dart — точка входа и управитель.
 //
+// Назначение: собрать всё воедино — слои (журнал, борт, слой рутин,
+// словарь), общий пульт состояния PultState, пять вкладок, корневой
+// пульт, перетаскиваемый по восьми якорям.
+//
+// Ключевое решение: корневой пульт лежит в MaterialApp.builder,
+// а не в home. Сие означает, что пульт виден поверх любого маршрута —
+// в том числе поверх открытой карточки рутины. Порядок вложенности:
+//   PultLayer  — слой подпультов и подтверждений (поверх всего);
+//     LayoutBuilder — знает размер экрана;
+//       Stack
+//         child (весь интерфейс, включая текущий маршрут) — снизу;
+//         корневой пульт — сверху.
+// Сим веер подпультов PultLayer окажется поверх корневого пульта,
+// что и требуется.
+//
 // Пять вкладок: поле, рутины, актор, рубка, журнал.
-// Корневой пульт перетаскивается по восьми якорям.
-// Все прочие пульты — единый класс Pult.
+// Активная вкладка и её номер берутся из борта.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:async';
@@ -23,6 +37,7 @@ import 'ui/journal_tab.dart';
 
 void main() => runApp(const PolyRutinaApp());
 
+// Описание вкладки: икона и ключ словаря для подписи.
 class _TabItem {
   final IconData icon;
   final String labelKey;
@@ -37,18 +52,28 @@ class PolyRutinaApp extends StatefulWidget {
 
 class _PolyRutinaAppState extends State<PolyRutinaApp>
     with WidgetsBindingObserver {
+  // ─── Слои ───
   late final AppDb _db;
   late final JournalRepository _journal;
   late final OperationalLayer _bort;
   late final RoutineLayer _routineLayer;
   final _pultState = PultState();
 
+  // Словарь; загружается асинхронно в _init. Покуда null —
+  // приложение показывает пустой экран, ибо без словаря
+  // строить подписи нечем.
   I18n? _i18n;
 
   int _tab = 4;
+  // Смещение корневого пульта при перетаскивании; null — пульт
+  // стоит по якорю. По окончании перетаскивания сбрасывается,
+  // а якорь берётся ближайший.
   Offset? _dragOffset;
+  // Открыт ли веер вкладок. Свёрнутый корневой пульт — одна икона;
+  // развёрнутый — столбец икон всех пяти вкладок.
   bool _rootOpen = false;
 
+  // Пять вкладок приложения.
   static const List<_TabItem> _tabs = [
     _TabItem(icon: Icons.map, labelKey: 'tab.field'),
     _TabItem(icon: Icons.checklist, labelKey: 'tab.routines'),
@@ -57,6 +82,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _TabItem(icon: Icons.list, labelKey: 'tab.journal'),
   ];
 
+  // Базовый размер пульта до умножения на масштаб. Верхний предел
+  // нужен, дабы ползунок scale не разгонял интерфейс до абсурда.
   static const double _pultBase = 32.0;
   static const double _pultMax = 64.0;
 
@@ -73,14 +100,24 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _init();
   }
 
+  // Смена вкладки идёт за бортом: номер вкладки хранится в борте
+  // и восстанавливается при перезапуске.
   void _onBortChanged() {
     if (mounted) setState(() => _tab = _bort.tab);
   }
 
+  // Слой рутин уведомляет при всякой мутации (создание, удаление,
+  // переименование, пуск/пауза блока). Перерисовка нужна, ибо
+  // карточки и списки берут данные отсюда.
   void _onRoutineChanged() {
     if (mounted) setState(() {});
   }
 
+  // ─── Пуск ───
+  // Порядок важен: сперва борт (он нужен слою рутин? нет, они
+  // независимы), затем слой рутин, затем словарь по текущему языку.
+  // После загрузки словаря зовём setState — иначе приложение так
+  // и осталось бы с пустым экраном.
   Future<void> _init() async {
     await _bort.init(_journal);
     await _routineLayer.init(_journal);
@@ -90,11 +127,14 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     }
   }
 
+  // Перезагрузка словаря: нужна при смене языка (из рубки).
   Future<void> _reloadI18n() async {
     final i18n = await I18n.load(_bort.lang);
     if (mounted) setState(() => _i18n = i18n);
   }
 
+  // Общий перезапрос интерфейса. Оставлен на случай, ежели
+  // кто-то из вкладок пожелает вызвать вручную.
   Future<void> _refreshAll() async {
     if (mounted) setState(() {});
   }
@@ -110,6 +150,10 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     super.dispose();
   }
 
+  // Сохранение при уходе приложения в фон либо при закрытии.
+  // Три состояния охвачены нарочно: paused — на Android при
+  // сворачивании, detached — при выгрузке, inactive — на iOS
+  // при переходе в фон. Лишние срабатывания безвредны.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
@@ -129,6 +173,10 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     await _bort.setSilent('tab', i.toString());
   }
 
+  // ─── Восемь якорей ───
+  // Корневой пульт прилипает к одному из восьми мест: четырём углам,
+  // серединам сторон. Сие удобно на разных экранах и при разной
+  // руке. m — отступ от края, дабы пульт не прилипал вплотную.
   Offset _anchorPosition(String anchor, Size size, double s) {
     const m = 6.0;
     switch (anchor) {
@@ -153,6 +201,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     }
   }
 
+  // Ближайший якорь к текущему положению. Зовётся по окончании
+  // перетаскивания: пульт прилипает к ближайшему.
   String _nearestAnchor(Offset pos, Size size, double s) {
     const keys = ['tl', 'tc', 'tr', 'lc', 'rc', 'bl', 'bc', 'br'];
     var best = double.infinity;
@@ -168,6 +218,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     return bestKey;
   }
 
+  // Размер корневого пульта: базовый, умноженный на системный
+  // масштаб и на ползунок scale из борта, ограниченный сверху.
   double _pultSide(BuildContext context) {
     final systemScale = MediaQuery.textScalerOf(context).scale(1.0);
     final raw = _pultBase * systemScale * _bort.scale;
@@ -203,6 +255,10 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       child: PultScope(
         state: _pultState,
         child: MediaQuery(
+          // Внешний textScaler — множитель масштаба интерфейса.
+          // Он применяется ко всем текстам приложения, кроме
+          // подписей пультов: там side уже его учитывает, и повторное
+          // умножение привело бы к обрезанию (см. pult.dart).
           data: MediaQuery.of(context).copyWith(
             textScaler: TextScaler.linear(_bort.scale),
           ),
@@ -233,41 +289,34 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
               ),
               iconTheme: IconThemeData(color: fg),
             ),
-            // Слой подпультов оборачивает ВСЕ маршруты.
-            builder: (context, child) => PultLayer(
-              fg: fg,
-              bg: bg,
-              signal: signal,
-              child: child ?? const SizedBox.shrink(),
-            ),
-            home: Builder(builder: (context) {
-              return Scaffold(
-                body: SafeArea(
+            // ─── Слой builder ───
+            // Здесь и только здесь корневой пульт обретает своё
+            // место: builder оборачивает навигатор, потому пульт
+            // виден поверх любого маршрута. Порядок вложенности
+            // изложен в комментарии к файлу.
+            builder: (context, child) {
+              return PultLayer(
+                fg: fg,
+                bg: bg,
+                signal: signal,
+                child: SafeArea(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       final size =
                           Size(constraints.maxWidth, constraints.maxHeight);
-
-                      final Offset pos;
-                      if (_rootOpen && _dragOffset == null) {
-                        pos = _anchorPosition(_bort.anchor, size, side);
-                      } else {
-                        pos = _dragOffset ??
-                            _anchorPosition(_bort.anchor, size, side);
-                      }
-
+                      // Позиция: либо за перетаскиванием, либо по якорю.
+                      final pos = _dragOffset ??
+                          _anchorPosition(_bort.anchor, size, side);
                       return Stack(
                         children: [
-                          IndexedStack(
-                            index: _tab,
-                            children: const [
-                              StubTab(), // поле
-                              RoutinesTab(), // рутины
-                              ActorTab(), // актор
-                              RubkaTab(),
-                              JournalTab(),
-                            ],
-                          ),
+                          // Весь интерфейс — включая текущий маршрут.
+                          // Ежели child null (например, при первичной
+                          // сборке), ставим пустышку.
+                          child ?? const SizedBox.shrink(),
+                          // Корневой пульт — поверх маршрута, но под
+                          // веером подпультов (PultLayer рисует веер
+                          // после своего child, то есть поверх всего
+                          // сего Stack).
                           Positioned(
                             left: pos.dx,
                             top: pos.dy,
@@ -280,13 +329,30 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                   ),
                 ),
               );
-            }),
+            },
+            // home без пульта: всё содержимое вкладок.
+            home: Scaffold(
+              body: IndexedStack(
+                index: _tab,
+                children: const [
+                  StubTab(), // поле
+                  RoutinesTab(), // рутины
+                  ActorTab(), // актор
+                  RubkaTab(),
+                  JournalTab(),
+                ],
+              ),
+            ),
           ),
         ),
       ),
     );
   }
 
+  // ─── Корневой пульт ───
+  // Свёрнутый — икона текущей вкладки. Касание открывает веер всех
+  // пяти вкладок. Перетаскивание — за любое место иконы: по окончании
+  // пульт прилипает к ближайшему якорю.
   Widget _buildRootPult(
     Color fg,
     Color bg,
@@ -317,6 +383,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       );
     }
 
+    // Развёрнутый: столбец (либо несколько столбцов) икон всех
+    // вкладок. Текущая выделена сигнальным.
     final items = <Widget>[];
     for (var i = 0; i < _tabs.length; i++) {
       final t = _tabs[i];
@@ -332,6 +400,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       );
     }
 
+    // Положение веера относительно пульта: в какую сторону есть
+    // место, туда и раскрываем. Сим пульт у края не уводит веер
+    // за пределы экрана.
     final centerX = pos.dx + s / 2;
     final centerY = pos.dy + s / 2;
     final pushRight = centerX > size.width / 2;
@@ -369,6 +440,10 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     );
   }
 
+  // ─── Ядро пульта ───
+  // Тройная вложенная обводка: внешняя цвета ядра, средняя цвета
+  // фона (при выделении) либо цвета ядра (иначе), ядро с иконой.
+  // Пропорции — доли от s.
   Widget _pultCore(
     IconData icon,
     bool selected,
@@ -416,6 +491,10 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     return core;
   }
 
+  // ─── Раскладка веера вкладок ───
+  // Ежели все помещаются в столбец — столбец. Иначе — несколько
+  // столбцов слева направо. alignEnd — прижать к правому краю
+  // (когда веер раскрывается влево от пульта).
   Widget _layoutPults(
     List<Widget> items,
     Size available,
