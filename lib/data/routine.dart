@@ -1,21 +1,33 @@
 // ═══════════════════════════════════════════════════════════════════
 // routine.dart — модель рутины и её блоков.
 //
-// Рутина: идентификатор, имя, время создания, пять блоков.
-// Время рутины = сумма её блоков.
+// Рутина: идентификатор (номер записи о создании в журнале), имя,
+// время создания, время последнего действия, пять блоков.
+//
+// Время рутины — сумма её блоков.
 //
 // Блок: род, накопленные секунды, метка старта. Методы start и pause
 // принимают необязательный час — для исторического пробега журнала.
+//
+// lastActionAt. Время последнего действия (пуск либо остановка блока).
+// Используется для сортировки списка рутин: покоящиеся сортируются
+// по убыванию сего поля. Обновляется слоем при всякой мутации.
+//
+// Роды блоков: prep, transit, work, idle, closeout. Сии — пять
+// рабочих блоков. Шестой и седьмой — note (описание) и summary
+// (итог) — не блоки в смысле времени, они части того же блока
+// карточки, но без счёта.
 // ═══════════════════════════════════════════════════════════════════
 
 class RoutineBlock {
-  static const String prep = 'prep';
-  static const String trans1 = 'trans1';
-  static const String work = 'work';
-  static const String trans2 = 'trans2';
-  static const String closeout = 'closeout';
+  // Пять рабочих родов.
+  static const String prep = 'prep'; // подготовка
+  static const String transit = 'transit'; // переход (идёт работа)
+  static const String work = 'work'; // работа
+  static const String idle = 'idle'; // простой (ожидание)
+  static const String closeout = 'closeout'; // завершение
 
-  static const List<String> kinds = [prep, trans1, work, trans2, closeout];
+  static const List<String> kinds = [prep, transit, work, idle, closeout];
 
   final String kind;
   int accumulatorSeconds;
@@ -70,19 +82,29 @@ class Routine {
   final int createdAt;
   final List<RoutineBlock> blocks;
 
+  // Время последнего действия (пуск либо остановка блока, а также
+  // создание и переименование). Обновляется слоем. Служит для
+  // сортировки списка: свежайшие сверху.
+  int lastActionAt;
+
   Routine({
     required this.id,
     this.name = '',
     required this.createdAt,
     required this.blocks,
-  });
+    int? lastActionAt,
+  }) : lastActionAt = lastActionAt ?? createdAt;
 
-  factory Routine.create(int id, {int? at}) => Routine(
-        id: id,
-        name: '',
-        createdAt: at ?? DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        blocks: RoutineBlock.kinds.map((k) => RoutineBlock(kind: k)).toList(),
-      );
+  factory Routine.create(int id, {int? at}) {
+    final t = at ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    return Routine(
+      id: id,
+      name: '',
+      createdAt: t,
+      lastActionAt: t,
+      blocks: RoutineBlock.kinds.map((k) => RoutineBlock(kind: k)).toList(),
+    );
+  }
 
   int get totalSeconds {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -107,6 +129,7 @@ class Routine {
         'id': id,
         'name': name,
         'created_at': createdAt,
+        'last_action_at': lastActionAt,
         'blocks': blocks.map((b) => b.toJson()).toList(),
       };
 
@@ -114,6 +137,7 @@ class Routine {
         id: (j['id'] as num).toInt(),
         name: j['name'] as String? ?? '',
         createdAt: (j['created_at'] as num).toInt(),
+        lastActionAt: (j['last_action_at'] as num?)?.toInt(),
         blocks: (j['blocks'] as List)
             .map((b) => RoutineBlock.fromJson(b as Map<String, dynamic>))
             .toList(),

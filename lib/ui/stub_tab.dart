@@ -2,6 +2,9 @@
 // stub_tab.dart — заглушка для неготовых вкладок.
 //
 // Показывает две строки: название раздела и обещание. Ничего более.
+// Используется для вкладок Поле (карта) и Артель, кои впереди.
+//
+// Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -15,9 +18,7 @@ class StubTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final i18n = app.i18n;
-    final brightness = Theme.of(context).brightness;
-    final fg = app.bort.currentFg(brightness);
-    final dim = app.bort.currentDim(brightness);
+    final bort = app.bort;
 
     return Center(
       child: Column(
@@ -25,12 +26,12 @@ class StubTab extends StatelessWidget {
         children: [
           Text(
             i18n.t('stub.title'),
-            style: TextStyle(color: fg, fontSize: 18),
+            style: TextStyle(color: bort.fg, fontSize: 18),
           ),
           const SizedBox(height: 8),
           Text(
             i18n.t('stub.text'),
-            style: TextStyle(color: dim),
+            style: TextStyle(color: bort.dim),
           ),
         ],
       ),

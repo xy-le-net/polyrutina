@@ -1,13 +1,25 @@
 {
-  "bg_day": "#EFEFEF",
-  "bg_night": "#101010",
-  "fg_day": "#101010",
-  "fg_night": "#EFEFEF",
-  "dim_day": "#303030",
-  "dim_night": "#CFCFCF",
-  "signal_day": "#000000",
-  "signal_night": "#FFFFFF",
+  "_notes": "Умолчания. Цвета по темам: themes.<имя>.<роль>. Роли: bg, bgdim, dim, fg, signal. Родовые коэффициенты — доли от базовой величины side.",
+
+  "themes": {
+    "day": {
+      "bg": "#EFEFEF",
+      "bgdim": "#E4E4E4",
+      "dim": "#303030",
+      "fg": "#101010",
+      "signal": "#000000"
+    },
+    "night": {
+      "bg": "#101010",
+      "bgdim": "#1C1C1C",
+      "dim": "#CFCFCF",
+      "fg": "#EFEFEF",
+      "signal": "#FFFFFF"
+    }
+  },
+
   "theme": "system",
+
   "scale": 1.4,
   "lang": "ru",
   "tab": 4,
@@ -19,6 +31,15 @@
   "block_data": false,
   "selected_type": 4,
   "selected_flags": 0,
-  "console_draft": "",
-  "drafts": {}
+
+  "k_pult": 1.0,
+  "k_pult_small": 0.8889,
+  "k_block_gap": 0.2,
+  "k_frame_pad": 0.375,
+  "k_title": 0.4,
+  "k_number": 0.4,
+  "k_number_small": 0.3,
+  "k_name": 0.5,
+  "k_radius": 0.3,
+  "k_stroke": 0.015
 }

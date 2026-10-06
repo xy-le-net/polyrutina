@@ -1,26 +1,20 @@
 // ═══════════════════════════════════════════════════════════════════
 // routine_card.dart — карточка рутины.
 //
-// Назначение: работа с одной рутиной. Сверху — редактируемое имя.
-// Ниже — шесть блоков в рамках со сглаженными углами и тонкою
-// обводкою:
-//   пять родов (подготовка, переход туда, работа, переход обратно,
-//   закрытие) — взаимоисключающие, логика в routine_layer;
-//   шестой — сводка: сумма времени всех блоков, без пульта.
+// Сверху — системная стрелка назад и поле имени (BortField) в шапке
+// AppBar. Иных действий в шапке нет.
 //
-// Внутри блока рода: надпись слева вверху приглушённым текстом;
-// под нею — число времени блока слева же; пульс — в правом-нижнем
-// углу. Пульс уменьшен на треть против обычного (kPultSmall).
-// На паузе пульс и число приглушены; при ходе — сигнальный цвет,
-// двоеточие мелькает.
+// Тело — семь блоков сверху вниз: описание (note), подготовка (prep),
+// переход (transit), работа (work), простой (idle), завершение
+// (closeout), итог (summary).
 //
-// Блоки переходов (trans1, trans2) — второстепенные: их фон
-// берётся из роли bgDim, что визуально отличает их от основных
-// блоков без введения лишних сущностей.
+// Цвета. Обычный блок: фон bg (у prep, work, closeout) либо bgdim
+// (у note, transit, idle, summary). Сигнальный (идущий) блок берёт
+// цвета, обращённые правилом invertOnSignal: фон ↔ сигнальный,
+// мягкий фон ↔ текст, мягкий текст не меняется. Сим и таймер,
+// и пульт, и надписи читаются на сигнальном фоне.
 //
-// Размеры берутся из коэффициентов борта: kBlockGap, kFramePad,
-// kTitle, kNumber, kPultSmall, kStroke, kRadius. Правка любого
-// коэффициента в рубке меняет вид карточки согласованно.
+// Живая прокрутка к идущему блоку при первом построении.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -29,11 +23,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../data/operational_layer.dart';
 import '../data/routine.dart';
 import 'app_scope.dart';
 import 'bort_field.dart';
+import 'pulse.dart';
 import 'pult.dart';
 import 'timer_text.dart';
+import 'trace_field.dart';
 
 class RoutineCard extends StatefulWidget {
   final int routineId;
@@ -44,13 +41,20 @@ class RoutineCard extends StatefulWidget {
 }
 
 class _RoutineCardState extends State<RoutineCard> {
-  // Тик для мелькания двоеточия у идущего блока. Перерисовка
-  // зовётся токмо при наличии идущего блока; иначе тик молчит.
   Timer? _tick;
+  final Map<String, GlobalKey> _blockKeys = {};
+  final _scrollController = ScrollController();
+  bool _autoScrolled = false;
 
   @override
   void initState() {
     super.initState();
+    _blockKeys['note'] = GlobalKey();
+    for (final k in RoutineBlock.kinds) {
+      _blockKeys[k] = GlobalKey();
+    }
+    _blockKeys['summary'] = GlobalKey();
+
     _tick = Timer.periodic(const Duration(milliseconds: 100), (_) {
       if (!mounted) return;
       final app = AppScope.of(context);
@@ -62,21 +66,21 @@ class _RoutineCardState extends State<RoutineCard> {
   @override
   void dispose() {
     _tick?.cancel();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  // Иконы родов блоков. Подобраны так, чтобы подготовка и закрытие
-  // читались как «начало» и «конец», а переходы — как стрелки.
+  // Иконы блоков.
   IconData _blockIcon(String kind) {
     switch (kind) {
       case RoutineBlock.prep:
         return Icons.build_outlined;
-      case RoutineBlock.trans1:
-        return Icons.arrow_forward;
+      case RoutineBlock.transit:
+        return Icons.directions_walk;
       case RoutineBlock.work:
         return Icons.construction;
-      case RoutineBlock.trans2:
-        return Icons.arrow_back;
+      case RoutineBlock.idle:
+        return Icons.hourglass_empty;
       case RoutineBlock.closeout:
         return Icons.check_circle_outline;
       default:
@@ -84,74 +88,29 @@ class _RoutineCardState extends State<RoutineCard> {
     }
   }
 
-  // Роды блоков-переходов: у них фон берётся из роли bgDim.
-  // Прочие — с фоном страницы. Сие делает переходы визуально
-  // второстепенными без введения дополнительных коэффициентов
-  // и без изменения состава самих блоков.
-  bool _isTransition(String kind) =>
-      kind == RoutineBlock.trans1 || kind == RoutineBlock.trans2;
+  // Приглушённый фон у описания, перехода, простоя, итога.
+  bool _dimBg(String kind) =>
+      kind == 'note' ||
+      kind == RoutineBlock.transit ||
+      kind == RoutineBlock.idle ||
+      kind == 'summary';
 
-  // Рамка блока. Внутри: надпись слева вверху приглушённым текстом,
-  // под нею содержимое (обыкновенно время блока), в правом-нижнем
-  // углу — необязательный пульс.
-  //
-  // Приём: Padding снизу увеличен на reserveBottom — запас под
-  // пульс в углу. Пульс как Positioned в расчёте высоты не участвует,
-  // потому запас задаётся вручную.
-  Widget _frame({
-    required String title,
-    required Widget child,
-    required Widget? corner,
-    required Color fg,
-    required Color dim,
-    required Color frameBg,
-    required double titleSize,
-    required double pad,
-    required double gap,
-    required double strokeW,
-    required double radiusW,
-    required double reserveBottom,
-  }) {
-    return Container(
-      // Промежуток снизу — меж блоками. Сим блоки разделяются
-      // ровно на kBlockGap от базовой величины.
-      margin: EdgeInsets.only(bottom: gap),
-      decoration: BoxDecoration(
-        // Фон блока: обычный либо приглушённый (для переходов).
-        color: frameBg,
-        // Обводка тонкая, приглушённая, скругление — от kRadius.
-        border: Border.all(color: dim, width: strokeW),
-        borderRadius: BorderRadius.circular(radiusW),
-      ),
-      child: Stack(
-        children: [
-          Padding(
-            // Запас снизу — под пульс в углу; справа и слева — ровный.
-            padding: EdgeInsets.fromLTRB(pad, pad, pad, pad + reserveBottom),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Надпись рода — приглушённая, слева вверху.
-                Text(
-                  title,
-                  style: TextStyle(color: dim, fontSize: titleSize),
-                ),
-                SizedBox(height: pad * 0.5),
-                // Содержимое блока — обычно TimerText, слева.
-                child,
-              ],
-            ),
-          ),
-          // Пульс — в правом-нижнем углу, поверх содержимого.
-          if (corner != null)
-            Positioned(
-              right: pad * 0.5,
-              bottom: pad * 0.5,
-              child: corner,
-            ),
-        ],
-      ),
-    );
+  // Живая прокрутка к идущему блоку при первом построении.
+  void _autoScroll(Routine r) {
+    if (_autoScrolled) return;
+    _autoScrolled = true;
+    final b = r.runningBlock;
+    if (b == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _blockKeys[b.kind]?.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 300),
+          alignment: 0.2,
+        );
+      }
+    });
   }
 
   @override
@@ -159,161 +118,231 @@ class _RoutineCardState extends State<RoutineCard> {
     final app = AppScope.of(context);
     final bort = app.bort;
     final i18n = app.i18n;
-    final brightness = Theme.of(context).brightness;
-    final fg = bort.currentFg(brightness);
-    final bg = bort.currentBg(brightness);
-    final signal = bort.currentSignal(brightness);
-    final dim = bort.currentDim(brightness);
-    final bgDim = bort.currentBgDim(brightness);
     final side = PultScope.of(context).smallSide;
 
     final r = app.routineLayer.findRoutine(widget.routineId);
     if (r == null) {
       return Scaffold(
-        backgroundColor: bg,
+        backgroundColor: bort.bg,
+        appBar: AppBar(backgroundColor: bort.bg, foregroundColor: bort.fg),
         body: Center(
           child: Text(
             i18n.t('routine.not_found'),
-            style: TextStyle(color: dim),
+            style: TextStyle(color: bort.dim),
           ),
         ),
       );
     }
 
-    // Все размеры — производные от коэффициентов борта.
-    // pultSide — уменьшенный пульс блока.
-    // titleSize — кегль надписи рода.
-    // numberSize — кегль числа времени.
-    // pad — отбивка внутри рамки.
-    // gap — промежуток меж блоками (0.2 по уговору).
-    // strokeW, radiusW — обводка и скругление рамок.
-    final pultSide = side * bort.kPultSmall;
-    final titleSize = side * bort.kTitle;
-    final numberSize = side * bort.kNumber;
-    final pad = side * bort.kFramePad;
-    final gap = side * bort.kBlockGap;
-    final strokeW = side * bort.kStroke;
-    final radiusW = side * bort.kRadius;
+    _autoScroll(r);
 
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final ms = DateTime.now().millisecond;
     final colonVisible = ms < 333;
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
-    // ─── Пять блоков родов ───
-    // Каждый — рамка с надписью, числом и пульсом. Переходы
-    // получают фон bgDim, прочие — фон страницы.
     final blocks = <Widget>[];
+
+    blocks.add(_frame(
+      key: _blockKeys['note'],
+      title: i18n.t('routine.block.note'),
+      kind: 'note',
+      running: false,
+      seconds: 0,
+      showPulse: false,
+      bort: bort,
+      side: side,
+      colonVisible: colonVisible,
+      routineId: r.id,
+      app: app,
+    ));
+
     for (final k in RoutineBlock.kinds) {
       final b = r.blockOf(k);
-      final running = b?.isRunning ?? false;
-      final seconds = b?.secondsNowAt(now) ?? 0;
-      final frameBg = _isTransition(k) ? bgDim : bg;
-
-      blocks.add(
-        _frame(
-          title: i18n.t('routine.block.$k'),
-          fg: fg,
-          dim: dim,
-          frameBg: frameBg,
-          titleSize: titleSize,
-          pad: pad,
-          gap: gap,
-          strokeW: strokeW,
-          radiusW: radiusW,
-          reserveBottom: pultSide * 0.5,
-          // Число блока: при ходе — сигнальное, при паузе —
-          // приглушённое. Двоеточие мелькает по уставу.
-          child: TimerText(
-            seconds: seconds,
-            running: running,
-            fg: fg,
-            dim: dim,
-            signal: signal,
-            numberSize: numberSize,
-            colonVisible: colonVisible,
-          ),
-          // Пульс блока: на паузе приглушён (fg: dim), при ходе
-          // перебивается сигнальным (selected: true).
-          corner: Pult(
-            spec: PultSpec(
-              id: 'block_$k',
-              icon: _blockIcon(k),
-              selected: running,
-              onTap: () => app.routineLayer.toggleBlock(r.id, k),
-            ),
-            fg: dim,
-            bg: bg,
-            signal: signal,
-            overrideSize: pultSide,
-          ),
-        ),
-      );
+      blocks.add(_frame(
+        key: _blockKeys[k],
+        title: i18n.t('routine.block.$k'),
+        kind: k,
+        running: b?.isRunning ?? false,
+        seconds: b?.secondsNowAt(now) ?? 0,
+        showPulse: true,
+        bort: bort,
+        side: side,
+        colonVisible: colonVisible,
+        routineId: r.id,
+        app: app,
+      ));
     }
 
-    // ─── Сводка ───
-    // Последний блок без пульта: суммирует время всех блоков.
-    // Число — тем же кеглем, что и блоки; надпись — приглушённая.
-    // Отдельного пульта нет: сводка не нажимается.
-    blocks.add(
-      _frame(
-        title: i18n.t('routine.summary'),
-        fg: fg,
-        dim: dim,
-        frameBg: bg,
-        titleSize: titleSize,
-        pad: pad,
-        gap: gap,
-        strokeW: strokeW,
-        radiusW: radiusW,
-        reserveBottom: 0,
-        child: TimerText(
-          seconds: r.totalSeconds,
-          running: false,
-          fg: fg,
-          dim: dim,
-          signal: signal,
-          numberSize: numberSize,
-          colonVisible: colonVisible,
-        ),
-        corner: null,
-      ),
-    );
+    blocks.add(_frame(
+      key: _blockKeys['summary'],
+      title: i18n.t('routine.summary'),
+      kind: 'summary',
+      running: false,
+      seconds: r.totalSeconds,
+      showPulse: false,
+      bort: bort,
+      side: side,
+      colonVisible: colonVisible,
+      routineId: r.id,
+      app: app,
+    ));
 
     return Scaffold(
-      backgroundColor: bg,
+      backgroundColor: bort.bg,
       appBar: AppBar(
-        backgroundColor: bg,
-        foregroundColor: fg,
+        backgroundColor: bort.bg,
+        foregroundColor: bort.fg,
         elevation: 0,
-        title: Text(
-          r.name.isEmpty ? i18n.t('routine.no_name') : r.name,
+        title: BortField(
+          initial: r.name,
+          fg: bort.fg,
+          readOnly: false,
+          hint: i18n.t('routine.no_name'),
+          onCommit: (v) => app.routineLayer.renameRoutine(app.journal, r.id, v),
         ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
+          controller: _scrollController,
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // ─── Имя рутины ───
-              // Поле ввода: правка сохраняется при уходе внимания
-              // либо по Enter (механизм в BortField). До сохранения
-              // имя в заголовке окна прежнее; после — обновится
-              // чрез уведомление слоя рутин.
-              BortField(
-                initial: r.name,
-                fg: fg,
-                readOnly: false,
-                hint: i18n.t('routine.no_name'),
-                onCommit: (v) async {
-                  await app.routineLayer.renameRoutine(r.id, v);
-                },
-              ),
-              const SizedBox(height: 16),
-              ...blocks,
-            ],
+            children: blocks,
           ),
         ),
+      ),
+    );
+  }
+
+  // Построение одного блока.
+  // Цвета берутся либо из действующего набора (покой), либо
+  // обращаются правилом invertOnSignal (ход).
+  Widget _frame({
+    Key? key,
+    required String title,
+    required String kind,
+    required bool running,
+    required int seconds,
+    required bool showPulse,
+    required dynamic bort,
+    required double side,
+    required bool colonVisible,
+    required int routineId,
+    required dynamic app,
+  }) {
+    // ─── Цвета блока ───
+    // Пять ролей, инвертированные при ходе.
+    final Color bg = bort.bg;
+    final Color bgdim = bort.bgdim;
+    final Color dim = bort.dim;
+    final Color fg = bort.fg;
+    final Color signal = bort.signal;
+
+    final Color frameBg;
+    final Color textFg;
+    final Color textDim;
+    final Color pultSignal;
+
+    if (running) {
+      final inv = OperationalLayer.invertOnSignal(
+        bg: bg,
+        bgdim: bgdim,
+        dim: dim,
+        fg: fg,
+        signal: signal,
+      );
+      // На сигнальном фоне: фон блока — сигнальный (по правилу
+      // инверсии он равен bg), тексты — инверсные.
+      frameBg = signal;
+      textFg = inv['fg']!;
+      textDim = inv['dim']!;
+      pultSignal = inv['signal']!;
+    } else {
+      frameBg = _dimBg(kind) ? bgdim : bg;
+      textFg = fg;
+      textDim = dim;
+      pultSignal = signal;
+    }
+
+    final titleSize = side * bort.kTitle;
+    final pad = side * bort.kFramePad;
+    final gap = side * bort.kBlockGap;
+    final strokeW = side * bort.kStroke;
+    final radiusW = side * bort.kRadius;
+    final numberSize = side * bort.kNumber;
+    final pultSide = side * bort.kPultSmall;
+
+    // Шапка справа: пульс (у пяти родов) либо голый таймер (у итога).
+    Widget? headerRight;
+    if (showPulse) {
+      headerRight = Pulse(
+        spec: PultSpec(
+          id: 'block_$kind',
+          icon: _blockIcon(kind),
+          selected: running,
+          onTap: () => app.toggleBlockWithShift(routineId, kind),
+        ),
+        seconds: seconds,
+        running: running,
+        fg: textFg,
+        dim: textDim,
+        bg: frameBg,
+        signal: pultSignal,
+        side: side,
+        colonVisible: colonVisible,
+        pultSize: pultSide,
+      );
+    } else if (seconds > 0) {
+      headerRight = TimerText(
+        seconds: seconds,
+        running: false,
+        fg: textFg,
+        dim: textDim,
+        signal: pultSignal,
+        numberSize: numberSize,
+        colonVisible: colonVisible,
+      );
+    }
+
+    return Container(
+      key: key,
+      margin: EdgeInsets.only(bottom: gap),
+      decoration: BoxDecoration(
+        color: frameBg,
+        border: Border.all(
+          color: running ? textDim : textDim,
+          width: strokeW,
+        ),
+        borderRadius: BorderRadius.circular(radiusW),
+      ),
+      padding: EdgeInsets.all(pad),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(color: textDim, fontSize: titleSize),
+                ),
+              ),
+              if (headerRight != null) headerRight,
+            ],
+          ),
+          SizedBox(height: pad * 0.5),
+          if (kind != 'summary')
+            TraceField(
+              objectId: routineId,
+              slot: kind,
+              fg: textFg,
+              dim: textDim,
+              bg: frameBg,
+              signal: pultSignal,
+              side: side,
+            ),
+        ],
       ),
     );
   }

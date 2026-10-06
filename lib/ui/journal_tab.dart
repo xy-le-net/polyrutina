@@ -1,15 +1,18 @@
 // ═══════════════════════════════════════════════════════════════════
 // journal_tab.dart — вкладка журнала.
 //
-// Сверху таблица записей, под нею консоль ручного ввода,
-// внизу ряд пультов: род записи, флаги, отправка.
+// Сверху таблица записей, под нею консоль ручного ввода, внизу ряд
+// пультов: род записи, флаги, отправка.
 //
 // Таблица обновляется чрез поток watchRecent — всякая запись
 // в журнал является тотчас.
 //
-// Подпульты строятся чрез функцию-построитель — оттого откликаются
-// на всякую смену борта. Текущий род не дублируется.
-// Флаги — выбор множественный, подпульты не сворачиваются (stayOpen).
+// Журнал. Слой JournalLayer сам раздаёт записи слоям; вкладке
+// надобно токмо записать новую (log) и отобразить поток.
+// Особый случай: запись рода bort с ключом lang требует
+// перезагрузки словаря.
+//
+// Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:async';
@@ -18,7 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:table_view_ex/table_view_ex.dart';
 
 import '../data/database.dart';
-import '../data/journal_repository.dart';
+import '../data/journal_types.dart';
 import 'app_scope.dart';
 import 'pult.dart';
 
@@ -55,6 +58,9 @@ class _JournalTabState extends State<JournalTab> {
     super.dispose();
   }
 
+  // Отправка консольной записи в журнал. JournalLayer сам раздаст
+  // её слоям. Особый случай: запись рода bort с ключом lang —
+  // перезагружаем словарь.
   Future<void> _send() async {
     final app = AppScope.of(context);
     final bort = app.bort;
@@ -70,11 +76,7 @@ class _JournalTabState extends State<JournalTab> {
       flags: bort.selectedFlags,
     );
 
-    if (bort.selectedType == JournalType.bort) {
-      await bort.applyJournalDeltas();
-    }
-
-    if (bort.selectedType == JournalType.bort && text.contains('lang=')) {
+    if (bort.selectedType == JournalType.bort && text.contains('"lang"')) {
       await app.reloadI18n();
     }
     // Таблица обновится сама чрез поток.
@@ -130,11 +132,11 @@ class _JournalTabState extends State<JournalTab> {
   // ─── Иконы родов ───
   IconData _typeIcon(int t) {
     const icons = [
-      Icons.circle_outlined,
-      Icons.checklist,
-      Icons.timer_outlined,
-      Icons.person_outline,
-      Icons.tune,
+      Icons.edit_note, // trace
+      Icons.checklist, // routine
+      Icons.timer_outlined, // timer
+      Icons.person_outline, // actor
+      Icons.tune, // bort
     ];
     final i = JournalType.all.indexOf(t);
     return i >= 0 ? icons[i] : Icons.help_outline;
@@ -190,6 +192,7 @@ class _JournalTabState extends State<JournalTab> {
       'flag.complexOp',
       'flag.local',
       'flag.synced',
+      'flag.correction',
     ];
     const icons = [
       Icons.access_time,
@@ -199,6 +202,7 @@ class _JournalTabState extends State<JournalTab> {
       Icons.fitness_center,
       Icons.phone_android,
       Icons.cloud_done,
+      Icons.edit,
     ];
 
     final out = <PultSpec>[];
@@ -221,10 +225,9 @@ class _JournalTabState extends State<JournalTab> {
     final app = AppScope.of(context);
     final bort = app.bort;
     final i18n = app.i18n;
-    final brightness = Theme.of(context).brightness;
-    final fg = bort.currentFg(brightness);
-    final bg = bort.currentBg(brightness);
-    final signal = bort.currentSignal(brightness);
+    final fg = bort.fg;
+    final bg = bort.bg;
+    final signal = bort.signal;
     final side = PultScope.of(context).smallSide;
 
     final columns = [

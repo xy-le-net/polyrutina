@@ -1,26 +1,22 @@
 // ═══════════════════════════════════════════════════════════════════
 // timer_text.dart — вид таймера по единому образцу.
 //
-// Назначение: единый вид отсчёта времени во всём приложении
-// (в списке рутин, в карточке, во вкладке актора). Формат —
-// две старшие единицы из четырёх: месяц, день, час, минута.
-// Что именно показывать, решается по величине:
-//   есть месяцы  → «ММ:ДД»  с подписями «мес» и «дн»;
-//   есть дни     → «ДД:ЧЧ»  с подписями «дн» и «ч»;
-//   иначе        → «ЧЧ:ММ»  с подписями «ч» и «мин».
+// Единый вид отсчёта времени (в списке рутин, в карточке, на пульсе
+// смены). Три единицы: дни, часы, минуты. Показываются две старшие,
+// что ненулевые:
+//   есть дни  → «3д 5ч»;
+//   есть часы → «9ч 3м»;
+//   только минуты → «3м»;
+//   всё нуль → пусто (таймер не выводится, места не занимает).
 //
-// Вид: число крупно, подпись единицы уменьшена на треть
-// (множитель 2/3) и окрашена приглушённым цветом. двоеточие
-// меж числами мелькает: треть секунды видно, две трети нет.
-//
-// Цвет: при ходе число сигнальное, на паузе — основное. Подписи
-// единиц — всегда приглушённые (dim), без прозрачности. Сие
-// позволяет виду быть единым и в карточке, и в списке, и на
-// пульте актора.
-//
-// Мелькание: только у идущего таймера. Покоящийся двоеточие
-// держит постоянно — иначе, когда блоков много, мигали бы все
-// разом, что раздражает и путает.
+// Оформление:
+//   числа — обычным цветом (при ходе — сигнальным);
+//   подписи «д», «ч», «м» — приглушённым, две трети от кегля числа,
+//     слитно с числом, без точки;
+//   между двумя парами — пробел у покоящегося, мерцающее двоеточие
+//     у идущего (треть секунды видно, две трети нет);
+//   двоеточие — сигнального цвета, как и число;
+//   ведущих нулей нет у дней и часов; у минут — есть («03м»).
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -28,20 +24,14 @@
 import 'package:flutter/material.dart';
 
 class TimerText extends StatelessWidget {
-  // seconds — сколько секунд показывать.
   final int seconds;
-  // running — идёт ли таймер (влияет на цвет числа и на мелькание).
   final bool running;
-  // Три цвета ролей: основной, приглушённый, сигнальный.
   final Color fg;
   final Color dim;
   final Color signal;
-  // numberSize — кегль числа. Всё прочее (подписи единиц,
-  // двоеточие) — производные от него.
   final double numberSize;
-  // colonVisible — фаза мелькания, вычисляемая вызывающим по
-  // системным часам (треть секунды видно, две трети нет).
-  // Применяется токмо при running; на паузе двоеточие постоянное.
+  // Фаза мелькания — вычисляется вызывающим по системным часам.
+  // Применяется только при running.
   final bool colonVisible;
 
   const TimerText({
@@ -55,73 +45,86 @@ class TimerText extends StatelessWidget {
     this.colonVisible = true,
   });
 
-  // Две старшие единицы из четырёх.
-  // Константы в секундах:
-  //   monthSec — средний месяц (30.44 суток); так принято в быту,
-  //              ибо точная длина месяца переменна;
-  //   daySec   — сутки ровно;
-  //   hourSec  — час ровно.
-  // Возвращается четвёрка строк: число, подпись, число, подпись.
-  static (String, String, String, String) parts(int sec) {
+  // ─── Разбор на две старшие единицы ───
+  // Возвращает список пар: [(число, подпись), ...].
+  // Пусто, коли всё нуль. Одна пара, коли младшая нулевая.
+  // Две пары — старшая и следующая ненулевая.
+  // showSeconds — истина токмо у идущего таймера: до первой минуты
+  // показываются секунды, без ведущего нуля, с приглушённой «с».
+  // У покоящегося секунды не показываются вовсе.
+  static List<(String, String)> parts(int sec, {bool showSeconds = false}) {
     if (sec < 0) sec = 0;
-    const monthSec = 2629746;
     const daySec = 86400;
     const hourSec = 3600;
 
-    String two(int n) => n.toString().padLeft(2, '0');
+    final days = sec ~/ daySec;
+    final hours = (sec % daySec) ~/ hourSec;
+    final minutes = (sec % hourSec) ~/ 60;
+    final secs = sec % 60;
 
-    final month = sec ~/ monthSec;
-    final day = (sec % monthSec) ~/ daySec;
-    final hour = (sec % daySec) ~/ hourSec;
-    final minute = (sec % hourSec) ~/ 60;
+    // Минуты — двузначные с ведущим нулём; дни, часы, секунды — без.
+    String mm(int n) => n.toString().padLeft(2, '0');
 
-    if (month > 0) return (two(month), 'мес', two(day), 'дн');
-    if (day > 0) return (two(day), 'дн', two(hour), 'ч');
-    return (two(hour), 'ч', two(minute), 'мин');
+    final out = <(String, String)>[];
+    if (days > 0) {
+      out.add(('$days', 'д'));
+      if (hours > 0) out.add(('$hours', 'ч'));
+    } else if (hours > 0) {
+      out.add(('$hours', 'ч'));
+      out.add((mm(minutes), 'м'));
+    } else if (minutes > 0) {
+      out.add((mm(minutes), 'м'));
+    } else if (showSeconds && secs > 0) {
+      // Секунды — токмо у идущего, до первой минуты.
+      out.add(('$secs', 'с'));
+    }
+    return out;
   }
 
   @override
   Widget build(BuildContext context) {
-    // Число: при ходе — сигнальное, на паузе — основное.
-    // Подписи единиц — приглушённые всегда, без прозрачности.
     final primary = running ? signal : fg;
     final secondary = dim;
-    // Подпись единицы уменьшена на треть против числа.
     final unitSize = numberSize * 2 / 3;
+    final partsList = parts(seconds, showSeconds: running);
 
-    final (a, ua, b, ub) = parts(seconds);
+    // Всё нуль — пусто.
+    if (partsList.isEmpty) return const SizedBox.shrink();
+
+    final children = <Widget>[];
+    for (var i = 0; i < partsList.length; i++) {
+      final (numText, unit) = partsList[i];
+
+      // Разделитель перед второй парой: пробел у покоящегося,
+      // мерцающее двоеточие у идущего.
+      if (i > 0) {
+        if (running) {
+          children.add(Opacity(
+            opacity: colonVisible ? 1.0 : 0.0,
+            child: Text(':',
+                style: TextStyle(
+                    color: primary,
+                    fontFamily: 'monospace',
+                    fontSize: numberSize)),
+          ));
+        } else {
+          children.add(const SizedBox(width: 4));
+        }
+      }
+
+      children.add(Text(numText,
+          style: TextStyle(
+              color: primary, fontFamily: 'monospace', fontSize: numberSize)));
+      children.add(Text(unit,
+          style: TextStyle(
+              color: secondary, fontFamily: 'monospace', fontSize: unitSize)));
+    }
 
     return Row(
       mainAxisSize: MainAxisSize.min,
-      // Выравнивание по базовой линии: числа и подписи сидят
-      // на одной строке ровно, несмотря на разный кегль.
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
-      children: [
-        Text(a,
-            style: TextStyle(
-                color: primary, fontFamily: 'monospace', fontSize: numberSize)),
-        Text(ua,
-            style: TextStyle(
-                color: secondary, fontFamily: 'monospace', fontSize: unitSize)),
-        // Двоеточие: видно на треть секунды, скрыто на две трети.
-        // На паузе — постоянное: мигает токмо идущий таймер,
-        // иначе при нескольких блоках мигали бы все разом.
-        Opacity(
-          opacity: (!running || colonVisible) ? 1.0 : 0.0,
-          child: Text(':',
-              style: TextStyle(
-                  color: primary,
-                  fontFamily: 'monospace',
-                  fontSize: numberSize)),
-        ),
-        Text(b,
-            style: TextStyle(
-                color: primary, fontFamily: 'monospace', fontSize: numberSize)),
-        Text(ub,
-            style: TextStyle(
-                color: secondary, fontFamily: 'monospace', fontSize: unitSize)),
-      ],
+      children: children,
     );
   }
 }

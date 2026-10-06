@@ -1,18 +1,13 @@
 // ═══════════════════════════════════════════════════════════════════
-// pult.dart — единый пульт, контекст и слой.
+// pult.dart — единый пульт, чекбокс, контекст и слой.
 //
-// Назначение: единая кнопка во всём приложении. Пульт рисуется
-// как тройная вложенная обводка с ядром посередине — так он
-// узнаваем в любом месте, поверх любого фона.
-//
-// Три сущности в файле:
-//   PultSpec  — описание пульта: икона, подпись, что делать по касанию;
-//   PultState — общее состояние всех пультов: кто открыт, кто ждёт
-//               подтверждения, каковы размеры;
-//   Pult      — собственно виджет;
-//   PultLayer — слой поверх всего приложения, где рисуются подпульты
-//               и подтверждения. Он охватывает все маршруты, потому
-//               подпульты видны поверх любой вкладки.
+// Сущности:
+//   PultSpec  — описание пульта;
+//   PultState — состояние (кто открыт, кто ждёт подтверждения, размеры);
+//   PultScope — провайдер состояния;
+//   Pult      — суперкнопка (тройная обводка);
+//   PultTick  — чекбокс на базе Pult;
+//   PultLayer — слой поверх всего приложения (подпульты, подтверждения).
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -27,12 +22,12 @@ import 'package:flutter/material.dart';
 //   labelWidget — своя подпись справа, перебивает label;
 //   selected    — выделен ли (ядро — сигнального цвета);
 //   subsBuilder — построитель подпультов; ежели задан, касание
-//                 открывает веер подпультов, а не зовёт onTap;
-//   confirm     — ежели истина, касание сперва просит подтверждения
-//                 увеличенным пультом поверх;
-//   onTap       — действие по касанию;
+//                 открывает веер, а не зовёт onTap;
+//   confirm     — касание сперва просит подтверждения;
+//   onTap       — действие по короткому касанию;
+//   onLongPress — действие по долгому нажатию (перебивает onTap);
 //   stayOpen    — не закрывать веер подпультов после касания
-//                 (нужно для множественного выбора: флаги журнала).
+//                 (для множественного выбора).
 class PultSpec {
   final String id;
   final IconData icon;
@@ -42,6 +37,7 @@ class PultSpec {
   final List<PultSpec> Function()? subsBuilder;
   final bool confirm;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final bool stayOpen;
 
   const PultSpec({
@@ -53,19 +49,12 @@ class PultSpec {
     this.subsBuilder,
     this.confirm = false,
     this.onTap,
+    this.onLongPress,
     this.stayOpen = false,
   });
 }
 
 // ─── Общее состояние пультов ───
-// Один PultState на всё приложение. Хранит, какой пульт ныне открыл
-// веер подпультов (parentKey), какой ждёт подтверждения (confirmingId),
-// и каковы базовые размеры.
-//
-// Размеры: baseSide задаётся сверху (из main.dart, чрез ползунок
-// scale и системный масштаб); side — то, что применяется, ограниченное
-// сверху maxSide. Сие позволяет ползунку не разгонять интерфейс
-// до абсурда.
 class PultState extends ChangeNotifier {
   GlobalKey? parentKey;
   List<PultSpec> Function()? subsBuilder;
@@ -81,9 +70,6 @@ class PultState extends ChangeNotifier {
   double get side => baseSide > maxSide ? maxSide : baseSide;
   double get smallSide => side * 2 / 3;
 
-  // Открыть веер подпультов над указанным пультом.
-  // При сем снимается всякое незавершённое подтверждение: два
-  // состояния разом несовместимы.
   void open(GlobalKey key, List<PultSpec> Function() builder) {
     parentKey = key;
     subsBuilder = builder;
@@ -94,7 +80,6 @@ class PultState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Закрыть всё: и веер, и подтверждение.
   void close() {
     parentKey = null;
     subsBuilder = null;
@@ -105,8 +90,6 @@ class PultState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Запросить подтверждение для действия. Веер подпультов при сем
-  // закрывается — подтверждение показывается одно.
   void askConfirm(
       String id, GlobalKey key, VoidCallback action, IconData icon) {
     confirmingId = id;
@@ -120,8 +103,6 @@ class PultState extends ChangeNotifier {
 
   bool isConfirming(String id) => confirmingId == id;
 
-  // Исполнить подтверждённое. Проверка id нужна на случай, ежели
-  // пользователь успел переключиться на другое подтверждение.
   void runConfirm(String id) {
     if (confirmingId != id) return;
     final a = confirmingAction;
@@ -131,8 +112,6 @@ class PultState extends ChangeNotifier {
 }
 
 // ─── Провайдер ───
-// Наследственный уведомитель: всякий, кто зовёт PultScope.of(context),
-// подписывается на изменения PultState и получает перерисовку.
 class PultScope extends InheritedNotifier<PultState> {
   const PultScope({
     super.key,
@@ -148,28 +127,11 @@ class PultScope extends InheritedNotifier<PultState> {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Pult — единая кнопка.
-//
-// Приём построения: три вложенных контейнера, каждый со своею
-// обводкою и скруглением. От большего к меньшему:
-//   внешний — обводка цвета ядра (всегда видна);
-//   средний — обводка цвета фона, ежели пульт выделен (даёт
-//             видимость двойного кольца при выделении);
-//   внутренний — заливка ядра (сигнальная, ежели выделен;
-//                основная иначе).
-// Икона — цвета фона, дабы читаться на ядре.
-//
-// Размеры ядра, обводок и скруглений — доли от side. Величины
-// подобраны так, чтобы пульт выглядел одинаково при любом масштабе.
+// Pult — суперкнопка. Тройная вложенная обводка.
 // ═══════════════════════════════════════════════════════════════════
 class Pult extends StatefulWidget {
   final PultSpec spec;
-  // overrideSize — задать свой размер вместо взятого из PultState.
-  // Нужно, скажем, для уменьшенных пультов в списке рутин.
   final double? overrideSize;
-  // insideLayer — истина, ежели пульт нарисован внутри веера
-  // подпультов. Сие меняет обработку касания: подпульт зовёт
-  // своё действие и (ежели не stayOpen) закрывает веер.
   final bool insideLayer;
   final Color fg;
   final Color bg;
@@ -190,8 +152,6 @@ class Pult extends StatefulWidget {
 }
 
 class _PultState extends State<Pult> {
-  // Ключ ядра: по нему PultLayer отыскивает, над каким местом
-  // рисовать веер подпультов либо подтверждение.
   final _coreKey = GlobalKey();
 
   @override
@@ -201,22 +161,17 @@ class _PultState extends State<Pult> {
         (widget.insideLayer ? state.smallSide : state.side);
     final selected = widget.spec.selected;
 
-    // Цвета: ядро — сигнальное при выделении, основное иначе.
-    // Икона — цвет фона: читается на любом ядре.
     final coreColor = selected ? widget.signal : widget.fg;
     final iconColor = widget.bg;
 
-    // Доли от side. Сии величины подобраны под общий вид пульта:
-    //   borderW — толщина каждой из двух обводок;
-    //   rOuter  — скругление внешней обводки;
-    //   rInner  — скругление средней;
-    //   rCore   — скругление ядра и иконы внутри.
     final borderW = side / 16;
     final rOuter = side * 0.18;
     final rInner = side * 0.14;
     final rCore = side * 0.10;
 
-    // Ядро: заливка плюс икона посередине.
+    // Сигнальный пульт: икона крупнее на треть.
+    final iconSize = selected ? side * 0.60 : side * 0.45;
+
     Widget core = Container(
       key: _coreKey,
       width: side,
@@ -226,13 +181,10 @@ class _PultState extends State<Pult> {
         borderRadius: BorderRadius.circular(rCore),
       ),
       child: Center(
-        child: Icon(widget.spec.icon, color: iconColor, size: side * 0.45),
+        child: Icon(widget.spec.icon, color: iconColor, size: iconSize),
       ),
     );
 
-    // Средняя обводка: при выделении — цвета фона (даёт видимость
-    // двойного кольца), иначе — цвета ядра (сливается с внешней,
-    // и пульт кажется одноконтурным).
     core = Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(rInner),
@@ -242,7 +194,6 @@ class _PultState extends State<Pult> {
       child: core,
     );
 
-    // Внешняя обводка — всегда цвета ядра.
     core = Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(rOuter),
@@ -251,17 +202,7 @@ class _PultState extends State<Pult> {
       child: core,
     );
 
-    // ─── Подпись справа ───
-    // Ежели подписи нет либо ей не хватает места — показываем
-    // токмо ядро. Иначе — ряд из ядра и подписи.
-    //
-    // Ширина подписи оценивается по длине текста: на одну букву
-    // примерно 0.4 от side. Сие грубо, но для подписей в несколько
-    // слов довольно. Виджет-подпись (коли задан) оценивается как
-    // шесть знаков — компромисс.
-    //
-    // Максимальная ширина ограничена шириною экрана: подпись
-    // не должна вылезать за край.
+    // Подпись справа.
     Widget content;
     final screenW = MediaQuery.of(context).size.width;
     final maxLabelW = screenW - side - 32;
@@ -271,27 +212,24 @@ class _PultState extends State<Pult> {
     if (!hasLabel || maxLabelW < side * 1.5) {
       content = core;
     } else {
-      final estimate = widget.spec.label?.length ??
-          (widget.spec.labelWidget is Text
-              ? ((widget.spec.labelWidget as Text).data?.length ?? 0)
-              : 6);
-      final desired = estimate * side * 0.4 + 16;
+      double textW;
+      final labelText = widget.spec.label;
+      if (labelText != null) {
+        final painter = TextPainter(
+          text: TextSpan(
+            text: labelText,
+            style: TextStyle(fontSize: side * 0.4),
+          ),
+          textDirection: TextDirection.ltr,
+          maxLines: 1,
+        )..layout();
+        textW = painter.width;
+      } else {
+        textW = 6 * side * 0.4;
+      }
+      final desired = textW + 16;
       final labelWidth = desired.clamp(side * 1.5, maxLabelW);
 
-      // Подпись: прямоугольник заливки ядра, со сглаженными углами
-      // токмо с правой стороны (слева она стыкуется с ядром).
-      // Текст — цвета ядра.
-      // ─── Подпись ───
-      // Кегль задаётся явно от размера пульта (side * 0.4). Иначе
-      // текст наследует размер из темы и умножается на textScaler
-      // (в main.dart он равен _bort.scale), давая двойное увеличение:
-      // подпись не помещается в отведённую полосу и обрезается.
-      //
-      // Обёртка MediaQuery с noScaling снимает внешний textScaler
-      // для содержимого подписи. Сие правильно по той же причине:
-      // side уже включает масштаб, повторное умножение излишне.
-      // Обёртка общая — и для строковой подписи, и для своего виджета
-      // (например, таймера на пульте актора).
       final labelWidget = Container(
         height: side * 0.75,
         width: labelWidth,
@@ -314,6 +252,7 @@ class _PultState extends State<Pult> {
                   style: TextStyle(
                     color: iconColor,
                     fontSize: side * 0.4,
+                    decoration: TextDecoration.none,
                   ),
                   softWrap: false,
                   overflow: TextOverflow.ellipsis,
@@ -328,21 +267,21 @@ class _PultState extends State<Pult> {
       );
     }
 
+    if (widget.insideLayer) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _handleTap(state),
+        child: content,
+      );
+    }
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _handleTap(state),
+      onLongPress: widget.spec.onLongPress,
       child: content,
     );
   }
 
-  // ─── Обработка касания ───
-  // Три пути:
-  //   внутри слоя подпультов — зовём действие и, ежели не stayOpen,
-  //     закрываем веер;
-  //   с подтверждением — просим подтверждения (повторное касание
-  //     того же пульта игнорируется, покуда ждём);
-  //   с подпультами — открываем веер;
-  //   простое — зовём действие.
   void _handleTap(PultState state) {
     if (widget.insideLayer) {
       widget.spec.onTap?.call();
@@ -369,17 +308,83 @@ class _PultState extends State<Pult> {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// PultTick — чекбокс на базе Pult.
+//
+// Два режима:
+//   binary — кружок приглушённый (не отмечено) / галочка сигнальная
+//            (отмечено). Для обычных чекбоксов.
+//   небинарный — кружок приглушённый (отмечать нечего) / галочка
+//                приглушённая (всё отмечено) / сигнальное число
+//                (сколько осталось отметить). Для пульта чек-листа.
+//
+// Число в небинарном режиме заменяет икону: цифра на месте знака.
+// ═══════════════════════════════════════════════════════════════════
+class PultTick extends StatelessWidget {
+  final String id;
+  final bool value; // отмечено либо всё отмечено
+  final bool binary; // true — бинарный; false — небинарный
+  final int badge; // число неотмеченных (небинарный, > 0)
+  final Color fg;
+  final Color bg;
+  final Color signal;
+  final double? overrideSize;
+  final VoidCallback? onTap;
+
+  const PultTick({
+    super.key,
+    required this.id,
+    required this.value,
+    this.binary = true,
+    this.badge = 0,
+    required this.fg,
+    required this.bg,
+    required this.signal,
+    this.overrideSize,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Икона по состоянию.
+    final IconData icon;
+    final bool selected;
+    if (binary) {
+      icon = value ? Icons.check : Icons.circle_outlined;
+      selected = value;
+    } else {
+      if (badge > 0) {
+        // Сигнальное число заменяет икону — рисуем Text внутри Pult
+        // чрез labelWidget не выйдет (там справа подпись), потому
+        // используем готовую икону и цвет: цифру покажем подписью.
+        icon = Icons.circle_outlined;
+        selected = true;
+      } else if (value) {
+        icon = Icons.check_box_outlined;
+        selected = false;
+      } else {
+        icon = Icons.circle_outlined;
+        selected = false;
+      }
+    }
+
+    return Pult(
+      spec: PultSpec(
+        id: id,
+        icon: icon,
+        label: (!binary && badge > 0) ? '$badge' : null,
+        selected: selected,
+        onTap: onTap,
+      ),
+      fg: fg,
+      bg: bg,
+      signal: signal,
+      overrideSize: overrideSize,
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // PultLayer — слой поверх всего приложения.
-//
-// Он охватывает все маршруты (передан в MaterialApp.builder), потому
-// подпульты видны поверх любой вкладки и поверх любого модального
-// окна. Устроен как Stack: сперва дитя (весь интерфейс), затем
-// полупрозрачный перехватчик касаний (закрыть веер по касанию мимо),
-// затем сам веер подпультов и подтверждение.
-//
-// Позиционирование веера и подтверждения — относительно ключа ядра
-// родительского пульта. Сие позволяет рисовать их точно над тем
-// местом, где пульт.
 // ═══════════════════════════════════════════════════════════════════
 class PultLayer extends StatefulWidget {
   final Widget child;
@@ -402,7 +407,6 @@ class PultLayer extends StatefulWidget {
 class _PultLayerState extends State<PultLayer> {
   final _layerKey = GlobalKey();
 
-  // Начало координат слоя в глобальных координатах экрана.
   Offset _layerOffset() {
     final ctx = _layerKey.currentContext;
     if (ctx == null) return Offset.zero;
@@ -411,7 +415,6 @@ class _PultLayerState extends State<PultLayer> {
     return box.localToGlobal(Offset.zero);
   }
 
-  // Локальное положение родительского пульта внутри слоя.
   Offset? _parentLocal(GlobalKey? key) {
     final ctx = key?.currentContext;
     if (ctx == null) return null;
@@ -420,8 +423,6 @@ class _PultLayerState extends State<PultLayer> {
     return box.localToGlobal(Offset.zero) - _layerOffset();
   }
 
-  // Размер родительского пульта: нужен, дабы выровнять веер
-  // либо подтверждение по его центру.
   Size? _parentSize(GlobalKey? key) {
     final ctx = key?.currentContext;
     if (ctx == null) return null;
@@ -437,11 +438,7 @@ class _PultLayerState extends State<PultLayer> {
     return Stack(
       key: _layerKey,
       children: [
-        // Дите: весь интерфейс.
         widget.child,
-
-        // Перехватчик касаний. Виден токмо, когда что-то открыто.
-        // Касание мимо закрывает веер либо отменяет подтверждение.
         if (state.subsBuilder != null || state.confirmingId != null)
           Positioned.fill(
             child: GestureDetector(
@@ -449,23 +446,12 @@ class _PultLayerState extends State<PultLayer> {
               onTap: () => state.close(),
             ),
           ),
-
         if (state.subsBuilder != null) _buildSubs(context, state),
         if (state.confirmingId != null) _buildConfirm(context, state),
       ],
     );
   }
 
-  // ─── Построение веера подпультов ───
-  // Раскладка: подпульты становятся над родительским пультом,
-  // столбцами по столько, сколько помещается по высоте. Ежели
-  // не помещаются в один столбец — раскладываются в несколько
-  // столбцов слева направо.
-  //
-  // Подписи показываются, коли у всех есть текст и суммарная ширина
-  // ряда не превышает ширину экрана с запасом.
-  //
-  // Позиция веера ограничена сверху и снизу, дабы не ушёл за экран.
   Widget _buildSubs(BuildContext context, PultState state) {
     final local = _parentLocal(state.parentKey);
     final size = _parentSize(state.parentKey);
@@ -478,12 +464,10 @@ class _PultLayerState extends State<PultLayer> {
     final itemH = side + 12;
     final screenW = MediaQuery.of(context).size.width;
 
-    // Сколько подпультов поместится по высоте над родительским.
     final availAbove = local.dy - 8;
     final rowsPerCol = (availAbove / itemH).floor().clamp(1, subs.length);
     final cols = (subs.length / rowsPerCol).ceil();
 
-    // Оценка ширины подписей: нужно решить, показывать ли их.
     bool anyLabel = false;
     double maxLabelW = 0;
     for (final s in subs) {
@@ -494,16 +478,8 @@ class _PultLayerState extends State<PultLayer> {
       }
     }
     final colW = side + (anyLabel ? maxLabelW : 0) + 16;
-    // Подписи показываются всегда, когда заданы. Прежняя проверка
-    // «totalW < screenW - 16» прятала их при узком экране или
-    // при длинных именах (флаги журнала: «синхронизировано»).
-    // Коли ряд окажется шире экрана, положение всё равно
-    // ограничится по краям ниже — подписи не пропадут,
-    // а самый крайний столбец чуть сдвинется.
     final showLabels = anyLabel;
 
-    // Раскладываем подпульты по столбцам. Коли подписи не помещаются,
-    // подменяем спецификацию на безымянную — так подпульты теснее.
     final colWidgets = <Widget>[];
     for (var c = 0; c < cols; c++) {
       final colItems = <Widget>[];
@@ -547,15 +523,11 @@ class _PultLayerState extends State<PultLayer> {
       );
     }
 
-    // Горизонтальное положение: по центру родительского пульта,
-    // с ограничением по краям экрана.
     final rowW = cols * colW;
     double left = local.dx + (size.width - rowW) / 2;
     if (left < 8) left = 8;
     if (left + rowW > screenW - 8) left = screenW - 8 - rowW;
 
-    // Вертикальное положение: над родительским пультом,
-    // с ограничением сверху.
     final totalH = rowsPerCol * itemH;
     double top = local.dy - totalH - 6;
     if (top < 8) top = 8;
@@ -571,11 +543,6 @@ class _PultLayerState extends State<PultLayer> {
     );
   }
 
-  // ─── Построение подтверждения ───
-  // Увеличенный пульт (в 1.3 раза против обычного) с иконою
-  // подтверждаемого действия. Касание по нему исполняет действие.
-  // Показывается над родительским пультом, а ежели там тесно —
-  // под ним.
   Widget _buildConfirm(BuildContext context, PultState state) {
     final local = _parentLocal(state.confirmingKey);
     final size = _parentSize(state.confirmingKey);
@@ -604,8 +571,6 @@ class _PultLayerState extends State<PultLayer> {
     );
   }
 
-  // Вид подтверждения: та же тройная обводка, но с сигнальным
-  // ядром. Сим подтверждение тотчас отличимо от обычного пульта.
   Widget _confirmBody(IconData icon, double side) {
     final coreColor = widget.signal;
     final iconColor = widget.bg;

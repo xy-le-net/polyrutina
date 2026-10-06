@@ -1,20 +1,26 @@
 // ═══════════════════════════════════════════════════════════════════
 // routines_tab.dart — вкладка рутин.
 //
-// Назначение: список рутин свежайшими сверху. Каждая плашка:
-//   имя рутины (при пустом — время создания) слева вверху;
-//   под ним — время пульса (суммарное время рутины) таймером;
-//   пульт удаления — в правом-нижнем углу, с подтверждением;
-//   касание по телу плашки открывает карточку рутины.
+// Сверху — строка смены (пульс и таймер), прижата вправо.
+// Под ней — список рутин: лента на узком экране, мозаика на широком.
+// Слева внизу — пульт создания.
 //
-// При ходе рутины имя и таймер показываются сигнальным цветом,
-// двоеточие таймера мелькает. Сие требует перерисовки списка
-// десять раз в секунду — но токмо покуда хоть одна рутина
-// в работе; в покое тиканий нет.
+// Сортировка. Идущие сверху, между собой — по времени пуска идущего
+// блока (позже пущен — выше). Покоящиеся ниже, между собой — по
+// последнему действию (позже тронут — выше).
 //
-// Размеры берутся из коэффициентов борта (kName, kNumberSmall,
-// kPultSmall, kStroke, kRadius, kFramePad). Правка любого
-// коэффициента в рубке меняет вид списка согласованно.
+// Плашка: имя (ежели есть), дата создания, сумма таймеров (ежели
+// не нуль), пульс. Идущая плашка сигнальная — цвета её обращаются
+// правилом invertOnSignal, тексты и таймер читаются.
+//
+// Пульс рутины: в ходе — «пауза» сигнальная (касание — пауза);
+// в покое — корзинка приглушённая (касание молчит); долгое нажатие
+// в любом состоянии — подпульт удаления с подтверждением.
+//
+// Вход в карточку — касание по телу плашки.
+//
+// Связь смены и рутин: остановка смены гасит идущую рутину.
+// Автозапуск смены при пуске блока — в AppContext.toggleBlockWithShift.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -23,7 +29,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../data/journal_types.dart';
+import '../data/operational_layer.dart';
 import 'app_scope.dart';
+import 'pulse.dart';
 import 'pult.dart';
 import 'routine_card.dart';
 import 'timer_text.dart';
@@ -36,8 +45,6 @@ class RoutinesTab extends StatefulWidget {
 }
 
 class _RoutinesTabState extends State<RoutinesTab> {
-  // Тик для мелькания двоеточия у идущих таймеров. Перерисовка
-  // зовётся токмо при наличии идущей рутины; иначе тик молчит.
   Timer? _tick;
 
   @override
@@ -47,7 +54,8 @@ class _RoutinesTabState extends State<RoutinesTab> {
       if (!mounted) return;
       final app = AppScope.of(context);
       final anyRunning =
-          app.routineLayer.routines.any((r) => r.runningBlock != null);
+          app.routineLayer.routines.any((r) => r.runningBlock != null) ||
+              app.bort.onShift;
       if (anyRunning) setState(() {});
     });
   }
@@ -58,8 +66,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     super.dispose();
   }
 
-  // Дата вида «дд.мм чч:мм». Годится и для времени создания
-  // при пустом имени, и для прочих мелких меток.
+  // Дата «дд.мм чч:мм».
   String _fmtDate(int unixSec) {
     final d = DateTime.fromMillisecondsSinceEpoch(unixSec * 1000);
     return '${d.day.toString().padLeft(2, '0')}.'
@@ -68,12 +75,9 @@ class _RoutinesTabState extends State<RoutinesTab> {
         '${d.minute.toString().padLeft(2, '0')}';
   }
 
-  // Создание рутины: слой заводит её в памяти и кладёт запись
-  // в журнал; номер берётся из записи. Тотчас открываем карточку,
-  // дабы можно было начать работу без лишнего касания.
   Future<void> _create(BuildContext context) async {
     final app = AppScope.of(context);
-    final r = await app.routineLayer.createRoutine();
+    final r = await app.routineLayer.createRoutine(app.journal);
     if (context.mounted) {
       Navigator.of(context).push(
         MaterialPageRoute(
@@ -83,174 +87,323 @@ class _RoutinesTabState extends State<RoutinesTab> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
+  // Сортировка: идущие по времени пуска (позже выше), покоящиеся
+  // по последнему действию (позже выше).
+  List<dynamic> _sorted(dynamic layer) {
+    final all = List<dynamic>.from(layer.routines);
+    all.sort((a, b) {
+      final aRun = a.runningBlock != null;
+      final bRun = b.runningBlock != null;
+      if (aRun && !bRun) return -1;
+      if (!aRun && bRun) return 1;
+      if (aRun && bRun) {
+        final at = a.runningBlock?.startedAt ?? 0;
+        final bt = b.runningBlock?.startedAt ?? 0;
+        return bt.compareTo(at);
+      }
+      return (b.lastActionAt as int).compareTo(a.lastActionAt as int);
+    });
+    return all;
+  }
+
+  // ─── Пульс смены ───
+  // Смена идёт — останавливаем; при сем идущая рутина встаёт.
+  // Смена стоит — запускаем.
+  Future<void> _toggleShift(BuildContext context) async {
     final app = AppScope.of(context);
     final bort = app.bort;
-    final routines = app.routineLayer.routinesNewestFirst;
-    final brightness = Theme.of(context).brightness;
-    final fg = bort.currentFg(brightness);
-    final bg = bort.currentBg(brightness);
-    final signal = bort.currentSignal(brightness);
-    final dim = bort.currentDim(brightness);
-    final selBg = bort.currentBgSel(brightness);
-    final side = PultScope.of(context).smallSide;
+    final going = !bort.onShift;
 
-    // Мелькание двоеточия: треть секунды видно, две трети нет.
-    final ms = DateTime.now().millisecond;
-    final colonVisible = ms < 333;
+    await app.journal.log(
+      type: JournalType.actor,
+      body: '{"action":"${going ? 'shift_start' : 'shift_stop'}"}',
+    );
 
-    // Все размеры — производные от коэффициентов борта.
-    // pultSide — уменьшенный пульт удаления в углу.
-    // numberSize — кегль таймера (в списке он мельче, чем в карточке).
-    // nameSize — кегль имени рутины.
-    // strokeW и radiusW — толщина обводки и радиус скругления плашки.
-    // framePad — отбивка внутри плашки; взята долею от kFramePad,
-    //   ибо в списке плашка плотнее, чем рамка блока в карточке.
-    final pultSide = side * bort.kPultSmall;
-    final numberSize = side * bort.kNumberSmall;
+    if (going) {
+      bort.startShift();
+    } else {
+      bort.stopShift();
+      // Остановка смены влечёт остановку идущей рутины.
+      for (final r in app.routineLayer.routines) {
+        for (final b in r.blocks) {
+          if (b.isRunning) {
+            await app.routineLayer.pauseBlock(app.journal, r.id, b.kind);
+          }
+        }
+      }
+    }
+    if (mounted) setState(() {});
+  }
+
+  // ─── Плашка рутины ───
+  Widget _plate(
+    BuildContext context,
+    dynamic r,
+    GlobalKey plateKey, {
+    required dynamic bort,
+    required double side,
+  }) {
+    final app = AppScope.of(context);
+    final running = r.runningBlock != null;
+
+    // ─── Цвета плашки ───
+    // Пять ролей; идущая плашка берёт обращённые.
+    final Color bg = bort.bg;
+    final Color bgdim = bort.bgdim;
+    final Color dim = bort.dim;
+    final Color fg = bort.fg;
+    final Color signal = bort.signal;
+
+    final Color frameBg;
+    final Color nameColor;
+    final Color dateColor;
+    final Color timerFg;
+    final Color timerDim;
+    final Color timerSignal;
+    final Color pultFg;
+    final Color pultBg;
+    final Color pultSignal;
+
+    if (running) {
+      final inv = OperationalLayer.invertOnSignal(
+        bg: bg,
+        bgdim: bgdim,
+        dim: dim,
+        fg: fg,
+        signal: signal,
+      );
+      frameBg = signal;
+      nameColor = inv['fg']!;
+      dateColor = inv['dim']!;
+      timerFg = inv['fg']!;
+      timerDim = inv['dim']!;
+      timerSignal = inv['signal']!;
+      pultFg = inv['fg']!;
+      pultBg = signal;
+      pultSignal = inv['signal']!;
+    } else {
+      frameBg = bg;
+      nameColor = fg;
+      dateColor = dim;
+      timerFg = fg;
+      timerDim = dim;
+      timerSignal = signal;
+      pultFg = dim;
+      pultBg = bg;
+      pultSignal = signal;
+    }
+
     final nameSize = side * bort.kName;
+    final dateSize = side * bort.kTitle * 0.7;
+    final numberSize = side * bort.kNumberSmall;
+    final pultSide = side * bort.kPultSmall;
     final strokeW = side * bort.kStroke;
     final radiusW = side * bort.kRadius;
     final framePad = side * bort.kFramePad * 0.6;
 
-    return Stack(
-      children: [
-        // ─── Пустой список ───
-        // Простая надпись по центру: подсказка, что рутин ещё нет.
-        if (routines.isEmpty)
-          Center(
-            child: Text(
-              app.i18n.t('routine.none'),
-              style: TextStyle(color: dim),
-            ),
-          )
-        else
-          // ─── Список плашек ───
-          // Свежайшие сверху. Прокрутка с отступами сверху и снизу —
-          // дабы корневой пульт и пульт создания не перекрывали
-          // содержимое.
-          ListView.builder(
-            padding: const EdgeInsets.fromLTRB(8, 80, 8, 80),
-            itemCount: routines.length,
-            itemBuilder: (context, i) {
-              final r = routines[i];
-              final running = r.runningBlock != null;
+    final ms = DateTime.now().millisecond;
+    final colonVisible = ms < 333;
 
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => RoutineCard(routineId: r.id),
-                      ),
-                    );
-                  },
-                  child: Container(
-                    // Подсветка плашки — цветом bgsel. Рамка
-                    // приглушённая и тонкая. Скругление — от
-                    // коэффициента радиуса рамок.
-                    decoration: BoxDecoration(
-                      color: selBg,
-                      border: Border.all(color: dim, width: strokeW),
-                      borderRadius: BorderRadius.circular(radiusW),
-                    ),
-                    padding: EdgeInsets.all(framePad),
-                    child: Stack(
-                      children: [
-                        // Тело плашки: имя (либо время создания)
-                        // и под ним таймер пульса. Справа оставлен
-                        // запас под пульт в углу.
-                        Padding(
-                          padding: EdgeInsets.only(
-                            right: pultSide + 8,
-                            top: 2,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Имя рутины; при пустом имени —
-                              // время её создания. При ходе —
-                              // сигнальный цвет.
-                              Text(
-                                r.name.isEmpty ? _fmtDate(r.createdAt) : r.name,
-                                style: TextStyle(
-                                  color: running ? signal : fg,
-                                  fontSize: nameSize,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              // Таймер пульса: две старшие единицы
-                              // из четырёх (месяц, день, час, минута).
-                              // При ходе — сигнальным цветом, при
-                              // паузе — приглушённым. Двоеточие
-                              // мелькает по уставу.
-                              TimerText(
-                                seconds: r.totalSeconds,
-                                running: running,
-                                fg: fg,
-                                dim: dim,
-                                signal: signal,
-                                numberSize: numberSize,
-                                colonVisible: colonVisible,
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        // ─── Пульт удаления ───
-                        // В правом-нижнем углу. Подтверждение —
-                        // увеличенным пультом поверх (confirm: true;
-                        // механизм в PultLayer). На паузе приглушён,
-                        // при ходе — сигнальный (selected).
-                        Positioned(
-                          right: 0,
-                          bottom: 0,
-                          child: Pult(
-                            spec: PultSpec(
-                              id: 'delete_${r.id}',
-                              icon: Icons.delete_outline,
-                              selected: running,
-                              confirm: true,
-                              onTap: () {
-                                app.routineLayer.deleteRoutine(r.id);
-                              },
-                            ),
-                            fg: dim,
-                            bg: bg,
-                            signal: signal,
-                            overrideSize: pultSide,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => RoutineCard(routineId: r.id),
           ),
-
-        // ─── Пульт создания ───
-        // В левом-нижнем углу, обычного размера. Заводит рутину
-        // и тотчас открывает её карточку.
-        Positioned(
-          left: 12,
-          bottom: 12,
-          child: Pult(
-            spec: PultSpec(
-              id: 'create_routine',
-              icon: Icons.add,
-              onTap: () => _create(context),
+        );
+      },
+      child: Container(
+        key: plateKey,
+        decoration: BoxDecoration(
+          color: frameBg,
+          border: Border.all(color: running ? dateColor : dim, width: strokeW),
+          borderRadius: BorderRadius.circular(radiusW),
+        ),
+        padding: EdgeInsets.all(framePad),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (r.name.isNotEmpty)
+                    Text(
+                      r.name,
+                      style: TextStyle(color: nameColor, fontSize: nameSize),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  Text(
+                    _fmtDate(r.createdAt),
+                    style: TextStyle(color: dateColor, fontSize: dateSize),
+                  ),
+                  if (r.totalSeconds > 0) ...[
+                    SizedBox(height: dateSize * 0.4),
+                    TimerText(
+                      seconds: r.totalSeconds,
+                      running: running,
+                      fg: timerFg,
+                      dim: timerDim,
+                      signal: timerSignal,
+                      numberSize: numberSize,
+                      colonVisible: colonVisible,
+                    ),
+                  ],
+                ],
+              ),
             ),
+            SizedBox(width: side * 0.15),
+            // ─── Пульс рутины ───
+            // В ходе — «пауза», короткое гасит блок.
+            // В покое — корзинка приглушённая, короткое молчит.
+            // Долгое в любом состоянии — подпульт удаления.
+            Pult(
+              spec: PultSpec(
+                id: 'routine_${r.id}',
+                icon: running ? Icons.pause : Icons.delete_outline,
+                selected: running,
+                onTap: running
+                    ? () {
+                        for (final b in r.blocks) {
+                          if (b.isRunning) {
+                            app.routineLayer
+                                .pauseBlock(app.journal, r.id, b.kind);
+                          }
+                        }
+                        setState(() {});
+                      }
+                    : null,
+                onLongPress: () {
+                  PultScope.of(context).open(
+                    plateKey,
+                    () => [
+                      PultSpec(
+                        id: 'delete_${r.id}',
+                        icon: Icons.delete_outline,
+                        label: app.i18n.t('bort.delete'),
+                        confirm: true,
+                        onTap: () {
+                          app.routineLayer.deleteRoutine(app.journal, r.id);
+                        },
+                      ),
+                    ],
+                  );
+                },
+              ),
+              fg: pultFg,
+              bg: pultBg,
+              signal: pultSignal,
+              overrideSize: pultSide,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final bort = app.bort;
+    final fg = bort.fg;
+    final bg = bort.bg;
+    final signal = bort.signal;
+    final dim = bort.dim;
+    final side = PultScope.of(context).smallSide;
+
+    return LayoutBuilder(builder: (context, constraints) {
+      final width = constraints.maxWidth;
+      final mosaic = width >= 800;
+      const maxCols = 3;
+      final cols = mosaic ? (width / 400).floor().clamp(1, maxCols) : 1;
+
+      final sorted = _sorted(app.routineLayer);
+
+      // Строка смены: всегда видна, прижата вправо.
+      final shiftPulse = Padding(
+        padding: const EdgeInsets.fromLTRB(8, 8, 12, 4),
+        child: Align(
+          alignment: Alignment.centerRight,
+          child: Pulse(
+            spec: PultSpec(
+              id: 'shift',
+              icon: bort.onShift ? Icons.pause : Icons.play_arrow,
+              selected: bort.onShift,
+              onTap: () => _toggleShift(context),
+            ),
+            seconds: bort.shiftSecondsNow,
+            running: bort.onShift,
             fg: fg,
+            dim: dim,
             bg: bg,
             signal: signal,
-            overrideSize: side,
+            side: side,
+            pultSize: side * bort.kPultSmall,
           ),
         ),
-      ],
-    );
+      );
+
+      final plates = <Widget>[];
+      for (final r in sorted) {
+        plates.add(
+          Padding(
+            padding: const EdgeInsets.all(4),
+            child: _plate(
+              context,
+              r,
+              GlobalKey(),
+              bort: bort,
+              side: side,
+            ),
+          ),
+        );
+      }
+
+      return Stack(
+        children: [
+          Column(
+            children: [
+              shiftPulse,
+              Expanded(
+                child: sorted.isEmpty
+                    ? Center(
+                        child: Text(
+                          app.i18n.t('routine.none'),
+                          style: TextStyle(color: dim),
+                        ),
+                      )
+                    : (mosaic
+                        ? GridView.count(
+                            padding: const EdgeInsets.fromLTRB(8, 4, 8, 80),
+                            crossAxisCount: cols,
+                            childAspectRatio: 2.5,
+                            children: plates,
+                          )
+                        : ListView(
+                            padding: const EdgeInsets.fromLTRB(8, 4, 8, 80),
+                            children: plates,
+                          )),
+              ),
+            ],
+          ),
+          Positioned(
+            left: 12,
+            bottom: 12,
+            child: Pult(
+              spec: PultSpec(
+                id: 'create_routine',
+                icon: Icons.add,
+                onTap: () => _create(context),
+              ),
+              fg: fg,
+              bg: bg,
+              signal: signal,
+              overrideSize: side,
+            ),
+          ),
+        ],
+      );
+    });
   }
 }
