@@ -3,14 +3,25 @@
 //
 // Порядок пуска: журнал открывает базу и подписывается на поток;
 // слои регистрируются в нём и читают кэши; JournalLayer тотчас
-// раздаёт накопленные записи. Сим восстанавливается состояние.
+// раздаёт накопленные записи.
 //
-// Вложенность виджетов. AppScope, PultScope, PultLayer живут
-// в MaterialApp.builder — внутри MaterialApp, но поверх всех
-// маршрутов. Сие устраняет разрыв подписок при возврате из маршрута
-// (карточки рутины) и позволяет подпультам видеть всё дерево.
+// Вложенность. AppScope, PultScope, PultLayer живут в MaterialApp.builder —
+// внутри MaterialApp, но поверх всех маршрутов. Сие устраняет разрыв
+// подписок при возврате из маршрута и позволяет подпультам видеть
+// всё дерево.
 //
-// Корневой пульт (компас) — в том же слое.
+// Корневой пульт (компас) — в том же слое. Перетаскивание: при начале
+// жеста запоминается стартовая позиция (_dragStartPosition), при
+// движении — anchor + дельта, при окончании — прилипание к якорю.
+//
+// Открытая рутина. Когда карточка рутины открыта и пользователь
+// переключает вкладку, карточка снимается с навигатора, а номер
+// запоминается (_openedRoutineId). При возврате на вкладку Рутины —
+// карточка открывается вновь.
+//
+// Единый тикер. AppTicker создаётся здесь, утилизируется здесь,
+// передаётся в AppContext. Виджеты слушают его, а не заводят
+// собственные Timer.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -18,11 +29,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'ui/routines_tab.dart';
+import 'ui/routine_card.dart';
 import 'data/database.dart';
 import 'data/journal_layer.dart';
 import 'data/operational_layer.dart';
 import 'data/routine_layer.dart';
 import 'data/trace_layer.dart';
+import 'data/ticker.dart';
 import 'data/i18n.dart';
 import 'ui/app_scope.dart';
 import 'ui/pult.dart';
@@ -47,13 +60,23 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   late final OperationalLayer _bort;
   late final RoutineLayer _routineLayer;
   late final TraceLayer _traceLayer;
+  late final AppTicker _ticker;
   final _pultState = PultState();
 
-  I18n? _i18n;
+  // Ключ навигатора — дабы уметь снимать карточку рутины из кода.
+  final _navigatorKey = GlobalKey<NavigatorState>();
 
+  I18n? _i18n;
   int _tab = 4;
+
+  // Позиция корневого пульта при перетаскивании.
   Offset? _dragOffset;
+  // Стартовая позиция жеста: anchor + дельта считается от неё.
+  Offset? _dragStartPosition;
   bool _rootOpen = false;
+
+  // Номер открытой рутины (для восстановления при возврате на Рутины).
+  int? _openedRoutineId;
 
   static const List<RootTabItem> _tabs = [
     RootTabItem(icon: Icons.map, labelKey: 'tab.field'),
@@ -75,6 +98,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _bort = OperationalLayer();
     _routineLayer = RoutineLayer();
     _traceLayer = TraceLayer();
+    _ticker = AppTicker();
     _bort.addListener(_onBortChanged);
     _routineLayer.addListener(_onLayerChanged);
     _traceLayer.addListener(_onLayerChanged);
@@ -120,6 +144,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _routineLayer.dispose();
     _traceLayer.dispose();
     _journal.dispose();
+    _ticker.dispose();
     _db.close();
     _pultState.dispose();
     super.dispose();
@@ -136,13 +161,56 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     }
   }
 
+  // ─── Смена вкладки ───
+  // Ежели открыта карточка рутины и идёт переключение на иную вкладку,
+  // карточка снимается с навигатора, её номер запоминается. При
+  // возврате на Рутины — открывается вновь.
   Future<void> _switchTab(int i) async {
     _pultState.close();
+
+    final cardOpen = _openedRoutineId != null;
+    final sameRoutines = i == 1 && cardOpen;
+
+    if (sameRoutines) {
+      // Уже на Рутинах с открытой карточкой — ничего не делаем.
+      setState(() => _rootOpen = false);
+      return;
+    }
+
+    if (cardOpen && i != 1) {
+      // Уходим с Рутин — снимаем карточку, помним номер.
+      _navigatorKey.currentState?.popUntil((r) => r.isFirst);
+    }
+
     setState(() {
       _tab = i;
       _rootOpen = false;
     });
     _bort.setSilent('tab', i.toString());
+
+    if (i == 1 && _openedRoutineId != null) {
+      // Возврат на Рутины — открываем прежнюю карточку.
+      final id = _openedRoutineId!;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => RoutineCard(routineId: id),
+          ),
+        );
+      });
+    }
+  }
+
+  // Открытие карточки рутины — запоминаем номер.
+  Future<void> _openRoutine(int id) async {
+    _openedRoutineId = id;
+    await _navigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (_) => RoutineCard(routineId: id),
+      ),
+    );
+    // Возврат из карточки: обнуляем память.
+    _openedRoutineId = null;
   }
 
   // ─── Восемь якорей ───
@@ -166,14 +234,14 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       case 'br':
         return Offset(size.width - s - m, size.height - s - m);
       default:
-        return const Offset(m, m);
+        return Offset(size.width - s - m, m);
     }
   }
 
   String _nearestAnchor(Offset pos, Size size, double s) {
     const keys = ['tl', 'tc', 'tr', 'lc', 'rc', 'bl', 'bc', 'br'];
     var best = double.infinity;
-    var bestKey = 'tl';
+    var bestKey = 'tr';
     for (final a in keys) {
       final p = _anchorPosition(a, size, s);
       final d = (p - pos).distanceSquared;
@@ -204,12 +272,15 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       routineLayer: _routineLayer,
       traceLayer: _traceLayer,
       journal: _journal,
+      ticker: _ticker,
       i18n: _i18n!,
       refresh: _refreshAll,
       reloadI18n: _reloadI18n,
+      openRoutine: _openRoutine,
     );
 
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       title: _i18n!.t('app.title'),
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -236,10 +307,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
         ),
         iconTheme: IconThemeData(color: _bort.fg),
       ),
-      // AppScope, PultScope, PultLayer живут здесь — внутри MaterialApp,
-      // но поверх любого маршрута.
       builder: (context, child) {
-        // Системная гамма сообщается борту.
         final systemBrightness = MediaQuery.platformBrightnessOf(context);
         _bort.setSystemBrightness(systemBrightness);
 
@@ -278,15 +346,26 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                               fg: _bort.fg,
                               bg: _bort.bg,
                               signal: _bort.signal,
-                              onOpen: () => setState(() => _rootOpen = true),
-                              onSwitchTab: (i) => _switchTab(i),
-                              onDragUpdate: (newPos) =>
-                                  setState(() => _dragOffset = newPos),
+                              onDragStart: () {
+                                _dragStartPosition = pos;
+                              },
+                              onDragUpdate: (newPos) {
+                                final start = _dragStartPosition ?? pos;
+                                final delta = newPos - pos;
+                                setState(() {
+                                  _dragOffset = start + delta;
+                                });
+                              },
                               onDragEnd: (p) {
                                 final nearest = _nearestAnchor(p, size, side);
-                                setState(() => _dragOffset = null);
+                                setState(() {
+                                  _dragOffset = null;
+                                  _dragStartPosition = null;
+                                });
                                 _bort.setSilent('anchor', nearest);
                               },
+                              onOpen: () => setState(() => _rootOpen = true),
+                              onSwitchTab: (i) => _switchTab(i),
                             ),
                           ),
                         ],
@@ -303,9 +382,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
         body: IndexedStack(
           index: _tab,
           children: const [
-            StubTab(), // поле (карта) — заглушка
-            RoutinesTab(), // рутины
-            StubTab(), // артель — заглушка
+            StubTab(),
+            RoutinesTab(),
+            StubTab(),
             RubkaTab(),
             JournalTab(),
           ],

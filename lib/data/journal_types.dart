@@ -1,26 +1,28 @@
 // ═══════════════════════════════════════════════════════════════════
-// journal_types.dart — роды записей, флаги, константы.
+// journal_types.dart — роды записей, флаги, константа.
 //
 // Стабильный файл: к нему обращаются слои и вкладки. Логика чтения
-// и записи — в journal_layer.dart. Здесь только перечисления.
+// и записи — в journal_layer.dart. Здесь только перечисления
+// и одна константа.
+//
+// Никаких классов, методов, полей — токмо статические сущности.
 // ═══════════════════════════════════════════════════════════════════
 
 // ─── Роды записей ───
 // Числа фиксированы: смена рода ломает воспроизведение журнала.
 class JournalType {
-  static const int trace = 0;    // след
-  static const int routine = 1;  // рутина и её блоки
-  static const int timer = 2;    // таймер (резерв)
-  static const int actor = 3;    // смена, сессия
-  static const int bort = 4;     // настройки борта
+  static const int trace = 0; // след
+  static const int routine = 1; // рутина и её блоки
+  static const int timer = 2; // таймер (резерв)
+  static const int actor = 3; // смена, сессия
+  static const int bort = 4; // настройки борта
 
   static const List<int> all = [trace, routine, timer, actor, bort];
 }
 
 // ─── Биты поля flags ───
 // Занято восемь, девять в запасе (8..15).
-//   correction — правка: запись вытесняет прежнее состояние объекта,
-//                а не творит новое. История сохраняется.
+//   correction — правка: запись вытесняет прежнее состояние объекта.
 class JournalFlag {
   static const int urgent = 1 << 0;
   static const int emergency = 1 << 1;
@@ -32,8 +34,14 @@ class JournalFlag {
   static const int correction = 1 << 7;
 
   static const List<int> all = [
-    urgent, emergency, important, disputable,
-    complexOp, local, synced, correction,
+    urgent,
+    emergency,
+    important,
+    disputable,
+    complexOp,
+    local,
+    synced,
+    correction,
   ];
 }
 

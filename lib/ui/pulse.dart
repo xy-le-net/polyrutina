@@ -1,17 +1,18 @@
 // ═══════════════════════════════════════════════════════════════════
 // pulse.dart — пульс: пульт с таймером.
 //
-// Пульс — это ряд: слева таймер (TimerText), справа пульт (Pult).
+// Пульс — ряд: слева таймер (TimerText), справа пульт (Pult).
 // Единая сущность на всё, где нужен отсчёт с управляющим пультом:
 //   — пульс блока в карточке рутины;
 //   — пульс рутины в списке;
 //   — смена в шапке списка.
 //
-// Цвета берутся у пульта: таймер наследует их. Ежели пульт
-// сигнальный (selected), таймер тоже сигнальный; ежели приглушённый
-// (fg: dim), таймер приглушён.
+// Цвета берутся из переданной пятёрки — обычной гаммы либо
+// противоположной (для сигнальных объектов). Сие позволяет одному
+// виджету работать и в обычном блоке, и в сигнальном, без
+// условных проверок.
 //
-// Нулевой таймер скрыт — места не занимает (правило TimerText).
+// colonVisible — фаза мелькания от единого тикера.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -26,18 +27,19 @@ class Pulse extends StatelessWidget {
   final PultSpec spec;
   // Секунды таймера (0 — скрыт).
   final int seconds;
-  // Идёт ли отсчёт (влияет на цвет и мелькание).
+  // Идёт ли отсчёт.
   final bool running;
-  // Четыре цвета ролей.
-  final Color fg;
-  final Color dim;
+  // Пятёрка цветов: bg, bgdim, dim, fg, signal.
   final Color bg;
+  final Color bgdim;
+  final Color dim;
+  final Color fg;
   final Color signal;
-  // Баговая величина: размер пульта. Таймер считается от неё.
+  // Базовая величина для размеров.
   final double side;
-  // Фаза мелькания двоеточия (вычисляется вызывающим).
+  // Фаза мелькания двоеточия.
   final bool colonVisible;
-  // Размер пульта (обычно smallSide либо доля).
+  // Размер пульта (по умолчанию — две трети от side).
   final double? pultSize;
 
   const Pulse({
@@ -45,9 +47,10 @@ class Pulse extends StatelessWidget {
     required this.spec,
     required this.seconds,
     required this.running,
-    required this.fg,
-    required this.dim,
     required this.bg,
+    required this.bgdim,
+    required this.dim,
+    required this.fg,
     required this.signal,
     required this.side,
     this.colonVisible = true,
@@ -56,8 +59,6 @@ class Pulse extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Кегль таймера — половина от размера пульта (то, что прежде
-    // звалось kNumber * side либо kNumberSmall * side).
     final numberSize = side * 0.4;
     final pultSide = pultSize ?? side * 0.6667;
 
@@ -65,14 +66,11 @@ class Pulse extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Таймер: цвет берётся от пульта. Ежели пульт сигнальный
-        // (running), таймер сигнальный; иначе приглушённый по числу
-        // и подписям.
+        // Таймер: число — fg (при ходе контрастный, задан пятёркой),
+        // подписи — dim.
         TimerText(
           seconds: seconds,
           running: running,
-          // Число — сигнальное при ходе, основное в покое.
-          // Подписи единиц — приглушённые (сам TimerText решает).
           fg: fg,
           dim: dim,
           signal: signal,

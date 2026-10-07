@@ -1,18 +1,18 @@
 {
-  "_notes": "Умолчания. Цвета по темам: themes.<имя>.<роль>. Роли: bg, bgdim, dim, fg, signal. Родовые коэффициенты — доли от базовой величины side.",
+  "_notes": "Умолчания. Темы: themes.<имя>.{bg,bgdim,fg,signal}. Мягкий текст (dim) един для обеих гамм. Коэффициенты — доли от базовой величины side.",
+
+  "dim": "#8F8F8F",
 
   "themes": {
     "day": {
       "bg": "#EFEFEF",
       "bgdim": "#E4E4E4",
-      "dim": "#303030",
       "fg": "#101010",
       "signal": "#000000"
     },
     "night": {
       "bg": "#101010",
       "bgdim": "#1C1C1C",
-      "dim": "#CFCFCF",
       "fg": "#EFEFEF",
       "signal": "#FFFFFF"
     }
@@ -23,14 +23,17 @@
   "scale": 1.4,
   "lang": "ru",
   "tab": 4,
-  "anchor": "tl",
+  "anchor": "tr",
   "labels_system": true,
   "labels_field": true,
+  "block_artel": false,
   "block_appearance": false,
   "block_interface": false,
   "block_data": false,
   "selected_type": 4,
   "selected_flags": 0,
+
+  "midnight": "00:00",
 
   "k_pult": 1.0,
   "k_pult_small": 0.8889,

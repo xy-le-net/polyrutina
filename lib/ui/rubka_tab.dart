@@ -1,27 +1,31 @@
 // ═══════════════════════════════════════════════════════════════════
 // rubka_tab.dart — вкладка рубки.
 //
-// Три блока: оформление, интерфейс, данные. Свёрнуты по умолчанию,
-// разворачиваются касанием заголовка. На широком экране блоки
-// раскладываются бок о бок.
+// Четыре блока: артель, оформление, интерфейс, данные. Свёрнуты
+// по умолчанию, разворачиваются касанием заголовка.
 //
-// Оформление. Тема (подпульт выбора), пять цветов действующей темы,
-// десять коэффициентов размеров. Ключи не показываются: правка
-// поля влечёт запись в журнал рода bort с ключом theme.<имя>.<роль>.
+// Артель. Поле «полночь» (чч:мм). При переходе чрез сие время суток
+// смена обнуляется.
 //
-// Интерфейс. Масштаб, язык, подписи, предел столбцов мозаики.
+// Оформление. Тема (пульт выбора) плюс обе темы разом, для правки:
+// дневная (четыре роли) и ночная (четыре роли). Мягкий текст (dim) —
+// единый, вне тем. Ключи в полях не показываются: правка идёт
+// записью в журнал рода bort с ключом theme.<имя>.<роль> либо «dim».
 //
-// Данные. Размер журнала, перечитать, очистить (синхронизированные),
-// удалить (всё), сброс (три кэша: борт, рутины, следы).
-// Необратимые — с подтверждением.
+// Пульт темы. Значение применяется и локально (тотчас), и в журнал
+// (чрез JournalLayer.log). Сим отклик мгновенный, а запись остаётся.
+//
+// Интерфейс. Масштаб, язык, подписи.
+//
+// Данные. Размер журнала, перечитать, очистить, удалить, сброс.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 
-import '../data/operational_layer.dart';
 import '../data/journal_types.dart';
+import '../data/operational_layer.dart';
 import 'app_scope.dart';
 import 'bort_field.dart';
 import 'pult.dart';
@@ -54,7 +58,6 @@ class _RubkaTabState extends State<RubkaTab> {
     }
   }
 
-  // Числа с разрядами чрез пробел: 12345 -> "12 345".
   String _fmtNum(int n) {
     final s = n.toString();
     final buf = StringBuffer();
@@ -65,8 +68,6 @@ class _RubkaTabState extends State<RubkaTab> {
     return buf.toString();
   }
 
-  // ─── Обработчики данных ───
-  // Перечитать: полный пересбор всех слоёв из журнала.
   Future<void> _reload() async {
     final app = AppScope.of(context);
     await app.journal.reread();
@@ -86,7 +87,6 @@ class _RubkaTabState extends State<RubkaTab> {
     await _loadSize();
   }
 
-  // Сброс: снимаются кэши всех трёх слоёв. Журнал не трогается.
   Future<void> _resetCache() async {
     final app = AppScope.of(context);
     await app.bort.resetCache();
@@ -94,6 +94,16 @@ class _RubkaTabState extends State<RubkaTab> {
     await app.traceLayer.resetAll();
     await app.reloadI18n();
     await _loadSize();
+  }
+
+  // Запись значения в журнал рода bort. Применение локальное —
+  // тотчас (setSilent), запись — следом.
+  Future<void> _logBort(String key, String value) async {
+    final app = AppScope.of(context);
+    await app.journal.log(
+      type: JournalType.bort,
+      body: '{"key":"$key","value":"$value"}',
+    );
   }
 
   @override
@@ -110,20 +120,43 @@ class _RubkaTabState extends State<RubkaTab> {
     return LayoutBuilder(builder: (context, constraints) {
       final wide = constraints.maxWidth > 640;
 
+      final artel = _block(
+        title: i18n.t('block.artel'),
+        isOpen: bort.blockArtel,
+        onToggle: () => _logBort('block_artel', (!bort.blockArtel).toString()),
+        fg: fg,
+        dim: dim,
+        children: [
+          _midnightRow(context, fg, dim, bg, signal, side),
+        ],
+      );
+
       final appearance = _block(
         title: i18n.t('block.appearance'),
         isOpen: bort.blockAppearance,
-        onToggle: () => bort.setBool('block_appearance', !bort.blockAppearance),
+        onToggle: () =>
+            _logBort('block_appearance', (!bort.blockAppearance).toString()),
         fg: fg,
         dim: dim,
         children: [
           _themeRow(context, fg, dim, bg, signal, side),
-          _colorRow(context, 'bg', fg, dim, bg, signal, side),
-          _colorRow(context, 'bgdim', fg, dim, bg, signal, side),
-          _colorRow(context, 'dim', fg, dim, bg, signal, side),
-          _colorRow(context, 'fg', fg, dim, bg, signal, side),
-          _colorRow(context, 'signal', fg, dim, bg, signal, side),
           const SizedBox(height: 8),
+          _sectionTitle(i18n.t('theme.day'), dim, side),
+          _colorRow(context, 'day', 'bg', fg, dim, bg, signal, side),
+          _colorRow(context, 'day', 'bgdim', fg, dim, bg, signal, side),
+          _colorRow(context, 'day', 'fg', fg, dim, bg, signal, side),
+          _colorRow(context, 'day', 'signal', fg, dim, bg, signal, side),
+          const SizedBox(height: 8),
+          _sectionTitle(i18n.t('theme.night'), dim, side),
+          _colorRow(context, 'night', 'bg', fg, dim, bg, signal, side),
+          _colorRow(context, 'night', 'bgdim', fg, dim, bg, signal, side),
+          _colorRow(context, 'night', 'fg', fg, dim, bg, signal, side),
+          _colorRow(context, 'night', 'signal', fg, dim, bg, signal, side),
+          const SizedBox(height: 8),
+          _sectionTitle(i18n.t('bort.dim'), dim, side),
+          _dimRow(context, fg, dim, bg, signal, side),
+          const SizedBox(height: 12),
+          _sectionTitle(i18n.t('block.appearance'), dim, side),
           _kRow(context, 'k_pult', fg, dim, bg, signal, side),
           _kRow(context, 'k_pult_small', fg, dim, bg, signal, side),
           _kRow(context, 'k_block_gap', fg, dim, bg, signal, side),
@@ -140,7 +173,8 @@ class _RubkaTabState extends State<RubkaTab> {
       final interface = _block(
         title: i18n.t('block.interface'),
         isOpen: bort.blockInterface,
-        onToggle: () => bort.setBool('block_interface', !bort.blockInterface),
+        onToggle: () =>
+            _logBort('block_interface', (!bort.blockInterface).toString()),
         fg: fg,
         dim: dim,
         children: [
@@ -154,7 +188,7 @@ class _RubkaTabState extends State<RubkaTab> {
       final data = _block(
         title: i18n.t('block.data'),
         isOpen: bort.blockData,
-        onToggle: () => bort.setBool('block_data', !bort.blockData),
+        onToggle: () => _logBort('block_data', (!bort.blockData).toString()),
         fg: fg,
         dim: dim,
         children: [
@@ -251,7 +285,7 @@ class _RubkaTabState extends State<RubkaTab> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: Column(children: [appearance, data])),
+              Expanded(child: Column(children: [artel, appearance, data])),
               const SizedBox(width: 24),
               Expanded(child: Column(children: [interface])),
             ],
@@ -261,7 +295,7 @@ class _RubkaTabState extends State<RubkaTab> {
 
       return ListView(
         padding: const EdgeInsets.fromLTRB(16, 80, 16, 16),
-        children: [appearance, interface, data],
+        children: [artel, appearance, interface, data],
       );
     });
   }
@@ -322,7 +356,17 @@ class _RubkaTabState extends State<RubkaTab> {
     );
   }
 
-  // ─── Строка пульта с подписью ───
+  // ─── Заголовок раздела ───
+  Widget _sectionTitle(String text, Color dim, double side) {
+    return Padding(
+      padding: EdgeInsets.only(top: side * 0.3, bottom: side * 0.1),
+      child: Text(
+        text,
+        style: TextStyle(color: dim, fontSize: side * 0.35),
+      ),
+    );
+  }
+
   Widget _pultRow({
     required String label,
     required Widget pult,
@@ -339,21 +383,45 @@ class _RubkaTabState extends State<RubkaTab> {
     );
   }
 
-  // Разрешённое имя действующей темы: ежели «system», берётся day
-  // либо night по системной гамме; иначе — сама тема.
-  String _resolvedThemeName(BuildContext context) {
-    final bort = AppScope.of(context).bort;
-    if (bort.themeName == 'system') {
-      return bort.systemBrightness == Brightness.dark ? 'night' : 'day';
-    }
-    return bort.themeName;
+  // ─── Поле «полночь» ───
+  Widget _midnightRow(BuildContext context, Color fg, Color dim, Color bg,
+      Color signal, double side) {
+    final app = AppScope.of(context);
+    final bort = app.bort;
+    final i18n = app.i18n;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 140,
+            child: Text(i18n.t('bort.midnight'), style: TextStyle(color: fg)),
+          ),
+          Expanded(
+            child: BortField(
+              initial: bort.midnight,
+              fg: fg,
+              readOnly: false,
+              onCommit: (v) async {
+                // Проверка диапазона 00:00–23:59.
+                final ok = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(v);
+                if (!ok) return;
+                await _logBort('midnight', v);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  // ─── Строка цвета ───
-  // Показывает значение из действующей темы. Правка идёт в ту же тему
-  // ключом theme.<имя>.<роль> и записывается в журнал.
+  // ─── Строка цвета темы ───
+  // Ключ: theme.<имя>.<роль>. Правка идёт записью в журнал; отклик —
+  // чрез применение значения к слою (поток обновит интерфейс).
   Widget _colorRow(
     BuildContext context,
+    String themeName,
     String role,
     Color fg,
     Color dim,
@@ -363,19 +431,17 @@ class _RubkaTabState extends State<RubkaTab> {
   ) {
     final app = AppScope.of(context);
     final bort = app.bort;
-    final i18n = app.i18n;
-    final name = _resolvedThemeName(context);
-    final key = 'theme.$name.$role';
+    final key = 'theme.$themeName.$role';
     final value = bort.allAsStrings[key] ?? '';
     final c = _parseColor(value) ?? Colors.transparent;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
           SizedBox(
             width: 140,
-            child: Text(i18n.t('bort.$role'), style: TextStyle(color: fg)),
+            child: Text(role, style: TextStyle(color: fg)),
           ),
           Expanded(
             child: Row(
@@ -386,12 +452,7 @@ class _RubkaTabState extends State<RubkaTab> {
                     fg: fg,
                     readOnly: false,
                     onChanged: (v) => bort.setDraft(key, v),
-                    onCommit: (v) async {
-                      await app.journal.log(
-                        type: JournalType.bort,
-                        body: '{"key":"$key","value":"$v"}',
-                      );
-                    },
+                    onCommit: (v) => _logBort(key, v),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -411,7 +472,48 @@ class _RubkaTabState extends State<RubkaTab> {
     );
   }
 
-  // ─── Строка коэффициента ───
+  // ─── Строка мягкого текста (единый dim) ───
+  Widget _dimRow(BuildContext context, Color fg, Color dim, Color bg,
+      Color signal, double side) {
+    final app = AppScope.of(context);
+    final bort = app.bort;
+    final value = bort.allAsStrings['dim'] ?? '';
+    final c = _parseColor(value) ?? Colors.transparent;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          const SizedBox(width: 140),
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(
+                  child: BortField(
+                    initial: value,
+                    fg: fg,
+                    readOnly: false,
+                    onChanged: (v) => bort.setDraft('dim', v),
+                    onCommit: (v) => _logBort('dim', v),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: c,
+                    border: Border.all(color: fg),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _kRow(
     BuildContext context,
     String key,
@@ -439,12 +541,7 @@ class _RubkaTabState extends State<RubkaTab> {
               fg: fg,
               readOnly: false,
               onChanged: (v) => bort.setDraft(key, v),
-              onCommit: (v) async {
-                await app.journal.log(
-                  type: JournalType.bort,
-                  body: '{"key":"$key","value":"$v"}',
-                );
-              },
+              onCommit: (v) => _logBort(key, v),
             ),
           ),
         ],
@@ -452,7 +549,6 @@ class _RubkaTabState extends State<RubkaTab> {
     );
   }
 
-  // ─── Строка прочей настройки ───
   Widget _settingRow(
     BuildContext context,
     String key,
@@ -498,30 +594,20 @@ class _RubkaTabState extends State<RubkaTab> {
     final app = AppScope.of(context);
     final bort = app.bort;
 
-    // Запись значения в журнал рода bort.
-    Future<void> commit(String v) async {
-      await app.journal.log(
-        type: JournalType.bort,
-        body: '{"key":"$key","value":"$v"}',
-      );
-    }
-
     switch (type) {
       case 'bool':
         final b = value == 'true';
         return Align(
           alignment: Alignment.centerLeft,
-          child: Pult(
-            spec: PultSpec(
-              id: 'bool_$key',
-              icon: b ? Icons.check : Icons.circle_outlined,
-              selected: b,
-              onTap: () => commit(!b ? 'true' : 'false'),
-            ),
+          child: PultTick(
+            id: 'bool_$key',
+            value: b,
+            binary: true,
             fg: fg,
             bg: bg,
             signal: signal,
             overrideSize: side,
+            onTap: () => _logBort(key, (!b).toString()),
           ),
         );
       case 'theme':
@@ -532,14 +618,14 @@ class _RubkaTabState extends State<RubkaTab> {
           fg: fg,
           readOnly: OperationalLayer.readOnlyKeys.contains(key),
           onChanged: (v) => bort.setDraft(key, v),
-          onCommit: commit,
+          onCommit: (v) => _logBort(key, v),
         );
     }
   }
 
-  // ─── Строка выбора темы ───
-  // Пульт с иконою текущей темы. Касание открывает подпульт со всеми
-  // темами, кроме текущей.
+  // ─── Пульт выбора темы ───
+  // Смена темы: значение шлётся и локально (поток обновит интерфейс),
+  // и в журнал. Отклик мгновенный.
   Widget _themeRow(BuildContext context, Color fg, Color dim, Color bg,
       Color signal, double side) {
     final app = AppScope.of(context);
@@ -562,16 +648,12 @@ class _RubkaTabState extends State<RubkaTab> {
                 icon: Icons.brightness_auto,
                 subsBuilder: () {
                   final out = <PultSpec>[];
-                  // «system» первым.
                   if (bort.themeName != 'system') {
                     out.add(PultSpec(
                       id: 'theme_system',
                       icon: Icons.brightness_auto,
                       label: showLabels ? i18n.t('theme.system') : null,
-                      onTap: () => app.journal.log(
-                        type: JournalType.bort,
-                        body: '{"key":"theme","value":"system"}',
-                      ),
+                      onTap: () => _logBort('theme', 'system'),
                     ));
                   }
                   for (final name in bort.themes.keys) {
@@ -580,10 +662,7 @@ class _RubkaTabState extends State<RubkaTab> {
                       id: 'theme_$name',
                       icon: Icons.palette_outlined,
                       label: showLabels ? name : null,
-                      onTap: () => app.journal.log(
-                        type: JournalType.bort,
-                        body: '{"key":"theme","value":"$name"}',
-                      ),
+                      onTap: () => _logBort('theme', name),
                     ));
                   }
                   return out;

@@ -1,22 +1,18 @@
 // ═══════════════════════════════════════════════════════════════════
 // operational_layer.dart — оперативный слой («борт»).
 //
-// Состояние интерфейса: цвета действующей темы, коэффициенты размеров,
-// язык, вкладка, якорь корневого пульта, черновики полей, признак
-// «отправлено», метка первого запуска, смена.
+// Состояние интерфейса: цвета, коэффициенты размеров, язык, вкладка,
+// якорь, черновики, метка запуска, смена, полночь, свёрнутость
+// блоков рубки.
 //
-// Цвета. Действующий набор — пять полей: bg, bgdim, dim, fg, signal.
-// Виджеты читают их напрямую. Все темы (day, night и прочие) лежат
-// в themes: имя → пятёрка цветов. Правится действующая тема; наборы
-// прочих живут в файле. Имена тем произвольные; имя «system» означает
-// выбор по системной гамме (day в светлой, night в тёмной).
+// Цвета. Пять ролей: bg, bgdim, fg, signal — парные по темам;
+// dim — единый для обеих гамм (средний серый, читается всюду).
+// Действующий набор выставляется _resolveTheme.
 //
-// Журнал. Борт не ходит в базу сам: при пуске он регистрируется
-// в JournalLayer на роды bort (настройки) и actor (смена). Записи
-// приходят готовыми, применяются тотчас.
+// Темы (day, night) образуют пары. Сигнальный объект берёт цвета
+// противоположной темы целиком (colorsForOpposite), dim — тот же.
 //
-// Установка. Метка первого запуска — в install.json, не стирается
-// при сбросе кэша.
+// Полночь. Строка «чч:мм», для сброса смены. Правится в рубке.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -35,41 +31,40 @@ import 'journal_types.dart';
 
 class OperationalLayer extends ChangeNotifier {
   // ─── Действующий набор цветов ───
-  // Виджеты читают именно сии поля. Наполняются из themes при
-  // смене темы либо при разрешении системной.
   Color bg = const Color(0xFFEFEFEF);
   Color bgdim = const Color(0xFFE4E4E4);
-  Color dim = const Color(0xFF303030);
+  Color dim = const Color(0xFF8F8F8F);
   Color fg = const Color(0xFF101010);
   Color signal = const Color(0xFF000000);
 
   // ─── Все темы ───
-  // Имя → {bg, bgdim, dim, fg, signal}. Заполняется из defaults.json
-  // при первом пуске и далее из рабочего файла.
+  // Имя → {bg, bgdim, fg, signal}. dim — общий, хранится отдельно.
   Map<String, Map<String, Color>> themes = {};
 
-  // Имя действующей темы. «system» — особая: разрешается по системной
-  // гамме в day либо night.
+  // Имя действующей темы. «system» — особая.
   String themeName = 'system';
 
-  // Системная гамма, обновляется из main при её смене.
+  // Системная гамма.
   Brightness systemBrightness = Brightness.light;
 
   // ─── Прочие настройки ───
   double scale = 1.4;
   String lang = 'ru';
   int tab = 4;
-  String anchor = 'tl';
+  String anchor = 'tr';
   bool labelsSystem = true;
   bool labelsField = true;
+  bool blockArtel = false;
   bool blockAppearance = false;
   bool blockInterface = false;
   bool blockData = false;
   int selectedType = 4;
   int selectedFlags = 0;
 
+  // ─── Полночь ───
+  String midnight = '00:00';
+
   // ─── Коэффициенты размеров ───
-  // Доли от базовой величины side.
   double kPult = 1.0;
   double kPultSmall = 0.8889;
   double kBlockGap = 0.2;
@@ -87,26 +82,19 @@ class OperationalLayer extends ChangeNotifier {
   int? shiftStartedAt;
 
   // ─── Черновики и признак «отправлено» ───
-  // Ключ → текст. Ключи: "console", "trace_<id>_<slot>" и подобные.
   Map<String, String> drafts = {};
-  // Ключ тот же: истина — текст в журнале и с тех пор не менялся.
   Map<String, bool> traceSent = {};
 
   // ─── Метка первого запуска ───
-  // Время в секундах от начала эпохи Unix. Хранится в install.json,
-  // не стирается при сбросе кэша.
   int firstRunUnixSec = 0;
 
   // ─── Служебное ───
-  File? _file; // operational_layer.json
-  File? _installFile; // install.json
+  File? _file;
+  File? _installFile;
 
   OperationalLayer();
 
   // ─── Пуск ───
-  // Порядок: умолчания из assets, метка установки, рабочий файл,
-  // регистрация в JournalLayer. Первое разрешение темы — по
-  // сохранённому имени либо системной гамме.
   Future<void> init(JournalLayer journal, Brightness system) async {
     systemBrightness = system;
     final dir = await getApplicationDocumentsDirectory();
@@ -117,7 +105,6 @@ class OperationalLayer extends ChangeNotifier {
     await _loadFromFile();
     _resolveTheme();
 
-    // Регистрация: борт слушает свои настройки и записи смены.
     journal.register(
       name: 'bort',
       types: [JournalType.bort, JournalType.actor],
@@ -146,12 +133,12 @@ class OperationalLayer extends ChangeNotifier {
   }
 
   // ─── Умолчания из assets ───
-  // Читает themes (map имя → пятёрка) и прочие поля. Ключи цветов
-  // внутри темы: bg, bgdim, dim, fg, signal.
   Future<void> _loadDefaults() async {
     try {
       final raw = await rootBundle.loadString('assets/defaults.json');
       final data = jsonDecode(raw) as Map<String, dynamic>;
+      dim = _parseColor(data['dim'] as String?) ?? dim;
+
       final t = data['themes'];
       if (t is Map) {
         themes = {};
@@ -161,7 +148,6 @@ class OperationalLayer extends ChangeNotifier {
             themes[k.toString()] = {
               'bg': _parseColor(v['bg'] as String?) ?? bg,
               'bgdim': _parseColor(v['bgdim'] as String?) ?? bgdim,
-              'dim': _parseColor(v['dim'] as String?) ?? dim,
               'fg': _parseColor(v['fg'] as String?) ?? fg,
               'signal': _parseColor(v['signal'] as String?) ?? signal,
             };
@@ -175,12 +161,14 @@ class OperationalLayer extends ChangeNotifier {
       anchor = data['anchor'] as String? ?? anchor;
       labelsSystem = data['labels_system'] as bool? ?? labelsSystem;
       labelsField = data['labels_field'] as bool? ?? labelsField;
+      blockArtel = data['block_artel'] as bool? ?? blockArtel;
       blockAppearance = data['block_appearance'] as bool? ?? blockAppearance;
       blockInterface = data['block_interface'] as bool? ?? blockInterface;
       blockData = data['block_data'] as bool? ?? blockData;
       selectedType = (data['selected_type'] as num?)?.toInt() ?? selectedType;
       selectedFlags =
           (data['selected_flags'] as num?)?.toInt() ?? selectedFlags;
+      midnight = data['midnight'] as String? ?? midnight;
 
       kPult = (data['k_pult'] as num?)?.toDouble() ?? kPult;
       kPultSmall = (data['k_pult_small'] as num?)?.toDouble() ?? kPultSmall;
@@ -193,22 +181,18 @@ class OperationalLayer extends ChangeNotifier {
       kName = (data['k_name'] as num?)?.toDouble() ?? kName;
       kRadius = (data['k_radius'] as num?)?.toDouble() ?? kRadius;
       kStroke = (data['k_stroke'] as num?)?.toDouble() ?? kStroke;
-    } catch (_) {
-      // Умолчаний нет — работаем со встроенными.
-    }
+    } catch (_) {}
     if (themes.isEmpty) {
       themes = {
         'day': {
           'bg': const Color(0xFFEFEFEF),
           'bgdim': const Color(0xFFE4E4E4),
-          'dim': const Color(0xFF303030),
           'fg': const Color(0xFF101010),
           'signal': const Color(0xFF000000),
         },
         'night': {
           'bg': const Color(0xFF101010),
           'bgdim': const Color(0xFF1C1C1C),
-          'dim': const Color(0xFFCFCFCF),
           'fg': const Color(0xFFEFEFEF),
           'signal': const Color(0xFFFFFFFF),
         },
@@ -222,6 +206,8 @@ class OperationalLayer extends ChangeNotifier {
     try {
       final raw = await _file!.readAsString();
       final data = jsonDecode(raw) as Map<String, dynamic>;
+      dim = _parseColor(data['dim'] as String?) ?? dim;
+
       final t = data['themes'];
       if (t is Map) {
         themes = {};
@@ -231,7 +217,6 @@ class OperationalLayer extends ChangeNotifier {
             themes[k.toString()] = {
               'bg': _parseColor(v['bg'] as String?) ?? bg,
               'bgdim': _parseColor(v['bgdim'] as String?) ?? bgdim,
-              'dim': _parseColor(v['dim'] as String?) ?? dim,
               'fg': _parseColor(v['fg'] as String?) ?? fg,
               'signal': _parseColor(v['signal'] as String?) ?? signal,
             };
@@ -245,12 +230,14 @@ class OperationalLayer extends ChangeNotifier {
       anchor = data['anchor'] as String? ?? anchor;
       labelsSystem = data['labels_system'] as bool? ?? labelsSystem;
       labelsField = data['labels_field'] as bool? ?? labelsField;
+      blockArtel = data['block_artel'] as bool? ?? blockArtel;
       blockAppearance = data['block_appearance'] as bool? ?? blockAppearance;
       blockInterface = data['block_interface'] as bool? ?? blockInterface;
       blockData = data['block_data'] as bool? ?? blockData;
       selectedType = (data['selected_type'] as num?)?.toInt() ?? selectedType;
       selectedFlags =
           (data['selected_flags'] as num?)?.toInt() ?? selectedFlags;
+      midnight = data['midnight'] as String? ?? midnight;
       onShift = data['on_shift'] as bool? ?? onShift;
       totalShiftSeconds =
           (data['total_shift_seconds'] as num?)?.toInt() ?? totalShiftSeconds;
@@ -281,8 +268,6 @@ class OperationalLayer extends ChangeNotifier {
   }
 
   // ─── Разрешение темы ───
-  // Ежели themeName == «system», берётся day (светло) либо night
-  // (темно) по системной гамме. Иначе — набор с сим именем.
   void _resolveTheme() {
     String name = themeName;
     if (name == 'system') {
@@ -292,13 +277,11 @@ class OperationalLayer extends ChangeNotifier {
     if (t == null) return;
     bg = t['bg']!;
     bgdim = t['bgdim']!;
-    dim = t['dim']!;
     fg = t['fg']!;
     signal = t['signal']!;
+    // dim — общий, не меняется.
   }
 
-  // Смена системной гаммы из main. Ежели тема системная, действующий
-  // набор пересчитывается.
   void setSystemBrightness(Brightness b) {
     if (systemBrightness == b) return;
     systemBrightness = b;
@@ -308,8 +291,32 @@ class OperationalLayer extends ChangeNotifier {
     }
   }
 
+  // ─── Противоположная тема ───
+  String oppositeThemeName() {
+    String name = themeName;
+    if (name == 'system') {
+      name = systemBrightness == Brightness.dark ? 'night' : 'day';
+    }
+    if (name == 'day') return 'night';
+    if (name == 'night') return 'day';
+    return 'night';
+  }
+
+  // Пятёрка цветов противоположной темы (четыре роли + общий dim).
+  Map<String, Color>? colorsForOpposite() {
+    final name = oppositeThemeName();
+    final t = themes[name];
+    if (t == null) return null;
+    return {
+      'bg': t['bg']!,
+      'bgdim': t['bgdim']!,
+      'dim': dim,
+      'fg': t['fg']!,
+      'signal': t['signal']!,
+    };
+  }
+
   // ─── Применение записи журнала ───
-  // Диспетчер по роду: bort — пары ключ-значение; actor — смена.
   void _applyEntry(JournalData e) {
     try {
       final data = jsonDecode(e.body) as Map<String, dynamic>;
@@ -333,24 +340,24 @@ class OperationalLayer extends ChangeNotifier {
     } catch (_) {}
   }
 
-  // Полный сброс памяти (зовётся из JournalLayer.reread).
   void _resetMemory() {
-    themes = {};
-    themeName = 'system';
     onShift = false;
     totalShiftSeconds = 0;
     shiftStartedAt = null;
     notifyListeners();
   }
 
-  // ─── Сброс кэша ───
-  // Удаляет рабочий файл и сбрасывает память к умолчаниям.
-  // Журнал и install.json не трогаются.
   Future<void> resetCache() async {
     if (_file != null && await _file!.exists()) {
       await _file!.delete();
     }
-    _resetMemory();
+    themes = {};
+    themeName = 'system';
+    onShift = false;
+    totalShiftSeconds = 0;
+    shiftStartedAt = null;
+    drafts = {};
+    traceSent = {};
     await _loadDefaults();
     _resolveTheme();
     await _saveToFile();
@@ -361,10 +368,6 @@ class OperationalLayer extends ChangeNotifier {
     await _saveToFile();
   }
 
-  // ─── Установка значений ───
-  // Ныне — токмо память. Запись в журнал делается вкладкой (рубкой)
-  // чрез JournalLayer.log с родом bort. Метод _apply лишь применяет
-  // значение к памяти, чтобы интерфейс отозвался тотчас.
   void set(String key, String value) {
     _apply(key, value);
     notifyListeners();
@@ -385,7 +388,6 @@ class OperationalLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ─── Черновики ───
   void setDraft(String key, String text) {
     drafts[key] = text;
     traceSent.remove(key);
@@ -436,10 +438,11 @@ class OperationalLayer extends ChangeNotifier {
   }
 
   // ─── Применение одного ключа ───
-  // Ключи цветов: theme.<имя>.<роль>. Ключ theme — смена действующей
-  // темы. Прочее — как было.
   void _apply(String key, String value) {
-    // Цвет темы: theme.day.bg и подобные.
+    if (key == 'dim') {
+      dim = _parseColor(value) ?? dim;
+      return;
+    }
     if (key.startsWith('theme.') && key.split('.').length == 3) {
       final parts = key.split('.');
       final name = parts[1];
@@ -451,12 +454,10 @@ class OperationalLayer extends ChangeNotifier {
           () => {
                 'bg': bg,
                 'bgdim': bgdim,
-                'dim': dim,
                 'fg': fg,
                 'signal': signal,
               });
       themes[name]![role] = c;
-      // Ежели правится действующая тема — обновить набор.
       final resolved = themeName == 'system'
           ? (systemBrightness == Brightness.dark ? 'night' : 'day')
           : themeName;
@@ -487,6 +488,9 @@ class OperationalLayer extends ChangeNotifier {
       case 'labels_field':
         labelsField = _parseBool(value) ?? labelsField;
         break;
+      case 'block_artel':
+        blockArtel = _parseBool(value) ?? blockArtel;
+        break;
       case 'block_appearance':
         blockAppearance = _parseBool(value) ?? blockAppearance;
         break;
@@ -501,6 +505,9 @@ class OperationalLayer extends ChangeNotifier {
         break;
       case 'selected_flags':
         selectedFlags = int.tryParse(value) ?? selectedFlags;
+        break;
+      case 'midnight':
+        midnight = value;
         break;
       case 'on_shift':
         onShift = _parseBool(value) ?? onShift;
@@ -552,12 +559,12 @@ class OperationalLayer extends ChangeNotifier {
       themeOut[e.key] = {
         'bg': colorToHex(e.value['bg']!),
         'bgdim': colorToHex(e.value['bgdim']!),
-        'dim': colorToHex(e.value['dim']!),
         'fg': colorToHex(e.value['fg']!),
         'signal': colorToHex(e.value['signal']!),
       };
     }
     final data = <String, dynamic>{
+      'dim': colorToHex(dim),
       'themes': themeOut,
       'theme': themeName,
       'scale': scale,
@@ -566,11 +573,13 @@ class OperationalLayer extends ChangeNotifier {
       'anchor': anchor,
       'labels_system': labelsSystem,
       'labels_field': labelsField,
+      'block_artel': blockArtel,
       'block_appearance': blockAppearance,
       'block_interface': blockInterface,
       'block_data': blockData,
       'selected_type': selectedType,
       'selected_flags': selectedFlags,
+      'midnight': midnight,
       'on_shift': onShift,
       'total_shift_seconds': totalShiftSeconds,
       'shift_started_at': shiftStartedAt,
@@ -607,39 +616,12 @@ class OperationalLayer extends ChangeNotifier {
     return '#$r$g$b';
   }
 
-  // ─── Инверсия пяти цветов ───
-  // При наложении на сигнальный фон цвета обращаются попарно:
-  //   фон (bg) ↔ сигнальный (signal);
-  //   мягкий фон (bgdim) ↔ текст (fg);
-  //   мягкий текст (dim) — не меняется.
-  // Сим сигнальный блок читается: то, что было фоном, стало сигнальным,
-  // а текст и мягкий фон поменялись местами, дабы сохранить различие.
-  // Единое правило для всех, кто рисуется на сигнальном фоне
-  // (плашка рутины, блок карточки, таймер, пульт).
-  static Map<String, Color> invertOnSignal({
-    required Color bg,
-    required Color bgdim,
-    required Color dim,
-    required Color fg,
-    required Color signal,
-  }) {
-    return {
-      'bg': signal,
-      'bgdim': fg,
-      'dim': dim,
-      'fg': bgdim,
-      'signal': bg,
-    };
-  }
-
-  // ─── Плоское представление для рубки ───
-  // Цвета каждой темы — ключами вида theme.<имя>.<роль>.
   Map<String, String> get allAsStrings {
     final out = <String, String>{};
+    out['dim'] = colorToHex(dim);
     for (final e in themes.entries) {
       out['theme.${e.key}.bg'] = colorToHex(e.value['bg']!);
       out['theme.${e.key}.bgdim'] = colorToHex(e.value['bgdim']!);
-      out['theme.${e.key}.dim'] = colorToHex(e.value['dim']!);
       out['theme.${e.key}.fg'] = colorToHex(e.value['fg']!);
       out['theme.${e.key}.signal'] = colorToHex(e.value['signal']!);
     }
@@ -648,6 +630,7 @@ class OperationalLayer extends ChangeNotifier {
     out['lang'] = lang;
     out['labels_system'] = labelsSystem.toString();
     out['labels_field'] = labelsField.toString();
+    out['midnight'] = midnight;
     out['k_pult'] = kPult.toStringAsFixed(4);
     out['k_pult_small'] = kPultSmall.toStringAsFixed(4);
     out['k_block_gap'] = kBlockGap.toStringAsFixed(4);
@@ -661,13 +644,13 @@ class OperationalLayer extends ChangeNotifier {
     return out;
   }
 
-  // Роды полей для рубки: как отображать (цвет, булево, строка, тема).
   static const Map<String, String> settingTypes = {
     'theme': 'theme',
     'scale': 'string',
     'lang': 'string',
     'labels_system': 'bool',
     'labels_field': 'bool',
+    'midnight': 'string',
     'k_pult': 'string',
     'k_pult_small': 'string',
     'k_block_gap': 'string',

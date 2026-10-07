@@ -3,38 +3,40 @@
 //
 // Сверху — строка смены (пульс и таймер), прижата вправо.
 // Под ней — список рутин: лента на узком экране, мозаика на широком.
-// Слева внизу — пульт создания.
 //
-// Сортировка. Идущие сверху, между собой — по времени пуска идущего
-// блока (позже пущен — выше). Покоящиеся ниже, между собой — по
-// последнему действию (позже тронут — выше).
+// Сортировка:
+//   — идущие (по времени пуска, позже — выше);
+//   — покоящиеся (по lastActionAt, позже — выше);
+//   — завершённые внизу, отделены строкою «завершено» (приглушённый
+//     текст, символический отступ). Строка есть токмо, коли есть
+//     завершённые.
 //
-// Плашка: имя (ежели есть), дата создания, сумма таймеров (ежели
-// не нуль), пульс. Идущая плашка сигнальная — цвета её обращаются
-// правилом invertOnSignal, тексты и таймер читаются.
+// Плашка рутины:
+//   в покое — обычная гамма;
+//   в ходе — противоположная гамма целиком.
 //
-// Пульс рутины: в ходе — «пауза» сигнальная (касание — пауза);
-// в покое — корзинка приглушённая (касание молчит); долгое нажатие
-// в любом состоянии — подпульт удаления с подтверждением.
+// Пульс рутины:
+//   в ходе — «пауза», короткое — пауза;
+//   в покое (не завершена) — корзинка, короткое — ничего;
+//   завершена — галочка, короткое — снять завершённость,
+//     долгое — веер дублировать / удалить (как у прочих).
 //
-// Вход в карточку — касание по телу плашки.
+// Правило связи смены и рутины: остановка смены гасит идущую рутину.
 //
-// Связь смены и рутин: остановка смены гасит идущую рутину.
-// Автозапуск смены при пуске блока — в AppContext.toggleBlockWithShift.
+// Тикер. Слушает единый AppTicker.
+//
+// Открытие карточки — чрез app.openRoutine.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../data/journal_types.dart';
-import '../data/operational_layer.dart';
+import '../data/ticker.dart';
 import 'app_scope.dart';
 import 'pulse.dart';
 import 'pult.dart';
-import 'routine_card.dart';
 import 'timer_text.dart';
 
 class RoutinesTab extends StatefulWidget {
@@ -45,31 +47,38 @@ class RoutinesTab extends StatefulWidget {
 }
 
 class _RoutinesTabState extends State<RoutinesTab> {
-  Timer? _tick;
+  AppTicker? _ticker;
 
   @override
-  void initState() {
-    super.initState();
-    _tick = Timer.periodic(const Duration(milliseconds: 100), (_) {
-      if (!mounted) return;
-      final app = AppScope.of(context);
-      final anyRunning =
-          app.routineLayer.routines.any((r) => r.runningBlock != null) ||
-              app.bort.onShift;
-      if (anyRunning) setState(() {});
-    });
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final app = AppScope.of(context);
+    _ticker?.removeListener(_onTick);
+    _ticker = app.ticker;
+    _ticker?.addListener(_onTick);
+  }
+
+  void _onTick() {
+    if (!mounted) return;
+    final app = AppScope.of(context);
+    final anyRunning =
+        app.routineLayer.routines.any((r) => r.runningBlock != null) ||
+            app.bort.onShift;
+    if (anyRunning) setState(() {});
   }
 
   @override
   void dispose() {
-    _tick?.cancel();
+    _ticker?.removeListener(_onTick);
     super.dispose();
   }
 
-  // Дата «дд.мм чч:мм».
+  // Дата «пн 06.10 10:31». День недели — две буквы, строчные.
   String _fmtDate(int unixSec) {
     final d = DateTime.fromMillisecondsSinceEpoch(unixSec * 1000);
-    return '${d.day.toString().padLeft(2, '0')}.'
+    const weekdays = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
+    final wd = weekdays[d.weekday - 1];
+    return '$wd ${d.day.toString().padLeft(2, '0')}.'
         '${d.month.toString().padLeft(2, '0')} '
         '${d.hour.toString().padLeft(2, '0')}:'
         '${d.minute.toString().padLeft(2, '0')}';
@@ -79,19 +88,26 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final app = AppScope.of(context);
     final r = await app.routineLayer.createRoutine(app.journal);
     if (context.mounted) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => RoutineCard(routineId: r.id),
-        ),
-      );
+      await app.openRoutine(r.id);
     }
   }
 
-  // Сортировка: идущие по времени пуска (позже выше), покоящиеся
-  // по последнему действию (позже выше).
-  List<dynamic> _sorted(dynamic layer) {
+  // ─── Сортировка ───
+  // Возвращает две группы: обычные (идущие + покоящиеся) и завершённые.
+  // Внутри обычных: идущие сверху по времени пуска; покоящиеся по
+  // lastActionAt. Внутри завершённых: по lastActionAt.
+  ({List<dynamic> active, List<dynamic> done}) _sortedGroups(dynamic layer) {
     final all = List<dynamic>.from(layer.routines);
-    all.sort((a, b) {
+    final active = <dynamic>[];
+    final done = <dynamic>[];
+    for (final r in all) {
+      if (r.completed as bool) {
+        done.add(r);
+      } else {
+        active.add(r);
+      }
+    }
+    active.sort((a, b) {
       final aRun = a.runningBlock != null;
       final bRun = b.runningBlock != null;
       if (aRun && !bRun) return -1;
@@ -103,12 +119,12 @@ class _RoutinesTabState extends State<RoutinesTab> {
       }
       return (b.lastActionAt as int).compareTo(a.lastActionAt as int);
     });
-    return all;
+    done.sort(
+        (a, b) => (b.lastActionAt as int).compareTo(a.lastActionAt as int));
+    return (active: active, done: done);
   }
 
-  // ─── Пульс смены ───
-  // Смена идёт — останавливаем; при сем идущая рутина встаёт.
-  // Смена стоит — запускаем.
+  // Смена: пуск/остановка. При остановке — гасим идущую рутину.
   Future<void> _toggleShift(BuildContext context) async {
     final app = AppScope.of(context);
     final bort = app.bort;
@@ -123,11 +139,14 @@ class _RoutinesTabState extends State<RoutinesTab> {
       bort.startShift();
     } else {
       bort.stopShift();
-      // Остановка смены влечёт остановку идущей рутины.
-      for (final r in app.routineLayer.routines) {
-        for (final b in r.blocks) {
-          if (b.isRunning) {
-            await app.routineLayer.pauseBlock(app.journal, r.id, b.kind);
+      final cur = app.routineLayer.currentRoutineId;
+      if (cur != null) {
+        final r = app.routineLayer.findRoutine(cur);
+        if (r != null) {
+          for (final b in r.blocks) {
+            if (b.isRunning) {
+              await app.routineLayer.pauseBlock(app.journal, r.id, b.kind);
+            }
           }
         }
       }
@@ -138,59 +157,42 @@ class _RoutinesTabState extends State<RoutinesTab> {
   // ─── Плашка рутины ───
   Widget _plate(
     BuildContext context,
-    dynamic r,
-    GlobalKey plateKey, {
-    required dynamic bort,
+    dynamic r, {
+    required Color fg,
+    required Color bg,
+    required Color bgdim,
+    required Color dim,
+    required Color signal,
     required double side,
   }) {
     final app = AppScope.of(context);
+    final bort = app.bort;
     final running = r.runningBlock != null;
+    final completed = r.completed as bool;
 
-    // ─── Цвета плашки ───
-    // Пять ролей; идущая плашка берёт обращённые.
-    final Color bg = bort.bg;
-    final Color bgdim = bort.bgdim;
-    final Color dim = bort.dim;
-    final Color fg = bort.fg;
-    final Color signal = bort.signal;
-
-    final Color frameBg;
-    final Color nameColor;
-    final Color dateColor;
-    final Color timerFg;
-    final Color timerDim;
-    final Color timerSignal;
-    final Color pultFg;
-    final Color pultBg;
-    final Color pultSignal;
-
+    // ─── Гамма плашки ───
+    final Color plateBg;
+    final Color textMain;
+    final Color textSoft;
+    final Color accent;
     if (running) {
-      final inv = OperationalLayer.invertOnSignal(
-        bg: bg,
-        bgdim: bgdim,
-        dim: dim,
-        fg: fg,
-        signal: signal,
-      );
-      frameBg = signal;
-      nameColor = inv['fg']!;
-      dateColor = inv['dim']!;
-      timerFg = inv['fg']!;
-      timerDim = inv['dim']!;
-      timerSignal = inv['signal']!;
-      pultFg = inv['fg']!;
-      pultBg = signal;
-      pultSignal = inv['signal']!;
+      final opposite = bort.colorsForOpposite();
+      if (opposite != null) {
+        plateBg = opposite['bg']!;
+        textMain = opposite['fg']!;
+        textSoft = opposite['dim']!;
+        accent = opposite['signal']!;
+      } else {
+        plateBg = signal;
+        textMain = bg;
+        textSoft = bgdim;
+        accent = bg;
+      }
     } else {
-      frameBg = bg;
-      nameColor = fg;
-      dateColor = dim;
-      timerFg = fg;
-      timerDim = dim;
-      timerSignal = signal;
-      pultFg = dim;
-      pultBg = bg;
-      pultSignal = signal;
+      plateBg = bg;
+      textMain = fg;
+      textSoft = dim;
+      accent = signal;
     }
 
     final nameSize = side * bort.kName;
@@ -201,23 +203,79 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final radiusW = side * bort.kRadius;
     final framePad = side * bort.kFramePad * 0.6;
 
-    final ms = DateTime.now().millisecond;
-    final colonVisible = ms < 333;
+    // ─── Пульс справа ───
+    // Идущая — «пауза». Покоящаяся незавершённая — корзинка.
+    // Завершённая — галочка, но живая: короткое снимает завершённость,
+    // долгое открывает веер.
+    //
+    // Веер (дублировать / удалить) — долгим нажатием на любой пульс.
+    final List<PultSpec> Function() longSubs = () => [
+          PultSpec(
+            id: 'dup_${r.id}',
+            icon: Icons.copy,
+            label: app.i18n.t('bort.duplicate'),
+            onTap: () async {
+              await app.routineLayer.duplicateRoutine(app.journal, r.id);
+              if (mounted) setState(() {});
+            },
+          ),
+          PultSpec(
+            id: 'del_${r.id}',
+            icon: Icons.delete_outline,
+            label: app.i18n.t('bort.delete'),
+            confirm: true,
+            onTap: () {
+              app.routineLayer.deleteRoutine(app.journal, r.id);
+            },
+          ),
+        ];
+
+    final IconData pulseIcon;
+    final VoidCallback? pulseTap;
+    if (completed) {
+      // Завершена: галочка, короткое — снять знак.
+      pulseIcon = Icons.check_box_outlined;
+      pulseTap = () {
+        app.routineLayer.setCompleted(app.journal, r.id, false);
+      };
+    } else if (running) {
+      // Идёт: пауза.
+      pulseIcon = Icons.pause;
+      pulseTap = () async {
+        for (final b in r.blocks) {
+          if (b.isRunning) {
+            await app.routineLayer.pauseBlock(app.journal, r.id, b.kind);
+          }
+        }
+        if (mounted) setState(() {});
+      };
+    } else {
+      // Покой: корзинка, короткое молчит.
+      pulseIcon = Icons.delete_outline;
+      pulseTap = null;
+    }
+
+    final rightControl = Pult(
+      spec: PultSpec(
+        id: 'routine_${r.id}',
+        icon: pulseIcon,
+        selected: running,
+        onTap: pulseTap,
+        longSubs: longSubs,
+      ),
+      fg: running ? textMain : textSoft,
+      bg: plateBg,
+      signal: accent,
+      overrideSize: pultSide,
+    );
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => RoutineCard(routineId: r.id),
-          ),
-        );
-      },
+      onTap: () => app.openRoutine(r.id),
       child: Container(
-        key: plateKey,
         decoration: BoxDecoration(
-          color: frameBg,
-          border: Border.all(color: running ? dateColor : dim, width: strokeW),
+          color: plateBg,
+          border: Border.all(color: textSoft, width: strokeW),
           borderRadius: BorderRadius.circular(radiusW),
         ),
         padding: EdgeInsets.all(framePad),
@@ -228,74 +286,40 @@ class _RoutinesTabState extends State<RoutinesTab> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (r.name.isNotEmpty)
+                  if ((r.name as String).isNotEmpty)
                     Text(
-                      r.name,
-                      style: TextStyle(color: nameColor, fontSize: nameSize),
+                      r.name as String,
+                      style: TextStyle(
+                        color: textMain,
+                        fontSize: nameSize,
+                      ),
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                   Text(
-                    _fmtDate(r.createdAt),
-                    style: TextStyle(color: dateColor, fontSize: dateSize),
+                    _fmtDate(r.createdAt as int),
+                    style: TextStyle(
+                      color: textSoft,
+                      fontSize: dateSize,
+                    ),
                   ),
-                  if (r.totalSeconds > 0) ...[
+                  if ((r.totalSeconds as int) > 0) ...[
                     SizedBox(height: dateSize * 0.4),
                     TimerText(
-                      seconds: r.totalSeconds,
+                      seconds: r.totalSeconds as int,
                       running: running,
-                      fg: timerFg,
-                      dim: timerDim,
-                      signal: timerSignal,
+                      fg: textMain,
+                      dim: textSoft,
+                      signal: accent,
                       numberSize: numberSize,
-                      colonVisible: colonVisible,
+                      colonVisible: app.ticker.colonVisible,
                     ),
                   ],
                 ],
               ),
             ),
             SizedBox(width: side * 0.15),
-            // ─── Пульс рутины ───
-            // В ходе — «пауза», короткое гасит блок.
-            // В покое — корзинка приглушённая, короткое молчит.
-            // Долгое в любом состоянии — подпульт удаления.
-            Pult(
-              spec: PultSpec(
-                id: 'routine_${r.id}',
-                icon: running ? Icons.pause : Icons.delete_outline,
-                selected: running,
-                onTap: running
-                    ? () {
-                        for (final b in r.blocks) {
-                          if (b.isRunning) {
-                            app.routineLayer
-                                .pauseBlock(app.journal, r.id, b.kind);
-                          }
-                        }
-                        setState(() {});
-                      }
-                    : null,
-                onLongPress: () {
-                  PultScope.of(context).open(
-                    plateKey,
-                    () => [
-                      PultSpec(
-                        id: 'delete_${r.id}',
-                        icon: Icons.delete_outline,
-                        label: app.i18n.t('bort.delete'),
-                        confirm: true,
-                        onTap: () {
-                          app.routineLayer.deleteRoutine(app.journal, r.id);
-                        },
-                      ),
-                    ],
-                  );
-                },
-              ),
-              fg: pultFg,
-              bg: pultBg,
-              signal: pultSignal,
-              overrideSize: pultSide,
-            ),
+            rightControl,
           ],
         ),
       ),
@@ -308,6 +332,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final bort = app.bort;
     final fg = bort.fg;
     final bg = bort.bg;
+    final bgdim = bort.bgdim;
     final signal = bort.signal;
     final dim = bort.dim;
     final side = PultScope.of(context).smallSide;
@@ -318,9 +343,9 @@ class _RoutinesTabState extends State<RoutinesTab> {
       const maxCols = 3;
       final cols = mosaic ? (width / 400).floor().clamp(1, maxCols) : 1;
 
-      final sorted = _sorted(app.routineLayer);
+      final groups = _sortedGroups(app.routineLayer);
+      final i18n = app.i18n;
 
-      // Строка смены: всегда видна, прижата вправо.
       final shiftPulse = Padding(
         padding: const EdgeInsets.fromLTRB(8, 8, 12, 4),
         child: Align(
@@ -337,27 +362,65 @@ class _RoutinesTabState extends State<RoutinesTab> {
             fg: fg,
             dim: dim,
             bg: bg,
+            bgdim: bgdim,
             signal: signal,
             side: side,
+            colonVisible: app.ticker.colonVisible,
             pultSize: side * bort.kPultSmall,
           ),
         ),
       );
 
-      final plates = <Widget>[];
-      for (final r in sorted) {
-        plates.add(
+      // ─── Список элементов ленты ───
+      // Плашки обычных, потом надпись «завершено» (ежели есть),
+      // потом плашки завершённых.
+      final items = <Widget>[];
+
+      for (final r in groups.active) {
+        items.add(
           Padding(
             padding: const EdgeInsets.all(4),
             child: _plate(
               context,
               r,
-              GlobalKey(),
-              bort: bort,
+              fg: fg,
+              bg: bg,
+              bgdim: bgdim,
+              dim: dim,
+              signal: signal,
               side: side,
             ),
           ),
         );
+      }
+
+      if (groups.done.isNotEmpty) {
+        items.add(
+          Padding(
+            padding: EdgeInsets.fromLTRB(8, side * 0.6, 8, side * 0.15),
+            child: Text(
+              i18n.t('routine.completed'),
+              style: TextStyle(color: dim, fontSize: side * 0.4),
+            ),
+          ),
+        );
+        for (final r in groups.done) {
+          items.add(
+            Padding(
+              padding: const EdgeInsets.all(4),
+              child: _plate(
+                context,
+                r,
+                fg: fg,
+                bg: bg,
+                bgdim: bgdim,
+                dim: dim,
+                signal: signal,
+                side: side,
+              ),
+            ),
+          );
+        }
       }
 
       return Stack(
@@ -366,7 +429,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
             children: [
               shiftPulse,
               Expanded(
-                child: sorted.isEmpty
+                child: items.isEmpty
                     ? Center(
                         child: Text(
                           app.i18n.t('routine.none'),
@@ -378,11 +441,11 @@ class _RoutinesTabState extends State<RoutinesTab> {
                             padding: const EdgeInsets.fromLTRB(8, 4, 8, 80),
                             crossAxisCount: cols,
                             childAspectRatio: 2.5,
-                            children: plates,
+                            children: items,
                           )
                         : ListView(
                             padding: const EdgeInsets.fromLTRB(8, 4, 8, 80),
-                            children: plates,
+                            children: items,
                           )),
               ),
             ],

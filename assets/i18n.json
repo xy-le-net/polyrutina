@@ -37,6 +37,7 @@
     "routine.not_found": "рутина не найдена",
     "routine.in_work": "в работе",
     "routine.waiting": "ожидает",
+    "routine.completed": "завершено",
 
     "routine.block.note": "описание",
     "routine.block.prep": "подготовка",
@@ -46,6 +47,7 @@
     "routine.block.closeout": "завершение",
     "routine.summary": "итог",
 
+    "block.artel": "артель",
     "block.appearance": "оформление",
     "block.interface": "интерфейс",
     "block.data": "данные",
@@ -64,6 +66,7 @@
     "bort.lang": "язык",
     "bort.labels_system": "подписи системные",
     "bort.labels_field": "подписи полевые",
+    "bort.midnight": "полночь",
 
     "bort.k_pult": "размер пульта",
     "bort.k_pult_small": "малый пульт",
@@ -83,6 +86,11 @@
     "bort.cleanup": "очистить",
     "bort.delete": "удалить",
     "bort.reset": "сброс",
+    "bort.duplicate": "дублировать",
+
+    "checklist.mark_all": "отметить все",
+    "checklist.unmark_all": "снять все",
+    "checklist.clear_all": "очистить всё",
 
     "stub.title": "раздел",
     "stub.text": "ещё не готов"
@@ -126,6 +134,7 @@
     "routine.not_found": "routine not found",
     "routine.in_work": "in work",
     "routine.waiting": "waiting",
+    "routine.completed": "completed",
 
     "routine.block.note": "note",
     "routine.block.prep": "prep",
@@ -135,6 +144,7 @@
     "routine.block.closeout": "closeout",
     "routine.summary": "total",
 
+    "block.artel": "artel",
     "block.appearance": "appearance",
     "block.interface": "interface",
     "block.data": "data",
@@ -153,6 +163,7 @@
     "bort.lang": "language",
     "bort.labels_system": "system labels",
     "bort.labels_field": "field labels",
+    "bort.midnight": "midnight",
 
     "bort.k_pult": "pult size",
     "bort.k_pult_small": "small pult",
@@ -172,6 +183,11 @@
     "bort.cleanup": "cleanup",
     "bort.delete": "delete",
     "bort.reset": "reset",
+    "bort.duplicate": "duplicate",
+
+    "checklist.mark_all": "mark all",
+    "checklist.unmark_all": "unmark all",
+    "checklist.clear_all": "clear all",
 
     "stub.title": "section",
     "stub.text": "not ready yet"

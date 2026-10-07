@@ -1,20 +1,24 @@
 // ═══════════════════════════════════════════════════════════════════
 // app_scope.dart — контекст приложения для вкладок.
 //
-// Вкладки берут из сего контекста слои и словарь, а также два
-// обратных вызова: перезапрос интерфейса и перезагрузку словаря.
+// Вкладки берут из сего контекста слои, тикер и словарь, а также
+// обратные вызовы: перезапрос интерфейса, перезагрузку словаря,
+// открытие карточки рутины.
 //
 // Слои:
-//   bort         — состояние интерфейса, цвета, коэффициенты;
+//   bort         — состояние интерфейса;
 //   routineLayer — рутины и их блоки;
 //   traceLayer   — следы;
-//   journal      — слой журнала (чтение, запись, регистрация слоёв).
+//   journal      — слой журнала;
+//   ticker       — единый тикер (500 мс) для всех таймеров
+//                  и мелькания двоеточия.
 //
-// Метод toggleBlockWithShift — пуск блока с правилом связи смены
-// и рутины: пуск рутины при остановленной смене запускает смену.
-// Обратного правила нет.
+// openRoutine — открытие карточки рутины чрез навигатор, что живёт
+// в main. Нужно для восстановления открытой карточки при возврате
+// на вкладку Рутины.
 //
-// Прозрачность не применяется.
+// toggleBlockWithShift — пуск блока при остановленной смене запускает
+// смену. Обратного нет.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -24,6 +28,7 @@ import '../data/journal_types.dart';
 import '../data/operational_layer.dart';
 import '../data/routine_layer.dart';
 import '../data/trace_layer.dart';
+import '../data/ticker.dart';
 import '../data/i18n.dart';
 
 class AppContext {
@@ -31,41 +36,44 @@ class AppContext {
   final RoutineLayer routineLayer;
   final TraceLayer traceLayer;
   final JournalLayer journal;
+  final AppTicker ticker;
   final I18n i18n;
   final Future<void> Function() refresh;
   final Future<void> Function() reloadI18n;
+  final Future<void> Function(int routineId) openRoutine;
 
   const AppContext({
     required this.bort,
     required this.routineLayer,
     required this.traceLayer,
     required this.journal,
+    required this.ticker,
     required this.i18n,
     required this.refresh,
     required this.reloadI18n,
+    required this.openRoutine,
   });
 
-  // ─── Пуск блока с правилом связи смены ───
-  // Ежели пускаем блок (а не останавливаем), и смена не идёт —
-  // запускаем смену. Обратного нет: пуск смены рутину не пускает.
-  // Остановка смены гасит рутину — то правило живёт в обработчике
-  // пульса смены (вкладка рутин).
+  // ─── Пуск блока рутины с правилом связи ───
+  // Ежели блок идёт — обычная пауза (без смены).
+  // Ежели блок стоит — сперва, коли смена не идёт, запускаем смену;
+  // затем пускаем блок (слой сам гасит прочие рутины).
   Future<void> toggleBlockWithShift(int routineId, String kind) async {
     final r = routineLayer.findRoutine(routineId);
     if (r == null) return;
     final b = r.blockOf(kind);
     if (b == null) return;
 
-    // Пускаем, а не гасим.
-    final willStart = !b.isRunning;
+    final going = !b.isRunning;
 
-    if (willStart && !bort.onShift) {
+    if (going && !bort.onShift) {
       await journal.log(
         type: JournalType.actor,
         body: '{"action":"shift_start"}',
       );
       bort.startShift();
     }
+
     await routineLayer.toggleBlock(journal, routineId, kind);
   }
 }

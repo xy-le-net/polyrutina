@@ -2,29 +2,33 @@
 // routine.dart — модель рутины и её блоков.
 //
 // Рутина: идентификатор (номер записи о создании в журнале), имя,
-// время создания, время последнего действия, пять блоков.
+// время создания, время последнего действия, пять блоков, флаги,
+// признак завершённости.
 //
 // Время рутины — сумма её блоков.
 //
 // Блок: род, накопленные секунды, метка старта. Методы start и pause
 // принимают необязательный час — для исторического пробега журнала.
 //
-// lastActionAt. Время последнего действия (пуск либо остановка блока).
-// Используется для сортировки списка рутин: покоящиеся сортируются
-// по убыванию сего поля. Обновляется слоем при всякой мутации.
+// lastActionAt. Время последнего действия. Используется для сортировки
+// списка рутин: покоящиеся сортируются по убыванию сего поля.
 //
-// Роды блоков: prep, transit, work, idle, closeout. Сии — пять
-// рабочих блоков. Шестой и седьмой — note (описание) и summary
-// (итог) — не блоки в смысле времени, они части того же блока
-// карточки, но без счёта.
+// flags. Биты те же, что у записей журнала (JournalFlag): срочно,
+// аварийно, важно, спорно, сложно, локально, синхронизировано,
+// правка. Правятся в карточке рутины.
+//
+// completed. Признак завершённости. Ставится чек-боксом в блоке «итог»,
+// снимается при пуске любого блока либо повторным касанием. Хранится
+// с прочими данными рутины.
+//
+// Роды блоков: prep, transit, work, idle, closeout.
 // ═══════════════════════════════════════════════════════════════════
 
 class RoutineBlock {
-  // Пять рабочих родов.
   static const String prep = 'prep'; // подготовка
-  static const String transit = 'transit'; // переход (идёт работа)
+  static const String transit = 'transit'; // переход
   static const String work = 'work'; // работа
-  static const String idle = 'idle'; // простой (ожидание)
+  static const String idle = 'idle'; // простой
   static const String closeout = 'closeout'; // завершение
 
   static const List<String> kinds = [prep, transit, work, idle, closeout];
@@ -49,13 +53,11 @@ class RoutineBlock {
   int get secondsNow =>
       secondsNowAt(DateTime.now().millisecondsSinceEpoch ~/ 1000);
 
-  // Пуск. Ежели at задан — час берётся из него (импорт журнала).
   void start({int? at}) {
     if (startedAt != null) return;
     startedAt = at ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
   }
 
-  // Остановка. Ежели at задан — час из него.
   void pause({int? at}) {
     if (startedAt == null) return;
     final t = at ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -82,10 +84,14 @@ class Routine {
   final int createdAt;
   final List<RoutineBlock> blocks;
 
-  // Время последнего действия (пуск либо остановка блока, а также
-  // создание и переименование). Обновляется слоем. Служит для
-  // сортировки списка: свежайшие сверху.
+  // Время последнего действия. Служит для сортировки списка.
   int lastActionAt;
+
+  // Флаги (биты JournalFlag). Правятся в карточке.
+  int flags;
+
+  // Признак завершённости. Ставится в блоке «итог» карточки.
+  bool completed;
 
   Routine({
     required this.id,
@@ -93,6 +99,8 @@ class Routine {
     required this.createdAt,
     required this.blocks,
     int? lastActionAt,
+    this.flags = 0,
+    this.completed = false,
   }) : lastActionAt = lastActionAt ?? createdAt;
 
   factory Routine.create(int id, {int? at}) {
@@ -130,6 +138,8 @@ class Routine {
         'name': name,
         'created_at': createdAt,
         'last_action_at': lastActionAt,
+        'flags': flags,
+        'completed': completed,
         'blocks': blocks.map((b) => b.toJson()).toList(),
       };
 
@@ -138,6 +148,8 @@ class Routine {
         name: j['name'] as String? ?? '',
         createdAt: (j['created_at'] as num).toInt(),
         lastActionAt: (j['last_action_at'] as num?)?.toInt(),
+        flags: (j['flags'] as num?)?.toInt() ?? 0,
+        completed: j['completed'] as bool? ?? false,
         blocks: (j['blocks'] as List)
             .map((b) => RoutineBlock.fromJson(b as Map<String, dynamic>))
             .toList(),

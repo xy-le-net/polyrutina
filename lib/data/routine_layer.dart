@@ -1,26 +1,28 @@
 // ═══════════════════════════════════════════════════════════════════
 // routine_layer.dart — слой рутин.
 //
-// Держит список рутин и их блоки. Номер рутины — это номер записи
+// Держит список рутин и их блоки. Номер рутины — номер записи
 // о её создании в журнале.
 //
-// Журнал. Слой не ходит в базу сам: при пуске он регистрируется
-// в JournalLayer на род routine. Записи приходят готовыми, применяются
-// тотчас.
+// Журнал. Регистрируется в JournalLayer на род routine.
 //
-// Кэш. Список рутин пишется в routine_layer.json для ускорения
-// старта. При пуске кэш читается, затем накатываются дельты из
-// журнала после отметки, что помнит JournalLayer.
+// Кэш. Пишется отложенно (200 мс). При сворачивании — saveNow.
 //
-// lastActionAt. Обновляется при всякой мутации рутины: создание,
-// переименование, пуск и остановка блока. Служит для сортировки
-// списка рутин: свежайшие сверху.
+// currentRoutineId. Номер рутины, чей блок идёт. В памяти.
 //
-// Блоки взаимоисключающие: пуск одного гасит прочие.
+// lastActiveBlockKind. Род последнего пущенного блока. НЕ сбрасывается
+// при остановке. Хранится в кэше (не токмо в памяти), дабы после
+// перезапуска прокрутка карточки шла к прежнему блоку.
+//
+// Завершённость. Признак completed. Установка гасит идущий блок.
+// Снятие пуском блока — косвенно, без отдельной записи.
+//
+// Флаги. Биты JournalFlag.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -37,15 +39,13 @@ class RoutineLayer extends ChangeNotifier {
   // ─── Текущее состояние ───
   List<Routine> routines = [];
 
-  // Номер рутины, в коей идёт блок (для глобального взаимоисключения:
-  // идти может токмо одна рутина разом). null — ничего не идёт.
-  // Хранится в памяти; восстанавливается из журнала.
   int? currentRoutineId;
+  String? lastActiveBlockKind;
 
   // ─── Служебное ───
   File? _file;
+  Timer? _saveTimer;
 
-  // Свежайшие сверху по внутреннему порядку id.
   List<Routine> get routinesNewestFirst {
     final copy = List<Routine>.from(routines);
     copy.sort((a, b) => b.id.compareTo(a.id));
@@ -68,6 +68,12 @@ class RoutineLayer extends ChangeNotifier {
     notifyListeners();
   }
 
+  @override
+  void dispose() {
+    _saveTimer?.cancel();
+    super.dispose();
+  }
+
   // ─── Кэш ───
   Future<void> _loadFromFile() async {
     if (_file == null || !await _file!.exists()) return;
@@ -79,21 +85,33 @@ class RoutineLayer extends ChangeNotifier {
         routines =
             r.map((e) => Routine.fromJson(e as Map<String, dynamic>)).toList();
       }
+      lastActiveBlockKind = data['last_active_block_kind'] as String?;
     } catch (_) {}
+  }
+
+  void _scheduleSave() {
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(milliseconds: 200), () {
+      _saveToFile();
+    });
   }
 
   Future<void> _saveToFile() async {
     if (_file == null) return;
     final data = <String, dynamic>{
       'routines': routines.map((r) => r.toJson()).toList(),
+      'last_active_block_kind': lastActiveBlockKind,
     };
     await _file!.writeAsString(jsonEncode(data));
   }
 
+  Future<void> saveNow() async {
+    _saveTimer?.cancel();
+    _saveTimer = null;
+    await _saveToFile();
+  }
+
   // ─── Применение одной записи журнала ───
-  // Принимает всю запись: для create номер берётся из e.id, час
-  // создания — из e.time. Всякая мутация обновляет lastActionAt
-  // (для сортировки списка).
   void _applyEntry(JournalData e) {
     try {
       final data = jsonDecode(e.body) as Map<String, dynamic>;
@@ -101,6 +119,8 @@ class RoutineLayer extends ChangeNotifier {
       switch (action) {
         case 'reset':
           routines = [];
+          currentRoutineId = null;
+          lastActiveBlockKind = null;
           break;
         case 'create':
           final bodyId = (data['routine'] as num?)?.toInt();
@@ -120,6 +140,20 @@ class RoutineLayer extends ChangeNotifier {
         case 'delete':
           final id = (data['routine'] as num).toInt();
           routines.removeWhere((r) => r.id == id);
+          if (currentRoutineId == id) currentRoutineId = null;
+          break;
+        case 'flags':
+          final id = (data['routine'] as num).toInt();
+          final r = findRoutine(id);
+          if (r != null) {
+            r.flags = (data['value'] as num?)?.toInt() ?? r.flags;
+          }
+          break;
+        case 'complete':
+          final id = (data['routine'] as num).toInt();
+          final v = data['value'] as bool? ?? true;
+          final r = findRoutine(id);
+          if (r != null) r.completed = v;
           break;
         case 'start_block':
           final id = (data['routine'] as num).toInt();
@@ -129,7 +163,9 @@ class RoutineLayer extends ChangeNotifier {
           if (r != null && kind != null) {
             r.blockOf(kind)?.start(at: at);
             r.lastActionAt = at;
+            r.completed = false;
             currentRoutineId = id;
+            lastActiveBlockKind = kind;
           }
           break;
         case 'pause_block':
@@ -140,26 +176,51 @@ class RoutineLayer extends ChangeNotifier {
           if (r != null && kind != null) {
             r.blockOf(kind)?.pause(at: at);
             r.lastActionAt = at;
-            // Ежели в сей рутине ничего не осталось бегущего — индекс
-            // обнуляется: текущая рутина более не идёт.
-            if (r.runningBlock == null) currentRoutineId = null;
+            if (r.runningBlock == null && currentRoutineId == id) {
+              currentRoutineId = null;
+            }
+          }
+          break;
+        case 'set_block_time':
+          final id = (data['routine'] as num).toInt();
+          final kind = data['block'] as String?;
+          final secs = (data['seconds'] as num?)?.toInt();
+          final r = findRoutine(id);
+          if (r != null && kind != null && secs != null) {
+            final b = r.blockOf(kind);
+            if (b != null) {
+              b.accumulatorSeconds = secs;
+              b.startedAt = null;
+            }
+            r.lastActionAt = e.time;
           }
           break;
       }
     } catch (_) {}
   }
 
-  // Полный сброс памяти (зовётся из JournalLayer.reread).
   void _resetMemory() {
     routines = [];
     currentRoutineId = null;
+    lastActiveBlockKind = null;
     notifyListeners();
   }
 
-  // ─── Мутации ───
-  // Локально применяем тотчас, запись в журнал шлём чрез JournalLayer.
-  // lastActionAt обновляется тотчас для сортировки.
+  // ─── Дублирование ───
+  Future<Routine?> duplicateRoutine(JournalLayer journal, int sourceId) async {
+    final src = findRoutine(sourceId);
+    if (src == null) return null;
+    final r = await createRoutine(journal);
+    if (src.name.isNotEmpty) {
+      await renameRoutine(journal, r.id, src.name);
+    }
+    if (src.flags != 0) {
+      await setFlags(journal, r.id, src.flags);
+    }
+    return findRoutine(r.id);
+  }
 
+  // ─── Мутации ───
   Future<Routine> createRoutine(JournalLayer journal) async {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final id = await journal.log(
@@ -171,7 +232,7 @@ class RoutineLayer extends ChangeNotifier {
       r.lastActionAt = now;
       routines.add(r);
     }
-    await _saveToFile();
+    _scheduleSave();
     notifyListeners();
     return findRoutine(id)!;
   }
@@ -186,22 +247,87 @@ class RoutineLayer extends ChangeNotifier {
       type: JournalType.routine,
       body: '{"action":"rename","routine":$id,"name":${jsonEncode(name)}}',
     );
-    await _saveToFile();
+    _scheduleSave();
     notifyListeners();
   }
 
   Future<void> deleteRoutine(JournalLayer journal, int id) async {
     routines.removeWhere((r) => r.id == id);
+    if (currentRoutineId == id) currentRoutineId = null;
     await journal.log(
       type: JournalType.routine,
       body: '{"action":"delete","routine":$id}',
     );
-    await _saveToFile();
+    _scheduleSave();
+    notifyListeners();
+  }
+
+  Future<void> setFlags(JournalLayer journal, int id, int flags) async {
+    final r = findRoutine(id);
+    if (r == null) return;
+    r.flags = flags;
+    r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await journal.log(
+      type: JournalType.routine,
+      body: '{"action":"flags","routine":$id,"value":$flags}',
+    );
+    _scheduleSave();
+    notifyListeners();
+  }
+
+  // ─── Завершённость ───
+  // Ставится чек-боксом в блоке «итог». Снятие — повторным касанием
+  // либо пуском блока (косвенно).
+  Future<void> setCompleted(JournalLayer journal, int id, bool value) async {
+    final r = findRoutine(id);
+    if (r == null) return;
+    if (r.completed == value) return;
+
+    // Установка гасит идущий блок.
+    if (value) {
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      for (final b in r.blocks) {
+        if (b.isRunning) {
+          b.pause(at: now);
+          await journal.log(
+            type: JournalType.routine,
+            body: '{"action":"pause_block","routine":$id,'
+                '"block":"${b.kind}","at":$now}',
+          );
+        }
+      }
+      if (currentRoutineId == id) currentRoutineId = null;
+    }
+
+    r.completed = value;
+    r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await journal.log(
+      type: JournalType.routine,
+      body: '{"action":"complete","routine":$id,"value":$value}',
+    );
+    _scheduleSave();
+    notifyListeners();
+  }
+
+  // ─── Правка времени блока ───
+  Future<void> setBlockTime(
+      JournalLayer journal, int routineId, String kind, int seconds) async {
+    final r = findRoutine(routineId);
+    if (r == null) return;
+    final b = r.blockOf(kind);
+    if (b == null || b.isRunning) return;
+    b.accumulatorSeconds = seconds;
+    r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await journal.log(
+      type: JournalType.routine,
+      body: '{"action":"set_block_time","routine":$routineId,'
+          '"block":"$kind","seconds":$seconds}',
+    );
+    _scheduleSave();
     notifyListeners();
   }
 
   // ─── Блоки ───
-  // Взаимоисключение: пуск одного гасит прочие.
   Future<void> toggleBlock(
       JournalLayer journal, int routineId, String kind) async {
     final r = findRoutine(routineId);
@@ -221,19 +347,16 @@ class RoutineLayer extends ChangeNotifier {
     if (r == null) return;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
-    // Глобальное взаимоисключение: идти может токмо одна рутина
-    // разом. Ежели есть текущая, но сие не та же рутина — гасим её
-    // блок. Внутри же самой рутины блоки гасят друг друга ниже.
-    final curId = currentRoutineId;
-    if (curId != null && curId != routineId) {
-      final cur = findRoutine(curId);
-      if (cur != null) {
-        for (final b in cur.blocks) {
+    // Гасим текущую рутину, ежели иная.
+    if (currentRoutineId != null && currentRoutineId != routineId) {
+      final other = findRoutine(currentRoutineId!);
+      if (other != null) {
+        for (final b in other.blocks) {
           if (b.isRunning) {
             b.pause(at: now);
             await journal.log(
               type: JournalType.routine,
-              body: '{"action":"pause_block","routine":$curId,'
+              body: '{"action":"pause_block","routine":${other.id},'
                   '"block":"${b.kind}","at":$now}',
             );
           }
@@ -241,7 +364,7 @@ class RoutineLayer extends ChangeNotifier {
       }
     }
 
-    // Внутри той же рутины: пуск одного блока гасит прочие её блоки.
+    // Гасим прочие блоки сей рутины.
     for (final b in r.blocks) {
       if (b.isRunning && b.kind != kind) {
         b.pause(at: now);
@@ -263,8 +386,10 @@ class RoutineLayer extends ChangeNotifier {
       );
     }
     r.lastActionAt = now;
+    r.completed = false;
     currentRoutineId = routineId;
-    await _saveToFile();
+    lastActiveBlockKind = kind;
+    _scheduleSave();
     notifyListeners();
   }
 
@@ -277,14 +402,15 @@ class RoutineLayer extends ChangeNotifier {
     if (b == null || !b.isRunning) return;
     b.pause(at: now);
     r.lastActionAt = now;
-    // Ежели в сей рутине ничего не осталось бегущего — индекс обнуляется.
-    if (r.runningBlock == null) currentRoutineId = null;
+    if (r.runningBlock == null && currentRoutineId == routineId) {
+      currentRoutineId = null;
+    }
     await journal.log(
       type: JournalType.routine,
       body: '{"action":"pause_block","routine":$routineId,'
           '"block":"$kind","at":$now}',
     );
-    await _saveToFile();
+    _scheduleSave();
     notifyListeners();
   }
 
@@ -296,15 +422,13 @@ class RoutineLayer extends ChangeNotifier {
     return null;
   }
 
-  Future<void> saveNow() async {
-    await _saveToFile();
-  }
-
   Future<void> resetAll() async {
     if (_file != null && await _file!.exists()) {
       await _file!.delete();
     }
     routines = [];
+    currentRoutineId = null;
+    lastActiveBlockKind = null;
     await _saveToFile();
     notifyListeners();
   }

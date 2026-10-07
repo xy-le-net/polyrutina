@@ -7,7 +7,15 @@
 //   PultScope — провайдер состояния;
 //   Pult      — суперкнопка (тройная обводка);
 //   PultTick  — чекбокс на базе Pult;
-//   PultLayer — слой поверх всего приложения (подпульты, подтверждения).
+//   PultLayer — слой поверх всего приложения.
+//
+// Подписи в веерах подпультов. Показываются, только ежели весь ряд
+// с ними умещается по ширине экрана. Иначе — одни иконы, без подписей.
+// Сие устраняет случай, когда длинные подписи («синхронизировано»,
+// «приглушённый») уводят веер за край: он становился невидим, а
+// перехватчик касаний уже стоял — экран «занимался» без нужды.
+//
+// Веер встаёт над ядром родительского пульта (ключ _coreKey).
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -15,19 +23,6 @@
 import 'package:flutter/material.dart';
 
 // ─── Спецификация пульта ───
-// Поля:
-//   id          — имя (для сравнения в подтверждениях);
-//   icon        — икона ядра;
-//   label       — текстовая подпись справа (необязательно);
-//   labelWidget — своя подпись справа, перебивает label;
-//   selected    — выделен ли (ядро — сигнального цвета);
-//   subsBuilder — построитель подпультов; ежели задан, касание
-//                 открывает веер, а не зовёт onTap;
-//   confirm     — касание сперва просит подтверждения;
-//   onTap       — действие по короткому касанию;
-//   onLongPress — действие по долгому нажатию (перебивает onTap);
-//   stayOpen    — не закрывать веер подпультов после касания
-//                 (для множественного выбора).
 class PultSpec {
   final String id;
   final IconData icon;
@@ -35,6 +30,7 @@ class PultSpec {
   final Widget? labelWidget;
   final bool selected;
   final List<PultSpec> Function()? subsBuilder;
+  final List<PultSpec> Function()? longSubs;
   final bool confirm;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
@@ -47,6 +43,7 @@ class PultSpec {
     this.labelWidget,
     this.selected = false,
     this.subsBuilder,
+    this.longSubs,
     this.confirm = false,
     this.onTap,
     this.onLongPress,
@@ -54,7 +51,7 @@ class PultSpec {
   });
 }
 
-// ─── Общее состояние пультов ───
+// ─── Состояние пультов ───
 class PultState extends ChangeNotifier {
   GlobalKey? parentKey;
   List<PultSpec> Function()? subsBuilder;
@@ -169,7 +166,6 @@ class _PultState extends State<Pult> {
     final rInner = side * 0.14;
     final rCore = side * 0.10;
 
-    // Сигнальный пульт: икона крупнее на треть.
     final iconSize = selected ? side * 0.60 : side * 0.45;
 
     Widget core = Container(
@@ -202,7 +198,6 @@ class _PultState extends State<Pult> {
       child: core,
     );
 
-    // Подпись справа.
     Widget content;
     final screenW = MediaQuery.of(context).size.width;
     final maxLabelW = screenW - side - 32;
@@ -277,7 +272,13 @@ class _PultState extends State<Pult> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _handleTap(state),
-      onLongPress: widget.spec.onLongPress,
+      onLongPress: () {
+        if (widget.spec.longSubs != null) {
+          state.open(_coreKey, widget.spec.longSubs!);
+          return;
+        }
+        widget.spec.onLongPress?.call();
+      },
       child: content,
     );
   }
@@ -309,21 +310,12 @@ class _PultState extends State<Pult> {
 
 // ═══════════════════════════════════════════════════════════════════
 // PultTick — чекбокс на базе Pult.
-//
-// Два режима:
-//   binary — кружок приглушённый (не отмечено) / галочка сигнальная
-//            (отмечено). Для обычных чекбоксов.
-//   небинарный — кружок приглушённый (отмечать нечего) / галочка
-//                приглушённая (всё отмечено) / сигнальное число
-//                (сколько осталось отметить). Для пульта чек-листа.
-//
-// Число в небинарном режиме заменяет икону: цифра на месте знака.
 // ═══════════════════════════════════════════════════════════════════
 class PultTick extends StatelessWidget {
   final String id;
-  final bool value; // отмечено либо всё отмечено
-  final bool binary; // true — бинарный; false — небинарный
-  final int badge; // число неотмеченных (небинарный, > 0)
+  final bool value;
+  final bool binary;
+  final int badge;
   final Color fg;
   final Color bg;
   final Color signal;
@@ -345,7 +337,6 @@ class PultTick extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Икона по состоянию.
     final IconData icon;
     final bool selected;
     if (binary) {
@@ -353,9 +344,6 @@ class PultTick extends StatelessWidget {
       selected = value;
     } else {
       if (badge > 0) {
-        // Сигнальное число заменяет икону — рисуем Text внутри Pult
-        // чрез labelWidget не выйдет (там справа подпись), потому
-        // используем готовую икону и цвет: цифру покажем подписью.
         icon = Icons.circle_outlined;
         selected = true;
       } else if (value) {
@@ -452,6 +440,10 @@ class _PultLayerState extends State<PultLayer> {
     );
   }
 
+  // ─── Веер подпультов ───
+  // Подписи показываются, только ежели весь ряд с ними умещается
+  // по ширине. Иначе — одни иконы, без подписей. Сим веер не уходит
+  // за экран и остаётся видимым.
   Widget _buildSubs(BuildContext context, PultState state) {
     final local = _parentLocal(state.parentKey);
     final size = _parentSize(state.parentKey);
@@ -464,12 +456,15 @@ class _PultLayerState extends State<PultLayer> {
     final itemH = side + 12;
     final screenW = MediaQuery.of(context).size.width;
 
+    // Сколько строк в столбце поместится над родительским пультом.
     final availAbove = local.dy - 8;
     final rowsPerCol = (availAbove / itemH).floor().clamp(1, subs.length);
     final cols = (subs.length / rowsPerCol).ceil();
 
-    bool anyLabel = false;
+    // Проверка подписей: ежели хоть одна строка длинная и весь ряд
+    // не умещается — отказываемся от подписей вовсе.
     double maxLabelW = 0;
+    bool anyLabel = false;
     for (final s in subs) {
       if (s.label != null) {
         anyLabel = true;
@@ -477,8 +472,12 @@ class _PultLayerState extends State<PultLayer> {
         if (w > maxLabelW) maxLabelW = w;
       }
     }
-    final colW = side + (anyLabel ? maxLabelW : 0) + 16;
-    final showLabels = anyLabel;
+    final colWWithLabels = side + (anyLabel ? maxLabelW : 0) + 16;
+    final totalWWithLabels = cols * colWWithLabels;
+    final fitsWithLabels = anyLabel && (totalWWithLabels < screenW - 16);
+
+    // Итог: ширина столбца.
+    final colW = fitsWithLabels ? colWWithLabels : (side + 16);
 
     final colWidgets = <Widget>[];
     for (var c = 0; c < cols; c++) {
@@ -487,7 +486,8 @@ class _PultLayerState extends State<PultLayer> {
         final i = c * rowsPerCol + r;
         if (i >= subs.length) break;
         final s = subs[i];
-        final spec = showLabels
+        // Подписи — токмо ежели умещается весь ряд.
+        final spec = fitsWithLabels
             ? s
             : PultSpec(
                 id: s.id,
@@ -523,11 +523,16 @@ class _PultLayerState extends State<PultLayer> {
       );
     }
 
+    // Горизонтальное положение: по центру родительского пульта,
+    // с ограничением по краям экрана.
     final rowW = cols * colW;
     double left = local.dx + (size.width - rowW) / 2;
     if (left < 8) left = 8;
     if (left + rowW > screenW - 8) left = screenW - 8 - rowW;
+    if (left < 8) left = 8; // повторно: ежели ряд шире экрана.
 
+    // Вертикальное положение: над родительским пультом,
+    // с ограничением сверху.
     final totalH = rowsPerCol * itemH;
     double top = local.dy - totalH - 6;
     if (top < 8) top = 8;

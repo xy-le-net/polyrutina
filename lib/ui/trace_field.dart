@@ -6,13 +6,19 @@
 //   справа — столбец: пульт чек-листа, пульт отправки/медиа;
 //   под полем — значки прикреплённого (в будущем).
 //
-// Сохранение: текст живёт в черновике борта по ключу
-// trace_<objectId>_<slot>; не теряется при переключении и закрытии.
-// Отправка — по касанию активного пульта; пульт гаснет после отправки.
+// Сохранение текста — в черновике борта по ключу trace_<objectId>_<slot>.
+// Автоотправка — при потере фокуса, при сворачивании, при уходе
+// со страницы.
 //
-// Контроллер поля инициализируется в didChangeDependencies: чтение
-// черновика из борта требует доступа к AppScope, а InheritedWidget
-// недоступен в initState.
+// След различается парой (objectId, slot). При создании текстового
+// следа slot передаётся в тело — дабы два блока одной рутины не
+// видели один и тот же след.
+//
+// Пульт чек-листа:
+//   — нет неотмеченных (все отмечены либо пунктов нет) — икона
+//     «галочка в квадрате»;
+//   — есть неотмеченные — сигнальное число на месте иконы.
+// Третьего состояния нет.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -20,7 +26,9 @@
 import 'package:flutter/material.dart';
 
 import '../data/operational_layer.dart';
+import '../data/trace_layer.dart';
 import 'app_scope.dart';
+import 'checklist_screen.dart';
 import 'pult.dart';
 
 class TraceField extends StatefulWidget {
@@ -31,6 +39,8 @@ class TraceField extends StatefulWidget {
   final Color bg;
   final Color signal;
   final double side;
+  final String blockTitle;
+  final String routineTitle;
 
   const TraceField({
     super.key,
@@ -41,17 +51,20 @@ class TraceField extends StatefulWidget {
     required this.bg,
     required this.signal,
     required this.side,
+    this.blockTitle = '',
+    this.routineTitle = '',
   });
 
   @override
   State<TraceField> createState() => _TraceFieldState();
 }
 
-class _TraceFieldState extends State<TraceField> {
+class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
   late final TextEditingController _ctrl;
+  final _focus = FocusNode();
 
-  // Инициализация из черновика — единожды.
   bool _initialized = false;
+  String _lastSent = '';
 
   String get _key =>
       OperationalLayer.traceDraftKey(widget.objectId, widget.slot);
@@ -60,6 +73,10 @@ class _TraceFieldState extends State<TraceField> {
   void initState() {
     super.initState();
     _ctrl = TextEditingController();
+    _focus.addListener(() {
+      if (!_focus.hasFocus) _autoSend();
+    });
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
@@ -69,12 +86,42 @@ class _TraceFieldState extends State<TraceField> {
     _initialized = true;
     final app = AppScope.of(context);
     _ctrl.text = app.bort.draft(_key);
+    _lastSent = _ctrl.text;
   }
 
   @override
   void dispose() {
+    _autoSend();
+    WidgetsBinding.instance.removeObserver(this);
+    _focus.dispose();
     _ctrl.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      _autoSend();
+    }
+  }
+
+  Future<void> _autoSend() async {
+    if (!_initialized) return;
+    if (!mounted) return;
+    final app = AppScope.of(context);
+    final text = _ctrl.text.trim();
+    if (text.isEmpty) return;
+    if (text == _lastSent && app.bort.isTraceSent(_key)) return;
+    await app.traceLayer.createText(
+      app.journal,
+      slot: widget.slot,
+      text: text,
+      parents: [widget.objectId],
+    );
+    app.bort.markTraceSent(_key);
+    _lastSent = text;
   }
 
   bool _canSend() {
@@ -83,15 +130,36 @@ class _TraceFieldState extends State<TraceField> {
   }
 
   Future<void> _send() async {
-    final app = AppScope.of(context);
-    if (_ctrl.text.trim().isEmpty) return;
-    await app.traceLayer.createText(
-      app.journal,
-      text: _ctrl.text,
-      parents: [widget.objectId],
-    );
-    app.bort.markTraceSent(_key);
+    await _autoSend();
     if (mounted) setState(() {});
+  }
+
+  void _openChecklist() {
+    _focus.unfocus();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ChecklistScreen(
+          objectId: widget.objectId,
+          slot: widget.slot,
+          blockTitle: widget.blockTitle,
+          routineTitle: widget.routineTitle,
+        ),
+      ),
+    );
+  }
+
+  // ─── Состояние чек-листа сего блока ───
+  // Ищем по паре (objectId, slot). Возвращаем число неотмеченных.
+  int _uncheckedCount() {
+    final app = AppScope.of(context);
+    final t = app.traceLayer.findFirstBySlot(widget.objectId, widget.slot);
+    if (t == null) return 0;
+    if (t.kind != TraceKind.checklist) return 0;
+    int n = 0;
+    for (final it in t.items) {
+      if (!it.done && it.text.trim().isNotEmpty) n++;
+    }
+    return n;
   }
 
   @override
@@ -102,6 +170,13 @@ class _TraceFieldState extends State<TraceField> {
     final canSend = _canSend();
     final pultSide = widget.side * bort.kPultSmall;
 
+    // ─── Икона пульта чек-листа ───
+    // Нет неотмеченных — галочка в квадрате. Есть — сигнальное число.
+    final unchecked = _uncheckedCount();
+    final IconData chkIcon = Icons.check_box_outlined;
+    final String? chkLabel = unchecked > 0 ? '$unchecked' : null;
+    final bool chkSelected = unchecked > 0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -111,6 +186,7 @@ class _TraceFieldState extends State<TraceField> {
             Expanded(
               child: TextField(
                 controller: _ctrl,
+                focusNode: _focus,
                 maxLines: 3,
                 style: TextStyle(
                     color: widget.fg,
@@ -147,9 +223,12 @@ class _TraceFieldState extends State<TraceField> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Pult(
-                  spec: const PultSpec(
+                  spec: PultSpec(
                     id: 'checklist',
-                    icon: Icons.checklist,
+                    icon: chkIcon,
+                    label: chkLabel,
+                    selected: chkSelected,
+                    onTap: _openChecklist,
                   ),
                   fg: widget.dim,
                   bg: widget.bg,

@@ -2,16 +2,19 @@
 // root_pult.dart — корневой пульт (компас) и веер вкладок.
 //
 // Свёрнутый — икона компаса (Icons.explore). Касание открывает
-// веер икон всех вкладок. Перетаскивание за любое место иконы;
-// по окончании пульт прилипает к ближайшему из восьми якорей.
+// веер икон всех вкладок. Перетаскивание за любое место иконы.
+//
+// Перетаскивание. При начале жеста запоминается стартовая позиция
+// (anchor). Дальше новое положение считается как anchor + накопленная
+// дельта. Сие надёжнее, нежели прибавлять дельты к текущей позиции:
+// при перестроении дерева виджетов текущее положение могло уже
+// измениться, и дельта терялась.
 //
 // Развёрнутый — веер икон всех вкладок; текущая выделена сигнальным.
 // Веер раскрывается в ту сторону, где есть место.
 //
-// Виджет stateless: состояние (открыт ли веер, позиция) держит
-// вызывающий (main.dart).
-//
-// Приём построения ядра — тройная вложенная обводка (как у Pult).
+// Виджет stateless: состояние (открыт ли веер, позиция, стартовая
+// позиция жеста) держит вызывающий (main.dart).
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -36,10 +39,15 @@ class RootPult extends StatelessWidget {
   final Color bg;
   final Color signal;
 
-  final VoidCallback onOpen;
-  final void Function(int index) onSwitchTab;
+  // Обратные вызовы.
+  // onDragStart — начало перетаскивания (запоминается стартовая позиция).
+  // onDragUpdate — новая позиция (абсолютная).
+  // onDragEnd — окончание (позиция для прилипания к якорю).
+  final VoidCallback onDragStart;
   final void Function(Offset newPosition) onDragUpdate;
   final void Function(Offset position) onDragEnd;
+  final VoidCallback onOpen;
+  final void Function(int index) onSwitchTab;
 
   const RootPult({
     super.key,
@@ -52,18 +60,20 @@ class RootPult extends StatelessWidget {
     required this.fg,
     required this.bg,
     required this.signal,
-    required this.onOpen,
-    required this.onSwitchTab,
+    required this.onDragStart,
     required this.onDragUpdate,
     required this.onDragEnd,
+    required this.onOpen,
+    required this.onSwitchTab,
   });
 
   @override
   Widget build(BuildContext context) {
     if (!open) {
+      // Свёрнутый: компас, перетаскивается, касание открывает веер.
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onPanStart: (_) {},
+        onPanStart: (_) => onDragStart(),
         onPanUpdate: (d) => onDragUpdate(position + d.delta),
         onPanEnd: (_) => onDragEnd(position),
         onTapUp: (_) => onOpen(),

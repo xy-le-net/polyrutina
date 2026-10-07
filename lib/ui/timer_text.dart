@@ -1,22 +1,22 @@
 // ═══════════════════════════════════════════════════════════════════
 // timer_text.dart — вид таймера по единому образцу.
 //
-// Единый вид отсчёта времени (в списке рутин, в карточке, на пульсе
-// смены). Три единицы: дни, часы, минуты. Показываются две старшие,
-// что ненулевые:
-//   есть дни  → «3д 5ч»;
-//   есть часы → «9ч 3м»;
-//   только минуты → «3м»;
-//   всё нуль → пусто (таймер не выводится, места не занимает).
+// Три единицы: дни, часы, минуты. Показываются две старшие, что
+// ненулевые. Исключение — идущий меньше минуты: показывает секунды.
 //
 // Оформление:
-//   числа — обычным цветом (при ходе — сигнальным);
-//   подписи «д», «ч», «м» — приглушённым, две трети от кегля числа,
+//   числа — цветом fg;
+//   подписи «д», «ч», «м», «с» — приглушённым, две трети кегля,
 //     слитно с числом, без точки;
-//   между двумя парами — пробел у покоящегося, мерцающее двоеточие
-//     у идущего (треть секунды видно, две трети нет);
-//   двоеточие — сигнального цвета, как и число;
-//   ведущих нулей нет у дней и часов; у минут — есть («03м»).
+//   разделитель — пробел у покоящегося, мерцающее двоеточие
+//     у идущего. Двоеточие ставится ПЕРЕД последним числом: «9ч :03м»,
+//     «:3с». Ежели число одно — перед ним. Сие даёт единообразие
+//     вида: где бы ни стояло двоеточие, оно всегда перед младшей
+//     частью.
+//   мелькание — от единого тикера: colonVisible истина — видно,
+//     ложь — нет. Период пятьсот миллисекунд (полсекунды видно,
+//     полсекунды нет).
+//   ведущих нулей нет у дней, часов, секунд; у минут — есть.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -30,8 +30,6 @@ class TimerText extends StatelessWidget {
   final Color dim;
   final Color signal;
   final double numberSize;
-  // Фаза мелькания — вычисляется вызывающим по системным часам.
-  // Применяется только при running.
   final bool colonVisible;
 
   const TimerText({
@@ -46,13 +44,9 @@ class TimerText extends StatelessWidget {
   });
 
   // ─── Разбор на две старшие единицы ───
-  // Возвращает список пар: [(число, подпись), ...].
-  // Пусто, коли всё нуль. Одна пара, коли младшая нулевая.
-  // Две пары — старшая и следующая ненулевая.
-  // showSeconds — истина токмо у идущего таймера: до первой минуты
-  // показываются секунды, без ведущего нуля, с приглушённой «с».
-  // У покоящегося секунды не показываются вовсе.
-  static List<(String, String)> parts(int sec, {bool showSeconds = false}) {
+  // Возвращает список пар. Пусто — коли всё нуль. Идущий меньше
+  // минуты — одна пара секунд.
+  static List<(String, String)> parts(int sec, {required bool running}) {
     if (sec < 0) sec = 0;
     const daySec = 86400;
     const hourSec = 3600;
@@ -62,8 +56,13 @@ class TimerText extends StatelessWidget {
     final minutes = (sec % hourSec) ~/ 60;
     final secs = sec % 60;
 
-    // Минуты — двузначные с ведущим нулём; дни, часы, секунды — без.
     String mm(int n) => n.toString().padLeft(2, '0');
+
+    // Идущий меньше минуты: секунды.
+    if (running && days == 0 && hours == 0 && minutes == 0) {
+      if (secs == 0) return [('0', 'с')];
+      return [('$secs', 'с')];
+    }
 
     final out = <(String, String)>[];
     if (days > 0) {
@@ -74,30 +73,27 @@ class TimerText extends StatelessWidget {
       out.add((mm(minutes), 'м'));
     } else if (minutes > 0) {
       out.add((mm(minutes), 'м'));
-    } else if (showSeconds && secs > 0) {
-      // Секунды — токмо у идущего, до первой минуты.
-      out.add(('$secs', 'с'));
     }
     return out;
   }
 
   @override
   Widget build(BuildContext context) {
-    final primary = running ? signal : fg;
+    final primary = fg;
     final secondary = dim;
     final unitSize = numberSize * 2 / 3;
-    final partsList = parts(seconds, showSeconds: running);
+    final partsList = parts(seconds, running: running);
 
-    // Всё нуль — пусто.
     if (partsList.isEmpty) return const SizedBox.shrink();
 
     final children = <Widget>[];
     for (var i = 0; i < partsList.length; i++) {
       final (numText, unit) = partsList[i];
 
-      // Разделитель перед второй парой: пробел у покоящегося,
-      // мерцающее двоеточие у идущего.
-      if (i > 0) {
+      // Двоеточие — ПЕРЕД последним числом. У покоящегося — пробел.
+      // У идущего — мерцающее двоеточие (см. правило в шапке файла).
+      final isLast = i == partsList.length - 1;
+      if (isLast) {
         if (running) {
           children.add(Opacity(
             opacity: colonVisible ? 1.0 : 0.0,
@@ -108,6 +104,12 @@ class TimerText extends StatelessWidget {
                     fontSize: numberSize)),
           ));
         } else {
+          // Пробел между парами.
+          if (i > 0) children.add(const SizedBox(width: 4));
+        }
+      } else {
+        // Между числами — пробел (только у покоящегося).
+        if (i > 0 || true) {
           children.add(const SizedBox(width: 4));
         }
       }

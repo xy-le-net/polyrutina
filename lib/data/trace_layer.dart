@@ -2,11 +2,12 @@
 // trace_layer.dart — слой следов.
 //
 // След — универсальная сущность: примечание, комментарий, чек-лист,
-// привязка к файлу. След живёт независимо от того, к чему привязан.
+// привязка к файлу. След живёт независимо.
 //
 // Тело записи журнала (род trace):
 //   {
 //     "kind": "text" | "checklist",
+//     "slot": "work",
 //     "text": "...",
 //     "items": [{"text":"...","done":false}, ...],
 //     "parents": [1024, 1101],
@@ -15,17 +16,13 @@
 //     "deleted": true
 //   }
 //
-// Номер записи о создании следа — идентификатор следа в связях.
-// Связи двусторонние: при создании и разрыве пишутся обе стороны
-// в одной записи.
-//
-// Журнал. Слой не ходит в базу сам: при пуске он регистрируется
-// в JournalLayer на род trace. Записи приходят готовыми. Запись
-// новых — чрез JournalLayer, что передаётся первым аргументом.
+// slot — род блока рутины (note, prep, transit, work, idle, closeout,
+// summary). Различает следы одной рутины по блокам.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -47,6 +44,9 @@ class TraceKind {
 class Trace {
   final int id;
   String kind;
+  // Род блока рутины (note, prep, transit, work, idle, closeout,
+  // summary) либо пусто.
+  String slot;
   String text;
   List<TraceItem> items;
   List<int> parents;
@@ -57,6 +57,7 @@ class Trace {
   Trace({
     required this.id,
     this.kind = TraceKind.text,
+    this.slot = '',
     this.text = '',
     List<TraceItem>? items,
     List<int>? parents,
@@ -70,6 +71,7 @@ class Trace {
 
   Map<String, dynamic> toJson() => {
         'kind': kind,
+        'slot': slot,
         'text': text,
         'items': items.map((e) => e.toJson()).toList(),
         'parents': parents,
@@ -81,6 +83,7 @@ class Trace {
   factory Trace.fromJson(int id, Map<String, dynamic> j) => Trace(
         id: id,
         kind: j['kind'] as String? ?? TraceKind.text,
+        slot: j['slot'] as String? ?? '',
         text: j['text'] as String? ?? '',
         items: (j['items'] as List?)
                 ?.map((e) => TraceItem.fromJson(e as Map<String, dynamic>))
@@ -148,10 +151,10 @@ class TraceFile {
 }
 
 class TraceLayer extends ChangeNotifier {
-  // Следы по номеру записи.
   final Map<int, Trace> traces = {};
 
   File? _file;
+  Timer? _saveTimer;
 
   Future<void> init(JournalLayer journal) async {
     final dir = await getApplicationDocumentsDirectory();
@@ -166,6 +169,12 @@ class TraceLayer extends ChangeNotifier {
     );
 
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _saveTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadFromFile() async {
@@ -184,6 +193,13 @@ class TraceLayer extends ChangeNotifier {
     } catch (_) {}
   }
 
+  void _scheduleSave() {
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(milliseconds: 200), () {
+      _saveToFile();
+    });
+  }
+
   Future<void> _saveToFile() async {
     if (_file == null) return;
     final data = <String, dynamic>{
@@ -192,7 +208,12 @@ class TraceLayer extends ChangeNotifier {
     await _file!.writeAsString(jsonEncode(data));
   }
 
-  // ─── Применение одной записи журнала ───
+  Future<void> saveNow() async {
+    _saveTimer?.cancel();
+    _saveTimer = null;
+    await _saveToFile();
+  }
+
   void _applyEntry(JournalData e) {
     try {
       final data = jsonDecode(e.body) as Map<String, dynamic>;
@@ -204,6 +225,7 @@ class TraceLayer extends ChangeNotifier {
         final existing = traces[id];
         if (existing == null) return;
         existing.kind = data['kind'] as String? ?? existing.kind;
+        existing.slot = data['slot'] as String? ?? existing.slot;
         existing.text = data['text'] as String? ?? existing.text;
         if (data['items'] is List) {
           existing.items = (data['items'] as List)
@@ -240,6 +262,7 @@ class TraceLayer extends ChangeNotifier {
 
   Trace? find(int id) => traces[id];
 
+  // ─── Поиск следов ───
   List<Trace> attachedTo(int objectId) {
     final out = <Trace>[];
     for (final t in traces.values) {
@@ -250,126 +273,116 @@ class TraceLayer extends ChangeNotifier {
     return out;
   }
 
-  // ─── Мутации ───
+  // Первый след объекта с указанным slot (для поиска системного
+  // следа конкретного блока рутины).
+  Trace? findFirstBySlot(int objectId, String slot) {
+    Trace? found;
+    for (final t in traces.values) {
+      if (t.deleted) continue;
+      if (t.slot != slot) continue;
+      if (!t.parents.contains(objectId)) continue;
+      if (found == null || t.id < found.id) found = t;
+    }
+    return found;
+  }
+
+  // ─── Создание ───
   Future<int> createText(
     JournalLayer journal, {
+    String slot = '',
     String text = '',
     List<int> parents = const [],
   }) async {
     final body = jsonEncode({
       'kind': TraceKind.text,
+      'slot': slot,
       'text': text,
       'items': [],
       'parents': parents,
       'children': [],
       'files': [],
     });
-    return await journal.log(type: JournalType.trace, body: body);
+    final id = await journal.log(type: JournalType.trace, body: body);
+    _scheduleSave();
+    return id;
   }
 
   Future<int> createChecklist(
     JournalLayer journal, {
+    String slot = '',
     List<String> items = const [],
     List<int> parents = const [],
   }) async {
     final body = jsonEncode({
       'kind': TraceKind.checklist,
+      'slot': slot,
       'text': '',
       'items': items.map((s) => {'text': s, 'done': false}).toList(),
       'parents': parents,
       'children': [],
       'files': [],
     });
-    return await journal.log(type: JournalType.trace, body: body);
+    final id = await journal.log(type: JournalType.trace, body: body);
+    _scheduleSave();
+    return id;
   }
 
-  Future<void> _correct(
-      JournalLayer journal, int traceId, Map<String, dynamic> body) async {
-    body['target'] = traceId;
+  Future<void> _updateBody(JournalLayer journal, int traceId, Trace t) async {
+    final body = <String, dynamic>{
+      'target': traceId,
+      'kind': t.kind,
+      'slot': t.slot,
+      'text': t.text,
+      'items': t.items.map((e) => e.toJson()).toList(),
+      'parents': t.parents,
+      'children': t.children,
+      'files': t.files.map((e) => e.toJson()).toList(),
+      'deleted': t.deleted,
+    };
     await journal.log(
       type: JournalType.trace,
       body: jsonEncode(body),
       flags: JournalFlag.correction,
     );
+    _scheduleSave();
   }
 
   Future<void> updateText(
       JournalLayer journal, int traceId, String text) async {
     final t = traces[traceId];
     if (t == null) return;
-    await _correct(journal, traceId, {
-      'kind': t.kind,
-      'text': text,
-      'items': t.items.map((e) => e.toJson()).toList(),
-      'parents': t.parents,
-      'children': t.children,
-      'files': t.files.map((e) => e.toJson()).toList(),
-      'deleted': t.deleted,
-    });
+    t.text = text;
+    await _updateBody(journal, traceId, t);
   }
 
   Future<void> updateItems(
       JournalLayer journal, int traceId, List<TraceItem> items) async {
     final t = traces[traceId];
     if (t == null) return;
-    await _correct(journal, traceId, {
-      'kind': t.kind,
-      'text': t.text,
-      'items': items.map((e) => e.toJson()).toList(),
-      'parents': t.parents,
-      'children': t.children,
-      'files': t.files.map((e) => e.toJson()).toList(),
-      'deleted': t.deleted,
-    });
+    t.items = items;
+    await _updateBody(journal, traceId, t);
   }
 
   Future<void> remove(JournalLayer journal, int traceId) async {
     final t = traces[traceId];
     if (t == null) return;
-    await _correct(journal, traceId, {
-      'kind': t.kind,
-      'text': t.text,
-      'items': t.items.map((e) => e.toJson()).toList(),
-      'parents': t.parents,
-      'children': t.children,
-      'files': t.files.map((e) => e.toJson()).toList(),
-      'deleted': true,
-    });
+    t.deleted = true;
+    await _updateBody(journal, traceId, t);
   }
 
   Future<void> attach(JournalLayer journal, int traceId, int objectId) async {
     final t = traces[traceId];
     if (t == null) return;
     if (t.parents.contains(objectId)) return;
-    final newParents = [...t.parents, objectId];
-    await _correct(journal, traceId, {
-      'kind': t.kind,
-      'text': t.text,
-      'items': t.items.map((e) => e.toJson()).toList(),
-      'parents': newParents,
-      'children': t.children,
-      'files': t.files.map((e) => e.toJson()).toList(),
-      'deleted': t.deleted,
-    });
+    t.parents = [...t.parents, objectId];
+    await _updateBody(journal, traceId, t);
   }
 
   Future<void> detach(JournalLayer journal, int traceId, int objectId) async {
     final t = traces[traceId];
     if (t == null) return;
-    final newParents = t.parents.where((x) => x != objectId).toList();
-    await _correct(journal, traceId, {
-      'kind': t.kind,
-      'text': t.text,
-      'items': t.items.map((e) => e.toJson()).toList(),
-      'parents': newParents,
-      'children': t.children,
-      'files': t.files.map((e) => e.toJson()).toList(),
-      'deleted': t.deleted,
-    });
-  }
-
-  Future<void> saveNow() async {
-    await _saveToFile();
+    t.parents = t.parents.where((x) => x != objectId).toList();
+    await _updateBody(journal, traceId, t);
   }
 
   Future<void> resetAll() async {
