@@ -1,59 +1,41 @@
-# Имя пакета. Меняем редко — оно фигурирует в импортах:
-#   import 'package:polyrutina/...'
 name: polyrutina
-
-# Описание проекта. Служебное, ни на что не влияет.
-description: "Оперативный журнал работ в пространстве"
-
-# Запрет на публикацию в pub.dev. У нас приватный проект.
+description: Бортовой журнал — след работы, привязанный к месту.
 publish_to: 'none'
-
-# Версия приложения и номер сборки.
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.5.0
+  sdk: '>=3.11.0 <4.0.0'
 
-# ─────── ОСНОВНЫЕ ЗАВИСИМОСТИ ───────
 dependencies:
   flutter:
     sdk: flutter
 
-  # Стандартные иконки Cupertino (для iOS-стиля, нам пока не критично).
+  # Значки.
   cupertino_icons: ^1.0.8
 
-  # Drift — типизированный доступ к SQLite.
-  # Даёт таблицы на Dart, миграции, реактивные запросы.
-  drift: ^2.20.0
+  # База и пути.
+  drift: ^2.35.1
+  sqlite3_flutter_libs: ^0.5.42
+  path: ^1.9.1
+  path_provider: ^2.1.6
 
-  # Сам движок SQLite для Android/iOS/Windows.
-  # Без него Drift не найдёт встроенную библиотеку базы.
-  sqlite3_flutter_libs: ^0.5.24
-
-  # Определяет путь к папке документов приложения.
-  # Туда кладём файл базы, чтобы он пережил обновления.
-  path_provider: ^2.1.4
-
-  # Утилиты для склейки путей (join, basename и т. п.).
-  path: ^1.9.0
+  # Таблица журнала.
   table_view_ex: ^0.1.6
   two_dimensional_scrollables: ^0.3.9
 
-# ─────── ЗАВИСИМОСТИ ДЛЯ РАЗРАБОТКИ ───────
+  # pdf и share_plus не вписаны нарочно — добавим командою,
+  # дабы версии подобрались сами под окружение.
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
-  # Набор правил линтера от Flutter.
   flutter_lints: ^4.0.0
 
-  # Drift_dev — читает наши таблицы и генерирует database.g.dart.
-  drift_dev: ^2.20.0
+  # Генерация кода Drift.
+  build_runner: ^2.16.1
+  drift_dev: ^2.35.1
 
-  # Build_runner — запускает генераторов кода.
-  build_runner: ^2.4.12
-
-# ─────── СБОРКА ───────
 flutter:
   uses-material-design: true
   assets:

@@ -5,13 +5,12 @@
 //   слева — поле текста (три строки);
 //   справа — столбец: пульт чек-листа, пульт отправки/медиа.
 //
-// След различается парой (objectId, slot). При создании текстового
-// следа slot передаётся в тело.
+// След различается парой (objectId, slot).
 //
 // Пульт чек-листа:
-//   — нет неотмеченных (все отмечены либо пунктов нет) — икона
-//     «галочка в квадрате»;
-//   — есть неотмеченные — сигнальное число на месте иконы.
+//   — нет неотмеченных — икона «галочка в квадрате», приглушённая;
+//   — есть неотмеченные — сигнальное число В ЯДРЕ (centerText),
+//     без подписи сбоку.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -22,7 +21,7 @@ import '../data/operational_layer.dart';
 import '../data/trace_layer.dart';
 import 'app_scope.dart';
 import 'checklist_screen.dart';
-import 'pult.dart';
+import 'pult_core.dart';
 
 class TraceField extends StatefulWidget {
   final int objectId;
@@ -141,7 +140,6 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     );
   }
 
-  // Число неотмеченных в чек-листе сего блока.
   int _uncheckedCount() {
     final app = AppScope.of(context);
     final t = app.traceLayer.findFirstBySlot(widget.objectId, widget.slot);
@@ -163,10 +161,10 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     final pultSide = widget.side * bort.kPultSmall;
 
     // Пульт чек-листа: нет неотмеченных — галочка в квадрате;
-    // есть — сигнальное число.
+    // есть — сигнальное число в ядре.
     final unchecked = _uncheckedCount();
     const IconData chkIcon = Icons.check_box_outlined;
-    final String? chkLabel = unchecked > 0 ? '$unchecked' : null;
+    final String? chkCenter = unchecked > 0 ? '$unchecked' : null;
     final bool chkSelected = unchecked > 0;
 
     return Column(
@@ -218,7 +216,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
                   spec: PultSpec(
                     id: 'checklist',
                     icon: chkIcon,
-                    label: chkLabel,
+                    centerText: chkCenter,
                     selected: chkSelected,
                     onTap: _openChecklist,
                   ),

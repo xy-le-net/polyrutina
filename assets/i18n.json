@@ -42,7 +42,7 @@
     "routine.block.note": "описание",
     "routine.block.prep": "подготовка",
     "routine.block.transit": "переход",
-    "routine.block.work": "работа",
+    "routine.block.work": "выполнение",
     "routine.block.idle": "простой",
     "routine.block.closeout": "завершение",
     "routine.summary": "итог",
@@ -92,6 +92,10 @@
     "checklist.unmark_all": "снять все",
     "checklist.clear_all": "очистить всё",
 
+    "report.completed": "завершено",
+    "report.in_progress": "в процессе",
+    "report.subject": "Отчёт по рутинам",
+
     "stub.title": "раздел",
     "stub.text": "ещё не готов"
   },
@@ -139,7 +143,7 @@
     "routine.block.note": "note",
     "routine.block.prep": "prep",
     "routine.block.transit": "transit",
-    "routine.block.work": "work",
+    "routine.block.work": "execution",
     "routine.block.idle": "idle",
     "routine.block.closeout": "closeout",
     "routine.summary": "total",
@@ -188,6 +192,10 @@
     "checklist.mark_all": "mark all",
     "checklist.unmark_all": "unmark all",
     "checklist.clear_all": "clear all",
+
+    "report.completed": "completed",
+    "report.in_progress": "in progress",
+    "report.subject": "Routines report",
 
     "stub.title": "section",
     "stub.text": "not ready yet"

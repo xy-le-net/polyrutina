@@ -1,20 +1,21 @@
 // ═══════════════════════════════════════════════════════════════════
 // journal_layer.dart — слой журнала.
 //
-// Единственный, кто знает про базу и про формат тела записей.
-// Читает журнал после отметки последнего прочитанного, разбирает
-// по родам, отдаёт готовое зарегистрированным слоям.
+// Единственный, кто знает про базу и формат тела записей.
 //
-// Регистрация. Слой при пуске зовёт register с именем, списком
-// родов, что ему интересны, и функцией применения одной записи.
-// JournalLayer помнит по каждому слою номер последней отданной
-// ему записи — свой у каждого, дабы слой мог отстать и догнать.
+// Регистрация. Слой зовёт register с именем, списком родов, функцией
+// применения записи. JournalLayer помнит по каждому слою номер
+// последней отданной ему записи.
 //
-// Записи. Журнал неизменяем. Правка — новая запись с флагом
-// correction, вытесняющая прежнее состояние объекта при воспроизведении.
+// Раздача. pump читает всё после наименьшей отметки, раздаёт каждому
+// слою его роды, движет отметки вперёд. Цикл повторяется, покуда
+// не перестанут появляться новые записи.
 //
-// Поток. JournalLayer подписан на watchAll базы: всякая вставка
-// (своя либо чужая, из консоли журнала) тотчас раздаётся слоям.
+// Состояние отметок пишется в файл ОТЛОЖЕННО и только когда отметки
+// действительно изменились — флаг _stateDirty. Сие устраняет лишние
+// записи файла (прежде — на каждый pump).
+//
+// Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:async';
@@ -29,13 +30,9 @@ import 'package:path_provider/path_provider.dart';
 import 'database.dart';
 import 'journal_types.dart';
 
-// Функция применения одной записи, коий слой зарегистрировался.
 typedef ApplyFn = void Function(JournalData entry);
-
-// Функция сброса памяти слоя — зовётся при полном перечитывании.
 typedef ResetFn = void Function();
 
-// ─── Регистрация одного слоя ───
 class _LayerReg {
   final List<int> types;
   final ApplyFn apply;
@@ -51,30 +48,21 @@ class _LayerReg {
 }
 
 class JournalLayer extends ChangeNotifier {
-  // База. Единственное место в приложении, работающее с нею напрямую.
   final AppDb db;
   JournalLayer(this.db);
 
-  // Зарегистрированные слои по имени.
   final Map<String, _LayerReg> _layers = {};
-
-  // Сохранённые отметки, прочитанные из файла при init.
-  // Регистрация слоёв происходит после init, потому отметки держим
-  // отдельно, дабы в register восстановить нужную.
   final Map<String, int> _savedIds = {};
 
-  // Файл отметок.
   File? _stateFile;
+  Timer? _saveTimer;
 
-  // Флаг, гасящий параллельные заходы pump.
+  // Истина — отметки менялись, файл надобно записать.
+  bool _stateDirty = false;
+
   bool _pumping = false;
-
-  // Подписка на поток журнала.
   StreamSubscription<List<JournalData>>? _sub;
 
-  // ─── Пуск ───
-  // Читает сохранённые отметки, подписывается на поток.
-  // Регистрация слоёв — после сего, в main.
   Future<void> init() async {
     final dir = await getApplicationDocumentsDirectory();
     _stateFile = File(p.join(dir.path, 'journal_layer.json'));
@@ -84,13 +72,12 @@ class JournalLayer extends ChangeNotifier {
 
   @override
   void dispose() {
+    _saveTimer?.cancel();
     _sub?.cancel();
     super.dispose();
   }
 
   // ─── Регистрация ───
-  // Зовётся слоем при пуске. Восстанавливает прежнюю отметку,
-  // коли она сохранена.
   void register({
     required String name,
     required List<int> types,
@@ -106,13 +93,6 @@ class JournalLayer extends ChangeNotifier {
   }
 
   // ─── Раздача ───
-  // Читает всё после наименьшей отметки среди слоёв, проходит
-  // по записям и раздаёт каждому слою его роды. Отметка слоя
-  // движется по всем прочитанным записям, даже ежели род не его:
-  // слой «видел» запись и пропустил по роду.
-  //
-  // Цикл повторяется, покуда не перестанут появляться новые записи
-  // (могли лечь в журнал во время разбора).
   Future<void> pump() async {
     if (_pumping) return;
     if (_layers.isEmpty) return;
@@ -129,37 +109,34 @@ class JournalLayer extends ChangeNotifier {
             if (l.types.contains(e.type)) {
               try {
                 l.apply(e);
-              } catch (_) {
-                // Битые записи не роняют разбор: пропускаем.
-              }
+              } catch (_) {}
             }
             l.lastId = e.id;
+            // Отметка изменилась — файл надобно записать.
+            _stateDirty = true;
           }
         }
       }
     } finally {
       _pumping = false;
     }
-    await _saveState();
+    if (_stateDirty) _scheduleSave();
     notifyListeners();
   }
 
   // ─── Полное перечитывание ───
-  // Зовётся по кнопке «перечитать» в рубке либо по запросу слоя.
-  // Сбрасывает память слоёв, обнуляет отметки, воспроизводит заново.
   Future<void> reread() async {
     for (final l in _layers.values) {
       l.reset?.call();
       l.lastId = 0;
     }
-    await _saveState();
+    _savedIds.clear();
+    _stateDirty = true;
+    await _saveStateNow();
     await pump();
   }
 
   // ─── Запись ───
-  // Единственный способ что-либо занести в журнал.
-  // Возвращает номер записи — он же идентификатор создаваемого
-  // объекта (рутины, следа и подобного).
   Future<int> log({
     required int type,
     String body = '{}',
@@ -175,7 +152,7 @@ class JournalLayer extends ChangeNotifier {
     return id;
   }
 
-  // ─── Чтение (для вкладок и рубки) ───
+  // ─── Чтение ───
   Future<List<JournalData>> recent({int limit = 50}) {
     return (db.select(db.journal)
           ..orderBy([(t) => OrderingTerm.desc(t.id)])
@@ -205,7 +182,7 @@ class JournalLayer extends ChangeNotifier {
         .get();
   }
 
-  // ─── Управление (из рубки) ───
+  // ─── Управление ───
   Future<({int count, int bytes})> size() async {
     final all = await db.select(db.journal).get();
     final c = all.length;
@@ -220,7 +197,9 @@ class JournalLayer extends ChangeNotifier {
       l.reset?.call();
       l.lastId = 0;
     }
-    await _saveState();
+    _savedIds.clear();
+    _stateDirty = true;
+    await _saveStateNow();
     notifyListeners();
   }
 
@@ -249,7 +228,24 @@ class JournalLayer extends ChangeNotifier {
         .write(JournalCompanion(flags: Value(newFlags)));
   }
 
+  // Номер последней записи в журнале. Для проверки: есть ли новые
+  // записи после экспорта отчёта.
+  Future<int> lastEntryId() async {
+    final rows = await (db.select(db.journal)
+          ..orderBy([(t) => OrderingTerm.desc(t.id)])
+          ..limit(1))
+        .get();
+    return rows.isEmpty ? 0 : rows.first.id;
+  }
+
   // ─── Сохранение отметок ───
+  void _scheduleSave() {
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(milliseconds: 200), () {
+      _saveStateNow();
+    });
+  }
+
   Future<void> _loadState() async {
     if (_stateFile == null || !await _stateFile!.exists()) return;
     try {
@@ -265,11 +261,12 @@ class JournalLayer extends ChangeNotifier {
     } catch (_) {}
   }
 
-  Future<void> _saveState() async {
+  Future<void> _saveStateNow() async {
     if (_stateFile == null) return;
     final data = {
       'layers': _layers.map((k, v) => MapEntry(k, v.lastId)),
     };
     await _stateFile!.writeAsString(jsonEncode(data));
+    _stateDirty = false;
   }
 }

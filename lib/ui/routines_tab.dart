@@ -1,19 +1,12 @@
 // ═══════════════════════════════════════════════════════════════════
 // routines_tab.dart — вкладка рутин.
 //
-// Сверху — строка смены (пульс и таймер), прижата вправо.
-// Под ней — список рутин: лента на узком экране, мозаика на широком.
+// Сверху — строка смены. Под ней — список рутин.
 //
-// Сортировка: идущие (по времени пуска), покоящиеся (по lastActionAt),
-// завершённые внизу отделены строкою «завершено».
-//
-// Пульс рутины: в ходе — пауза; в покое — пуск блока (последний
-// пущенный либо «работа»); завершена — галочка (короткое снимает,
-// долгое даёт веер). Долгое в любом состоянии — дублировать/удалить.
-//
-// Связь смены и рутин — в AppContext.toggleShift.
-//
-// Тикер — единый AppTicker. Открытие карточки — app.openRoutine.
+// Пульт создания — в левом нижнем углу.
+// Пульт отчёта — в правом нижнем углу: активен, коли есть записи
+// после lastExportId; по касанию собирает текстовый файл и
+// показывает путь во всплывашке.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -24,7 +17,8 @@ import '../data/routine.dart';
 import '../data/ticker.dart';
 import 'app_scope.dart';
 import 'pulse.dart';
-import 'pult.dart';
+import 'pult_core.dart';
+import 'report.dart';
 import 'timer_text.dart';
 
 class RoutinesTab extends StatefulWidget {
@@ -37,6 +31,9 @@ class RoutinesTab extends StatefulWidget {
 class _RoutinesTabState extends State<RoutinesTab> {
   AppTicker? _ticker;
 
+  // Истина, коли в журнале есть записи после последнего экспорта.
+  bool _hasNewEntries = false;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -44,6 +41,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     _ticker?.removeListener(_onTick);
     _ticker = app.ticker;
     _ticker?.addListener(_onTick);
+    _refreshExportState();
   }
 
   void _onTick() {
@@ -51,8 +49,18 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final app = AppScope.of(context);
     final anyRunning =
         app.routineLayer.routines.any((r) => r.runningBlock != null) ||
-            app.bort.onShift;
+        app.bort.onShift;
     if (anyRunning) setState(() {});
+  }
+
+  // Проверка: есть ли записи после последнего экспорта.
+  Future<void> _refreshExportState() async {
+    final app = AppScope.of(context);
+    final last = await app.journal.lastEntryId();
+    final exported = app.bort.lastExportId;
+    if (mounted && _hasNewEntries != (last > exported)) {
+      setState(() => _hasNewEntries = last > exported);
+    }
   }
 
   @override
@@ -77,6 +85,19 @@ class _RoutinesTabState extends State<RoutinesTab> {
     if (context.mounted) {
       await app.openRoutine(r.id);
     }
+  }
+
+  // Экспорт отчёта: сборка и всплывашка с путём.
+  Future<void> _export(BuildContext context) async {
+    final app = AppScope.of(context);
+    // Мессенджер берётся ДО await — дабы context не пересекал
+    // асинхронный разрыв.
+    final messenger = ScaffoldMessenger.of(context);
+    final path = await ReportBuilder.build(app, app.i18n);
+    if (!mounted) return;
+    if (path == null) return;
+    messenger.showSnackBar(SnackBar(content: Text(path)));
+    await _refreshExportState();
   }
 
   ({List<Routine> active, List<Routine> done}) _sortedGroups(dynamic layer) {
@@ -146,6 +167,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
     final nameSize = side * bort.kName;
     final dateSize = side * bort.kTitle * 0.7;
+    const lineHeight = 0.7;
     final numberSize = side * bort.kNumberSmall;
     final pultSide = side * bort.kPultSmall;
     final strokeW = side * bort.kStroke;
@@ -156,9 +178,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final VoidCallback? pulseTap;
     if (r.completed) {
       pulseIcon = Icons.check_box_outlined;
-      pulseTap = () {
-        app.routineLayer.setCompleted(app.journal, r.id, false);
-      };
+      pulseTap = () => app.openRoutine(r.id);
     } else if (running) {
       pulseIcon = Icons.pause;
       pulseTap = () async {
@@ -234,6 +254,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
                       style: TextStyle(
                         color: textMain,
                         fontSize: nameSize,
+                        height: lineHeight,
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -243,6 +264,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
                     style: TextStyle(
                       color: textSoft,
                       fontSize: dateSize,
+                      height: lineHeight,
                     ),
                   ),
                   if (r.totalSeconds > 0) ...[
@@ -279,74 +301,47 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final dim = bort.dim;
     final side = PultScope.of(context).smallSide;
 
-    return LayoutBuilder(builder: (context, constraints) {
-      final width = constraints.maxWidth;
-      final mosaic = width >= 800;
-      const maxCols = 3;
-      final cols = mosaic ? (width / 400).floor().clamp(1, maxCols) : 1;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final mosaic = width >= 800;
+        const maxCols = 3;
+        final cols = mosaic ? (width / 400).floor().clamp(1, maxCols) : 1;
 
-      final groups = _sortedGroups(app.routineLayer);
-      final i18n = app.i18n;
+        final groups = _sortedGroups(app.routineLayer);
+        final i18n = app.i18n;
 
-      final shiftPulse = Padding(
-        padding: const EdgeInsets.fromLTRB(8, 8, 12, 4),
-        child: Align(
-          alignment: Alignment.centerRight,
-          child: Pulse(
-            spec: PultSpec(
-              id: 'shift',
-              icon: bort.onShift ? Icons.pause : Icons.play_arrow,
-              selected: bort.onShift,
-              onTap: () async {
-                await app.toggleShift();
-                if (mounted) setState(() {});
-              },
-            ),
-            seconds: bort.shiftSecondsNow,
-            running: bort.onShift,
-            fg: fg,
-            dim: dim,
-            bg: bg,
-            bgdim: bgdim,
-            signal: signal,
-            side: side,
-            colonVisible: app.ticker.colonVisible,
-            pultSize: side * bort.kPultSmall,
-          ),
-        ),
-      );
-
-      final items = <Widget>[];
-
-      for (final r in groups.active) {
-        items.add(
-          Padding(
-            padding: const EdgeInsets.all(4),
-            child: _plate(
-              context,
-              r,
+        final shiftPulse = Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 12, 4),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Pulse(
+              spec: PultSpec(
+                id: 'shift',
+                icon: bort.onShift ? Icons.pause : Icons.play_arrow,
+                selected: bort.onShift,
+                onTap: () async {
+                  await app.toggleShift();
+                  if (mounted) setState(() {});
+                },
+              ),
+              seconds: bort.shiftSecondsNow,
+              running: bort.onShift,
               fg: fg,
+              dim: dim,
               bg: bg,
               bgdim: bgdim,
-              dim: dim,
               signal: signal,
               side: side,
+              colonVisible: app.ticker.colonVisible,
+              pultSize: side * bort.kPultSmall,
             ),
           ),
         );
-      }
 
-      if (groups.done.isNotEmpty) {
-        items.add(
-          Padding(
-            padding: EdgeInsets.fromLTRB(8, side * 0.6, 8, side * 0.15),
-            child: Text(
-              i18n.t('routine.completed'),
-              style: TextStyle(color: dim, fontSize: side * 0.4),
-            ),
-          ),
-        );
-        for (final r in groups.done) {
+        final items = <Widget>[];
+
+        for (final r in groups.active) {
           items.add(
             Padding(
               padding: const EdgeInsets.all(4),
@@ -363,52 +358,99 @@ class _RoutinesTabState extends State<RoutinesTab> {
             ),
           );
         }
-      }
 
-      return Stack(
-        children: [
-          Column(
-            children: [
-              shiftPulse,
-              Expanded(
-                child: items.isEmpty
-                    ? Center(
-                        child: Text(
-                          app.i18n.t('routine.none'),
-                          style: TextStyle(color: dim),
-                        ),
-                      )
-                    : (mosaic
-                        ? GridView.count(
-                            padding: const EdgeInsets.fromLTRB(8, 4, 8, 80),
-                            crossAxisCount: cols,
-                            childAspectRatio: 2.5,
-                            children: items,
-                          )
-                        : ListView(
-                            padding: const EdgeInsets.fromLTRB(8, 4, 8, 80),
-                            children: items,
-                          )),
+        if (groups.done.isNotEmpty) {
+          items.add(
+            Padding(
+              padding: EdgeInsets.fromLTRB(8, side * 0.6, 8, side * 0.15),
+              child: Text(
+                i18n.t('routine.completed'),
+                style: TextStyle(color: dim, fontSize: side * 0.4),
               ),
-            ],
-          ),
-          Positioned(
-            left: 12,
-            bottom: 12,
-            child: Pult(
-              spec: PultSpec(
-                id: 'create_routine',
-                icon: Icons.add,
-                onTap: () => _create(context),
-              ),
-              fg: fg,
-              bg: bg,
-              signal: signal,
-              overrideSize: side,
             ),
-          ),
-        ],
-      );
-    });
+          );
+          for (final r in groups.done) {
+            items.add(
+              Padding(
+                padding: const EdgeInsets.all(4),
+                child: _plate(
+                  context,
+                  r,
+                  fg: fg,
+                  bg: bg,
+                  bgdim: bgdim,
+                  dim: dim,
+                  signal: signal,
+                  side: side,
+                ),
+              ),
+            );
+          }
+        }
+
+        return Stack(
+          children: [
+            Column(
+              children: [
+                shiftPulse,
+                Expanded(
+                  child: items.isEmpty
+                      ? Center(
+                          child: Text(
+                            app.i18n.t('routine.none'),
+                            style: TextStyle(color: dim),
+                          ),
+                        )
+                      : (mosaic
+                            ? GridView.count(
+                                padding: const EdgeInsets.fromLTRB(8, 4, 8, 80),
+                                crossAxisCount: cols,
+                                childAspectRatio: 2.5,
+                                children: items,
+                              )
+                            : ListView(
+                                padding: const EdgeInsets.fromLTRB(8, 4, 8, 80),
+                                children: items,
+                              )),
+                ),
+              ],
+            ),
+            // Пульт создания — левый нижний угол.
+            Positioned(
+              left: 12,
+              bottom: 12,
+              child: Pult(
+                spec: PultSpec(
+                  id: 'create_routine',
+                  icon: Icons.add,
+                  onTap: () => _create(context),
+                ),
+                fg: fg,
+                bg: bg,
+                signal: signal,
+                overrideSize: side,
+              ),
+            ),
+            // Пульт отчёта — правый нижний угол.
+            Positioned(
+              right: 12,
+              bottom: 12,
+              child: Pult(
+                spec: PultSpec(
+                  id: 'report',
+                  icon: Icons.description_outlined,
+                  selected: _hasNewEntries,
+                  onTap: _hasNewEntries ? () => _export(context) : null,
+                ),
+                fg: _hasNewEntries ? fg : dim,
+                bg: bg,
+                signal: signal,
+                overrideSize: side,
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 }

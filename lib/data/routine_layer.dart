@@ -1,22 +1,21 @@
 // ═══════════════════════════════════════════════════════════════════
 // routine_layer.dart — слой рутин.
 //
-// Держит список рутин и их блоки. Номер рутины — номер записи
-// о её создании в журнале.
+// Держит список рутин и их блоки.
 //
 // Журнал. Регистрируется в JournalLayer на род routine.
 //
-// Кэш. Пишется отложенно (200 мс). При сворачивании — saveNow.
+// Кэш. Пишется отложенно (200 мс). currentRoutineId — в памяти;
+// lastActiveBlockKind — в кэше (для прокрутки после перезапуска).
 //
-// currentRoutineId. Номер рутины, чей блок идёт. В памяти.
+// Завершённость. Установка гасит идущий блок.
 //
-// lastActiveBlockKind. Род последнего пущенного блока. НЕ сбрасывается
-// при остановке. Хранится в кэше (не токмо в памяти), дабы после
-// перезапуска прокрутка карточки шла к прежнему блоку.
+// Правка времени. setBlockTime ставит пометку timeEdited; при пуске
+// блока пометка снимается.
 //
-// Завершённость. Установка гасит идущий блок. Снятие пуском — косвенно.
-//
-// Флаги. Биты JournalFlag.
+// Дублирование. Копируются: имя, флаги, следы блоков описания,
+// подготовки, завершения (текст и чек-лист). Следы перехода,
+// выполнения, простоя не переносятся — они о конкретной работе.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -33,6 +32,7 @@ import 'database.dart';
 import 'journal_layer.dart';
 import 'journal_types.dart';
 import 'routine.dart';
+import 'trace_layer.dart';
 
 class RoutineLayer extends ChangeNotifier {
   // ─── Текущее состояние ───
@@ -41,7 +41,9 @@ class RoutineLayer extends ChangeNotifier {
   int? currentRoutineId;
   String? lastActiveBlockKind;
 
-  // ─── Служебное ───
+  // Ссылка на слой следов — нужна для дублирования.
+  TraceLayer? _traces;
+
   File? _file;
   Timer? _saveTimer;
 
@@ -51,8 +53,8 @@ class RoutineLayer extends ChangeNotifier {
     return copy;
   }
 
-  // ─── Пуск ───
-  Future<void> init(JournalLayer journal) async {
+  Future<void> init(JournalLayer journal, TraceLayer traces) async {
+    _traces = traces;
     final dir = await getApplicationDocumentsDirectory();
     _file = File(p.join(dir.path, 'routine_layer.json'));
     await _loadFromFile();
@@ -110,7 +112,7 @@ class RoutineLayer extends ChangeNotifier {
     await _saveToFile();
   }
 
-  // ─── Применение одной записи журнала ───
+  // ─── Применение записи журнала ───
   void _applyEntry(JournalData e) {
     try {
       final data = jsonDecode(e.body) as Map<String, dynamic>;
@@ -186,11 +188,7 @@ class RoutineLayer extends ChangeNotifier {
           final secs = (data['seconds'] as num?)?.toInt();
           final r = findRoutine(id);
           if (r != null && kind != null && secs != null) {
-            final b = r.blockOf(kind);
-            if (b != null) {
-              b.accumulatorSeconds = secs;
-              b.startedAt = null;
-            }
+            r.blockOf(kind)?.setEditedTime(secs);
             r.lastActionAt = e.time;
           }
           break;
@@ -206,6 +204,8 @@ class RoutineLayer extends ChangeNotifier {
   }
 
   // ─── Дублирование ───
+  // Копируются имя, флаги и следы блоков note, prep, closeout
+  // (текст и чек-листы). Прочие следы не переносятся.
   Future<Routine?> duplicateRoutine(JournalLayer journal, int sourceId) async {
     final src = findRoutine(sourceId);
     if (src == null) return null;
@@ -216,6 +216,43 @@ class RoutineLayer extends ChangeNotifier {
     if (src.flags != 0) {
       await setFlags(journal, r.id, src.flags);
     }
+
+    // Копирование следов.
+    final traces = _traces;
+    if (traces != null) {
+      const copySlots = ['note', 'prep', 'closeout'];
+      for (final slot in copySlots) {
+        final t = traces.findFirstBySlot(src.id, slot);
+        if (t == null) continue;
+
+        // Текстовый след.
+        if (t.kind == TraceKind.text && t.text.isNotEmpty) {
+          await traces.createText(
+            journal,
+            slot: slot,
+            text: t.text,
+            parents: [r.id],
+          );
+        }
+
+        // Чек-лист.
+        if (t.kind == TraceKind.checklist) {
+          final items = t.items
+              .where((e) => e.text.trim().isNotEmpty)
+              .map((e) => e.text)
+              .toList();
+          if (items.isNotEmpty) {
+            await traces.createChecklist(
+              journal,
+              slot: slot,
+              items: items,
+              parents: [r.id],
+            );
+          }
+        }
+      }
+    }
+
     return findRoutine(r.id);
   }
 
@@ -274,7 +311,6 @@ class RoutineLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ─── Завершённость ───
   Future<void> setCompleted(JournalLayer journal, int id, bool value) async {
     final r = findRoutine(id);
     if (r == null) return;
@@ -305,14 +341,13 @@ class RoutineLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ─── Правка времени блока ───
   Future<void> setBlockTime(
       JournalLayer journal, int routineId, String kind, int seconds) async {
     final r = findRoutine(routineId);
     if (r == null) return;
     final b = r.blockOf(kind);
     if (b == null || b.isRunning) return;
-    b.accumulatorSeconds = seconds;
+    b.setEditedTime(seconds);
     r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     await journal.log(
       type: JournalType.routine,
@@ -323,7 +358,6 @@ class RoutineLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ─── Блоки ───
   Future<void> toggleBlock(
       JournalLayer journal, int routineId, String kind) async {
     final r = findRoutine(routineId);
@@ -343,7 +377,6 @@ class RoutineLayer extends ChangeNotifier {
     if (r == null) return;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
-    // Гасим текущую рутину, ежели иная.
     if (currentRoutineId != null && currentRoutineId != routineId) {
       final other = findRoutine(currentRoutineId!);
       if (other != null) {
@@ -360,7 +393,6 @@ class RoutineLayer extends ChangeNotifier {
       }
     }
 
-    // Гасим прочие блоки сей рутины.
     for (final b in r.blocks) {
       if (b.isRunning && b.kind != kind) {
         b.pause(at: now);
@@ -410,7 +442,6 @@ class RoutineLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ─── Поиск и вспомогательное ───
   Routine? findRoutine(int id) {
     for (final r in routines) {
       if (r.id == id) return r;

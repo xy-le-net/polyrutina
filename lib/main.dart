@@ -2,21 +2,23 @@
 // main.dart — точка входа и управитель.
 //
 // Порядок пуска: журнал открывает базу и подписывается на поток;
-// слои регистрируются в нём и читают кэши; JournalLayer раздаёт
-// накопленные записи.
+// слои регистрируются в нём и читают кэши; JournalLayer тотчас
+// раздаёт накопленные записи.
 //
-// Вложенность. AppScope, PultScope, PultLayer живут в MaterialApp.builder.
-// Корневой пульт (компас) — в том же слое.
+// Вложенность. AppScope, PultScope, PultLayer живут в MaterialApp.builder —
+// внутри MaterialApp, но поверх всех маршрутов.
 //
-// Перетаскивание компаса. Глобальные координаты пальца: при начале
-// жеста запоминается точка (_dragPointerStart) и позиция (_dragStartPos).
-// При движении позиция = старт + (текущее − стартовое). Сие надёжно:
-// положение виджета не участвует в арифметике, дерево можно
-// перестраивать свободно.
+// Перетаскивание компаса. onDragStart запоминает стартовую точку
+// пальца (глобальную) и текущее положение пульта. onDragUpdate даёт
+// новую глобальную точку; позиция считается как старт + (текущее −
+// стартовое). Сие надёжнее накопления дельт от текущего положения:
+// дерево можно перестраивать свободно.
 //
-// Открытая рутина: восстанавливается при возврате на вкладку Рутины.
+// Открытая рутина. При переключении на иную вкладку карточка
+// снимается, номер запоминается. Возврат на Рутины — открывается
+// вновь.
 //
-// Тикер — единый AppTicker (500 мс).
+// Единый тикер AppTicker — 500 мс.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -33,7 +35,8 @@ import 'data/trace_layer.dart';
 import 'data/ticker.dart';
 import 'data/i18n.dart';
 import 'ui/app_scope.dart';
-import 'ui/pult.dart';
+import 'ui/pult_core.dart';
+import 'ui/pult_layer.dart';
 import 'ui/root_pult.dart';
 import 'ui/stub_tab.dart';
 import 'ui/rubka_tab.dart';
@@ -61,13 +64,13 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   I18n? _i18n;
   int _tab = 4;
 
-  // Перетаскивание: текущее положение, стартовая позиция и стартовая
-  // точка пальца — в глобальных координатах.
-  Offset? _dragOffset;
-  Offset? _dragStartPos;
-  Offset? _dragPointerStart;
+  // Перетаскивание компаса.
+  Offset? _dragOffset; // текущее положение
+  Offset? _dragStartPultPos; // положение пульта в начале жеста
+  Offset? _dragStartGlobal; // глобальная точка пальца в начале
   bool _rootOpen = false;
 
+  // Открытая рутина: восстанавливается при возврате на Рутины.
   int? _openedRoutineId;
 
   static const List<RootTabItem> _tabs = [
@@ -111,7 +114,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
         WidgetsBinding.instance.platformDispatcher.platformBrightness;
     await _journal.init();
     await _bort.init(_journal, systemBrightness);
-    await _routineLayer.init(_journal);
+    await _routineLayer.init(_journal, _traceLayer);
     await _traceLayer.init(_journal);
     _i18n = await I18n.load(_bort.lang);
     if (mounted) setState(() => _tab = _bort.tab);
@@ -153,6 +156,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     }
   }
 
+  // ─── Смена вкладки ───
   Future<void> _switchTab(int i) async {
     _pultState.close();
 
@@ -196,6 +200,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _openedRoutineId = null;
   }
 
+  // ─── Восемь якорей ───
   Offset _anchorPosition(String anchor, Size size, double s) {
     const m = 6.0;
     switch (anchor) {
@@ -329,17 +334,16 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                               bg: _bort.bg,
                               signal: _bort.signal,
                               labelsSystem: _bort.labelsSystem,
-                              translate: _i18n!.t,
-                              onDragStart: (globalPos) {
-                                _dragPointerStart = globalPos;
-                                _dragStartPos = pos;
+                              translate: (k) => _i18n!.t(k),
+                              onDragStart: (global) {
+                                _dragStartPultPos = pos;
+                                _dragStartGlobal = global;
                               },
-                              onDragUpdate: (globalPos) {
-                                final startPtr = _dragPointerStart ?? globalPos;
-                                final startPos = _dragStartPos ?? pos;
-                                final delta = globalPos - startPtr;
+                              onDragUpdate: (global) {
+                                final start = _dragStartPultPos ?? pos;
+                                final g0 = _dragStartGlobal ?? global;
                                 setState(() {
-                                  _dragOffset = startPos + delta;
+                                  _dragOffset = start + (global - g0);
                                 });
                               },
                               onDragEnd: () {
@@ -347,8 +351,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                                 final nearest = _nearestAnchor(p, size, side);
                                 setState(() {
                                   _dragOffset = null;
-                                  _dragStartPos = null;
-                                  _dragPointerStart = null;
+                                  _dragStartPultPos = null;
+                                  _dragStartGlobal = null;
                                 });
                                 _bort.setSilent('anchor', nearest);
                               },

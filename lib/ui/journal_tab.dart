@@ -4,13 +4,11 @@
 // Сверху таблица записей, под нею консоль ручного ввода, внизу ряд
 // пультов: род записи, флаги, отправка.
 //
-// Таблица обновляется чрез поток watchRecent — всякая запись
-// в журнал является тотчас.
+// Роды записи в сем пульте: след, рутина, таймер, актор. Род «борт»
+// (интерфейс) вручную не вводится: настройки пишутся системою, коли
+// надобно.
 //
-// Журнал. Слой JournalLayer сам раздаёт записи слоям; вкладке
-// надобно токмо записать новую (log) и отобразить поток.
-// Особый случай: запись рода bort с ключом lang требует
-// перезагрузки словаря.
+// Таблица обновляется чрез поток watchRecent.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -23,7 +21,7 @@ import 'package:table_view_ex/table_view_ex.dart';
 import '../data/database.dart';
 import '../data/journal_types.dart';
 import 'app_scope.dart';
-import 'pult.dart';
+import 'pult_core.dart';
 
 class JournalTab extends StatefulWidget {
   const JournalTab({super.key});
@@ -37,6 +35,14 @@ class _JournalTabState extends State<JournalTab> {
   List<JournalData> _entries = [];
   StreamSubscription<List<JournalData>>? _journalSub;
   final _widthCalc = _JournalWidthCalculator();
+
+  // Роды, доступные вручную: без «борта».
+  static const List<int> _manualTypes = [
+    JournalType.trace,
+    JournalType.routine,
+    JournalType.timer,
+    JournalType.actor,
+  ];
 
   @override
   void initState() {
@@ -58,9 +64,6 @@ class _JournalTabState extends State<JournalTab> {
     super.dispose();
   }
 
-  // Отправка консольной записи в журнал. JournalLayer сам раздаст
-  // её слоям. Особый случай: запись рода bort с ключом lang —
-  // перезагружаем словарь.
   Future<void> _send() async {
     final app = AppScope.of(context);
     final bort = app.bort;
@@ -79,10 +82,8 @@ class _JournalTabState extends State<JournalTab> {
     if (bort.selectedType == JournalType.bort && text.contains('"lang"')) {
       await app.reloadI18n();
     }
-    // Таблица обновится сама чрез поток.
   }
 
-  // ─── Ячейка таблицы ───
   Widget _cell(BuildContext context, int colIndex, int rowIndex) {
     final app = AppScope.of(context);
     final i18n = app.i18n;
@@ -129,20 +130,19 @@ class _JournalTabState extends State<JournalTab> {
     );
   }
 
-  // ─── Иконы родов ───
   IconData _typeIcon(int t) {
     const icons = [
-      Icons.edit_note, // trace
-      Icons.checklist, // routine
-      Icons.timer_outlined, // timer
-      Icons.person_outline, // actor
-      Icons.tune, // bort
+      Icons.edit_note,
+      Icons.checklist,
+      Icons.timer_outlined,
+      Icons.person_outline,
+      Icons.tune,
     ];
     final i = JournalType.all.indexOf(t);
     return i >= 0 ? icons[i] : Icons.help_outline;
   }
 
-  // ─── Построитель подпультов рода ───
+  // Построитель подпультов рода: токмо четыре рода (без «борта»).
   List<PultSpec> _buildTypeSubs(BuildContext context) {
     final app = AppScope.of(context);
     final bort = app.bort;
@@ -156,9 +156,9 @@ class _JournalTabState extends State<JournalTab> {
     ];
 
     final out = <PultSpec>[];
-    for (var i = 0; i < JournalType.all.length; i++) {
-      final t = JournalType.all[i];
-      if (t == bort.selectedType) continue; // текущий не дублируется
+    for (final t in _manualTypes) {
+      if (t == bort.selectedType) continue;
+      final i = JournalType.all.indexOf(t);
       out.add(PultSpec(
         id: 'type_$t',
         icon: _typeIcon(t),
@@ -179,7 +179,6 @@ class _JournalTabState extends State<JournalTab> {
     return n;
   }
 
-  // ─── Построитель подпультов флагов ───
   List<PultSpec> _buildFlagSubs(BuildContext context) {
     final app = AppScope.of(context);
     final bort = app.bort;
@@ -229,6 +228,13 @@ class _JournalTabState extends State<JournalTab> {
     final bg = bort.bg;
     final signal = bort.signal;
     final side = PultScope.of(context).smallSide;
+
+    // Тип, выбранный в борте, может быть «борт» из прошлого. Тогда
+    // показываем «след» вместо него.
+    int shownType = bort.selectedType;
+    if (!_manualTypes.contains(shownType)) {
+      shownType = JournalType.trace;
+    }
 
     final columns = [
       TableViewExColumnConfig(
@@ -298,7 +304,7 @@ class _JournalTabState extends State<JournalTab> {
               Pult(
                 spec: PultSpec(
                   id: 'type',
-                  icon: _typeIcon(bort.selectedType),
+                  icon: _typeIcon(shownType),
                   subsBuilder: () => _buildTypeSubs(context),
                 ),
                 fg: fg,

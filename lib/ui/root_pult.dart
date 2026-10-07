@@ -1,22 +1,23 @@
 // ═══════════════════════════════════════════════════════════════════
 // root_pult.dart — корневой пульт (компас) и веер вкладок.
 //
-// Свёрнутый — компас. Касание открывает веер; перетаскивание — за
-// любое место иконы.
+// Свёрнутый — компас. Касание открывает веер вкладок. Перетаскивание
+// за любое место иконы — по глобальным координатам пальца.
 //
-// Перетаскивание. onDragStart / onDragUpdate получают ГЛОБАЛЬНЫЕ
-// координаты пальца. Вызывающий (main) запоминает стартовую точку и
-// считает позицию как старт + (текущее − стартовое). Сие надёжнее
-// прежнего накопления дельт: положение виджета не участвует в
-// арифметике, дерево можно перестраивать свободно.
+// Веер вкладок строится единым виджетом Pult: подписи автоматически
+// получают подложку, как у прочих подпультов. Столбец икон — ровный;
+// подписи выступают с той стороны, где просторнее: пульт в правой
+// половине экрана — подписи слева, иначе справа.
 //
-// Подписи вкладок. Показываются справа от иконы, ежели labelsSystem.
-// Строка подписи берётся чрез translate(labelKey).
+// onDragStart / onDragUpdate принимают ГЛОБАЛЬНЫЕ координаты пальца.
+// onDragEnd без параметра.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
+
+import 'pult_core.dart';
 
 class RootTabItem {
   final IconData icon;
@@ -39,7 +40,7 @@ class RootPult extends StatelessWidget {
   final bool labelsSystem;
   final String Function(String key) translate;
 
-  // Обратные вызовы перетаскивания — глобальные координаты.
+  // Глобальные координаты пальца.
   final void Function(Offset globalPosition) onDragStart;
   final void Function(Offset globalPosition) onDragUpdate;
   final VoidCallback onDragEnd;
@@ -79,6 +80,12 @@ class RootPult extends StatelessWidget {
       );
     }
 
+    // ─── Сторона подписей ───
+    // Пульт в правой половине экрана — подписи слева, иначе справа.
+    final centerX = position.dx + side / 2;
+    final labelsLeft = centerX > area.width / 2;
+
+    // ─── Построение вкладок ───
     final items = <Widget>[];
     for (var i = 0; i < tabs.length; i++) {
       final t = tabs[i];
@@ -87,15 +94,24 @@ class RootPult extends StatelessWidget {
       items.add(
         Padding(
           padding: const EdgeInsets.all(2),
-          child: GestureDetector(
-            onTap: () => onSwitchTab(i),
-            child: _tabItem(t.icon, label, active, side * 2 / 3),
+          child: Pult(
+            spec: PultSpec(
+              id: 'tab_$i',
+              icon: t.icon,
+              label: label,
+              selected: active,
+              onTap: () => onSwitchTab(i),
+            ),
+            fg: fg,
+            bg: bg,
+            signal: signal,
+            overrideSize: side * 2 / 3,
+            labelSideLeft: labelsLeft,
           ),
         ),
       );
     }
 
-    final centerX = position.dx + side / 2;
     final centerY = position.dy + side / 2;
     final pushRight = centerX > area.width / 2;
     final pushDown = centerY <= area.height / 2;
@@ -130,27 +146,6 @@ class RootPult extends StatelessWidget {
           child: layout,
         ),
       ),
-    );
-  }
-
-  // ─── Икона вкладки, при нужде — с подписью ───
-  Widget _tabItem(IconData icon, String? label, bool active, double s) {
-    final core = _core(icon, active, s);
-    if (label == null || label.isEmpty) return core;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        core,
-        const SizedBox(width: 6),
-        Text(
-          label,
-          style: TextStyle(
-            color: active ? signal : fg,
-            fontSize: s * 0.35,
-          ),
-        ),
-      ],
     );
   }
 
@@ -195,7 +190,7 @@ class RootPult extends StatelessWidget {
     return core;
   }
 
-  // Раскладка веера вкладок.
+  // Раскладка веера вкладок: столбец, при нехватке — несколько столбцов.
   Widget _layout(
     List<Widget> items,
     Size available,

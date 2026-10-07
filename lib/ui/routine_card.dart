@@ -3,23 +3,24 @@
 //
 // Шапка: системная стрелка назад и поле имени (BortField).
 //
-// Тело — семь блоков: описание (note), подготовка (prep), переход
-// (transit), работа (work), простой (idle), завершение (closeout),
-// итог (summary).
+// Тело — семь блоков: описание, подготовка, переход, выполнение,
+// простой, завершение, итог.
 //
-// Гамма. Обычный блок — гамма темы. Активный — противоположная
-// гамма целиком.
+// Гамма. Обычный блок — гамма темы. Активный — противоположная.
+//
+// Свёртка. Касание названия блока — свернуть либо развернуть.
+// В свёрнутом виде остаётся шапка (название и пульс). Итог не
+// сворачивается. Состояние — в борте, у каждой рутины своё;
+// по умолчанию переход и простой свёрнуты.
 //
 // Итог. Вместо пульса — чек-бокс завершённости с таймером слева.
-// Установка гасит идущий блок.
-//
-// Нулевой блок. Кроме поля следа — пульт флагов.
+// Установка гасит идущий блок. Под таймером — список блоков с
+// ненулевым временем.
 //
 // Правка времени. Долгое нажатие на пульс остановленного блока —
-// поле ввода.
+// поле ввода. Правленое время подчёркивается.
 //
-// Прокрутка. При открытии — к последнему пущенному блоку
-// (lastActiveBlockKind в слое, хранится в кэше).
+// Прокрутка. При открытии — к последнему пущенному блоку.
 //
 // Тикер — единый AppTicker.
 //
@@ -34,7 +35,8 @@ import '../data/ticker.dart';
 import 'app_scope.dart';
 import 'bort_field.dart';
 import 'pulse.dart';
-import 'pult.dart';
+import 'pult_core.dart';
+import 'pult_tick.dart';
 import 'timer_text.dart';
 import 'trace_field.dart';
 
@@ -233,12 +235,15 @@ class _RoutineCardState extends State<RoutineCard> {
       seconds: 0,
       showPulse: false,
       showCompletion: false,
+      timeEdited: false,
+      collapsed: bort.isBlockCollapsed(r.id, 'note'),
       bort: bort,
       app: app,
       routine: r,
       side: side,
       colonVisible: app.ticker.colonVisible,
       i18n: i18n,
+      allBlocks: r.blocks,
     ));
 
     for (final k in RoutineBlock.kinds) {
@@ -251,12 +256,15 @@ class _RoutineCardState extends State<RoutineCard> {
         seconds: b?.secondsNowAt(now) ?? 0,
         showPulse: true,
         showCompletion: false,
+        timeEdited: b?.timeEdited ?? false,
+        collapsed: bort.isBlockCollapsed(r.id, k),
         bort: bort,
         app: app,
         routine: r,
         side: side,
         colonVisible: app.ticker.colonVisible,
         i18n: i18n,
+        allBlocks: r.blocks,
       ));
     }
 
@@ -268,12 +276,15 @@ class _RoutineCardState extends State<RoutineCard> {
       seconds: r.totalSeconds,
       showPulse: false,
       showCompletion: true,
+      timeEdited: false,
+      collapsed: false,
       bort: bort,
       app: app,
       routine: r,
       side: side,
       colonVisible: app.ticker.colonVisible,
       i18n: i18n,
+      allBlocks: r.blocks,
     ));
 
     return Scaffold(
@@ -311,12 +322,15 @@ class _RoutineCardState extends State<RoutineCard> {
     required int seconds,
     required bool showPulse,
     required bool showCompletion,
+    required bool timeEdited,
+    required bool collapsed,
     required dynamic bort,
     required dynamic app,
     required Routine routine,
     required double side,
     required bool colonVisible,
     required dynamic i18n,
+    required List<RoutineBlock> allBlocks,
   }) {
     final Color bg;
     final Color bgdim;
@@ -392,7 +406,7 @@ class _RoutineCardState extends State<RoutineCard> {
           ],
         );
       } else {
-        headerRight = Pulse(
+        Widget pulse = Pulse(
           spec: PultSpec(
             id: 'block_$kind',
             icon: _blockIcon(kind),
@@ -413,6 +427,17 @@ class _RoutineCardState extends State<RoutineCard> {
           colonVisible: colonVisible,
           pultSize: pultSide,
         );
+        if (timeEdited) {
+          pulse = Container(
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: dim, width: strokeW * 2),
+              ),
+            ),
+            child: pulse,
+          );
+        }
+        headerRight = pulse;
       }
     } else if (showCompletion) {
       headerRight = Row(
@@ -454,6 +479,49 @@ class _RoutineCardState extends State<RoutineCard> {
     }
 
     final bool showFlags = kind == 'note';
+    final bool canCollapse = kind != 'summary';
+    final bool isCollapsed = canCollapse && collapsed;
+
+    Widget? body;
+    if (kind == 'summary') {
+      final rows = <Widget>[];
+      for (final b in allBlocks) {
+        if (b.accumulatorSeconds > 0) {
+          rows.add(Padding(
+            padding: EdgeInsets.only(top: side * 0.1),
+            child: Text(
+              '${i18n.t('routine.block.${b.kind}')}: '
+              '${_shortTime(b.accumulatorSeconds)}.',
+              style: TextStyle(
+                  color: dim, fontSize: side * (bort.kNumberSmall as double)),
+            ),
+          ));
+        }
+      }
+      if (rows.isNotEmpty) {
+        body = Padding(
+          padding: EdgeInsets.only(top: pad * 0.5),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: rows,
+          ),
+        );
+      }
+    } else if (!isCollapsed) {
+      body = TraceField(
+        objectId: routine.id,
+        slot: kind,
+        fg: fg,
+        dim: dim,
+        bg: bg,
+        signal: signal,
+        side: side,
+        blockTitle: title,
+        routineTitle: routine.name.isEmpty
+            ? i18n.t('routine.no_name') as String
+            : routine.name,
+      );
+    }
 
     return Container(
       key: key,
@@ -474,9 +542,18 @@ class _RoutineCardState extends State<RoutineCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(color: dim, fontSize: titleSize),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: canCollapse
+                      ? () {
+                          (bort.toggleBlockCollapsed as Function)(
+                              routine.id, kind);
+                        }
+                      : null,
+                  child: Text(
+                    title,
+                    style: TextStyle(color: dim, fontSize: titleSize),
+                  ),
                 ),
               ),
               if (showFlags)
@@ -496,24 +573,23 @@ class _RoutineCardState extends State<RoutineCard> {
               if (headerRight != null) headerRight,
             ],
           ),
-          SizedBox(height: pad * 0.5),
-          if (kind != 'summary')
-            TraceField(
-              objectId: routine.id,
-              slot: kind,
-              fg: fg,
-              dim: dim,
-              bg: bg,
-              signal: signal,
-              side: side,
-              blockTitle: title,
-              routineTitle: routine.name.isEmpty
-                  ? i18n.t('routine.no_name') as String
-                  : routine.name,
-            ),
+          if (body != null) ...[
+            SizedBox(height: pad * 0.5),
+            body,
+          ],
         ],
       ),
     );
+  }
+
+  String _shortTime(int sec) {
+    final days = sec ~/ 86400;
+    final hours = (sec % 86400) ~/ 3600;
+    final minutes = (sec % 3600) ~/ 60;
+    String two(int n) => n.toString().padLeft(2, '0');
+    if (days > 0) return '$daysд $hoursч';
+    if (hours > 0) return '$hoursч ${two(minutes)}м';
+    return '${two(minutes)}м';
   }
 
   List<PultSpec> _flagSubs(dynamic app, Routine routine, dynamic i18n) {

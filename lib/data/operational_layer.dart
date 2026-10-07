@@ -3,20 +3,26 @@
 //
 // Состояние интерфейса: цвета, коэффициенты размеров, язык, вкладка,
 // якорь, черновики, метка запуска, смена, полночь, свёрнутость
-// блоков рубки.
+// блоков рубки и блоков рутин, метка последнего экспорта.
 //
 // Цвета. Пять ролей: bg, bgdim, fg, signal — парные по темам;
-// dim — единый для обеих гамм (средний серый, читается всюду).
-// Действующий набор выставляется _resolveTheme.
+// dim — единый для обеих гамм.
 //
-// Темы (day, night) образуют пары. Сигнальный объект берёт цвета
-// противоположной темы целиком (colorsForOpposite), dim — тот же.
+// Свёрнутые блоки рутин. collapsedBlocks: номер рутины → набор
+// свёрнутых родов блоков. По умолчанию (для рутины, коей нет
+// в сем поле) — transit и idle. При касании названия блока
+// состояние переключается.
 //
-// Полночь. Строка «чч:мм», для сброса смены. Правится в рубке.
+// lastExportId. Номер журнальной записи на миг последнего экспорта
+// отчёта в PDF. Кнопка экспорта активна, коли есть записи с большим
+// номером.
+//
+// Полночь. Строка «чч:мм», для сброса смены.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -38,13 +44,9 @@ class OperationalLayer extends ChangeNotifier {
   Color signal = const Color(0xFF000000);
 
   // ─── Все темы ───
-  // Имя → {bg, bgdim, fg, signal}. dim — общий, хранится отдельно.
   Map<String, Map<String, Color>> themes = {};
 
-  // Имя действующей темы. «system» — особая.
   String themeName = 'system';
-
-  // Системная гамма.
   Brightness systemBrightness = Brightness.light;
 
   // ─── Прочие настройки ───
@@ -63,6 +65,15 @@ class OperationalLayer extends ChangeNotifier {
 
   // ─── Полночь ───
   String midnight = '00:00';
+
+  // ─── Свёрнутые блоки рутин ───
+  // Номер рутины → набор свёрнутых родов блоков (note, prep, ...).
+  // Коли рутины нет в карте — умолчание: transit и idle свёрнуты.
+  Map<int, Set<String>> collapsedBlocks = {};
+
+  // ─── Метка последнего экспорта ───
+  // Номер записи в журнале на миг последнего экспорта PDF.
+  int lastExportId = 0;
 
   // ─── Коэффициенты размеров ───
   double kPult = 1.0;
@@ -132,6 +143,23 @@ class OperationalLayer extends ChangeNotifier {
     } catch (_) {}
   }
 
+  // ─── Разбор тем (единый метод) ───
+  // Принимает map «имя → {bg, bgdim, fg, signal}» и наполняет themes.
+  void _parseThemes(Map<dynamic, dynamic> t) {
+    themes = {};
+    for (final k in t.keys) {
+      final v = t[k];
+      if (v is Map) {
+        themes[k.toString()] = {
+          'bg': _parseColor(v['bg'] as String?) ?? bg,
+          'bgdim': _parseColor(v['bgdim'] as String?) ?? bgdim,
+          'fg': _parseColor(v['fg'] as String?) ?? fg,
+          'signal': _parseColor(v['signal'] as String?) ?? signal,
+        };
+      }
+    }
+  }
+
   // ─── Умолчания из assets ───
   Future<void> _loadDefaults() async {
     try {
@@ -140,20 +168,8 @@ class OperationalLayer extends ChangeNotifier {
       dim = _parseColor(data['dim'] as String?) ?? dim;
 
       final t = data['themes'];
-      if (t is Map) {
-        themes = {};
-        for (final k in t.keys) {
-          final v = t[k];
-          if (v is Map) {
-            themes[k.toString()] = {
-              'bg': _parseColor(v['bg'] as String?) ?? bg,
-              'bgdim': _parseColor(v['bgdim'] as String?) ?? bgdim,
-              'fg': _parseColor(v['fg'] as String?) ?? fg,
-              'signal': _parseColor(v['signal'] as String?) ?? signal,
-            };
-          }
-        }
-      }
+      if (t is Map) _parseThemes(t);
+
       themeName = data['theme'] as String? ?? themeName;
       scale = (data['scale'] as num?)?.toDouble() ?? scale;
       lang = data['lang'] as String? ?? lang;
@@ -209,20 +225,8 @@ class OperationalLayer extends ChangeNotifier {
       dim = _parseColor(data['dim'] as String?) ?? dim;
 
       final t = data['themes'];
-      if (t is Map) {
-        themes = {};
-        for (final k in t.keys) {
-          final v = t[k];
-          if (v is Map) {
-            themes[k.toString()] = {
-              'bg': _parseColor(v['bg'] as String?) ?? bg,
-              'bgdim': _parseColor(v['bgdim'] as String?) ?? bgdim,
-              'fg': _parseColor(v['fg'] as String?) ?? fg,
-              'signal': _parseColor(v['signal'] as String?) ?? signal,
-            };
-          }
-        }
-      }
+      if (t is Map) _parseThemes(t);
+
       themeName = data['theme'] as String? ?? themeName;
       scale = (data['scale'] as num?)?.toDouble() ?? scale;
       lang = data['lang'] as String? ?? lang;
@@ -243,6 +247,7 @@ class OperationalLayer extends ChangeNotifier {
           (data['total_shift_seconds'] as num?)?.toInt() ?? totalShiftSeconds;
       shiftStartedAt =
           (data['shift_started_at'] as num?)?.toInt() ?? shiftStartedAt;
+      lastExportId = (data['last_export_id'] as num?)?.toInt() ?? lastExportId;
 
       kPult = (data['k_pult'] as num?)?.toDouble() ?? kPult;
       kPultSmall = (data['k_pult_small'] as num?)?.toDouble() ?? kPultSmall;
@@ -263,6 +268,18 @@ class OperationalLayer extends ChangeNotifier {
       final ts = data['trace_sent'];
       if (ts is Map) {
         traceSent = ts.map((k, v) => MapEntry(k.toString(), v == true));
+      }
+      final cb = data['collapsed_blocks'];
+      if (cb is Map) {
+        collapsedBlocks = {};
+        for (final k in cb.keys) {
+          final id = int.tryParse(k.toString());
+          if (id == null) continue;
+          final v = cb[k];
+          if (v is List) {
+            collapsedBlocks[id] = v.map((e) => e.toString()).toSet();
+          }
+        }
       }
     } catch (_) {}
   }
@@ -302,7 +319,6 @@ class OperationalLayer extends ChangeNotifier {
     return 'night';
   }
 
-  // Пятёрка цветов противоположной темы (четыре роли + общий dim).
   Map<String, Color>? colorsForOpposite() {
     final name = oppositeThemeName();
     final t = themes[name];
@@ -314,6 +330,47 @@ class OperationalLayer extends ChangeNotifier {
       'fg': t['fg']!,
       'signal': t['signal']!,
     };
+  }
+
+  // ─── Свёрнутость блоков рутин ───
+  // По умолчанию (коли рутины нет в карте) — transit и idle свёрнуты.
+  bool isBlockCollapsed(int routineId, String kind) {
+    final set = collapsedBlocks[routineId];
+    if (set == null) {
+      // Умолчание.
+      return kind == 'transit' || kind == 'idle';
+    }
+    return set.contains(kind);
+  }
+
+  // Переключение свёртки блока рутины.
+  void toggleBlockCollapsed(int routineId, String kind) {
+    final current = collapsedBlocks[routineId];
+    // Коли рутины нет в карте — заводим с умолчания.
+    if (current == null) {
+      final init = <String>{'transit', 'idle'};
+      if (init.contains(kind)) {
+        init.remove(kind);
+      } else {
+        init.add(kind);
+      }
+      collapsedBlocks[routineId] = init;
+    } else {
+      if (current.contains(kind)) {
+        current.remove(kind);
+      } else {
+        current.add(kind);
+      }
+    }
+    _scheduleSave();
+    notifyListeners();
+  }
+
+  // ─── Метка экспорта ───
+  void setLastExportId(int id) {
+    lastExportId = id;
+    _scheduleSave();
+    notifyListeners();
   }
 
   // ─── Применение записи журнала ───
@@ -358,6 +415,8 @@ class OperationalLayer extends ChangeNotifier {
     shiftStartedAt = null;
     drafts = {};
     traceSent = {};
+    collapsedBlocks = {};
+    lastExportId = 0;
     await _loadDefaults();
     _resolveTheme();
     await _saveToFile();
@@ -552,6 +611,15 @@ class OperationalLayer extends ChangeNotifier {
     return null;
   }
 
+  // Отложенная запись файла борта.
+  Timer? _saveTimer;
+  void _scheduleSave() {
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(milliseconds: 200), () {
+      _saveToFile();
+    });
+  }
+
   Future<void> _saveToFile() async {
     if (_file == null) return;
     final themeOut = <String, dynamic>{};
@@ -562,6 +630,10 @@ class OperationalLayer extends ChangeNotifier {
         'fg': colorToHex(e.value['fg']!),
         'signal': colorToHex(e.value['signal']!),
       };
+    }
+    final cbOut = <String, dynamic>{};
+    for (final e in collapsedBlocks.entries) {
+      cbOut['${e.key}'] = e.value.toList();
     }
     final data = <String, dynamic>{
       'dim': colorToHex(dim),
@@ -583,6 +655,7 @@ class OperationalLayer extends ChangeNotifier {
       'on_shift': onShift,
       'total_shift_seconds': totalShiftSeconds,
       'shift_started_at': shiftStartedAt,
+      'last_export_id': lastExportId,
       'k_pult': kPult,
       'k_pult_small': kPultSmall,
       'k_block_gap': kBlockGap,
@@ -595,6 +668,7 @@ class OperationalLayer extends ChangeNotifier {
       'k_stroke': kStroke,
       'drafts': drafts,
       'trace_sent': traceSent,
+      'collapsed_blocks': cbOut,
     };
     await _file!.writeAsString(jsonEncode(data));
   }
@@ -664,4 +738,10 @@ class OperationalLayer extends ChangeNotifier {
   };
 
   static const Set<String> readOnlyKeys = {};
+
+  @override
+  void dispose() {
+    _saveTimer?.cancel();
+    super.dispose();
+  }
 }
