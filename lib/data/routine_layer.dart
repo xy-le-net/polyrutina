@@ -14,8 +14,7 @@
 // при остановке. Хранится в кэше (не токмо в памяти), дабы после
 // перезапуска прокрутка карточки шла к прежнему блоку.
 //
-// Завершённость. Признак completed. Установка гасит идущий блок.
-// Снятие пуском блока — косвенно, без отдельной записи.
+// Завершённость. Установка гасит идущий блок. Снятие пуском — косвенно.
 //
 // Флаги. Биты JournalFlag.
 //
@@ -276,14 +275,11 @@ class RoutineLayer extends ChangeNotifier {
   }
 
   // ─── Завершённость ───
-  // Ставится чек-боксом в блоке «итог». Снятие — повторным касанием
-  // либо пуском блока (косвенно).
   Future<void> setCompleted(JournalLayer journal, int id, bool value) async {
     final r = findRoutine(id);
     if (r == null) return;
     if (r.completed == value) return;
 
-    // Установка гасит идущий блок.
     if (value) {
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       for (final b in r.blocks) {

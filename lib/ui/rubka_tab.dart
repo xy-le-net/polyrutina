@@ -1,19 +1,13 @@
 // ═══════════════════════════════════════════════════════════════════
 // rubka_tab.dart — вкладка рубки.
 //
-// Четыре блока: артель, оформление, интерфейс, данные. Свёрнуты
-// по умолчанию, разворачиваются касанием заголовка.
+// Четыре блока: артель, оформление, интерфейс, данные.
 //
-// Артель. Поле «полночь» (чч:мм). При переходе чрез сие время суток
-// смена обнуляется.
+// Артель. Поле «полночь» (чч:мм) для сброса смены.
 //
-// Оформление. Тема (пульт выбора) плюс обе темы разом, для правки:
-// дневная (четыре роли) и ночная (четыре роли). Мягкий текст (dim) —
-// единый, вне тем. Ключи в полях не показываются: правка идёт
-// записью в журнал рода bort с ключом theme.<имя>.<роль> либо «dim».
-//
-// Пульт темы. Значение применяется и локально (тотчас), и в журнал
-// (чрез JournalLayer.log). Сим отклик мгновенный, а запись остаётся.
+// Оформление. Пульт выбора темы; обе темы разом для правки —
+// дневная (четыре роли) и ночная (четыре роли); мягкий текст (dim)
+// единый, вне тем; десять коэффициентов размеров.
 //
 // Интерфейс. Масштаб, язык, подписи.
 //
@@ -96,8 +90,6 @@ class _RubkaTabState extends State<RubkaTab> {
     await _loadSize();
   }
 
-  // Запись значения в журнал рода bort. Применение локальное —
-  // тотчас (setSilent), запись — следом.
   Future<void> _logBort(String key, String value) async {
     final app = AppScope.of(context);
     await app.journal.log(
@@ -300,7 +292,6 @@ class _RubkaTabState extends State<RubkaTab> {
     });
   }
 
-  // ─── Блок ───
   Widget _block({
     required String title,
     required bool isOpen,
@@ -356,7 +347,6 @@ class _RubkaTabState extends State<RubkaTab> {
     );
   }
 
-  // ─── Заголовок раздела ───
   Widget _sectionTitle(String text, Color dim, double side) {
     return Padding(
       padding: EdgeInsets.only(top: side * 0.3, bottom: side * 0.1),
@@ -383,7 +373,6 @@ class _RubkaTabState extends State<RubkaTab> {
     );
   }
 
-  // ─── Поле «полночь» ───
   Widget _midnightRow(BuildContext context, Color fg, Color dim, Color bg,
       Color signal, double side) {
     final app = AppScope.of(context);
@@ -404,7 +393,6 @@ class _RubkaTabState extends State<RubkaTab> {
               fg: fg,
               readOnly: false,
               onCommit: (v) async {
-                // Проверка диапазона 00:00–23:59.
                 final ok = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(v);
                 if (!ok) return;
                 await _logBort('midnight', v);
@@ -416,9 +404,6 @@ class _RubkaTabState extends State<RubkaTab> {
     );
   }
 
-  // ─── Строка цвета темы ───
-  // Ключ: theme.<имя>.<роль>. Правка идёт записью в журнал; отклик —
-  // чрез применение значения к слою (поток обновит интерфейс).
   Widget _colorRow(
     BuildContext context,
     String themeName,
@@ -472,7 +457,6 @@ class _RubkaTabState extends State<RubkaTab> {
     );
   }
 
-  // ─── Строка мягкого текста (единый dim) ───
   Widget _dimRow(BuildContext context, Color fg, Color dim, Color bg,
       Color signal, double side) {
     final app = AppScope.of(context);
@@ -623,9 +607,6 @@ class _RubkaTabState extends State<RubkaTab> {
     }
   }
 
-  // ─── Пульт выбора темы ───
-  // Смена темы: значение шлётся и локально (поток обновит интерфейс),
-  // и в журнал. Отклик мгновенный.
   Widget _themeRow(BuildContext context, Color fg, Color dim, Color bg,
       Color signal, double side) {
     final app = AppScope.of(context);

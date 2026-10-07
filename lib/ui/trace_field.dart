@@ -3,22 +3,15 @@
 //
 // Устройство:
 //   слева — поле текста (три строки);
-//   справа — столбец: пульт чек-листа, пульт отправки/медиа;
-//   под полем — значки прикреплённого (в будущем).
-//
-// Сохранение текста — в черновике борта по ключу trace_<objectId>_<slot>.
-// Автоотправка — при потере фокуса, при сворачивании, при уходе
-// со страницы.
+//   справа — столбец: пульт чек-листа, пульт отправки/медиа.
 //
 // След различается парой (objectId, slot). При создании текстового
-// следа slot передаётся в тело — дабы два блока одной рутины не
-// видели один и тот же след.
+// следа slot передаётся в тело.
 //
 // Пульт чек-листа:
 //   — нет неотмеченных (все отмечены либо пунктов нет) — икона
 //     «галочка в квадрате»;
 //   — есть неотмеченные — сигнальное число на месте иконы.
-// Третьего состояния нет.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -148,8 +141,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     );
   }
 
-  // ─── Состояние чек-листа сего блока ───
-  // Ищем по паре (objectId, slot). Возвращаем число неотмеченных.
+  // Число неотмеченных в чек-листе сего блока.
   int _uncheckedCount() {
     final app = AppScope.of(context);
     final t = app.traceLayer.findFirstBySlot(widget.objectId, widget.slot);
@@ -170,10 +162,10 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     final canSend = _canSend();
     final pultSide = widget.side * bort.kPultSmall;
 
-    // ─── Икона пульта чек-листа ───
-    // Нет неотмеченных — галочка в квадрате. Есть — сигнальное число.
+    // Пульт чек-листа: нет неотмеченных — галочка в квадрате;
+    // есть — сигнальное число.
     final unchecked = _uncheckedCount();
-    final IconData chkIcon = Icons.check_box_outlined;
+    const IconData chkIcon = Icons.check_box_outlined;
     final String? chkLabel = unchecked > 0 ? '$unchecked' : null;
     final bool chkSelected = unchecked > 0;
 

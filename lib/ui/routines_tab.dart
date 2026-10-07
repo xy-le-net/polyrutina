@@ -6,26 +6,20 @@
 //
 // Сортировка:
 //   — идущие (по времени пуска, позже — выше);
-//   — покоящиеся (по lastActionAt, позже — выше);
-//   — завершённые внизу, отделены строкою «завершено» (приглушённый
-//     текст, символический отступ). Строка есть токмо, коли есть
-//     завершённые.
+//   — покоящиеся незавершённые (по lastActionAt);
+//   — завершённые внизу, отделены строкою «завершено».
 //
-// Плашка рутины:
-//   в покое — обычная гамма;
-//   в ходе — противоположная гамма целиком.
+// Плашка: в покое — обычная гамма; в ходе — противоположная.
 //
 // Пульс рутины:
 //   в ходе — «пауза», короткое — пауза;
-//   в покое (не завершена) — корзинка, короткое — ничего;
-//   завершена — галочка, короткое — снять завершённость,
-//     долгое — веер дублировать / удалить (как у прочих).
+//   в покое (не завершена) — пуск блока: последний пущенный либо «работа»;
+//   завершена — галочка: короткое снимает, долгое даёт веер;
+//   долгое — веер: дублировать / удалить.
 //
 // Правило связи смены и рутины: остановка смены гасит идущую рутину.
 //
-// Тикер. Слушает единый AppTicker.
-//
-// Открытие карточки — чрез app.openRoutine.
+// Тикер — единый AppTicker. Открытие карточки — app.openRoutine.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -33,6 +27,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/journal_types.dart';
+import '../data/routine.dart';
 import '../data/ticker.dart';
 import 'app_scope.dart';
 import 'pulse.dart';
@@ -73,7 +68,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
     super.dispose();
   }
 
-  // Дата «пн 06.10 10:31». День недели — две буквы, строчные.
   String _fmtDate(int unixSec) {
     final d = DateTime.fromMillisecondsSinceEpoch(unixSec * 1000);
     const weekdays = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
@@ -93,15 +87,13 @@ class _RoutinesTabState extends State<RoutinesTab> {
   }
 
   // ─── Сортировка ───
-  // Возвращает две группы: обычные (идущие + покоящиеся) и завершённые.
-  // Внутри обычных: идущие сверху по времени пуска; покоящиеся по
-  // lastActionAt. Внутри завершённых: по lastActionAt.
-  ({List<dynamic> active, List<dynamic> done}) _sortedGroups(dynamic layer) {
-    final all = List<dynamic>.from(layer.routines);
-    final active = <dynamic>[];
-    final done = <dynamic>[];
+  // Возвращает две группы: активные (идущие + покоящиеся) и завершённые.
+  ({List<Routine> active, List<Routine> done}) _sortedGroups(dynamic layer) {
+    final all = List<Routine>.from(layer.routines);
+    final active = <Routine>[];
+    final done = <Routine>[];
     for (final r in all) {
-      if (r.completed as bool) {
+      if (r.completed) {
         done.add(r);
       } else {
         active.add(r);
@@ -117,14 +109,12 @@ class _RoutinesTabState extends State<RoutinesTab> {
         final bt = b.runningBlock?.startedAt ?? 0;
         return bt.compareTo(at);
       }
-      return (b.lastActionAt as int).compareTo(a.lastActionAt as int);
+      return b.lastActionAt.compareTo(a.lastActionAt);
     });
-    done.sort(
-        (a, b) => (b.lastActionAt as int).compareTo(a.lastActionAt as int));
+    done.sort((a, b) => b.lastActionAt.compareTo(a.lastActionAt));
     return (active: active, done: done);
   }
 
-  // Смена: пуск/остановка. При остановке — гасим идущую рутину.
   Future<void> _toggleShift(BuildContext context) async {
     final app = AppScope.of(context);
     final bort = app.bort;
@@ -157,7 +147,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
   // ─── Плашка рутины ───
   Widget _plate(
     BuildContext context,
-    dynamic r, {
+    Routine r, {
     required Color fg,
     required Color bg,
     required Color bgdim,
@@ -168,9 +158,8 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final app = AppScope.of(context);
     final bort = app.bort;
     final running = r.runningBlock != null;
-    final completed = r.completed as bool;
 
-    // ─── Гамма плашки ───
+    // Гамма плашки.
     final Color plateBg;
     final Color textMain;
     final Color textSoft;
@@ -203,13 +192,40 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final radiusW = side * bort.kRadius;
     final framePad = side * bort.kFramePad * 0.6;
 
-    // ─── Пульс справа ───
-    // Идущая — «пауза». Покоящаяся незавершённая — корзинка.
-    // Завершённая — галочка, но живая: короткое снимает завершённость,
-    // долгое открывает веер.
-    //
-    // Веер (дублировать / удалить) — долгим нажатием на любой пульс.
-    final List<PultSpec> Function() longSubs = () => [
+    // Икона и действие пульса.
+    final IconData pulseIcon;
+    final VoidCallback? pulseTap;
+    if (r.completed) {
+      pulseIcon = Icons.check_box_outlined;
+      pulseTap = () {
+        app.routineLayer.setCompleted(app.journal, r.id, false);
+      };
+    } else if (running) {
+      pulseIcon = Icons.pause;
+      pulseTap = () async {
+        for (final b in r.blocks) {
+          if (b.isRunning) {
+            await app.routineLayer.pauseBlock(app.journal, r.id, b.kind);
+          }
+        }
+        if (mounted) setState(() {});
+      };
+    } else {
+      pulseIcon = Icons.play_arrow;
+      pulseTap = () async {
+        final kind = app.routineLayer.lastActiveBlockKind ?? RoutineBlock.work;
+        await app.toggleBlockWithShift(r.id, kind);
+        if (mounted) setState(() {});
+      };
+    }
+
+    final rightControl = Pult(
+      spec: PultSpec(
+        id: 'routine_${r.id}',
+        icon: pulseIcon,
+        selected: running,
+        onTap: pulseTap,
+        longSubs: () => [
           PultSpec(
             id: 'dup_${r.id}',
             icon: Icons.copy,
@@ -228,40 +244,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
               app.routineLayer.deleteRoutine(app.journal, r.id);
             },
           ),
-        ];
-
-    final IconData pulseIcon;
-    final VoidCallback? pulseTap;
-    if (completed) {
-      // Завершена: галочка, короткое — снять знак.
-      pulseIcon = Icons.check_box_outlined;
-      pulseTap = () {
-        app.routineLayer.setCompleted(app.journal, r.id, false);
-      };
-    } else if (running) {
-      // Идёт: пауза.
-      pulseIcon = Icons.pause;
-      pulseTap = () async {
-        for (final b in r.blocks) {
-          if (b.isRunning) {
-            await app.routineLayer.pauseBlock(app.journal, r.id, b.kind);
-          }
-        }
-        if (mounted) setState(() {});
-      };
-    } else {
-      // Покой: корзинка, короткое молчит.
-      pulseIcon = Icons.delete_outline;
-      pulseTap = null;
-    }
-
-    final rightControl = Pult(
-      spec: PultSpec(
-        id: 'routine_${r.id}',
-        icon: pulseIcon,
-        selected: running,
-        onTap: pulseTap,
-        longSubs: longSubs,
+        ],
       ),
       fg: running ? textMain : textSoft,
       bg: plateBg,
@@ -286,9 +269,9 @@ class _RoutinesTabState extends State<RoutinesTab> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if ((r.name as String).isNotEmpty)
+                  if (r.name.isNotEmpty)
                     Text(
-                      r.name as String,
+                      r.name,
                       style: TextStyle(
                         color: textMain,
                         fontSize: nameSize,
@@ -297,16 +280,16 @@ class _RoutinesTabState extends State<RoutinesTab> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   Text(
-                    _fmtDate(r.createdAt as int),
+                    _fmtDate(r.createdAt),
                     style: TextStyle(
                       color: textSoft,
                       fontSize: dateSize,
                     ),
                   ),
-                  if ((r.totalSeconds as int) > 0) ...[
+                  if (r.totalSeconds > 0) ...[
                     SizedBox(height: dateSize * 0.4),
                     TimerText(
-                      seconds: r.totalSeconds as int,
+                      seconds: r.totalSeconds,
                       running: running,
                       fg: textMain,
                       dim: textSoft,
@@ -371,9 +354,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
         ),
       );
 
-      // ─── Список элементов ленты ───
-      // Плашки обычных, потом надпись «завершено» (ежели есть),
-      // потом плашки завершённых.
       final items = <Widget>[];
 
       for (final r in groups.active) {

@@ -10,10 +10,7 @@
 //   PultLayer — слой поверх всего приложения.
 //
 // Подписи в веерах подпультов. Показываются, только ежели весь ряд
-// с ними умещается по ширине экрана. Иначе — одни иконы, без подписей.
-// Сие устраняет случай, когда длинные подписи («синхронизировано»,
-// «приглушённый») уводят веер за край: он становился невидим, а
-// перехватчик касаний уже стоял — экран «занимался» без нужды.
+// с ними умещается по ширине экрана. Иначе — одни иконы.
 //
 // Веер встаёт над ядром родительского пульта (ключ _coreKey).
 //
@@ -442,8 +439,7 @@ class _PultLayerState extends State<PultLayer> {
 
   // ─── Веер подпультов ───
   // Подписи показываются, только ежели весь ряд с ними умещается
-  // по ширине. Иначе — одни иконы, без подписей. Сим веер не уходит
-  // за экран и остаётся видимым.
+  // по ширине. Иначе — одни иконы.
   Widget _buildSubs(BuildContext context, PultState state) {
     final local = _parentLocal(state.parentKey);
     final size = _parentSize(state.parentKey);
@@ -486,7 +482,6 @@ class _PultLayerState extends State<PultLayer> {
         final i = c * rowsPerCol + r;
         if (i >= subs.length) break;
         final s = subs[i];
-        // Подписи — токмо ежели умещается весь ряд.
         final spec = fitsWithLabels
             ? s
             : PultSpec(
@@ -529,10 +524,9 @@ class _PultLayerState extends State<PultLayer> {
     double left = local.dx + (size.width - rowW) / 2;
     if (left < 8) left = 8;
     if (left + rowW > screenW - 8) left = screenW - 8 - rowW;
-    if (left < 8) left = 8; // повторно: ежели ряд шире экрана.
+    if (left < 8) left = 8;
 
-    // Вертикальное положение: над родительским пультом,
-    // с ограничением сверху.
+    // Вертикальное положение: над родительским пультом.
     final totalH = rowsPerCol * itemH;
     double top = local.dy - totalH - 6;
     if (top < 8) top = 8;

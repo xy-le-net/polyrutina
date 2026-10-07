@@ -11,20 +11,17 @@
 // гамма целиком.
 //
 // Итог. Вместо пульса — чек-бокс завершённости с таймером слева.
-// Касание: ставит либо снимает завершённость. Установка гасит
-// идущий блок (рутина завершена — работа встала).
+// Установка гасит идущий блок.
 //
 // Нулевой блок. Кроме поля следа — пульт флагов.
 //
 // Правка времени. Долгое нажатие на пульс остановленного блока —
-// поле ввода. Короткое по пульсу подтверждения — запись с флагом
-// «правка».
+// поле ввода.
 //
 // Прокрутка. При открытии — к последнему пущенному блоку
-// (lastActiveBlockKind в слое, хранится в кэше). Коли ни один не
-// пускался — к началу.
+// (lastActiveBlockKind в слое, хранится в кэше).
 //
-// Тикер. Слушает единый AppTicker.
+// Тикер — единый AppTicker.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -55,7 +52,6 @@ class _RoutineCardState extends State<RoutineCard> {
   final _scrollController = ScrollController();
   bool _autoScrolled = false;
 
-  // Правка времени: род блока в режиме ввода и контроллер.
   String? _editingKind;
   TextEditingController? _editCtrl;
 
@@ -110,22 +106,18 @@ class _RoutineCardState extends State<RoutineCard> {
     }
   }
 
-  // Приглушённый фон: у описания, перехода, простоя, итога.
   bool _dimBg(String kind) =>
       kind == 'note' ||
       kind == RoutineBlock.transit ||
       kind == RoutineBlock.idle ||
       kind == 'summary';
 
-  // ─── Прокрутка ───
-  // При открытии — к последнему пущенному блоку (lastActiveBlockKind).
-  // Коли ни один не пускался — к началу. Единожды за жизнь виджета.
   void _autoScroll() {
     if (_autoScrolled) return;
     _autoScrolled = true;
     final app = AppScope.of(context);
     final kind = app.routineLayer.lastActiveBlockKind;
-    if (kind == null) return; // к началу — прокрутка не нужна
+    if (kind == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ctx = _blockKeys[kind]?.currentContext;
       if (ctx != null) {
@@ -138,7 +130,6 @@ class _RoutineCardState extends State<RoutineCard> {
     });
   }
 
-  // Форматирование секунд в «чч:мм:сс» либо «мм:сс».
   String _fmtEditable(int sec) {
     final h = sec ~/ 3600;
     final m = (sec % 3600) ~/ 60;
@@ -194,13 +185,10 @@ class _RoutineCardState extends State<RoutineCard> {
     _editCtrl = null;
   }
 
-  // ─── Завершение рутины ───
-  // Установка знака гасит идущий блок (работа завершена).
   Future<void> _toggleCompleted(Routine r) async {
     final app = AppScope.of(context);
     final value = !r.completed;
     if (value) {
-      // Гасим идущий блок, ежели есть.
       for (final b in r.blocks) {
         if (b.isRunning) {
           await app.routineLayer.pauseBlock(app.journal, r.id, b.kind);
@@ -315,7 +303,6 @@ class _RoutineCardState extends State<RoutineCard> {
     );
   }
 
-  // ─── Построение одного блока ───
   Widget _frame({
     Key? key,
     required String title,
@@ -331,7 +318,6 @@ class _RoutineCardState extends State<RoutineCard> {
     required bool colonVisible,
     required dynamic i18n,
   }) {
-    // ─── Пятёрка цветов ───
     final Color bg;
     final Color bgdim;
     final Color dim;
@@ -530,7 +516,6 @@ class _RoutineCardState extends State<RoutineCard> {
     );
   }
 
-  // Подпульты флагов: восемь битов JournalFlag.
   List<PultSpec> _flagSubs(dynamic app, Routine routine, dynamic i18n) {
     const keys = [
       'flag.urgent',
