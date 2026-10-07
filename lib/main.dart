@@ -2,26 +2,21 @@
 // main.dart — точка входа и управитель.
 //
 // Порядок пуска: журнал открывает базу и подписывается на поток;
-// слои регистрируются в нём и читают кэши; JournalLayer тотчас
-// раздаёт накопленные записи.
+// слои регистрируются в нём и читают кэши; JournalLayer раздаёт
+// накопленные записи.
 //
-// Вложенность. AppScope, PultScope, PultLayer живут в MaterialApp.builder —
-// внутри MaterialApp, но поверх всех маршрутов. Сие устраняет разрыв
-// подписок при возврате из маршрута и позволяет подпультам видеть
-// всё дерево.
+// Вложенность. AppScope, PultScope, PultLayer живут в MaterialApp.builder.
+// Корневой пульт (компас) — в том же слое.
 //
-// Корневой пульт (компас) — в том же слое. Перетаскивание: при начале
-// жеста запоминается стартовая позиция (_dragStartPosition), при
-// движении — anchor + дельта, при окончании — прилипание к якорю.
+// Перетаскивание компаса. Глобальные координаты пальца: при начале
+// жеста запоминается точка (_dragPointerStart) и позиция (_dragStartPos).
+// При движении позиция = старт + (текущее − стартовое). Сие надёжно:
+// положение виджета не участвует в арифметике, дерево можно
+// перестраивать свободно.
 //
-// Открытая рутина. Когда карточка рутины открыта и пользователь
-// переключает вкладку, карточка снимается с навигатора, а номер
-// запоминается (_openedRoutineId). При возврате на вкладку Рутины —
-// карточка открывается вновь.
+// Открытая рутина: восстанавливается при возврате на вкладку Рутины.
 //
-// Единый тикер. AppTicker создаётся здесь, утилизируется здесь,
-// передаётся в AppContext. Виджеты слушают его, а не заводят
-// собственные Timer.
+// Тикер — единый AppTicker (500 мс).
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -54,7 +49,6 @@ class PolyRutinaApp extends StatefulWidget {
 
 class _PolyRutinaAppState extends State<PolyRutinaApp>
     with WidgetsBindingObserver {
-  // ─── Слои ───
   late final AppDb _db;
   late final JournalLayer _journal;
   late final OperationalLayer _bort;
@@ -62,20 +56,18 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   late final TraceLayer _traceLayer;
   late final AppTicker _ticker;
   final _pultState = PultState();
-
-  // Ключ навигатора — дабы уметь снимать карточку рутины из кода.
   final _navigatorKey = GlobalKey<NavigatorState>();
 
   I18n? _i18n;
   int _tab = 4;
 
-  // Позиция корневого пульта при перетаскивании.
+  // Перетаскивание: текущее положение, стартовая позиция и стартовая
+  // точка пальца — в глобальных координатах.
   Offset? _dragOffset;
-  // Стартовая позиция жеста: anchor + дельта считается от неё.
-  Offset? _dragStartPosition;
+  Offset? _dragStartPos;
+  Offset? _dragPointerStart;
   bool _rootOpen = false;
 
-  // Номер открытой рутины (для восстановления при возврате на Рутины).
   int? _openedRoutineId;
 
   static const List<RootTabItem> _tabs = [
@@ -161,10 +153,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     }
   }
 
-  // ─── Смена вкладки ───
-  // Ежели открыта карточка рутины и идёт переключение на иную вкладку,
-  // карточка снимается с навигатора, её номер запоминается. При
-  // возврате на Рутины — открывается вновь.
   Future<void> _switchTab(int i) async {
     _pultState.close();
 
@@ -172,13 +160,11 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     final sameRoutines = i == 1 && cardOpen;
 
     if (sameRoutines) {
-      // Уже на Рутинах с открытой карточкой — ничего не делаем.
       setState(() => _rootOpen = false);
       return;
     }
 
     if (cardOpen && i != 1) {
-      // Уходим с Рутин — снимаем карточку, помним номер.
       _navigatorKey.currentState?.popUntil((r) => r.isFirst);
     }
 
@@ -189,7 +175,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _bort.setSilent('tab', i.toString());
 
     if (i == 1 && _openedRoutineId != null) {
-      // Возврат на Рутины — открываем прежнюю карточку.
       final id = _openedRoutineId!;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _navigatorKey.currentState?.push(
@@ -201,7 +186,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     }
   }
 
-  // Открытие карточки рутины — запоминаем номер.
   Future<void> _openRoutine(int id) async {
     _openedRoutineId = id;
     await _navigatorKey.currentState?.push(
@@ -209,11 +193,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
         builder: (_) => RoutineCard(routineId: id),
       ),
     );
-    // Возврат из карточки: обнуляем память.
     _openedRoutineId = null;
   }
 
-  // ─── Восемь якорей ───
   Offset _anchorPosition(String anchor, Size size, double s) {
     const m = 6.0;
     switch (anchor) {
@@ -346,21 +328,27 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                               fg: _bort.fg,
                               bg: _bort.bg,
                               signal: _bort.signal,
-                              onDragStart: () {
-                                _dragStartPosition = pos;
+                              labelsSystem: _bort.labelsSystem,
+                              translate: _i18n!.t,
+                              onDragStart: (globalPos) {
+                                _dragPointerStart = globalPos;
+                                _dragStartPos = pos;
                               },
-                              onDragUpdate: (newPos) {
-                                final start = _dragStartPosition ?? pos;
-                                final delta = newPos - pos;
+                              onDragUpdate: (globalPos) {
+                                final startPtr = _dragPointerStart ?? globalPos;
+                                final startPos = _dragStartPos ?? pos;
+                                final delta = globalPos - startPtr;
                                 setState(() {
-                                  _dragOffset = start + delta;
+                                  _dragOffset = startPos + delta;
                                 });
                               },
-                              onDragEnd: (p) {
+                              onDragEnd: () {
+                                final p = _dragOffset ?? pos;
                                 final nearest = _nearestAnchor(p, size, side);
                                 setState(() {
                                   _dragOffset = null;
-                                  _dragStartPosition = null;
+                                  _dragStartPos = null;
+                                  _dragPointerStart = null;
                                 });
                                 _bort.setSilent('anchor', nearest);
                               },

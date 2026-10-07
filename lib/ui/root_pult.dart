@@ -1,27 +1,23 @@
 // ═══════════════════════════════════════════════════════════════════
 // root_pult.dart — корневой пульт (компас) и веер вкладок.
 //
-// Свёрнутый — икона компаса (Icons.explore). Касание открывает
-// веер икон всех вкладок. Перетаскивание за любое место иконы.
+// Свёрнутый — компас. Касание открывает веер; перетаскивание — за
+// любое место иконы.
 //
-// Перетаскивание. При начале жеста запоминается стартовая позиция
-// (anchor). Дальше новое положение считается как anchor + накопленная
-// дельта. Сие надёжнее, нежели прибавлять дельты к текущей позиции:
-// при перестроении дерева виджетов текущее положение могло уже
-// измениться, и дельта терялась.
+// Перетаскивание. onDragStart / onDragUpdate получают ГЛОБАЛЬНЫЕ
+// координаты пальца. Вызывающий (main) запоминает стартовую точку и
+// считает позицию как старт + (текущее − стартовое). Сие надёжнее
+// прежнего накопления дельт: положение виджета не участвует в
+// арифметике, дерево можно перестраивать свободно.
 //
-// Развёрнутый — веер икон всех вкладок; текущая выделена сигнальным.
-// Веер раскрывается в ту сторону, где есть место.
-//
-// Виджет stateless: состояние (открыт ли веер, позиция, стартовая
-// позиция жеста) держит вызывающий (main.dart).
+// Подписи вкладок. Показываются справа от иконы, ежели labelsSystem.
+// Строка подписи берётся чрез translate(labelKey).
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 
-// Описание вкладки: икона и ключ словаря для подписи.
 class RootTabItem {
   final IconData icon;
   final String labelKey;
@@ -39,13 +35,14 @@ class RootPult extends StatelessWidget {
   final Color bg;
   final Color signal;
 
-  // Обратные вызовы.
-  // onDragStart — начало перетаскивания (запоминается стартовая позиция).
-  // onDragUpdate — новая позиция (абсолютная).
-  // onDragEnd — окончание (позиция для прилипания к якорю).
-  final VoidCallback onDragStart;
-  final void Function(Offset newPosition) onDragUpdate;
-  final void Function(Offset position) onDragEnd;
+  // Подписи.
+  final bool labelsSystem;
+  final String Function(String key) translate;
+
+  // Обратные вызовы перетаскивания — глобальные координаты.
+  final void Function(Offset globalPosition) onDragStart;
+  final void Function(Offset globalPosition) onDragUpdate;
+  final VoidCallback onDragEnd;
   final VoidCallback onOpen;
   final void Function(int index) onSwitchTab;
 
@@ -60,6 +57,8 @@ class RootPult extends StatelessWidget {
     required this.fg,
     required this.bg,
     required this.signal,
+    required this.labelsSystem,
+    required this.translate,
     required this.onDragStart,
     required this.onDragUpdate,
     required this.onDragEnd,
@@ -70,12 +69,11 @@ class RootPult extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!open) {
-      // Свёрнутый: компас, перетаскивается, касание открывает веер.
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onPanStart: (_) => onDragStart(),
-        onPanUpdate: (d) => onDragUpdate(position + d.delta),
-        onPanEnd: (_) => onDragEnd(position),
+        onPanStart: (d) => onDragStart(d.globalPosition),
+        onPanUpdate: (d) => onDragUpdate(d.globalPosition),
+        onPanEnd: (_) => onDragEnd(),
         onTapUp: (_) => onOpen(),
         child: _core(Icons.explore, false, side),
       );
@@ -85,12 +83,13 @@ class RootPult extends StatelessWidget {
     for (var i = 0; i < tabs.length; i++) {
       final t = tabs[i];
       final active = activeTab == i;
+      final label = labelsSystem ? translate(t.labelKey) : null;
       items.add(
         Padding(
           padding: const EdgeInsets.all(2),
           child: GestureDetector(
             onTap: () => onSwitchTab(i),
-            child: _core(t.icon, active, side * 2 / 3),
+            child: _tabItem(t.icon, label, active, side * 2 / 3),
           ),
         ),
       );
@@ -131,6 +130,27 @@ class RootPult extends StatelessWidget {
           child: layout,
         ),
       ),
+    );
+  }
+
+  // ─── Икона вкладки, при нужде — с подписью ───
+  Widget _tabItem(IconData icon, String? label, bool active, double s) {
+    final core = _core(icon, active, s);
+    if (label == null || label.isEmpty) return core;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        core,
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: TextStyle(
+            color: active ? signal : fg,
+            fontSize: s * 0.35,
+          ),
+        ),
+      ],
     );
   }
 
