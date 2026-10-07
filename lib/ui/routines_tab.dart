@@ -4,20 +4,14 @@
 // Сверху — строка смены (пульс и таймер), прижата вправо.
 // Под ней — список рутин: лента на узком экране, мозаика на широком.
 //
-// Сортировка:
-//   — идущие (по времени пуска, позже — выше);
-//   — покоящиеся незавершённые (по lastActionAt);
-//   — завершённые внизу, отделены строкою «завершено».
+// Сортировка: идущие (по времени пуска), покоящиеся (по lastActionAt),
+// завершённые внизу отделены строкою «завершено».
 //
-// Плашка: в покое — обычная гамма; в ходе — противоположная.
+// Пульс рутины: в ходе — пауза; в покое — пуск блока (последний
+// пущенный либо «работа»); завершена — галочка (короткое снимает,
+// долгое даёт веер). Долгое в любом состоянии — дублировать/удалить.
 //
-// Пульс рутины:
-//   в ходе — «пауза», короткое — пауза;
-//   в покое (не завершена) — пуск блока: последний пущенный либо «работа»;
-//   завершена — галочка: короткое снимает, долгое даёт веер;
-//   долгое — веер: дублировать / удалить.
-//
-// Правило связи смены и рутины: остановка смены гасит идущую рутину.
+// Связь смены и рутин — в AppContext.toggleShift.
 //
 // Тикер — единый AppTicker. Открытие карточки — app.openRoutine.
 //
@@ -26,7 +20,6 @@
 
 import 'package:flutter/material.dart';
 
-import '../data/journal_types.dart';
 import '../data/routine.dart';
 import '../data/ticker.dart';
 import 'app_scope.dart';
@@ -86,8 +79,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
     }
   }
 
-  // ─── Сортировка ───
-  // Возвращает две группы: активные (идущие + покоящиеся) и завершённые.
   ({List<Routine> active, List<Routine> done}) _sortedGroups(dynamic layer) {
     final all = List<Routine>.from(layer.routines);
     final active = <Routine>[];
@@ -115,36 +106,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
     return (active: active, done: done);
   }
 
-  Future<void> _toggleShift(BuildContext context) async {
-    final app = AppScope.of(context);
-    final bort = app.bort;
-    final going = !bort.onShift;
-
-    await app.journal.log(
-      type: JournalType.actor,
-      body: '{"action":"${going ? 'shift_start' : 'shift_stop'}"}',
-    );
-
-    if (going) {
-      bort.startShift();
-    } else {
-      bort.stopShift();
-      final cur = app.routineLayer.currentRoutineId;
-      if (cur != null) {
-        final r = app.routineLayer.findRoutine(cur);
-        if (r != null) {
-          for (final b in r.blocks) {
-            if (b.isRunning) {
-              await app.routineLayer.pauseBlock(app.journal, r.id, b.kind);
-            }
-          }
-        }
-      }
-    }
-    if (mounted) setState(() {});
-  }
-
-  // ─── Плашка рутины ───
   Widget _plate(
     BuildContext context,
     Routine r, {
@@ -159,7 +120,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final bort = app.bort;
     final running = r.runningBlock != null;
 
-    // Гамма плашки.
     final Color plateBg;
     final Color textMain;
     final Color textSoft;
@@ -192,7 +152,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final radiusW = side * bort.kRadius;
     final framePad = side * bort.kFramePad * 0.6;
 
-    // Икона и действие пульса.
     final IconData pulseIcon;
     final VoidCallback? pulseTap;
     if (r.completed) {
@@ -338,7 +297,10 @@ class _RoutinesTabState extends State<RoutinesTab> {
               id: 'shift',
               icon: bort.onShift ? Icons.pause : Icons.play_arrow,
               selected: bort.onShift,
-              onTap: () => _toggleShift(context),
+              onTap: () async {
+                await app.toggleShift();
+                if (mounted) setState(() {});
+              },
             ),
             seconds: bort.shiftSecondsNow,
             running: bort.onShift,

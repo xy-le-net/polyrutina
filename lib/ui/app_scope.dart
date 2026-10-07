@@ -1,24 +1,15 @@
 // ═══════════════════════════════════════════════════════════════════
 // app_scope.dart — контекст приложения для вкладок.
 //
-// Вкладки берут из сего контекста слои, тикер и словарь, а также
-// обратные вызовы: перезапрос интерфейса, перезагрузку словаря,
-// открытие карточки рутины.
+// Слои: bort, routineLayer, traceLayer, journal, ticker, i18n.
+// Обратные вызовы: refresh, reloadI18n, openRoutine.
 //
-// Слои:
-//   bort         — состояние интерфейса;
-//   routineLayer — рутины и их блоки;
-//   traceLayer   — следы;
-//   journal      — слой журнала;
-//   ticker       — единый тикер (500 мс) для всех таймеров
-//                  и мелькания двоеточия.
+// toggleShift — единая точка связи смены и рутин:
+//   пуск смены — рутину не трогает;
+//   остановка смены — гасит идущую рутину (по currentRoutineId).
+// Живёт здесь, ибо оба слоя видны в одном месте.
 //
-// openRoutine — открытие карточки рутины чрез навигатор, что живёт
-// в main. Нужно для восстановления открытой карточки при возврате
-// на вкладку Рутины.
-//
-// toggleBlockWithShift — пуск блока при остановленной смене запускает
-// смену. Обратного нет.
+// toggleBlockWithShift — пуск блока с автозапуском смены.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -54,10 +45,41 @@ class AppContext {
     required this.openRoutine,
   });
 
+  // ─── Смена: пуск и остановка с правилом связи ───
+  // Пуск: смена стартует, рутина остаётся как была.
+  // Остановка: смена гасится, идущая рутина встаёт (по currentRoutineId).
+  Future<void> toggleShift() async {
+    final going = !bort.onShift;
+
+    await journal.log(
+      type: JournalType.actor,
+      body: '{"action":"${going ? 'shift_start' : 'shift_stop'}"}',
+    );
+
+    if (going) {
+      bort.startShift();
+      return;
+    }
+
+    // Остановка.
+    bort.stopShift();
+
+    // Гасим идущую рутину, ежели есть.
+    final cur = routineLayer.currentRoutineId;
+    if (cur == null) return;
+    final r = routineLayer.findRoutine(cur);
+    if (r == null) return;
+    for (final b in r.blocks) {
+      if (b.isRunning) {
+        await routineLayer.pauseBlock(journal, r.id, b.kind);
+      }
+    }
+  }
+
   // ─── Пуск блока рутины с правилом связи ───
-  // Ежели блок идёт — обычная пауза (без смены).
-  // Ежели блок стоит — сперва, коли смена не идёт, запускаем смену;
-  // затем пускаем блок (слой сам гасит прочие рутины).
+  // Ежели блок идёт — обычная пауза.
+  // Ежели блок стоит — коли смена не идёт, запускаем смену; затем
+  // пускаем блок (слой сам гасит прочие рутины).
   Future<void> toggleBlockWithShift(int routineId, String kind) async {
     final r = routineLayer.findRoutine(routineId);
     if (r == null) return;
