@@ -2,23 +2,16 @@
 // main.dart — точка входа и управитель.
 //
 // Порядок пуска: журнал открывает базу и подписывается на поток;
-// слои регистрируются в нём и читают кэши; JournalLayer тотчас
-// раздаёт накопленные записи.
+// слои регистрируются в нём и читают кэши; проверяется полночь.
 //
-// Вложенность. AppScope, PultScope, PultLayer живут в MaterialApp.builder —
-// внутри MaterialApp, но поверх всех маршрутов.
+// Действие пользователя. Listener вокруг всего дерева ловит всякое
+// касание — борт получает сигнал (pulseBort) и продлевает отсчёт
+// времени активной работы. Касания пультов дублируют сей сигнал
+// изнутри Pult (надёжнее).
 //
-// Перетаскивание компаса. onDragStart запоминает стартовую точку
-// пальца (глобальную) и текущее положение пульта. onDragUpdate даёт
-// новую глобальную точку; позиция считается как старт + (текущее −
-// стартовое). Сие надёжнее накопления дельт от текущего положения:
-// дерево можно перестраивать свободно.
+// Время борта. Подписка на единый тикер — раз в 500 мс борт тикает.
 //
-// Открытая рутина. При переключении на иную вкладку карточка
-// снимается, номер запоминается. Возврат на Рутины — открывается
-// вновь.
-//
-// Единый тикер AppTicker — 500 мс.
+// Вложенность. AppScope, PultScope, PultLayer живут в MaterialApp.builder.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -65,13 +58,16 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   int _tab = 4;
 
   // Перетаскивание компаса.
-  Offset? _dragOffset; // текущее положение
-  Offset? _dragStartPultPos; // положение пульта в начале жеста
-  Offset? _dragStartGlobal; // глобальная точка пальца в начале
+  Offset? _dragOffset;
+  Offset? _dragStartPultPos;
+  Offset? _dragStartGlobal;
   bool _rootOpen = false;
 
   // Открытая рутина: восстанавливается при возврате на Рутины.
   int? _openedRoutineId;
+
+  // Подписка на тикер — для времени борта.
+  VoidCallback? _onTickerTick;
 
   static const List<RootTabItem> _tabs = [
     RootTabItem(icon: Icons.map, labelKey: 'tab.field'),
@@ -94,6 +90,11 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _routineLayer = RoutineLayer();
     _traceLayer = TraceLayer();
     _ticker = AppTicker();
+
+    // Подписка на тикер: борт тикает.
+    _onTickerTick = () => _bort.tickBort();
+    _ticker.addListener(_onTickerTick!);
+
     _bort.addListener(_onBortChanged);
     _routineLayer.addListener(_onLayerChanged);
     _traceLayer.addListener(_onLayerChanged);
@@ -132,6 +133,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    if (_onTickerTick != null) {
+      _ticker.removeListener(_onTickerTick!);
+    }
     _bort.removeListener(_onBortChanged);
     _routineLayer.removeListener(_onLayerChanged);
     _traceLayer.removeListener(_onLayerChanged);
@@ -150,15 +154,17 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached ||
         state == AppLifecycleState.inactive) {
+      // Сворачивание/закрытие — время борта не идёт.
+      _bort.bortLastActionAt = 0;
       _bort.saveNow();
       _routineLayer.saveNow();
       _traceLayer.saveNow();
     }
   }
 
-  // ─── Смена вкладки ───
   Future<void> _switchTab(int i) async {
     _pultState.close();
+    _bort.pulseBort();
 
     final cardOpen = _openedRoutineId != null;
     final sameRoutines = i == 1 && cardOpen;
@@ -182,9 +188,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       final id = _openedRoutineId!;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _navigatorKey.currentState?.push(
-          MaterialPageRoute(
-            builder: (_) => RoutineCard(routineId: id),
-          ),
+          MaterialPageRoute(builder: (_) => RoutineCard(routineId: id)),
         );
       });
     }
@@ -193,14 +197,11 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   Future<void> _openRoutine(int id) async {
     _openedRoutineId = id;
     await _navigatorKey.currentState?.push(
-      MaterialPageRoute(
-        builder: (_) => RoutineCard(routineId: id),
-      ),
+      MaterialPageRoute(builder: (_) => RoutineCard(routineId: id)),
     );
     _openedRoutineId = null;
   }
 
-  // ─── Восемь якорей ───
   Offset _anchorPosition(String anchor, Size size, double s) {
     const m = 6.0;
     switch (anchor) {
@@ -286,10 +287,12 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
         ),
         inputDecorationTheme: InputDecorationTheme(
           border: OutlineInputBorder(borderSide: BorderSide(color: _bort.fg)),
-          enabledBorder:
-              OutlineInputBorder(borderSide: BorderSide(color: _bort.fg)),
+          enabledBorder: OutlineInputBorder(
+            borderSide: BorderSide(color: _bort.fg),
+          ),
           focusedBorder: OutlineInputBorder(
-              borderSide: BorderSide(color: _bort.fg, width: 2)),
+            borderSide: BorderSide(color: _bort.fg, width: 2),
+          ),
           hintStyle: TextStyle(color: _bort.dim),
         ),
         iconTheme: IconThemeData(color: _bort.fg),
@@ -303,66 +306,75 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           child: PultScope(
             state: _pultState,
             child: MediaQuery(
-              data: MediaQuery.of(context).copyWith(
-                textScaler: TextScaler.linear(_bort.scale),
-              ),
-              child: PultLayer(
-                fg: _bort.fg,
-                bg: _bort.bg,
-                signal: _bort.signal,
-                child: SafeArea(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final size =
-                          Size(constraints.maxWidth, constraints.maxHeight);
-                      final pos = _dragOffset ??
-                          _anchorPosition(_bort.anchor, size, side);
-                      return Stack(
-                        children: [
-                          child ?? const SizedBox.shrink(),
-                          Positioned(
-                            left: pos.dx,
-                            top: pos.dy,
-                            child: RootPult(
-                              tabs: _tabs,
-                              activeTab: _tab,
-                              open: _rootOpen,
-                              side: side,
-                              position: pos,
-                              area: size,
-                              fg: _bort.fg,
-                              bg: _bort.bg,
-                              signal: _bort.signal,
-                              labelsSystem: _bort.labelsSystem,
-                              translate: (k) => _i18n!.t(k),
-                              onDragStart: (global) {
-                                _dragStartPultPos = pos;
-                                _dragStartGlobal = global;
-                              },
-                              onDragUpdate: (global) {
-                                final start = _dragStartPultPos ?? pos;
-                                final g0 = _dragStartGlobal ?? global;
-                                setState(() {
-                                  _dragOffset = start + (global - g0);
-                                });
-                              },
-                              onDragEnd: () {
-                                final p = _dragOffset ?? pos;
-                                final nearest = _nearestAnchor(p, size, side);
-                                setState(() {
-                                  _dragOffset = null;
-                                  _dragStartPultPos = null;
-                                  _dragStartGlobal = null;
-                                });
-                                _bort.setSilent('anchor', nearest);
-                              },
-                              onOpen: () => setState(() => _rootOpen = true),
-                              onSwitchTab: (i) => _switchTab(i),
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(_bort.scale)),
+              // Listener ловит всякое касание в приложении — борт
+              // узнаёт, что действие было.
+              child: Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerDown: (_) => _bort.pulseBort(),
+                child: PultLayer(
+                  fg: _bort.fg,
+                  bg: _bort.bg,
+                  signal: _bort.signal,
+                  child: SafeArea(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final size = Size(
+                          constraints.maxWidth,
+                          constraints.maxHeight,
+                        );
+                        final pos =
+                            _dragOffset ??
+                            _anchorPosition(_bort.anchor, size, side);
+                        return Stack(
+                          children: [
+                            child ?? const SizedBox.shrink(),
+                            Positioned(
+                              left: pos.dx,
+                              top: pos.dy,
+                              child: RootPult(
+                                tabs: _tabs,
+                                activeTab: _tab,
+                                open: _rootOpen,
+                                side: side,
+                                position: pos,
+                                area: size,
+                                fg: _bort.fg,
+                                bg: _bort.bg,
+                                signal: _bort.signal,
+                                labelsSystem: _bort.labelsSystem,
+                                translate: (k) => _i18n!.t(k),
+                                onDragStart: (global) {
+                                  _dragStartPultPos = pos;
+                                  _dragStartGlobal = global;
+                                },
+                                onDragUpdate: (global) {
+                                  final start = _dragStartPultPos ?? pos;
+                                  final g0 = _dragStartGlobal ?? global;
+                                  setState(() {
+                                    _dragOffset = start + (global - g0);
+                                  });
+                                },
+                                onDragEnd: () {
+                                  final p = _dragOffset ?? pos;
+                                  final nearest = _nearestAnchor(p, size, side);
+                                  setState(() {
+                                    _dragOffset = null;
+                                    _dragStartPultPos = null;
+                                    _dragStartGlobal = null;
+                                  });
+                                  _bort.setSilent('anchor', nearest);
+                                },
+                                onOpen: () => setState(() => _rootOpen = true),
+                                onSwitchTab: (i) => _switchTab(i),
+                              ),
                             ),
-                          ),
-                        ],
-                      );
-                    },
+                          ],
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),

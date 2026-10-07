@@ -1,8 +1,11 @@
 // ═══════════════════════════════════════════════════════════════════
 // bort_field.dart — поле ввода значения борта.
 //
-// Своё состояние, свой контроллер, свой фокус. Правка — при потере
-// фокуса либо по Enter.
+// Своё состояние, свой контроллер, свой фокус.
+//
+// Коммит: при потере фокуса либо по Enter (галочка на клавиатуре).
+// Enter дополнительно снимает фокус, дабы курсор гас, а клавиатура
+// убиралась.
 //
 // Необязательная подсказка (hint) показывается, покуда поле пусто.
 //
@@ -49,9 +52,6 @@ class _BortFieldState extends State<BortField> {
   @override
   void didUpdateWidget(covariant BortField old) {
     super.didUpdateWidget(old);
-    // Внешнее значение переменилось, а поле не в фокусе — обновляем
-    // содержимое контроллера. При фокусе не трогаем, дабы не перебить
-    // ввод.
     if (old.initial != widget.initial && !_focus.hasFocus) {
       _ctrl.text = widget.initial;
     }
@@ -84,7 +84,11 @@ class _BortFieldState extends State<BortField> {
         hintText: widget.hint,
       ),
       onChanged: widget.onChanged,
-      onSubmitted: (_) => _commit(),
+      onSubmitted: (_) {
+        // Enter — коммит и снять фокус.
+        _commit();
+        _focus.unfocus();
+      },
     );
   }
 }

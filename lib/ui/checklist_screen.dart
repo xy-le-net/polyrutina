@@ -3,18 +3,19 @@
 //
 // Полноэкранный, открывается из TraceField.
 //
-// Заголовок: имя блока обычным текстом, под ним приглушённо — имя
-// рутины.
-//
-// След различается парой (objectId, slot).
+// След различается парой (objectId, slot) и родом (kind=checklist):
+// в одном слоте могут жить и текстовый след, и чек-лист.
 //
 // Список пунктов: слева PultTick, справа поле текста. В конце —
-// пустое поле, из коего список растёт.
+// пустое поле, из коего список растёт. Пустой не последний —
+// исчезает при уходе фокуса.
+//
+// Enter на клавиатуре — коммит пункта, фокус снять.
 //
 // Сохранение — телом целиком, записью в журнал с флагом «правка».
 //
-// Закрытие — висящая галка вниз. Долгое — подпульт с подтверждением:
-// отметить все, снять, очистить.
+// Закрытие — висящая галка вниз. Долгое — подпульт: отметить все,
+// снять, очистить.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -50,6 +51,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
   int _traceId = -1;
   List<_Item> _items = [];
   final List<TextEditingController> _controllers = [];
+  final List<FocusNode> _focusNodes = [];
   bool _initialized = false;
 
   @override
@@ -57,6 +59,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     super.initState();
     _items = [(text: '', done: false)];
     _controllers.add(TextEditingController());
+    _focusNodes.add(FocusNode());
   }
 
   @override
@@ -72,14 +75,22 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     for (final c in _controllers) {
       c.dispose();
     }
+    for (final f in _focusNodes) {
+      f.dispose();
+    }
     super.dispose();
   }
 
+  // Поиск существующего чек-листа по паре (objectId, slot)
+  // и роду checklist.
   void _loadTrace() {
     final app = AppScope.of(context);
-    final t = app.traceLayer.findFirstBySlot(widget.objectId, widget.slot);
+    final t = app.traceLayer.findFirstByKindSlot(
+      widget.objectId,
+      TraceKind.checklist,
+      widget.slot,
+    );
     if (t == null) return;
-    if (t.kind != TraceKind.checklist) return;
     _traceId = t.id;
     final loaded = <_Item>[
       for (final e in t.items) (text: e.text, done: e.done),
@@ -88,9 +99,14 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     for (final c in _controllers) {
       c.dispose();
     }
+    for (final f in _focusNodes) {
+      f.dispose();
+    }
     _controllers.clear();
+    _focusNodes.clear();
     for (final it in _items) {
       _controllers.add(TextEditingController(text: it.text));
+      _focusNodes.add(FocusNode());
     }
     if (mounted) setState(() {});
   }
@@ -124,6 +140,8 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
 
   Future<void> _toggleDone(int i) async {
     if (_items[i].text.trim().isEmpty) return;
+    // Снимаем фокус — курсор гаснет.
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _items[i] = (text: _items[i].text, done: !_items[i].done);
     });
@@ -137,7 +155,9 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
       setState(() {
         _items.removeAt(i);
         _controllers[i].dispose();
+        _focusNodes[i].dispose();
         _controllers.removeAt(i);
+        _focusNodes.removeAt(i);
       });
     } else {
       setState(() {
@@ -152,6 +172,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
       setState(() {
         _items.add((text: '', done: false));
         _controllers.add(TextEditingController());
+        _focusNodes.add(FocusNode());
       });
       return;
     }
@@ -160,11 +181,13 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
       setState(() {
         _items.add((text: '', done: false));
         _controllers.add(TextEditingController());
+        _focusNodes.add(FocusNode());
       });
     }
   }
 
   Future<void> _markAll() async {
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       for (var i = 0; i < _items.length; i++) {
         if (_items[i].text.trim().isNotEmpty) {
@@ -176,6 +199,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
   }
 
   Future<void> _unmarkAll() async {
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       for (var i = 0; i < _items.length; i++) {
         _items[i] = (text: _items[i].text, done: false);
@@ -185,15 +209,28 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
   }
 
   Future<void> _clearAll() async {
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       for (final c in _controllers) {
         c.dispose();
       }
+      for (final f in _focusNodes) {
+        f.dispose();
+      }
       _controllers.clear();
+      _focusNodes.clear();
       _items = [(text: '', done: false)];
       _controllers.add(TextEditingController());
+      _focusNodes.add(FocusNode());
     });
     await _save();
+  }
+
+  Future<void> _close() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await _save();
+    if (!mounted) return;
+    Navigator.of(context).pop();
   }
 
   @override
@@ -256,8 +293,11 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                           },
                           child: TextField(
                             controller: _controllers[i],
-                            style:
-                                TextStyle(color: bort.fg, fontSize: itemSize),
+                            focusNode: _focusNodes[i],
+                            style: TextStyle(
+                              color: bort.fg,
+                              fontSize: itemSize,
+                            ),
                             decoration: InputDecoration(
                               isDense: true,
                               hintText: i18n.t('routine.block.note'),
@@ -277,14 +317,15 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                               contentPadding: EdgeInsets.all(side * 0.15),
                             ),
                             onChanged: (v) {
-                              _items[i] = (
-                                text: v,
-                                done: _items[i].done,
-                              );
+                              _items[i] = (text: v, done: _items[i].done);
                               if (i == _items.length - 1 && v.isNotEmpty) {
                                 _ensureTrailingEmpty();
                               }
                               setState(() {});
+                            },
+                            onSubmitted: (_) {
+                              // Enter — коммит и снять фокус.
+                              FocusManager.instance.primaryFocus?.unfocus();
                             },
                           ),
                         ),
@@ -303,10 +344,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                   spec: PultSpec(
                     id: 'close_checklist',
                     icon: Icons.keyboard_arrow_down,
-                    onTap: () {
-                      _save();
-                      Navigator.of(context).pop();
-                    },
+                    onTap: _close,
                     longSubs: () => [
                       PultSpec(
                         id: 'chk_all',

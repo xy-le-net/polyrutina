@@ -5,17 +5,16 @@
 // действия, пять блоков, флаги, признак завершённости.
 //
 // Блок: род, накопленные секунды, метка старта, признак правки
-// времени.
+// времени (timeEdited).
 //
-// lastActionAt. Время последнего действия — для сортировки списка.
+// lastActionAt. Время последнего действия — для сортировки.
 //
 // flags. Биты JournalFlag. Правятся в карточке.
 //
 // completed. Признак завершённости. Ставится в блоке «итог».
 //
-// timeEdited (у блока). Истина, ежели время блока правилось вручную
-// (долгим нажатием в карточке). Сбрасывается при пуске блока —
-// новый отсчёт честен. В карточке такое время подчёркивается.
+// timeEdited (у блока). Истина, ежели время правилось вручную.
+// Показывается подчёркнутым. При пуске блока сбрасывается.
 //
 // Роды блоков: prep, transit, work, idle, closeout.
 // ═══════════════════════════════════════════════════════════════════
@@ -32,9 +31,6 @@ class RoutineBlock {
   final String kind;
   int accumulatorSeconds;
   int? startedAt;
-
-  // Признак правки времени. Истина — время правилось вручную;
-  // показывается подчёркнутым. При пуске сбрасывается.
   bool timeEdited;
 
   RoutineBlock({
@@ -57,7 +53,6 @@ class RoutineBlock {
   void start({int? at}) {
     if (startedAt != null) return;
     startedAt = at ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    // Новый отсчёт сбрасывает пометку правки.
     timeEdited = false;
   }
 
@@ -68,26 +63,26 @@ class RoutineBlock {
     startedAt = null;
   }
 
-  // Правка накопленного времени вручную.
+  // Правка времени вручную. Ноль — стирание, пометка снимается.
   void setEditedTime(int seconds) {
     accumulatorSeconds = seconds;
     startedAt = null;
-    timeEdited = true;
+    timeEdited = seconds > 0;
   }
 
   Map<String, dynamic> toJson() => {
-        'kind': kind,
-        'accumulator': accumulatorSeconds,
-        'started_at': startedAt,
-        'time_edited': timeEdited,
-      };
+    'kind': kind,
+    'accumulator': accumulatorSeconds,
+    'started_at': startedAt,
+    'time_edited': timeEdited,
+  };
 
   factory RoutineBlock.fromJson(Map<String, dynamic> j) => RoutineBlock(
-        kind: j['kind'] as String,
-        accumulatorSeconds: (j['accumulator'] as num?)?.toInt() ?? 0,
-        startedAt: (j['started_at'] as num?)?.toInt(),
-        timeEdited: j['time_edited'] as bool? ?? false,
-      );
+    kind: j['kind'] as String,
+    accumulatorSeconds: (j['accumulator'] as num?)?.toInt() ?? 0,
+    startedAt: (j['started_at'] as num?)?.toInt(),
+    timeEdited: j['time_edited'] as bool? ?? false,
+  );
 }
 
 class Routine {
@@ -141,24 +136,24 @@ class Routine {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'created_at': createdAt,
-        'last_action_at': lastActionAt,
-        'flags': flags,
-        'completed': completed,
-        'blocks': blocks.map((b) => b.toJson()).toList(),
-      };
+    'id': id,
+    'name': name,
+    'created_at': createdAt,
+    'last_action_at': lastActionAt,
+    'flags': flags,
+    'completed': completed,
+    'blocks': blocks.map((b) => b.toJson()).toList(),
+  };
 
   factory Routine.fromJson(Map<String, dynamic> j) => Routine(
-        id: (j['id'] as num).toInt(),
-        name: j['name'] as String? ?? '',
-        createdAt: (j['created_at'] as num).toInt(),
-        lastActionAt: (j['last_action_at'] as num?)?.toInt(),
-        flags: (j['flags'] as num?)?.toInt() ?? 0,
-        completed: j['completed'] as bool? ?? false,
-        blocks: (j['blocks'] as List)
-            .map((b) => RoutineBlock.fromJson(b as Map<String, dynamic>))
-            .toList(),
-      );
+    id: (j['id'] as num).toInt(),
+    name: j['name'] as String? ?? '',
+    createdAt: (j['created_at'] as num).toInt(),
+    lastActionAt: (j['last_action_at'] as num?)?.toInt(),
+    flags: (j['flags'] as num?)?.toInt() ?? 0,
+    completed: j['completed'] as bool? ?? false,
+    blocks: (j['blocks'] as List)
+        .map((b) => RoutineBlock.fromJson(b as Map<String, dynamic>))
+        .toList(),
+  );
 }

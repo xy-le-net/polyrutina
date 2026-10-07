@@ -8,12 +8,14 @@
 // последней отданной ему записи.
 //
 // Раздача. pump читает всё после наименьшей отметки, раздаёт каждому
-// слою его роды, движет отметки вперёд. Цикл повторяется, покуда
-// не перестанут появляться новые записи.
+// слою его роды, движет отметки вперёд.
+//
+// Счёт и объём. entryCount и entryBytes обновляются инкрементально
+// при pump — без чтения всей таблицы. Рубка читает их напрямую,
+// когда блок «данные» открыт.
 //
 // Состояние отметок пишется в файл ОТЛОЖЕННО и только когда отметки
-// действительно изменились — флаг _stateDirty. Сие устраняет лишние
-// записи файла (прежде — на каждый pump).
+// действительно изменились.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -54,19 +56,25 @@ class JournalLayer extends ChangeNotifier {
   final Map<String, _LayerReg> _layers = {};
   final Map<String, int> _savedIds = {};
 
+  // ─── Счёт и объём ───
+  // Обновляются инкрементально при pump. Рубка читает напрямую.
+  int entryCount = 0;
+  int entryBytes = 0;
+
   File? _stateFile;
   Timer? _saveTimer;
 
-  // Истина — отметки менялись, файл надобно записать.
   bool _stateDirty = false;
-
   bool _pumping = false;
   StreamSubscription<List<JournalData>>? _sub;
 
+  // ─── Пуск ───
   Future<void> init() async {
     final dir = await getApplicationDocumentsDirectory();
     _stateFile = File(p.join(dir.path, 'journal_layer.json'));
     await _loadState();
+    // Начальный пересчёт счёта и объёма.
+    await _recomputeStats();
     _sub = watchAll().listen((_) => pump());
   }
 
@@ -99,11 +107,15 @@ class JournalLayer extends ChangeNotifier {
     _pumping = true;
     try {
       while (true) {
-        final minLast =
-            _layers.values.map((l) => l.lastId).reduce((a, b) => a < b ? a : b);
+        final minLast = _layers.values
+            .map((l) => l.lastId)
+            .reduce((a, b) => a < b ? a : b);
         final entries = await entriesAfter(minLast);
         if (entries.isEmpty) break;
         for (final e in entries) {
+          // Обновление счёта и объёма — инкрементально.
+          entryCount += 1;
+          entryBytes += e.body.length + kJournalOverhead;
           for (final l in _layers.values) {
             if (e.id <= l.lastId) continue;
             if (l.types.contains(e.type)) {
@@ -112,7 +124,6 @@ class JournalLayer extends ChangeNotifier {
               } catch (_) {}
             }
             l.lastId = e.id;
-            // Отметка изменилась — файл надобно записать.
             _stateDirty = true;
           }
         }
@@ -133,7 +144,19 @@ class JournalLayer extends ChangeNotifier {
     _savedIds.clear();
     _stateDirty = true;
     await _saveStateNow();
+    await _recomputeStats();
     await pump();
+  }
+
+  // ─── Пересчёт счёта и объёма ───
+  // Зовётся при пуске и полном перечитывании. При обычной работе
+  // счёт движется инкрементально в pump.
+  Future<void> _recomputeStats() async {
+    final all = await db.select(db.journal).get();
+    entryCount = all.length;
+    entryBytes =
+        all.fold<int>(0, (s, e) => s + e.body.length) +
+        entryCount * kJournalOverhead;
   }
 
   // ─── Запись ───
@@ -142,12 +165,16 @@ class JournalLayer extends ChangeNotifier {
     String body = '{}',
     int flags = 0,
   }) async {
-    final id = await db.into(db.journal).insert(JournalCompanion.insert(
-          time: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-          flags: Value(flags),
-          type: type,
-          body: body,
-        ));
+    final id = await db
+        .into(db.journal)
+        .insert(
+          JournalCompanion.insert(
+            time: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+            flags: Value(flags),
+            type: type,
+            body: body,
+          ),
+        );
     await pump();
     return id;
   }
@@ -168,8 +195,9 @@ class JournalLayer extends ChangeNotifier {
   }
 
   Stream<List<JournalData>> watchAll() {
-    return (db.select(db.journal)..orderBy([(t) => OrderingTerm.asc(t.id)]))
-        .watch();
+    return (db.select(
+      db.journal,
+    )..orderBy([(t) => OrderingTerm.asc(t.id)])).watch();
   }
 
   Future<List<JournalData>> entriesAfter(int fromId, {int? type}) {
@@ -184,11 +212,7 @@ class JournalLayer extends ChangeNotifier {
 
   // ─── Управление ───
   Future<({int count, int bytes})> size() async {
-    final all = await db.select(db.journal).get();
-    final c = all.length;
-    final b =
-        all.fold<int>(0, (s, e) => s + e.body.length) + c * kJournalOverhead;
-    return (count: c, bytes: b);
+    return (count: entryCount, bytes: entryBytes);
   }
 
   Future<void> clearAll() async {
@@ -200,6 +224,8 @@ class JournalLayer extends ChangeNotifier {
     _savedIds.clear();
     _stateDirty = true;
     await _saveStateNow();
+    entryCount = 0;
+    entryBytes = 0;
     notifyListeners();
   }
 
@@ -211,6 +237,7 @@ class JournalLayer extends ChangeNotifier {
         .toList();
     if (ids.isEmpty) return;
     await (db.delete(db.journal)..where((t) => t.id.isIn(ids))).go();
+    await _recomputeStats();
     notifyListeners();
   }
 
@@ -220,21 +247,23 @@ class JournalLayer extends ChangeNotifier {
   }
 
   Future<void> markSynced(int id) async {
-    final row = await (db.select(db.journal)..where((t) => t.id.equals(id)))
-        .getSingleOrNull();
+    final row = await (db.select(
+      db.journal,
+    )..where((t) => t.id.equals(id))).getSingleOrNull();
     if (row == null) return;
     final newFlags = row.flags | JournalFlag.synced;
-    await (db.update(db.journal)..where((t) => t.id.equals(id)))
-        .write(JournalCompanion(flags: Value(newFlags)));
+    await (db.update(db.journal)..where((t) => t.id.equals(id))).write(
+      JournalCompanion(flags: Value(newFlags)),
+    );
   }
 
-  // Номер последней записи в журнале. Для проверки: есть ли новые
-  // записи после экспорта отчёта.
+  // Номер последней записи в журнале.
   Future<int> lastEntryId() async {
-    final rows = await (db.select(db.journal)
-          ..orderBy([(t) => OrderingTerm.desc(t.id)])
-          ..limit(1))
-        .get();
+    final rows =
+        await (db.select(db.journal)
+              ..orderBy([(t) => OrderingTerm.desc(t.id)])
+              ..limit(1))
+            .get();
     return rows.isEmpty ? 0 : rows.first.id;
   }
 
@@ -263,9 +292,7 @@ class JournalLayer extends ChangeNotifier {
 
   Future<void> _saveStateNow() async {
     if (_stateFile == null) return;
-    final data = {
-      'layers': _layers.map((k, v) => MapEntry(k, v.lastId)),
-    };
+    final data = {'layers': _layers.map((k, v) => MapEntry(k, v.lastId))};
     await _stateFile!.writeAsString(jsonEncode(data));
     _stateDirty = false;
   }

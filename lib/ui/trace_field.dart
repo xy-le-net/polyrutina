@@ -5,12 +5,19 @@
 //   слева — поле текста (три строки);
 //   справа — столбец: пульт чек-листа, пульт отправки/медиа.
 //
-// След различается парой (objectId, slot).
+// След различается парой (objectId, slot). Поиск чек-листа — по
+// kind=checklist + slot (не «любой след слота»): в одном слоте
+// могут жить и текст, и чек-лист.
 //
 // Пульт чек-листа:
-//   — нет неотмеченных — икона «галочка в квадрате», приглушённая;
-//   — есть неотмеченные — сигнальное число В ЯДРЕ (centerText),
-//     без подписи сбоку.
+//   — нет неотмеченных — галочка в квадрате;
+//   — есть неотмеченные — сигнальное число в ядре (centerText).
+//
+// Очистка поля. Коли текст был и стал пуст — тотчас запись правки
+// с пустым телом. Пульт отправки гаснет.
+//
+// Enter на клавиатуре — то же, что касание пульта отправки: коммит
+// и снятие фокуса.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -58,6 +65,9 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
   bool _initialized = false;
   String _lastSent = '';
 
+  // Номер записи о следе — для правки и очистки.
+  int _traceId = -1;
+
   String get _key =>
       OperationalLayer.traceDraftKey(widget.objectId, widget.slot);
 
@@ -77,8 +87,21 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     if (_initialized) return;
     _initialized = true;
     final app = AppScope.of(context);
-    _ctrl.text = app.bort.draft(_key);
-    _lastSent = _ctrl.text;
+    // Текстовый след берём из слоя по kind=text + slot.
+    final t = app.traceLayer.findFirstByKindSlot(
+      widget.objectId,
+      TraceKind.text,
+      widget.slot,
+    );
+    if (t != null) {
+      _traceId = t.id;
+      _lastSent = t.text;
+      _ctrl.text = t.text;
+    } else {
+      // Кэш черновика — коли следа ещё нет.
+      _ctrl.text = app.bort.draft(_key);
+      _lastSent = _ctrl.text;
+    }
   }
 
   @override
@@ -99,26 +122,48 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     }
   }
 
+  // ─── Автоотправка ───
+  // Поле непустое — создание либо правка. Поле пустое, а след был —
+  // правка с пустым телом (стирание).
   Future<void> _autoSend() async {
     if (!_initialized) return;
     if (!mounted) return;
     final app = AppScope.of(context);
-    final text = _ctrl.text.trim();
-    if (text.isEmpty) return;
-    if (text == _lastSent && app.bort.isTraceSent(_key)) return;
-    await app.traceLayer.createText(
+    final text = _ctrl.text;
+
+    // Тот же текст — ничего не делаем.
+    if (text == _lastSent) return;
+
+    // Коли след уже есть — правим.
+    if (_traceId != -1) {
+      await app.traceLayer.updateText(app.journal, _traceId, text);
+      _lastSent = text;
+      app.bort.markTraceSent(_key);
+      if (mounted) setState(() {});
+      return;
+    }
+
+    // Следа нет и текст пуст — ничего.
+    if (text.trim().isEmpty) {
+      _lastSent = text;
+      return;
+    }
+
+    // Создаём новый след.
+    final id = await app.traceLayer.createText(
       app.journal,
       slot: widget.slot,
       text: text,
       parents: [widget.objectId],
     );
-    app.bort.markTraceSent(_key);
+    _traceId = id;
     _lastSent = text;
+    app.bort.markTraceSent(_key);
+    if (mounted) setState(() {});
   }
 
   bool _canSend() {
-    final app = AppScope.of(context);
-    return _ctrl.text.trim().isNotEmpty && !app.bort.isTraceSent(_key);
+    return _ctrl.text != _lastSent;
   }
 
   Future<void> _send() async {
@@ -140,11 +185,15 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     );
   }
 
+  // Число неотмеченных — по kind=checklist + slot.
   int _uncheckedCount() {
     final app = AppScope.of(context);
-    final t = app.traceLayer.findFirstBySlot(widget.objectId, widget.slot);
+    final t = app.traceLayer.findFirstByKindSlot(
+      widget.objectId,
+      TraceKind.checklist,
+      widget.slot,
+    );
     if (t == null) return 0;
-    if (t.kind != TraceKind.checklist) return 0;
     int n = 0;
     for (final it in t.items) {
       if (!it.done && it.text.trim().isNotEmpty) n++;
@@ -160,8 +209,6 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     final canSend = _canSend();
     final pultSide = widget.side * bort.kPultSmall;
 
-    // Пульт чек-листа: нет неотмеченных — галочка в квадрате;
-    // есть — сигнальное число в ядре.
     final unchecked = _uncheckedCount();
     const IconData chkIcon = Icons.check_box_outlined;
     final String? chkCenter = unchecked > 0 ? '$unchecked' : null;
@@ -179,32 +226,41 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
                 focusNode: _focus,
                 maxLines: 3,
                 style: TextStyle(
-                    color: widget.fg,
-                    fontSize: widget.side * bort.kNumberSmall),
+                  color: widget.fg,
+                  fontSize: widget.side * bort.kNumberSmall,
+                ),
                 decoration: InputDecoration(
                   isDense: true,
                   hintText: i18n.t('routine.block.note'),
                   hintStyle: TextStyle(color: widget.dim),
                   border: OutlineInputBorder(
                     borderSide: BorderSide(color: widget.dim),
-                    borderRadius:
-                        BorderRadius.circular(widget.side * bort.kRadius),
+                    borderRadius: BorderRadius.circular(
+                      widget.side * bort.kRadius,
+                    ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderSide: BorderSide(color: widget.dim),
-                    borderRadius:
-                        BorderRadius.circular(widget.side * bort.kRadius),
+                    borderRadius: BorderRadius.circular(
+                      widget.side * bort.kRadius,
+                    ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderSide: BorderSide(color: widget.fg),
-                    borderRadius:
-                        BorderRadius.circular(widget.side * bort.kRadius),
+                    borderRadius: BorderRadius.circular(
+                      widget.side * bort.kRadius,
+                    ),
                   ),
                   contentPadding: EdgeInsets.all(widget.side * 0.15),
                 ),
                 onChanged: (v) {
                   bort.setDraft(_key, v);
                   setState(() {});
+                },
+                // Enter на клавиатуре — коммит и снять фокус.
+                onSubmitted: (_) {
+                  _autoSend();
+                  _focus.unfocus();
                 },
               ),
             ),

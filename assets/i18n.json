@@ -38,6 +38,7 @@
     "routine.in_work": "в работе",
     "routine.waiting": "ожидает",
     "routine.completed": "завершено",
+    "routine.mark_completed": "отметить завершённой",
 
     "routine.block.note": "описание",
     "routine.block.prep": "подготовка",
@@ -139,6 +140,7 @@
     "routine.in_work": "in work",
     "routine.waiting": "waiting",
     "routine.completed": "completed",
+    "routine.mark_completed": "mark completed",
 
     "routine.block.note": "note",
     "routine.block.prep": "prep",

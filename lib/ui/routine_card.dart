@@ -1,28 +1,22 @@
 // ═══════════════════════════════════════════════════════════════════
 // routine_card.dart — карточка рутины.
 //
-// Шапка: системная стрелка назад и поле имени (BortField).
+// Блоки строятся единым Block (ui/block.dart).
 //
-// Тело — семь блоков: описание, подготовка, переход, выполнение,
-// простой, завершение, итог.
+// Время правится долгим нажатием на пульс любого блока (и идущего,
+// и покоящегося, и с нулевым временем): открывается поле ввода в
+// формате «дд:чч:мм:сс». Enter либо пульт подтверждения — сохранить.
+// Правленое время подчёркивается. Пусто либо ноль — стирание.
 //
-// Гамма. Обычный блок — гамма темы. Активный — противоположная.
+// Завершённость. Чек-бокс в блоке «итог». Установка гасит идущий
+// блок. Снятие — пуском блока.
 //
-// Свёртка. Касание названия блока — свернуть либо развернуть.
-// В свёрнутом виде остаётся шапка (название и пульс). Итог не
-// сворачивается. Состояние — в борте, у каждой рутины своё;
-// по умолчанию переход и простой свёрнуты.
+// Под таймером итога — список блоков с ненулевым временем.
 //
-// Итог. Вместо пульса — чек-бокс завершённости с таймером слева.
-// Установка гасит идущий блок. Под таймером — список блоков с
-// ненулевым временем.
+// Свёртка блоков — в борте, у каждой рутины своя; переход и простой
+// свёрнуты по умолчанию.
 //
-// Правка времени. Долгое нажатие на пульс остановленного блока —
-// поле ввода. Правленое время подчёркивается.
-//
-// Прокрутка. При открытии — к последнему пущенному блоку.
-//
-// Тикер — единый AppTicker.
+// Прокрутка к последнему пущенному блоку при открытии.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -33,6 +27,7 @@ import '../data/journal_types.dart';
 import '../data/routine.dart';
 import '../data/ticker.dart';
 import 'app_scope.dart';
+import 'block.dart';
 import 'bort_field.dart';
 import 'pulse.dart';
 import 'pult_core.dart';
@@ -132,29 +127,53 @@ class _RoutineCardState extends State<RoutineCard> {
     });
   }
 
+  // ─── Формат правки: «дд:чч:мм:сс» ───
   String _fmtEditable(int sec) {
-    final h = sec ~/ 3600;
+    final d = sec ~/ 86400;
+    final h = (sec % 86400) ~/ 3600;
     final m = (sec % 3600) ~/ 60;
     final s = sec % 60;
     String two(int n) => n.toString().padLeft(2, '0');
+    if (d > 0) return '${two(d)}:${two(h)}:${two(m)}:${two(s)}';
     if (h > 0) return '${two(h)}:${two(m)}:${two(s)}';
     return '${two(m)}:${two(s)}';
   }
 
+  // Разбор «дд:чч:мм:сс» либо сокращённых форм.
+  //   одно число        — секунды;
+  //   «мм:сс»           — минуты и секунды;
+  //   «чч:мм:сс»        — часы, минуты, секунды;
+  //   «дд:чч:мм:сс»     — дни, часы, минуты, секунды.
   int? _parseEditable(String s) {
-    final parts = s.trim().split(':');
+    final t = s.trim();
+    if (t.isEmpty) return 0; // пусто = стирание
+    final parts = t.split(':');
+    int? n(int i) => int.tryParse(parts[i]);
+    if (parts.length == 1) {
+      final a = n(0);
+      if (a == null) return null;
+      return a;
+    }
     if (parts.length == 2) {
-      final a = int.tryParse(parts[0]);
-      final b = int.tryParse(parts[1]);
+      final a = n(0);
+      final b = n(1);
       if (a == null || b == null) return null;
       return a * 60 + b;
     }
     if (parts.length == 3) {
-      final a = int.tryParse(parts[0]);
-      final b = int.tryParse(parts[1]);
-      final c = int.tryParse(parts[2]);
+      final a = n(0);
+      final b = n(1);
+      final c = n(2);
       if (a == null || b == null || c == null) return null;
       return a * 3600 + b * 60 + c;
+    }
+    if (parts.length == 4) {
+      final a = n(0);
+      final b = n(1);
+      final c = n(2);
+      final d = n(3);
+      if (a == null || b == null || c == null || d == null) return null;
+      return a * 86400 + b * 3600 + c * 60 + d;
     }
     return null;
   }
@@ -175,16 +194,18 @@ class _RoutineCardState extends State<RoutineCard> {
       _editCtrl = null;
       return;
     }
-    if (sec == (r.blockOf(kind)?.accumulatorSeconds ?? 0)) {
+    if (sec == (r.blockOf(kind)?.accumulatorSeconds ?? 0) && sec != 0) {
       setState(() => _editingKind = null);
       _editCtrl?.dispose();
       _editCtrl = null;
       return;
     }
     await app.routineLayer.setBlockTime(app.journal, r.id, kind, sec);
-    setState(() => _editingKind = null);
-    _editCtrl?.dispose();
-    _editCtrl = null;
+    if (mounted) {
+      setState(() => _editingKind = null);
+      _editCtrl?.dispose();
+      _editCtrl = null;
+    }
   }
 
   Future<void> _toggleCompleted(Routine r) async {
@@ -227,37 +248,17 @@ class _RoutineCardState extends State<RoutineCard> {
 
     final blocks = <Widget>[];
 
-    blocks.add(_frame(
-      key: _blockKeys['note'],
-      title: i18n.t('routine.block.note'),
-      kind: 'note',
-      running: false,
-      seconds: 0,
-      showPulse: false,
-      showCompletion: false,
-      timeEdited: false,
-      collapsed: bort.isBlockCollapsed(r.id, 'note'),
-      bort: bort,
-      app: app,
-      routine: r,
-      side: side,
-      colonVisible: app.ticker.colonVisible,
-      i18n: i18n,
-      allBlocks: r.blocks,
-    ));
-
-    for (final k in RoutineBlock.kinds) {
-      final b = r.blockOf(k);
-      blocks.add(_frame(
-        key: _blockKeys[k],
-        title: i18n.t('routine.block.$k'),
-        kind: k,
-        running: b?.isRunning ?? false,
-        seconds: b?.secondsNowAt(now) ?? 0,
-        showPulse: true,
+    blocks.add(
+      _buildBlock(
+        key: _blockKeys['note'],
+        title: i18n.t('routine.block.note'),
+        kind: 'note',
+        running: false,
+        seconds: 0,
+        showPulse: false,
         showCompletion: false,
-        timeEdited: b?.timeEdited ?? false,
-        collapsed: bort.isBlockCollapsed(r.id, k),
+        timeEdited: false,
+        collapsed: bort.isBlockCollapsed(r.id, 'note'),
         bort: bort,
         app: app,
         routine: r,
@@ -265,27 +266,53 @@ class _RoutineCardState extends State<RoutineCard> {
         colonVisible: app.ticker.colonVisible,
         i18n: i18n,
         allBlocks: r.blocks,
-      ));
+      ),
+    );
+
+    for (final k in RoutineBlock.kinds) {
+      final b = r.blockOf(k);
+      blocks.add(
+        _buildBlock(
+          key: _blockKeys[k],
+          title: i18n.t('routine.block.$k'),
+          kind: k,
+          running: b?.isRunning ?? false,
+          seconds: b?.secondsNowAt(now) ?? 0,
+          showPulse: true,
+          showCompletion: false,
+          timeEdited: b?.timeEdited ?? false,
+          collapsed: bort.isBlockCollapsed(r.id, k),
+          bort: bort,
+          app: app,
+          routine: r,
+          side: side,
+          colonVisible: app.ticker.colonVisible,
+          i18n: i18n,
+          allBlocks: r.blocks,
+        ),
+      );
     }
 
-    blocks.add(_frame(
-      key: _blockKeys['summary'],
-      title: i18n.t('routine.summary'),
-      kind: 'summary',
-      running: false,
-      seconds: r.totalSeconds,
-      showPulse: false,
-      showCompletion: true,
-      timeEdited: false,
-      collapsed: false,
-      bort: bort,
-      app: app,
-      routine: r,
-      side: side,
-      colonVisible: app.ticker.colonVisible,
-      i18n: i18n,
-      allBlocks: r.blocks,
-    ));
+    blocks.add(
+      _buildBlock(
+        key: _blockKeys['summary'],
+        title: i18n.t('routine.summary'),
+        kind: 'summary',
+        running: false,
+        seconds: r.totalSeconds,
+        showPulse: false,
+        showCompletion: true,
+        timeEdited: false,
+        collapsed: false,
+        bort: bort,
+        app: app,
+        routine: r,
+        side: side,
+        colonVisible: app.ticker.colonVisible,
+        i18n: i18n,
+        allBlocks: r.blocks,
+      ),
+    );
 
     return Scaffold(
       backgroundColor: bort.bg,
@@ -314,7 +341,8 @@ class _RoutineCardState extends State<RoutineCard> {
     );
   }
 
-  Widget _frame({
+  // ─── Один блок чрез единый Block ───
+  Widget _buildBlock({
     Key? key,
     required String title,
     required String kind,
@@ -332,6 +360,7 @@ class _RoutineCardState extends State<RoutineCard> {
     required dynamic i18n,
     required List<RoutineBlock> allBlocks,
   }) {
+    // ─── Пятёрка цветов ───
     final Color bg;
     final Color bgdim;
     final Color dim;
@@ -368,27 +397,31 @@ class _RoutineCardState extends State<RoutineCard> {
     final numberSize = side * (bort.kNumber as double);
     final pultSide = side * (bort.kPultSmall as double);
 
-    Widget? headerRight;
+    // ─── Правый верхний угол ───
+    Widget? cornerTop;
 
     if (showPulse) {
       if (_editingKind == kind) {
-        headerRight = Row(
+        cornerTop = Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
-              width: side * 2.4,
+              width: side * 2.6,
               child: TextField(
                 controller: _editCtrl,
                 autofocus: true,
                 style: TextStyle(color: fg, fontSize: numberSize),
                 decoration: InputDecoration(
                   isDense: true,
+                  hintText: 'дд:чч:мм:сс',
+                  hintStyle: TextStyle(color: dim, fontSize: numberSize * 0.7),
                   border: OutlineInputBorder(
                     borderSide: BorderSide(color: dim),
                     borderRadius: BorderRadius.circular(radiusW),
                   ),
                   contentPadding: EdgeInsets.all(side * 0.1),
                 ),
+                onSubmitted: (_) => _confirmEdit(routine, kind),
               ),
             ),
             SizedBox(width: side * 0.1),
@@ -406,15 +439,14 @@ class _RoutineCardState extends State<RoutineCard> {
           ],
         );
       } else {
+        // Пульс блока. Икона — по роду. Долгое — правка времени.
         Widget pulse = Pulse(
           spec: PultSpec(
             id: 'block_$kind',
             icon: _blockIcon(kind),
             selected: running,
             onTap: () => app.toggleBlockWithShift(routine.id, kind),
-            onLongPress: (!running && seconds > 0)
-                ? () => _startEdit(seconds, kind)
-                : null,
+            onLongPress: () => _startEdit(seconds, kind),
           ),
           seconds: seconds,
           running: running,
@@ -437,10 +469,10 @@ class _RoutineCardState extends State<RoutineCard> {
             child: pulse,
           );
         }
-        headerRight = pulse;
+        cornerTop = pulse;
       }
     } else if (showCompletion) {
-      headerRight = Row(
+      cornerTop = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (seconds > 0)
@@ -467,7 +499,7 @@ class _RoutineCardState extends State<RoutineCard> {
         ],
       );
     } else if (seconds > 0) {
-      headerRight = TimerText(
+      cornerTop = TimerText(
         seconds: seconds,
         running: false,
         fg: fg,
@@ -478,36 +510,34 @@ class _RoutineCardState extends State<RoutineCard> {
       );
     }
 
-    final bool showFlags = kind == 'note';
-    final bool canCollapse = kind != 'summary';
-    final bool isCollapsed = canCollapse && collapsed;
-
+    // ─── Тело ───
     Widget? body;
     if (kind == 'summary') {
       final rows = <Widget>[];
       for (final b in allBlocks) {
         if (b.accumulatorSeconds > 0) {
-          rows.add(Padding(
-            padding: EdgeInsets.only(top: side * 0.1),
-            child: Text(
-              '${i18n.t('routine.block.${b.kind}')}: '
-              '${_shortTime(b.accumulatorSeconds)}.',
-              style: TextStyle(
-                  color: dim, fontSize: side * (bort.kNumberSmall as double)),
+          rows.add(
+            Padding(
+              padding: EdgeInsets.only(top: side * 0.1),
+              child: Text(
+                '${i18n.t('routine.block.${b.kind}')}: '
+                '${_shortTime(b.accumulatorSeconds)}.',
+                style: TextStyle(
+                  color: dim,
+                  fontSize: side * (bort.kNumberSmall as double),
+                ),
+              ),
             ),
-          ));
+          );
         }
       }
       if (rows.isNotEmpty) {
-        body = Padding(
-          padding: EdgeInsets.only(top: pad * 0.5),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: rows,
-          ),
+        body = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: rows,
         );
       }
-    } else if (!isCollapsed) {
+    } else {
       body = TraceField(
         objectId: routine.id,
         slot: kind,
@@ -523,62 +553,57 @@ class _RoutineCardState extends State<RoutineCard> {
       );
     }
 
-    return Container(
-      key: key,
-      margin: EdgeInsets.only(bottom: gap),
-      decoration: BoxDecoration(
-        color: bg,
-        border: Border.all(
-          color: running ? fg : dim,
-          width: strokeW,
+    final bool canCollapse = kind != 'summary';
+
+    // Флаги — только у нулевого блока; выводятся после заголовка.
+    final bool showFlags = kind == 'note';
+    // Ежели флаги есть, а заголовок у Block — с cornerRightTop,
+    // флаги надобно поместить туда же в ряд с правым углом.
+    Widget? topRight = cornerTop;
+    if (showFlags) {
+      final flagsPult = Pult(
+        spec: PultSpec(
+          id: 'flags_${routine.id}',
+          icon: Icons.flag,
+          selected: routine.flags != 0,
+          subsBuilder: () => _flagSubs(app, routine, i18n),
         ),
-        borderRadius: BorderRadius.circular(radiusW),
-      ),
-      padding: EdgeInsets.all(pad),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        fg: dim,
+        bg: bg,
+        signal: signal,
+        overrideSize: pultSide,
+      );
+      topRight = Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: canCollapse
-                      ? () {
-                          (bort.toggleBlockCollapsed as Function)(
-                              routine.id, kind);
-                        }
-                      : null,
-                  child: Text(
-                    title,
-                    style: TextStyle(color: dim, fontSize: titleSize),
-                  ),
-                ),
-              ),
-              if (showFlags)
-                Pult(
-                  spec: PultSpec(
-                    id: 'flags_${routine.id}',
-                    icon: Icons.flag,
-                    selected: routine.flags != 0,
-                    subsBuilder: () => _flagSubs(app, routine, i18n),
-                  ),
-                  fg: dim,
-                  bg: bg,
-                  signal: signal,
-                  overrideSize: pultSide,
-                ),
-              if (showFlags && headerRight != null) SizedBox(width: side * 0.1),
-              if (headerRight != null) headerRight,
-            ],
-          ),
-          if (body != null) ...[
-            SizedBox(height: pad * 0.5),
-            body,
-          ],
+          flagsPult,
+          if (cornerTop != null) SizedBox(width: side * 0.15),
+          if (cornerTop != null) cornerTop,
         ],
-      ),
+      );
+    }
+
+    return Block(
+      key: key,
+      title: title,
+      collapsed: collapsed,
+      canCollapse: canCollapse,
+      onToggleCollapsed: () {
+        (bort.toggleBlockCollapsed as Function)(routine.id, kind);
+      },
+      cornerRightTop: topRight,
+      bg: bg,
+      dim: dim,
+      fg: fg,
+      signal: signal,
+      titleSize: titleSize,
+      pad: pad,
+      gap: gap,
+      strokeW: strokeW,
+      radiusW: radiusW,
+      active: running,
+      reserveBottom: 0,
+      child: body,
     );
   }
 
@@ -617,17 +642,19 @@ class _RoutineCardState extends State<RoutineCard> {
     final cur = routine.flags;
     for (var i = 0; i < JournalFlag.all.length; i++) {
       final f = JournalFlag.all[i];
-      out.add(PultSpec(
-        id: 'flag_$i',
-        icon: icons[i],
-        label: i18n.t(keys[i]) as String,
-        selected: (cur & f) != 0,
-        stayOpen: true,
-        onTap: () {
-          final newVal = cur ^ f;
-          app.routineLayer.setFlags(app.journal, routine.id, newVal);
-        },
-      ));
+      out.add(
+        PultSpec(
+          id: 'flag_$i',
+          icon: icons[i],
+          label: i18n.t(keys[i]) as String,
+          selected: (cur & f) != 0,
+          stayOpen: true,
+          onTap: () {
+            final newVal = cur ^ f;
+            app.routineLayer.setFlags(app.journal, routine.id, newVal);
+          },
+        ),
+      );
     }
     return out;
   }

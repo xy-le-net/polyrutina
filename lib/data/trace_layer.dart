@@ -9,20 +9,18 @@
 //     "kind": "text" | "checklist",
 //     "slot": "work",
 //     "text": "...",
-//     "items": [{"text":"...","done":false}, ...],
-//     "parents": [1024, 1101],
-//     "children": [1103],
-//     "files": [{"kind":"photo","path":"..."}, ...],
+//     "items": [...],
+//     "parents": [...],
+//     "children": [...],
+//     "files": [...],
 //     "deleted": true
 //   }
 //
-// slot — род блока рутины (note, prep, transit, work, idle, closeout,
-// summary). Различает следы внутри одной рутины: без него все блоки
-// видели бы один и тот же след.
+// slot — род блока рутины. kind — форма показа. Поиск надобен
+// по обоим: текст и чек-лист могут жить в одном слоте, и надобно
+// различать их. Метод findFirstByKindSlot — для сего.
 //
-// Номер записи о создании следа — идентификатор в связях.
-//
-// Кэш. Пишется отложенно (200 мс).
+// Кэш — отложенный (200 мс).
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -49,7 +47,6 @@ class TraceKind {
 class Trace {
   final int id;
   String kind;
-  // Род блока рутины (либо пусто).
   String slot;
   String text;
   List<TraceItem> items;
@@ -68,43 +65,43 @@ class Trace {
     List<int>? children,
     List<TraceFile>? files,
     this.deleted = false,
-  })  : items = items ?? [],
-        parents = parents ?? [],
-        children = children ?? [],
-        files = files ?? [];
+  }) : items = items ?? [],
+       parents = parents ?? [],
+       children = children ?? [],
+       files = files ?? [];
 
   Map<String, dynamic> toJson() => {
-        'kind': kind,
-        'slot': slot,
-        'text': text,
-        'items': items.map((e) => e.toJson()).toList(),
-        'parents': parents,
-        'children': children,
-        'files': files.map((e) => e.toJson()).toList(),
-        'deleted': deleted,
-      };
+    'kind': kind,
+    'slot': slot,
+    'text': text,
+    'items': items.map((e) => e.toJson()).toList(),
+    'parents': parents,
+    'children': children,
+    'files': files.map((e) => e.toJson()).toList(),
+    'deleted': deleted,
+  };
 
   factory Trace.fromJson(int id, Map<String, dynamic> j) => Trace(
-        id: id,
-        kind: j['kind'] as String? ?? TraceKind.text,
-        slot: j['slot'] as String? ?? '',
-        text: j['text'] as String? ?? '',
-        items: (j['items'] as List?)
-                ?.map((e) => TraceItem.fromJson(e as Map<String, dynamic>))
-                .toList() ??
-            [],
-        parents:
-            (j['parents'] as List?)?.map((e) => (e as num).toInt()).toList() ??
-                [],
-        children:
-            (j['children'] as List?)?.map((e) => (e as num).toInt()).toList() ??
-                [],
-        files: (j['files'] as List?)
-                ?.map((e) => TraceFile.fromJson(e as Map<String, dynamic>))
-                .toList() ??
-            [],
-        deleted: j['deleted'] as bool? ?? false,
-      );
+    id: id,
+    kind: j['kind'] as String? ?? TraceKind.text,
+    slot: j['slot'] as String? ?? '',
+    text: j['text'] as String? ?? '',
+    items:
+        (j['items'] as List?)
+            ?.map((e) => TraceItem.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        [],
+    parents:
+        (j['parents'] as List?)?.map((e) => (e as num).toInt()).toList() ?? [],
+    children:
+        (j['children'] as List?)?.map((e) => (e as num).toInt()).toList() ?? [],
+    files:
+        (j['files'] as List?)
+            ?.map((e) => TraceFile.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        [],
+    deleted: j['deleted'] as bool? ?? false,
+  );
 }
 
 class TraceItem {
@@ -118,26 +115,24 @@ class TraceItem {
     this.done = false,
     List<int>? parents,
     List<int>? children,
-  })  : parents = parents ?? [],
-        children = children ?? [];
+  }) : parents = parents ?? [],
+       children = children ?? [];
 
   Map<String, dynamic> toJson() => {
-        'text': text,
-        'done': done,
-        'parents': parents,
-        'children': children,
-      };
+    'text': text,
+    'done': done,
+    'parents': parents,
+    'children': children,
+  };
 
   factory TraceItem.fromJson(Map<String, dynamic> j) => TraceItem(
-        text: j['text'] as String? ?? '',
-        done: j['done'] as bool? ?? false,
-        parents:
-            (j['parents'] as List?)?.map((e) => (e as num).toInt()).toList() ??
-                [],
-        children:
-            (j['children'] as List?)?.map((e) => (e as num).toInt()).toList() ??
-                [],
-      );
+    text: j['text'] as String? ?? '',
+    done: j['done'] as bool? ?? false,
+    parents:
+        (j['parents'] as List?)?.map((e) => (e as num).toInt()).toList() ?? [],
+    children:
+        (j['children'] as List?)?.map((e) => (e as num).toInt()).toList() ?? [],
+  );
 }
 
 class TraceFile {
@@ -149,9 +144,9 @@ class TraceFile {
   Map<String, dynamic> toJson() => {'kind': kind, 'path': path};
 
   factory TraceFile.fromJson(Map<String, dynamic> j) => TraceFile(
-        kind: j['kind'] as String? ?? 'other',
-        path: j['path'] as String? ?? '',
-      );
+    kind: j['kind'] as String? ?? 'other',
+    path: j['path'] as String? ?? '',
+  );
 }
 
 class TraceLayer extends ChangeNotifier {
@@ -242,8 +237,9 @@ class TraceLayer extends ChangeNotifier {
               .toList();
         }
         if (data['parents'] is List) {
-          existing.parents =
-              (data['parents'] as List).map((x) => (x as num).toInt()).toList();
+          existing.parents = (data['parents'] as List)
+              .map((x) => (x as num).toInt())
+              .toList();
         }
         if (data['children'] is List) {
           existing.children = (data['children'] as List)
@@ -277,11 +273,26 @@ class TraceLayer extends ChangeNotifier {
     return out;
   }
 
-  // Первый след по паре (objectId, slot) — для системного следа блока.
+  // Первый след по слоту, независимо от рода (текст либо чек-лист).
+  // Оставлен для случаев, когда надобно любой след слота.
   Trace? findFirstBySlot(int objectId, String slot) {
     Trace? found;
     for (final t in traces.values) {
       if (t.deleted) continue;
+      if (t.slot != slot) continue;
+      if (!t.parents.contains(objectId)) continue;
+      if (found == null || t.id < found.id) found = t;
+    }
+    return found;
+  }
+
+  // Первый след по роду И слоту. Нужно, когда в слоте живут и текст,
+  // и чек-лист: их надобно различать.
+  Trace? findFirstByKindSlot(int objectId, String kind, String slot) {
+    Trace? found;
+    for (final t in traces.values) {
+      if (t.deleted) continue;
+      if (t.kind != kind) continue;
       if (t.slot != slot) continue;
       if (!t.parents.contains(objectId)) continue;
       if (found == null || t.id < found.id) found = t;
@@ -351,7 +362,10 @@ class TraceLayer extends ChangeNotifier {
   }
 
   Future<void> updateText(
-      JournalLayer journal, int traceId, String text) async {
+    JournalLayer journal,
+    int traceId,
+    String text,
+  ) async {
     final t = traces[traceId];
     if (t == null) return;
     t.text = text;
@@ -359,7 +373,10 @@ class TraceLayer extends ChangeNotifier {
   }
 
   Future<void> updateItems(
-      JournalLayer journal, int traceId, List<TraceItem> items) async {
+    JournalLayer journal,
+    int traceId,
+    List<TraceItem> items,
+  ) async {
     final t = traces[traceId];
     if (t == null) return;
     t.items = items;

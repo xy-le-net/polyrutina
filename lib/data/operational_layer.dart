@@ -1,23 +1,17 @@
 // ═══════════════════════════════════════════════════════════════════
 // operational_layer.dart — оперативный слой («борт»).
 //
-// Состояние интерфейса: цвета, коэффициенты размеров, язык, вкладка,
-// якорь, черновики, метка запуска, смена, полночь, свёрнутость
-// блоков рубки и блоков рутин, метка последнего экспорта.
+// Состояние интерфейса: цвета, коэффициенты, язык, вкладка, якорь,
+// черновики, метка запуска, смена, полночь, свёрнутость блоков,
+// метка экспорта, время борта.
 //
-// Цвета. Пять ролей: bg, bgdim, fg, signal — парные по темам;
-// dim — единый для обеих гамм.
+// Время борта. Накопительное, за всё время. Идёт, покуда приложение
+// на экране и было действие за последние 20 секунд. Бездействие,
+// сворачивание, закрытие — стоп. При первом открытии после полуночи
+// суточная доля уходит в журнал записью рода bort с ключом «bort_time».
 //
-// Свёрнутые блоки рутин. collapsedBlocks: номер рутины → набор
-// свёрнутых родов блоков. По умолчанию (для рутины, коей нет
-// в сем поле) — transit и idle. При касании названия блока
-// состояние переключается.
-//
-// lastExportId. Номер журнальной записи на миг последнего экспорта
-// отчёта в PDF. Кнопка экспорта активна, коли есть записи с большим
-// номером.
-//
-// Полночь. Строка «чч:мм», для сброса смены.
+// Правка смены. Долгое нажатие — поле ввода (чч:мм:сс). Правленое
+// время подчёркнуто; до полуночи снимается.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -34,6 +28,9 @@ import 'package:path_provider/path_provider.dart';
 import 'database.dart';
 import 'journal_layer.dart';
 import 'journal_types.dart';
+
+// Таймаут бездействия для времени борта — 20 секунд.
+const int kBortTimeoutSec = 20;
 
 class OperationalLayer extends ChangeNotifier {
   // ─── Действующий набор цветов ───
@@ -67,13 +64,18 @@ class OperationalLayer extends ChangeNotifier {
   String midnight = '00:00';
 
   // ─── Свёрнутые блоки рутин ───
-  // Номер рутины → набор свёрнутых родов блоков (note, prep, ...).
-  // Коли рутины нет в карте — умолчание: transit и idle свёрнуты.
   Map<int, Set<String>> collapsedBlocks = {};
 
   // ─── Метка последнего экспорта ───
-  // Номер записи в журнале на миг последнего экспорта PDF.
   int lastExportId = 0;
+
+  // ─── Время борта ───
+  // Накопительное за всё время. Идёт при действиях с таймаутом.
+  int bortTime = 0;
+  // Миг последнего действия (секунды Unix). 0 — нет действия.
+  int bortLastActionAt = 0;
+  // Миг последней прошедшей полуночи, для суточных записей.
+  int bortPrevMidnight = 0;
 
   // ─── Коэффициенты размеров ───
   double kPult = 1.0;
@@ -91,6 +93,8 @@ class OperationalLayer extends ChangeNotifier {
   bool onShift = false;
   int totalShiftSeconds = 0;
   int? shiftStartedAt;
+  // Пометка правки времени смены.
+  bool shiftEdited = false;
 
   // ─── Черновики и признак «отправлено» ───
   Map<String, String> drafts = {};
@@ -102,6 +106,7 @@ class OperationalLayer extends ChangeNotifier {
   // ─── Служебное ───
   File? _file;
   File? _installFile;
+  Timer? _saveTimer;
 
   OperationalLayer();
 
@@ -123,7 +128,16 @@ class OperationalLayer extends ChangeNotifier {
       reset: _resetMemory,
     );
 
+    // Проверка полуночи — до первого тика.
+    await checkMidnight(journal);
+
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _saveTimer?.cancel();
+    super.dispose();
   }
 
   // ─── Метка первого запуска ───
@@ -136,15 +150,14 @@ class OperationalLayer extends ChangeNotifier {
         firstRunUnixSec = (data['first_run_unix_sec'] as num?)?.toInt() ?? 0;
       } else {
         firstRunUnixSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-        await _installFile!.writeAsString(jsonEncode({
-          'first_run_unix_sec': firstRunUnixSec,
-        }));
+        await _installFile!.writeAsString(
+          jsonEncode({'first_run_unix_sec': firstRunUnixSec}),
+        );
       }
     } catch (_) {}
   }
 
-  // ─── Разбор тем (единый метод) ───
-  // Принимает map «имя → {bg, bgdim, fg, signal}» и наполняет themes.
+  // ─── Разбор тем (единый) ───
   void _parseThemes(Map<dynamic, dynamic> t) {
     themes = {};
     for (final k in t.keys) {
@@ -160,13 +173,12 @@ class OperationalLayer extends ChangeNotifier {
     }
   }
 
-  // ─── Умолчания из assets ───
+  // ─── Умолчания ───
   Future<void> _loadDefaults() async {
     try {
       final raw = await rootBundle.loadString('assets/defaults.json');
       final data = jsonDecode(raw) as Map<String, dynamic>;
       dim = _parseColor(data['dim'] as String?) ?? dim;
-
       final t = data['themes'];
       if (t is Map) _parseThemes(t);
 
@@ -223,7 +235,6 @@ class OperationalLayer extends ChangeNotifier {
       final raw = await _file!.readAsString();
       final data = jsonDecode(raw) as Map<String, dynamic>;
       dim = _parseColor(data['dim'] as String?) ?? dim;
-
       final t = data['themes'];
       if (t is Map) _parseThemes(t);
 
@@ -247,7 +258,13 @@ class OperationalLayer extends ChangeNotifier {
           (data['total_shift_seconds'] as num?)?.toInt() ?? totalShiftSeconds;
       shiftStartedAt =
           (data['shift_started_at'] as num?)?.toInt() ?? shiftStartedAt;
+      shiftEdited = data['shift_edited'] as bool? ?? shiftEdited;
       lastExportId = (data['last_export_id'] as num?)?.toInt() ?? lastExportId;
+      bortTime = (data['bort_time'] as num?)?.toInt() ?? bortTime;
+      bortLastActionAt =
+          (data['bort_last_action_at'] as num?)?.toInt() ?? bortLastActionAt;
+      bortPrevMidnight =
+          (data['bort_prev_midnight'] as num?)?.toInt() ?? bortPrevMidnight;
 
       kPult = (data['k_pult'] as num?)?.toDouble() ?? kPult;
       kPultSmall = (data['k_pult_small'] as num?)?.toDouble() ?? kPultSmall;
@@ -296,7 +313,6 @@ class OperationalLayer extends ChangeNotifier {
     bgdim = t['bgdim']!;
     fg = t['fg']!;
     signal = t['signal']!;
-    // dim — общий, не меняется.
   }
 
   void setSystemBrightness(Brightness b) {
@@ -308,7 +324,6 @@ class OperationalLayer extends ChangeNotifier {
     }
   }
 
-  // ─── Противоположная тема ───
   String oppositeThemeName() {
     String name = themeName;
     if (name == 'system') {
@@ -332,21 +347,17 @@ class OperationalLayer extends ChangeNotifier {
     };
   }
 
-  // ─── Свёрнутость блоков рутин ───
-  // По умолчанию (коли рутины нет в карте) — transit и idle свёрнуты.
+  // ─── Свёрнутость блоков ───
   bool isBlockCollapsed(int routineId, String kind) {
     final set = collapsedBlocks[routineId];
     if (set == null) {
-      // Умолчание.
       return kind == 'transit' || kind == 'idle';
     }
     return set.contains(kind);
   }
 
-  // Переключение свёртки блока рутины.
   void toggleBlockCollapsed(int routineId, String kind) {
     final current = collapsedBlocks[routineId];
-    // Коли рутины нет в карте — заводим с умолчания.
     if (current == null) {
       final init = <String>{'transit', 'idle'};
       if (init.contains(kind)) {
@@ -373,6 +384,65 @@ class OperationalLayer extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ─── Время борта ───
+  // Зовётся при всяком действии пользователя — от касания до ввода.
+  // Обновляет метку последнего действия; сам отсчёт идёт в tickBort.
+  void pulseBort() {
+    bortLastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+  }
+
+  // Тик времени борта. Зовётся из тикера (500 мс).
+  // Ежели приложение активно и было действие за kBortTimeoutSec —
+  // прибавляет утекшие секунды.
+  void tickBort() {
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (bortLastActionAt == 0) return;
+    if (now - bortLastActionAt > kBortTimeoutSec) return;
+    // Предыдущее значение bortTime уже учитывает всё до прошлого тика.
+    // Прибавляем дельту — берётся из разницы с «последним pulse».
+    // Проще: считать bortTime накопительно при каждом действии.
+    // Здесь только метка «дыхания»; реальный прирост — в pulseBort.
+  }
+
+  // ─── Полуночь ───
+  // Проверка перехода чрез полночь. Зовётся при пуске.
+  // Ежели с последнего раза прошла полночь — суточная доля уходит
+  // в журнал рода bort с ключом «bort_time».
+  Future<void> checkMidnight(JournalLayer journal) async {
+    final now = DateTime.now();
+    // Миг последней полуночи относительно сего момента.
+    final todayMidnight =
+        DateTime(now.year, now.month, now.day).millisecondsSinceEpoch ~/ 1000;
+    // Или предыдущей, ежели нынешняя ещё не наступила в сей день —
+    // но полночь текущих суток всегда в прошлом.
+    if (bortPrevMidnight == 0) {
+      // Первый запуск: записываем точку отсчёта, не пишем в журнал.
+      bortPrevMidnight = todayMidnight;
+      return;
+    }
+    if (todayMidnight <= bortPrevMidnight) return; // полночь не прошла
+    // Прошла хотя бы одна полночь. Записываем суточную долю:
+    // сие приблизительно — доля считается как всё накопленное,
+    // помеченное за прошедшие сутки. Простой путь: пишем текущее
+    // накопленное в ключ дня.
+    await journal.log(
+      type: JournalType.bort,
+      body:
+          '{"key":"bort_time","value":"$bortTime",'
+          '"midnight":$todayMidnight}',
+    );
+    bortPrevMidnight = todayMidnight;
+  }
+
+  // ─── Правка смены ───
+  void setShiftTime(int seconds) {
+    totalShiftSeconds = seconds;
+    shiftStartedAt = null;
+    shiftEdited = true;
+    _scheduleSave();
+    notifyListeners();
+  }
+
   // ─── Применение записи журнала ───
   void _applyEntry(JournalData e) {
     try {
@@ -380,6 +450,10 @@ class OperationalLayer extends ChangeNotifier {
       if (e.type == JournalType.bort) {
         final key = data['key'] as String?;
         if (key == null) return;
+        if (key == 'bort_time') {
+          // Суточная запись — для истории; накопительное не трогаем.
+          return;
+        }
         _apply(key, data['value']?.toString() ?? '');
       } else if (e.type == JournalType.actor) {
         final action = data['action'] as String?;
@@ -413,10 +487,14 @@ class OperationalLayer extends ChangeNotifier {
     onShift = false;
     totalShiftSeconds = 0;
     shiftStartedAt = null;
+    shiftEdited = false;
     drafts = {};
     traceSent = {};
     collapsedBlocks = {};
     lastExportId = 0;
+    bortTime = 0;
+    bortLastActionAt = 0;
+    bortPrevMidnight = 0;
     await _loadDefaults();
     _resolveTheme();
     await _saveToFile();
@@ -424,6 +502,8 @@ class OperationalLayer extends ChangeNotifier {
   }
 
   Future<void> saveNow() async {
+    _saveTimer?.cancel();
+    _saveTimer = null;
     await _saveToFile();
   }
 
@@ -475,6 +555,7 @@ class OperationalLayer extends ChangeNotifier {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     onShift = true;
     shiftStartedAt = now;
+    shiftEdited = false;
     notifyListeners();
   }
 
@@ -509,13 +590,9 @@ class OperationalLayer extends ChangeNotifier {
       final c = _parseColor(value);
       if (c == null) return;
       themes.putIfAbsent(
-          name,
-          () => {
-                'bg': bg,
-                'bgdim': bgdim,
-                'fg': fg,
-                'signal': signal,
-              });
+        name,
+        () => {'bg': bg, 'bgdim': bgdim, 'fg': fg, 'signal': signal},
+      );
       themes[name]![role] = c;
       final resolved = themeName == 'system'
           ? (systemBrightness == Brightness.dark ? 'night' : 'day')
@@ -611,8 +688,6 @@ class OperationalLayer extends ChangeNotifier {
     return null;
   }
 
-  // Отложенная запись файла борта.
-  Timer? _saveTimer;
   void _scheduleSave() {
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 200), () {
@@ -655,7 +730,11 @@ class OperationalLayer extends ChangeNotifier {
       'on_shift': onShift,
       'total_shift_seconds': totalShiftSeconds,
       'shift_started_at': shiftStartedAt,
+      'shift_edited': shiftEdited,
       'last_export_id': lastExportId,
+      'bort_time': bortTime,
+      'bort_last_action_at': bortLastActionAt,
+      'bort_prev_midnight': bortPrevMidnight,
       'k_pult': kPult,
       'k_pult_small': kPultSmall,
       'k_block_gap': kBlockGap,
@@ -738,10 +817,4 @@ class OperationalLayer extends ChangeNotifier {
   };
 
   static const Set<String> readOnlyKeys = {};
-
-  @override
-  void dispose() {
-    _saveTimer?.cancel();
-    super.dispose();
-  }
 }

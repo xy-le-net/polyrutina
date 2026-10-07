@@ -3,16 +3,23 @@
 //
 // Сверху — строка смены. Под ней — список рутин.
 //
-// Пульт создания — в левом нижнем углу.
-// Пульт отчёта — в правом нижнем углу: активен, коли есть записи
-// после lastExportId; по касанию собирает текстовый файл и
-// показывает путь во всплывашке.
+// Пульс создания — левый нижний угол. Пульс отчёта — правый нижний.
+//
+// Пульс рутины:
+//   в ходе — пауза (короткое);
+//   в покое — пуск блока «выполнение» (не последнего пущенного!);
+//   завершена — короткое открывает карточку;
+//   долгое — веер: дублировать, удалить, отметить завершённой
+//     (только для незапущенной и незавершённой).
+//
+// Смена: долгое нажатие на пульс — правка времени.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 
+import '../data/journal_types.dart';
 import '../data/routine.dart';
 import '../data/ticker.dart';
 import 'app_scope.dart';
@@ -31,8 +38,11 @@ class RoutinesTab extends StatefulWidget {
 class _RoutinesTabState extends State<RoutinesTab> {
   AppTicker? _ticker;
 
-  // Истина, коли в журнале есть записи после последнего экспорта.
   bool _hasNewEntries = false;
+
+  // Правка времени смены.
+  bool _editingShift = false;
+  TextEditingController? _shiftEditCtrl;
 
   @override
   void didChangeDependencies() {
@@ -53,7 +63,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
     if (anyRunning) setState(() {});
   }
 
-  // Проверка: есть ли записи после последнего экспорта.
   Future<void> _refreshExportState() async {
     final app = AppScope.of(context);
     final last = await app.journal.lastEntryId();
@@ -66,6 +75,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
   @override
   void dispose() {
     _ticker?.removeListener(_onTick);
+    _shiftEditCtrl?.dispose();
     super.dispose();
   }
 
@@ -87,10 +97,10 @@ class _RoutinesTabState extends State<RoutinesTab> {
     }
   }
 
-  // Экспорт отчёта: сборка и всплывашка с путём.
+  // ─── Экспорт отчёта ───
   Future<void> _export(BuildContext context) async {
     final app = AppScope.of(context);
-    // Мессенджер берётся ДО await — дабы context не пересекал
+    // Мессенджер берётся ДО await, дабы context не пересекал
     // асинхронный разрыв.
     final messenger = ScaffoldMessenger.of(context);
     final path = await ReportBuilder.build(app, app.i18n);
@@ -98,6 +108,79 @@ class _RoutinesTabState extends State<RoutinesTab> {
     if (path == null) return;
     messenger.showSnackBar(SnackBar(content: Text(path)));
     await _refreshExportState();
+  }
+
+  // ─── Смена: правка времени ───
+  String _fmtEditable(int sec) {
+    final d = sec ~/ 86400;
+    final h = (sec % 86400) ~/ 3600;
+    final m = (sec % 3600) ~/ 60;
+    final s = sec % 60;
+    String two(int n) => n.toString().padLeft(2, '0');
+    if (d > 0) return '${two(d)}:${two(h)}:${two(m)}:${two(s)}';
+    if (h > 0) return '${two(h)}:${two(m)}:${two(s)}';
+    return '${two(m)}:${two(s)}';
+  }
+
+  int? _parseEditable(String s) {
+    final t = s.trim();
+    if (t.isEmpty) return 0;
+    final parts = t.split(':');
+    int? n(int i) => int.tryParse(parts[i]);
+    if (parts.length == 1) {
+      final a = n(0);
+      if (a == null) return null;
+      return a;
+    }
+    if (parts.length == 2) {
+      final a = n(0);
+      final b = n(1);
+      if (a == null || b == null) return null;
+      return a * 60 + b;
+    }
+    if (parts.length == 3) {
+      final a = n(0);
+      final b = n(1);
+      final c = n(2);
+      if (a == null || b == null || c == null) return null;
+      return a * 3600 + b * 60 + c;
+    }
+    if (parts.length == 4) {
+      final a = n(0);
+      final b = n(1);
+      final c = n(2);
+      final d = n(3);
+      if (a == null || b == null || c == null || d == null) return null;
+      return a * 86400 + b * 3600 + c * 60 + d;
+    }
+    return null;
+  }
+
+  void _startShiftEdit(int seconds) {
+    _shiftEditCtrl?.dispose();
+    _shiftEditCtrl = TextEditingController(text: _fmtEditable(seconds));
+    setState(() => _editingShift = true);
+  }
+
+  Future<void> _confirmShiftEdit() async {
+    final app = AppScope.of(context);
+    final sec = _parseEditable(_shiftEditCtrl?.text ?? '');
+    if (sec == null) {
+      setState(() => _editingShift = false);
+      _shiftEditCtrl?.dispose();
+      _shiftEditCtrl = null;
+      return;
+    }
+    await app.journal.log(
+      type: JournalType.actor,
+      body: '{"action":"shift_edit","seconds":$sec}',
+    );
+    app.bort.setShiftTime(sec);
+    if (mounted) {
+      setState(() => _editingShift = false);
+      _shiftEditCtrl?.dispose();
+      _shiftEditCtrl = null;
+    }
   }
 
   ({List<Routine> active, List<Routine> done}) _sortedGroups(dynamic layer) {
@@ -167,7 +250,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
     final nameSize = side * bort.kName;
     final dateSize = side * bort.kTitle * 0.7;
-    const lineHeight = 0.7;
     final numberSize = side * bort.kNumberSmall;
     final pultSide = side * bort.kPultSmall;
     final strokeW = side * bort.kStroke;
@@ -190,12 +272,48 @@ class _RoutinesTabState extends State<RoutinesTab> {
         if (mounted) setState(() {});
       };
     } else {
+      // Покой: пуск блока «выполнение».
       pulseIcon = Icons.play_arrow;
       pulseTap = () async {
-        final kind = app.routineLayer.lastActiveBlockKind ?? RoutineBlock.work;
-        await app.toggleBlockWithShift(r.id, kind);
+        await app.toggleBlockWithShift(r.id, RoutineBlock.work);
         if (mounted) setState(() {});
       };
+    }
+
+    // ─── Подпульт ───
+    final subs = <PultSpec>[
+      PultSpec(
+        id: 'dup_${r.id}',
+        icon: Icons.copy,
+        label: app.i18n.t('bort.duplicate'),
+        onTap: () async {
+          await app.routineLayer.duplicateRoutine(app.journal, r.id);
+          if (mounted) setState(() {});
+        },
+      ),
+      PultSpec(
+        id: 'del_${r.id}',
+        icon: Icons.delete_outline,
+        label: app.i18n.t('bort.delete'),
+        confirm: true,
+        onTap: () {
+          app.routineLayer.deleteRoutine(app.journal, r.id);
+        },
+      ),
+    ];
+    // Отметить завершённой — только у незапущенной незавершённой.
+    if (!r.completed && !running) {
+      subs.add(
+        PultSpec(
+          id: 'complete_${r.id}',
+          icon: Icons.check_circle_outline,
+          label: app.i18n.t('routine.mark_completed'),
+          confirm: true,
+          onTap: () {
+            app.routineLayer.setCompleted(app.journal, r.id, true);
+          },
+        ),
+      );
     }
 
     final rightControl = Pult(
@@ -204,26 +322,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
         icon: pulseIcon,
         selected: running,
         onTap: pulseTap,
-        longSubs: () => [
-          PultSpec(
-            id: 'dup_${r.id}',
-            icon: Icons.copy,
-            label: app.i18n.t('bort.duplicate'),
-            onTap: () async {
-              await app.routineLayer.duplicateRoutine(app.journal, r.id);
-              if (mounted) setState(() {});
-            },
-          ),
-          PultSpec(
-            id: 'del_${r.id}',
-            icon: Icons.delete_outline,
-            label: app.i18n.t('bort.delete'),
-            confirm: true,
-            onTap: () {
-              app.routineLayer.deleteRoutine(app.journal, r.id);
-            },
-          ),
-        ],
+        longSubs: () => subs,
       ),
       fg: running ? textMain : textSoft,
       bg: plateBg,
@@ -251,21 +350,14 @@ class _RoutinesTabState extends State<RoutinesTab> {
                   if (r.name.isNotEmpty)
                     Text(
                       r.name,
-                      style: TextStyle(
-                        color: textMain,
-                        fontSize: nameSize,
-                        height: lineHeight,
-                      ),
+                      style: TextStyle(color: textMain, fontSize: nameSize),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
+                  const SizedBox(height: 6),
                   Text(
                     _fmtDate(r.createdAt),
-                    style: TextStyle(
-                      color: textSoft,
-                      fontSize: dateSize,
-                      height: lineHeight,
-                    ),
+                    style: TextStyle(color: textSoft, fontSize: dateSize),
                   ),
                   if (r.totalSeconds > 0) ...[
                     SizedBox(height: dateSize * 0.4),
@@ -290,6 +382,96 @@ class _RoutinesTabState extends State<RoutinesTab> {
     );
   }
 
+  // ─── Строка смены ───
+  Widget _shiftRow(
+    BuildContext context,
+    Color fg,
+    Color dim,
+    Color bg,
+    Color bgdim,
+    Color signal,
+    double side,
+  ) {
+    final app = AppScope.of(context);
+    final bort = app.bort;
+
+    if (_editingShift) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(8, 8, 12, 4),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            SizedBox(
+              width: side * 3.0,
+              child: TextField(
+                controller: _shiftEditCtrl,
+                autofocus: true,
+                style: TextStyle(color: fg, fontSize: side * 0.4),
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: 'дд:чч:мм:сс',
+                  hintStyle: TextStyle(color: dim),
+                  border: const OutlineInputBorder(),
+                  contentPadding: EdgeInsets.all(side * 0.1),
+                ),
+                onSubmitted: (_) => _confirmShiftEdit(),
+              ),
+            ),
+            SizedBox(width: side * 0.1),
+            Pult(
+              spec: PultSpec(
+                id: 'shift_confirm',
+                icon: Icons.check,
+                onTap: _confirmShiftEdit,
+              ),
+              fg: fg,
+              bg: bg,
+              signal: signal,
+              overrideSize: side * bort.kPultSmall,
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget pulse = Pulse(
+      spec: PultSpec(
+        id: 'shift',
+        icon: bort.onShift ? Icons.pause : Icons.play_arrow,
+        selected: bort.onShift,
+        onTap: () async {
+          await app.toggleShift();
+          if (mounted) setState(() {});
+        },
+        onLongPress: () => _startShiftEdit(bort.shiftSecondsNow),
+      ),
+      seconds: bort.shiftSecondsNow,
+      running: bort.onShift,
+      fg: fg,
+      dim: dim,
+      bg: bg,
+      bgdim: bgdim,
+      signal: signal,
+      side: side,
+      colonVisible: app.ticker.colonVisible,
+      pultSize: side * bort.kPultSmall,
+    );
+    if (bort.shiftEdited) {
+      pulse = Container(
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: dim, width: side * bort.kStroke * 2),
+          ),
+        ),
+        child: pulse,
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 12, 4),
+      child: Align(alignment: Alignment.centerRight, child: pulse),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
@@ -311,33 +493,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
         final groups = _sortedGroups(app.routineLayer);
         final i18n = app.i18n;
 
-        final shiftPulse = Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 12, 4),
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: Pulse(
-              spec: PultSpec(
-                id: 'shift',
-                icon: bort.onShift ? Icons.pause : Icons.play_arrow,
-                selected: bort.onShift,
-                onTap: () async {
-                  await app.toggleShift();
-                  if (mounted) setState(() {});
-                },
-              ),
-              seconds: bort.shiftSecondsNow,
-              running: bort.onShift,
-              fg: fg,
-              dim: dim,
-              bg: bg,
-              bgdim: bgdim,
-              signal: signal,
-              side: side,
-              colonVisible: app.ticker.colonVisible,
-              pultSize: side * bort.kPultSmall,
-            ),
-          ),
-        );
+        final shiftPulse = _shiftRow(context, fg, dim, bg, bgdim, signal, side);
 
         final items = <Widget>[];
 
@@ -415,7 +571,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
                 ),
               ],
             ),
-            // Пульт создания — левый нижний угол.
             Positioned(
               left: 12,
               bottom: 12,
@@ -431,7 +586,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
                 overrideSize: side,
               ),
             ),
-            // Пульт отчёта — правый нижний угол.
             Positioned(
               right: 12,
               bottom: 12,

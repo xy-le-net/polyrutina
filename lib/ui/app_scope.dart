@@ -4,12 +4,14 @@
 // Слои: bort, routineLayer, traceLayer, journal, ticker, i18n.
 // Обратные вызовы: refresh, reloadI18n, openRoutine.
 //
-// toggleShift — единая точка связи смены и рутин:
-//   пуск смены — рутину не трогает;
-//   остановка смены — гасит идущую рутину (по currentRoutineId).
-// Живёт здесь, ибо оба слоя видны в одном месте.
+// toggleShift — единая точка связи смены и рутин.
 //
 // toggleBlockWithShift — пуск блока с автозапуском смены.
+//
+// pulseBort — уведомить борт о действии пользователя: сей зов идёт
+// при всяком касании, вводе и переключении. Борт считает по нему
+// время активной работы. Пробрасывать сие повсюду неудобно, потому
+// зовётся из немногих мест: Listener в main и _handleTap в Pult.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -45,41 +47,7 @@ class AppContext {
     required this.openRoutine,
   });
 
-  // ─── Смена: пуск и остановка с правилом связи ───
-  // Пуск: смена стартует, рутина остаётся как была.
-  // Остановка: смена гасится, идущая рутина встаёт (по currentRoutineId).
-  Future<void> toggleShift() async {
-    final going = !bort.onShift;
-
-    await journal.log(
-      type: JournalType.actor,
-      body: '{"action":"${going ? 'shift_start' : 'shift_stop'}"}',
-    );
-
-    if (going) {
-      bort.startShift();
-      return;
-    }
-
-    // Остановка.
-    bort.stopShift();
-
-    // Гасим идущую рутину, ежели есть.
-    final cur = routineLayer.currentRoutineId;
-    if (cur == null) return;
-    final r = routineLayer.findRoutine(cur);
-    if (r == null) return;
-    for (final b in r.blocks) {
-      if (b.isRunning) {
-        await routineLayer.pauseBlock(journal, r.id, b.kind);
-      }
-    }
-  }
-
   // ─── Пуск блока рутины с правилом связи ───
-  // Ежели блок идёт — обычная пауза.
-  // Ежели блок стоит — коли смена не идёт, запускаем смену; затем
-  // пускаем блок (слой сам гасит прочие рутины).
   Future<void> toggleBlockWithShift(int routineId, String kind) async {
     final r = routineLayer.findRoutine(routineId);
     if (r == null) return;
@@ -98,16 +66,40 @@ class AppContext {
 
     await routineLayer.toggleBlock(journal, routineId, kind);
   }
+
+  // ─── Смена ───
+  Future<void> toggleShift() async {
+    final going = !bort.onShift;
+    await journal.log(
+      type: JournalType.actor,
+      body: '{"action":"${going ? 'shift_start' : 'shift_stop'}"}',
+    );
+    if (going) {
+      bort.startShift();
+      return;
+    }
+    bort.stopShift();
+    final cur = routineLayer.currentRoutineId;
+    if (cur == null) return;
+    final r = routineLayer.findRoutine(cur);
+    if (r == null) return;
+    for (final b in r.blocks) {
+      if (b.isRunning) {
+        await routineLayer.pauseBlock(journal, r.id, b.kind);
+      }
+    }
+  }
+
+  // ─── Действие пользователя ───
+  void pulseBort() {
+    bort.pulseBort();
+  }
 }
 
 class AppScope extends InheritedWidget {
   final AppContext appContext;
 
-  const AppScope({
-    super.key,
-    required this.appContext,
-    required super.child,
-  });
+  const AppScope({super.key, required this.appContext, required super.child});
 
   static AppContext of(BuildContext c) {
     final scope = c.dependOnInheritedWidgetOfExactType<AppScope>();

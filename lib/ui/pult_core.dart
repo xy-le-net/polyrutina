@@ -3,23 +3,24 @@
 // виджет Pult.
 //
 // Сущности:
-//   PultSpec  — описание пульта (икона, подпись, действия);
+//   PultSpec  — описание пульта;
 //   PultState — состояние;
 //   PultScope — провайдер состояния;
 //   Pult      — суперкнопка (тройная вложенная обводка).
 //
-// Подпись пульта — с подложкою справа от иконы. Ежели labelSideLeft
-// истина, подпись встаёт слева. Сие нужно в веерах: подписи
-// выступают наружу, к просторам экрана.
+// Подпись пульта — с подложкою. labelSideLeft — подпись слева.
 //
 // centerText — текст в ядре вместо иконы.
 //
-// Касание снимает фокус с полей ввода.
+// Касание снимает фокус с полей ввода и уведомляет борт (pulseBort)
+// о действии — для отсчёта времени активной работы.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
+
+import 'app_scope.dart';
 
 // ─── Спецификация пульта ───
 class PultSpec {
@@ -89,7 +90,11 @@ class PultState extends ChangeNotifier {
   }
 
   void askConfirm(
-      String id, GlobalKey key, VoidCallback action, IconData icon) {
+    String id,
+    GlobalKey key,
+    VoidCallback action,
+    IconData icon,
+  ) {
     confirmingId = id;
     confirmingKey = key;
     confirmingAction = action;
@@ -111,11 +116,8 @@ class PultState extends ChangeNotifier {
 
 // ─── Провайдер ───
 class PultScope extends InheritedNotifier<PultState> {
-  const PultScope({
-    super.key,
-    required PultState state,
-    required super.child,
-  }) : super(notifier: state);
+  const PultScope({super.key, required PultState state, required super.child})
+    : super(notifier: state);
 
   static PultState of(BuildContext context) {
     final s = context.dependOnInheritedWidgetOfExactType<PultScope>();
@@ -125,13 +127,12 @@ class PultScope extends InheritedNotifier<PultState> {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Pult — суперкнопка. Тройная вложенная обводка.
+// Pult — суперкнопка.
 // ═══════════════════════════════════════════════════════════════════
 class Pult extends StatefulWidget {
   final PultSpec spec;
   final double? overrideSize;
   final bool insideLayer;
-  // Подпись слева от ядра (а не справа).
   final bool labelSideLeft;
   final Color fg;
   final Color bg;
@@ -155,10 +156,20 @@ class Pult extends StatefulWidget {
 class _PultState extends State<Pult> {
   final _coreKey = GlobalKey();
 
+  // Уведомить борт о действии — для времени борта.
+  // Зовётся при касании; молча, ежели AppScope не найден (напр.
+  // в тестах или до инициализации).
+  void _pulseBort() {
+    try {
+      AppScope.of(context).pulseBort();
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = PultScope.of(context);
-    final side = widget.overrideSize ??
+    final side =
+        widget.overrideSize ??
         (widget.insideLayer ? state.smallSide : state.side);
     final selected = widget.spec.selected;
 
@@ -172,7 +183,6 @@ class _PultState extends State<Pult> {
 
     final iconSize = selected ? side * 0.60 : side * 0.45;
 
-    // Ядро.
     Widget core = Container(
       key: _coreKey,
       width: side,
@@ -199,8 +209,10 @@ class _PultState extends State<Pult> {
     core = Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(rInner),
-        border:
-            Border.all(color: selected ? iconColor : coreColor, width: borderW),
+        border: Border.all(
+          color: selected ? iconColor : coreColor,
+          width: borderW,
+        ),
       ),
       child: core,
     );
@@ -233,15 +245,14 @@ class _PultState extends State<Pult> {
           textDirection: TextDirection.ltr,
           maxLines: 1,
         )..layout();
-        textW = painter.width;
+        // Кириллица шире латиницы; берём с запасом.
+        textW = painter.width * 1.3;
       } else {
         textW = 6 * side * 0.4;
       }
-      final desired = textW + 16;
-      final labelWidth = desired.clamp(side * 1.5, maxLabelW);
+      final desired = textW + 24;
+      final labelWidth = desired.clamp(side * 1.8, maxLabelW);
 
-      // Углы подложки: справа сглажены, слева стыкуется с ядром —
-      // либо наоборот, ежели подпись слева.
       final borderRadius = widget.labelSideLeft
           ? const BorderRadius.horizontal(left: Radius.circular(6))
           : const BorderRadius.horizontal(right: Radius.circular(6));
@@ -249,20 +260,18 @@ class _PultState extends State<Pult> {
       final labelWidget = Container(
         height: side * 0.75,
         width: labelWidth,
-        decoration: BoxDecoration(
-          color: coreColor,
-          borderRadius: borderRadius,
-        ),
+        decoration: BoxDecoration(color: coreColor, borderRadius: borderRadius),
         padding: const EdgeInsets.symmetric(horizontal: 8),
         child: MediaQuery(
-          data: MediaQuery.of(context).copyWith(
-            textScaler: TextScaler.noScaling,
-          ),
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.noScaling),
           child: Align(
             alignment: widget.labelSideLeft
                 ? Alignment.centerRight
                 : Alignment.centerLeft,
-            child: widget.spec.labelWidget ??
+            child:
+                widget.spec.labelWidget ??
                 Text(
                   widget.spec.label!,
                   style: TextStyle(
@@ -280,8 +289,9 @@ class _PultState extends State<Pult> {
 
       content = Row(
         mainAxisSize: MainAxisSize.min,
-        children:
-            widget.labelSideLeft ? [labelWidget, core] : [core, labelWidget],
+        children: widget.labelSideLeft
+            ? [labelWidget, core]
+            : [core, labelWidget],
       );
     }
 
@@ -297,6 +307,7 @@ class _PultState extends State<Pult> {
       onTap: () => _handleTap(state),
       onLongPress: () {
         FocusManager.instance.primaryFocus?.unfocus();
+        _pulseBort();
         if (widget.spec.longSubs != null) {
           state.open(_coreKey, widget.spec.longSubs!);
           return;
@@ -309,6 +320,7 @@ class _PultState extends State<Pult> {
 
   void _handleTap(PultState state) {
     FocusManager.instance.primaryFocus?.unfocus();
+    _pulseBort();
 
     if (widget.insideLayer) {
       widget.spec.onTap?.call();
@@ -320,7 +332,11 @@ class _PultState extends State<Pult> {
       if (state.isConfirming(widget.spec.id)) return;
       if (widget.spec.onTap != null) {
         state.askConfirm(
-            widget.spec.id, _coreKey, widget.spec.onTap!, widget.spec.icon);
+          widget.spec.id,
+          _coreKey,
+          widget.spec.onTap!,
+          widget.spec.icon,
+        );
       }
       return;
     }
