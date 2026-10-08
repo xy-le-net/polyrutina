@@ -3,14 +3,15 @@
 //
 // Пульс — ряд: слева таймер (TimerText), справа пульт (Pult).
 //
-// Цвета берутся из переданной пятёрки (bg, dim, fg, signal).
-// bgdim не передаётся — он не нужен.
+// Цвета берутся из переданной четвёрки (bg, dim, fg, signal).
+// Переводчик t нужен для подписей единиц времени.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 
+import 'format.dart';
 import 'pult_core.dart';
 import 'timer_text.dart';
 
@@ -25,6 +26,7 @@ class Pulse extends StatelessWidget {
   final double side;
   final bool colonVisible;
   final double? pultSize;
+  final Translate t;
 
   const Pulse({
     super.key,
@@ -36,6 +38,7 @@ class Pulse extends StatelessWidget {
     required this.fg,
     required this.signal,
     required this.side,
+    required this.t,
     this.colonVisible = true,
     this.pultSize,
   });
@@ -56,6 +59,7 @@ class Pulse extends StatelessWidget {
           dim: dim,
           numberSize: numberSize,
           colonVisible: colonVisible,
+          t: t,
         ),
         if (seconds > 0) SizedBox(width: side * 0.15),
         Pult(

@@ -1,48 +1,49 @@
 // ═══════════════════════════════════════════════════════════════════
 // format.dart — единые форматтеры дат и длительностей.
 //
-// Собирает в одном месте то, что прежде дублировалось по вкладкам
-// и карточкам: даты с днём недели, короткое время («9ч 03м»),
-// формат правки («дд:чч:мм:сс») и его разбор.
+// Всё, что зависит от языка (подписи единиц времени, дни недели),
+// берётся чрез переводчик Translate (сие String Function(String)).
+//
+// Подписи единиц: time.d, time.h, time.m, time.s.
+// Дни недели: time.mon, time.tue, time.wed, time.thu, time.fri,
+//             time.sat, time.sun.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
+typedef Translate = String Function(String key);
+
 // ─── Дата «пн 06.10 10:31» ───
-String fmtDate(int unixSec) {
+String fmtDate(int unixSec, Translate t) {
   final d = DateTime.fromMillisecondsSinceEpoch(unixSec * 1000);
-  const weekdays = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
-  final wd = weekdays[d.weekday - 1];
+  final wd = _weekdayKey(d.weekday);
   String two(int n) => n.toString().padLeft(2, '0');
-  return '$wd ${two(d.day)}.${two(d.month)} '
+  return '${t(wd)} ${two(d.day)}.${two(d.month)} '
       '${two(d.hour)}:${two(d.minute)}';
 }
 
 // ─── Дата полная, с годом — для отчёта ───
-String fmtDateFull(int unixSec) {
+String fmtDateFull(int unixSec, Translate t) {
   final d = DateTime.fromMillisecondsSinceEpoch(unixSec * 1000);
-  const weekdays = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
-  final wd = weekdays[d.weekday - 1];
+  final wd = _weekdayKey(d.weekday);
   String two(int n) => n.toString().padLeft(2, '0');
-  return '$wd ${two(d.day)}.${two(d.month)}.${d.year} '
+  return '${t(wd)} ${two(d.day)}.${two(d.month)}.${d.year} '
       '${two(d.hour)}:${two(d.minute)}';
 }
 
 // ─── Короткое время «9ч 03м», «3д 5ч», «03м» ───
-// Две старшие единицы. Минуты — двузначны, дни и часы — без нуля.
-String fmtTime(int sec) {
+String fmtTime(int sec, Translate t) {
   if (sec < 0) sec = 0;
   final days = sec ~/ 86400;
   final hours = (sec % 86400) ~/ 3600;
   final minutes = (sec % 3600) ~/ 60;
   String two(int n) => n.toString().padLeft(2, '0');
-  if (days > 0) return '${days}д ${hours}ч';
-  if (hours > 0) return '${hours}ч ${two(minutes)}м';
-  return '${two(minutes)}м';
+  if (days > 0) return '$days${t('time.d')} $hours${t('time.h')}';
+  if (hours > 0) return '$hours${t('time.h')} ${two(minutes)}${t('time.m')}';
+  return '${two(minutes)}${t('time.m')}';
 }
 
 // ─── Формат правки времени: «дд:чч:мм:сс» ───
-// Для малых значений — сокращённо.
 String fmtEditable(int sec) {
   if (sec < 0) sec = 0;
   final d = sec ~/ 86400;
@@ -56,8 +57,6 @@ String fmtEditable(int sec) {
 }
 
 // ─── Разбор правки времени ───
-// Принимает «дд:чч:мм:сс», «чч:мм:сс», «мм:сс» и одиночное число
-// (секунды). Пусто — ноль (стирание). Ошибка разбора — null.
 int? parseEditable(String s) {
   final t = s.trim();
   if (t.isEmpty) return 0;
@@ -90,4 +89,25 @@ int? parseEditable(String s) {
     return a * 86400 + b * 3600 + c * 60 + d;
   }
   return null;
+}
+
+// ─── Ключ дня недели ───
+String _weekdayKey(int weekday) {
+  switch (weekday) {
+    case DateTime.monday:
+      return 'time.mon';
+    case DateTime.tuesday:
+      return 'time.tue';
+    case DateTime.wednesday:
+      return 'time.wed';
+    case DateTime.thursday:
+      return 'time.thu';
+    case DateTime.friday:
+      return 'time.fri';
+    case DateTime.saturday:
+      return 'time.sat';
+    case DateTime.sunday:
+    default:
+      return 'time.sun';
+  }
 }

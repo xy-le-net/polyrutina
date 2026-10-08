@@ -1,17 +1,17 @@
 // ═══════════════════════════════════════════════════════════════════
 // report.dart — текстовый отчёт по рутинам.
 //
-// Каждая рутина — отдельным разделом. Содержание:
-//   — знак завершённости перед именем: ✓ завершено, ○ в процессе;
+// Каждая рутина — отдельным разделом:
+//   — знак завершённости перед именем: ✓ либо ○;
 //   — имя рутины;
-//   — под именем: «(завершено)» либо «(в процессе)»;
-//   — время создания с днём недели;
-//   — блоки по порядку родов: имя, время (ежели ненулевое);
+//   — под ним: «(завершено)» либо «(в процессе)»;
+//   — время создания (день недели и подписи единиц — из словаря);
+//   — блоки по порядку: имя, время (ежели ненулевое);
 //   — под блоком — текстовый след (комментарий), ежели есть;
-//   — чек-лист: пункты, у каждого знак ✓ (отмечено) либо ○ (нет).
+//   — чек-лист: пункты, у каждого ✓ (отмечено) либо ○ (нет).
 //
 // Файл кладётся в папку документов приложения. Имя:
-// journal_ГГГГММДД_ЧЧММСС.txt. Кодировка — UTF-8.
+// journal_ГГГГММДД_ЧЧММСС.txt. Кодировка — UTF-8 (универсальна).
 //
 // По завершении шлётся запись в борте: lastExportId = последняя
 // запись журнала.
@@ -31,7 +31,7 @@ import 'format.dart';
 
 class ReportBuilder {
   // ─── Сборка и сохранение ───
-  // Возвращает путь к сохранённому файлу либо null, коли рутин нет.
+  // Возвращает путь к файлу либо null, коли рутин нет.
   static Future<String?> build(dynamic app, dynamic i18n) async {
     final routines = <Routine>[];
     for (final r in app.routineLayer.routines) {
@@ -39,7 +39,6 @@ class ReportBuilder {
     }
     if (routines.isEmpty) return null;
 
-    // Сортировка: активные сверху, завершённые внизу.
     routines.sort((a, b) {
       if (a.completed != b.completed) {
         return a.completed ? 1 : -1;
@@ -73,7 +72,6 @@ class ReportBuilder {
     final file = File(p.join(dir.path, name));
     await file.writeAsString(buf.toString(), encoding: utf8);
 
-    // Метка экспорта.
     final lastId = await app.journal.lastEntryId() as int;
     app.bort.setLastExportId(lastId);
 
@@ -95,10 +93,9 @@ class ReportBuilder {
 
     buf.writeln('$mark $name');
     buf.writeln('   ($stateText)');
-    buf.writeln('   ${fmtDateFull(r.createdAt)}');
+    buf.writeln('   ${fmtDateFull(r.createdAt, i18n.t as Translate)}');
     buf.writeln();
 
-    // Блоки.
     for (final kind in RoutineBlock.kinds) {
       final b = r.blockOf(kind);
       if (b == null) continue;
@@ -106,12 +103,11 @@ class ReportBuilder {
       final title = i18n.t('routine.block.$kind') as String;
 
       if (sec > 0) {
-        buf.writeln('   $title: ${fmtTime(sec)}');
+        buf.writeln('   $title: ${fmtTime(sec, i18n.t as Translate)}');
       } else {
         buf.writeln('   $title');
       }
 
-      // Текстовый след (комментарий).
       final text = _textOf(app, r.id, kind);
       if (text != null) {
         for (final line in text.split('\n')) {
@@ -119,13 +115,8 @@ class ReportBuilder {
         }
       }
 
-      // Чек-лист.
-      final t = app.traceLayer.findFirstByKindSlot(
-        r.id,
-        TraceKind.checklist,
-        kind,
-      );
-      if (t != null) {
+      final t = app.traceLayer.findFirstBySlot(r.id, kind);
+      if (t != null && t.kind == TraceKind.checklist) {
         for (final it in t.items) {
           final s = (it.text as String);
           if (s.trim().isEmpty) continue;
@@ -138,14 +129,10 @@ class ReportBuilder {
     }
   }
 
-  // ─── Текстовый след блока ───
   static String? _textOf(dynamic app, int routineId, String slot) {
-    final t = app.traceLayer.findFirstByKindSlot(
-      routineId,
-      TraceKind.text,
-      slot,
-    );
+    final t = app.traceLayer.findFirstBySlot(routineId, slot);
     if (t == null) return null;
+    if (t.kind != TraceKind.text) return null;
     final s = t.text as String;
     return s.isEmpty ? null : s;
   }

@@ -1,15 +1,23 @@
 // ═══════════════════════════════════════════════════════════════════
 // timer_text.dart — вид таймера по единому образцу.
 //
-// Ведущий ноль — только у второго числа в паре. Одиночное число —
-// без нуля.
+// Три единицы: дни, часы, минуты. Показываются две старшие, что
+// ненулевые. Исключение — идущий меньше минуты: показывает секунды.
 //
-// Поля signal нет: цвета числа и подписей — fg и dim.
+// Подписи единиц берутся из словаря чрез Translate (time.d, time.h,
+// time.m, time.s).
+//
+// Ведущий ноль. Только у второго числа в паре: «1ч 05м», «3д 07ч».
+// Одиночное число — без нуля: «8м», «5с».
+//
+// Двоеточие — пред последним числом, мерцает.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
+
+import 'format.dart';
 
 class TimerText extends StatelessWidget {
   final int seconds;
@@ -18,6 +26,7 @@ class TimerText extends StatelessWidget {
   final Color dim;
   final double numberSize;
   final bool colonVisible;
+  final Translate t;
 
   const TimerText({
     super.key,
@@ -26,10 +35,12 @@ class TimerText extends StatelessWidget {
     required this.fg,
     required this.dim,
     required this.numberSize,
+    required this.t,
     this.colonVisible = true,
   });
 
-  static List<(String, String)> parts(int sec, {required bool running}) {
+  // ─── Разбор на две старшие единицы ───
+  static List<(String, String)> _parts(int sec, {required bool running}) {
     if (sec < 0) sec = 0;
     const daySec = 86400;
     const hourSec = 3600;
@@ -42,18 +53,18 @@ class TimerText extends StatelessWidget {
     String two(int n) => n.toString().padLeft(2, '0');
 
     if (running && days == 0 && hours == 0 && minutes == 0) {
-      return [('$secs', 'с')];
+      return [('$secs', 's')];
     }
 
     final out = <(String, String)>[];
     if (days > 0) {
-      out.add(('$days', 'д'));
-      if (hours > 0) out.add((two(hours), 'ч'));
+      out.add(('$days', 'd'));
+      if (hours > 0) out.add((two(hours), 'h'));
     } else if (hours > 0) {
-      out.add(('$hours', 'ч'));
-      out.add((two(minutes), 'м'));
+      out.add(('$hours', 'h'));
+      out.add((two(minutes), 'm'));
     } else if (minutes > 0) {
-      out.add(('$minutes', 'м'));
+      out.add(('$minutes', 'm'));
     }
     return out;
   }
@@ -63,13 +74,14 @@ class TimerText extends StatelessWidget {
     final primary = fg;
     final secondary = dim;
     final unitSize = numberSize * 2 / 3;
-    final partsList = parts(seconds, running: running);
+    final partsList = _parts(seconds, running: running);
 
     if (partsList.isEmpty) return const SizedBox.shrink();
 
     final children = <Widget>[];
     for (var i = 0; i < partsList.length; i++) {
-      final (numText, unit) = partsList[i];
+      final (numText, unitKey) = partsList[i];
+      final unitText = t('time.$unitKey');
 
       final isLast = i == partsList.length - 1;
       if (isLast && running) {
@@ -102,7 +114,7 @@ class TimerText extends StatelessWidget {
       );
       children.add(
         Text(
-          unit,
+          unitText,
           style: TextStyle(
             color: secondary,
             fontFamily: 'monospace',

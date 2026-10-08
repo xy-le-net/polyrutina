@@ -44,9 +44,10 @@ class _RubkaTabState extends State<RubkaTab> {
   }
 
   // Время борта — «9ч 03м», «3д 5ч», «03м».
-  String _fmtBort(int sec) {
-    if (sec <= 0) return '0м';
-    return fmtTime(sec);
+  // Подписи единиц — из словаря, потому ну́жен переводчик.
+  String _fmtBort(int sec, Translate t) {
+    if (sec <= 0) return '0${t('time.m')}';
+    return fmtTime(sec, t);
   }
 
   Future<void> _reload() async {
@@ -212,13 +213,13 @@ class _RubkaTabState extends State<RubkaTab> {
             children: [
               // Время борта: сегодня — живой счёт; вчера — приглушённо.
               Text(
-                _fmtBort(bort.bortTime),
+                _fmtBort(bort.bortTime, i18n.t),
                 style: TextStyle(color: fg, fontSize: side * 0.4),
               ),
               Padding(
                 padding: const EdgeInsets.only(top: 2, bottom: 10),
                 child: Text(
-                  _fmtBort(bort.bortTimeYesterday),
+                  _fmtBort(bort.bortTimeYesterday, i18n.t),
                   style: TextStyle(color: dim, fontSize: side * 0.35),
                 ),
               ),

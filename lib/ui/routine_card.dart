@@ -20,6 +20,8 @@
 //
 // Прокрутка к последнему пущенному блоку при открытии.
 //
+// Формат дат и длительностей — из format.dart.
+//
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -131,14 +133,12 @@ class _RoutineCardState extends State<RoutineCard> {
   }
 
   // ─── Правка времени ───
-  // Долгое нажатие на пульс — открыть поле. Ежели блок идёт,
-  // сперва ставится пауза. Работает и с нулевым временем.
+  // Долгое нажатие — открыть поле. Ежели блок идёт — сперва пауза.
   Future<void> _startEdit(Routine r, String kind) async {
     final app = AppScope.of(context);
     final b = r.blockOf(kind);
     if (b == null) return;
 
-    // Идущий блок сперва останавливаем.
     if (b.isRunning) {
       await app.routineLayer.pauseBlock(app.journal, r.id, kind);
     }
@@ -415,6 +415,7 @@ class _RoutineCardState extends State<RoutineCard> {
           side: side,
           colonVisible: colonVisible,
           pultSize: pultSide,
+          t: i18n.t,
         );
         if (timeEdited) {
           pulse = Container(
@@ -440,6 +441,7 @@ class _RoutineCardState extends State<RoutineCard> {
               dim: dim,
               numberSize: numberSize,
               colonVisible: colonVisible,
+              t: i18n.t,
             ),
           SizedBox(width: side * 0.15),
           PultTick(
@@ -462,6 +464,7 @@ class _RoutineCardState extends State<RoutineCard> {
         dim: dim,
         numberSize: numberSize,
         colonVisible: colonVisible,
+        t: i18n.t,
       );
     }
 
@@ -475,7 +478,7 @@ class _RoutineCardState extends State<RoutineCard> {
               padding: EdgeInsets.only(top: side * 0.1),
               child: Text(
                 '${i18n.t('routine.block.${b.kind}')}: '
-                '${fmtTime(b.accumulatorSeconds)}.',
+                '${fmtTime(b.accumulatorSeconds, i18n.t)}.',
                 style: TextStyle(
                   color: dim,
                   fontSize: side * (bort.kNumberSmall as double),

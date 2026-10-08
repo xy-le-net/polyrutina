@@ -14,6 +14,9 @@
 //
 // Смена: долгое нажатие на пульс — правка времени.
 //
+// Формат дат и длительностей — из format.dart; подписи единиц
+// времени — из словаря чрез Translate.
+//
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -41,7 +44,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
   bool _hasNewEntries = false;
 
-  // Правка времени смены.
   bool _editingShift = false;
   TextEditingController? _shiftEditCtrl;
 
@@ -88,7 +90,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
     }
   }
 
-  // ─── Экспорт отчёта ───
   Future<void> _export(BuildContext context) async {
     final app = AppScope.of(context);
     final messenger = ScaffoldMessenger.of(context);
@@ -166,6 +167,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
   }) {
     final app = AppScope.of(context);
     final bort = app.bort;
+    final i18n = app.i18n;
     final running = r.runningBlock != null;
 
     final Color plateBg;
@@ -216,7 +218,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
         if (mounted) setState(() {});
       };
     } else {
-      // Покой: пуск блока «выполнение».
       pulseIcon = Icons.play_arrow;
       pulseTap = () async {
         await app.toggleBlockWithShift(r.id, RoutineBlock.work);
@@ -224,12 +225,11 @@ class _RoutinesTabState extends State<RoutinesTab> {
       };
     }
 
-    // ─── Подпульт ───
     final subs = <PultSpec>[
       PultSpec(
         id: 'dup_${r.id}',
         icon: Icons.copy,
-        label: app.i18n.t('bort.duplicate'),
+        label: i18n.t('bort.duplicate'),
         onTap: () async {
           await app.routineLayer.duplicateRoutine(app.journal, r.id);
           if (mounted) setState(() {});
@@ -238,7 +238,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
       PultSpec(
         id: 'del_${r.id}',
         icon: Icons.delete_outline,
-        label: app.i18n.t('bort.delete'),
+        label: i18n.t('bort.delete'),
         confirm: true,
         onTap: () {
           app.routineLayer.deleteRoutine(app.journal, r.id);
@@ -250,7 +250,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
         PultSpec(
           id: 'complete_${r.id}',
           icon: Icons.check_circle_outline,
-          label: app.i18n.t('routine.mark_completed'),
+          label: i18n.t('routine.mark_completed'),
           confirm: true,
           onTap: () {
             app.routineLayer.setCompleted(app.journal, r.id, true);
@@ -299,7 +299,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
                     ),
                   const SizedBox(height: 10),
                   Text(
-                    fmtDate(r.createdAt),
+                    fmtDate(r.createdAt, i18n.t),
                     style: TextStyle(color: textSoft, fontSize: dateSize),
                   ),
                   if (r.totalSeconds > 0) ...[
@@ -311,6 +311,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
                       dim: textSoft,
                       numberSize: numberSize,
                       colonVisible: app.ticker.colonVisible,
+                      t: i18n.t,
                     ),
                   ],
                 ],
@@ -336,6 +337,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
   ) {
     final app = AppScope.of(context);
     final bort = app.bort;
+    final i18n = app.i18n;
 
     if (_editingShift) {
       return Padding(
@@ -396,6 +398,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
       side: side,
       colonVisible: app.ticker.colonVisible,
       pultSize: side * bort.kPultSmall,
+      t: i18n.t,
     );
     if (bort.shiftEdited) {
       pulse = Container(
@@ -494,7 +497,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
                   child: items.isEmpty
                       ? Center(
                           child: Text(
-                            app.i18n.t('routine.none'),
+                            i18n.t('routine.none'),
                             style: TextStyle(color: dim),
                           ),
                         )
