@@ -4,17 +4,19 @@
 // Блоки строятся единым Block (ui/block.dart).
 //
 // Время правится долгим нажатием на пульс любого блока (и идущего,
-// и покоящегося, и с нулевым временем): открывается поле ввода в
-// формате «дд:чч:мм:сс». Enter либо пульт подтверждения — сохранить.
-// Правленое время подчёркивается. Пусто либо ноль — стирание.
+// и покоящегося, и с нулевым временем). При идущем блоке сперва
+// ставится пауза, затем открывается поле.
+//
+// Формат правки: «дд:чч:мм:сс». Enter либо пульт подтверждения —
+// сохранить. Правленое время подчёркивается. Ноль либо пусто —
+// стирание.
 //
 // Завершённость. Чек-бокс в блоке «итог». Установка гасит идущий
 // блок. Снятие — пуском блока.
 //
 // Под таймером итога — список блоков с ненулевым временем.
 //
-// Свёртка блоков — в борте, у каждой рутины своя; переход и простой
-// свёрнуты по умолчанию.
+// Свёртка блоков — в борте, у каждой рутины своя.
 //
 // Прокрутка к последнему пущенному блоку при открытии.
 //
@@ -29,6 +31,7 @@ import '../data/ticker.dart';
 import 'app_scope.dart';
 import 'block.dart';
 import 'bort_field.dart';
+import 'format.dart';
 import 'pulse.dart';
 import 'pult_core.dart';
 import 'pult_tick.dart';
@@ -127,74 +130,37 @@ class _RoutineCardState extends State<RoutineCard> {
     });
   }
 
-  // ─── Формат правки: «дд:чч:мм:сс» ───
-  String _fmtEditable(int sec) {
-    final d = sec ~/ 86400;
-    final h = (sec % 86400) ~/ 3600;
-    final m = (sec % 3600) ~/ 60;
-    final s = sec % 60;
-    String two(int n) => n.toString().padLeft(2, '0');
-    if (d > 0) return '${two(d)}:${two(h)}:${two(m)}:${two(s)}';
-    if (h > 0) return '${two(h)}:${two(m)}:${two(s)}';
-    return '${two(m)}:${two(s)}';
-  }
+  // ─── Правка времени ───
+  // Долгое нажатие на пульс — открыть поле. Ежели блок идёт,
+  // сперва ставится пауза. Работает и с нулевым временем.
+  Future<void> _startEdit(Routine r, String kind) async {
+    final app = AppScope.of(context);
+    final b = r.blockOf(kind);
+    if (b == null) return;
 
-  // Разбор «дд:чч:мм:сс» либо сокращённых форм.
-  //   одно число        — секунды;
-  //   «мм:сс»           — минуты и секунды;
-  //   «чч:мм:сс»        — часы, минуты, секунды;
-  //   «дд:чч:мм:сс»     — дни, часы, минуты, секунды.
-  int? _parseEditable(String s) {
-    final t = s.trim();
-    if (t.isEmpty) return 0; // пусто = стирание
-    final parts = t.split(':');
-    int? n(int i) => int.tryParse(parts[i]);
-    if (parts.length == 1) {
-      final a = n(0);
-      if (a == null) return null;
-      return a;
+    // Идущий блок сперва останавливаем.
+    if (b.isRunning) {
+      await app.routineLayer.pauseBlock(app.journal, r.id, kind);
     }
-    if (parts.length == 2) {
-      final a = n(0);
-      final b = n(1);
-      if (a == null || b == null) return null;
-      return a * 60 + b;
-    }
-    if (parts.length == 3) {
-      final a = n(0);
-      final b = n(1);
-      final c = n(2);
-      if (a == null || b == null || c == null) return null;
-      return a * 3600 + b * 60 + c;
-    }
-    if (parts.length == 4) {
-      final a = n(0);
-      final b = n(1);
-      final c = n(2);
-      final d = n(3);
-      if (a == null || b == null || c == null || d == null) return null;
-      return a * 86400 + b * 3600 + c * 60 + d;
-    }
-    return null;
-  }
 
-  void _startEdit(int seconds, String kind) {
+    final seconds = r.blockOf(kind)?.accumulatorSeconds ?? 0;
     _editCtrl?.dispose();
-    _editCtrl = TextEditingController(text: _fmtEditable(seconds));
+    _editCtrl = TextEditingController(text: fmtEditable(seconds));
     setState(() => _editingKind = kind);
   }
 
   Future<void> _confirmEdit(Routine r, String kind) async {
     final app = AppScope.of(context);
     final text = _editCtrl?.text ?? '';
-    final sec = _parseEditable(text);
+    final sec = parseEditable(text);
     if (sec == null) {
       setState(() => _editingKind = null);
       _editCtrl?.dispose();
       _editCtrl = null;
       return;
     }
-    if (sec == (r.blockOf(kind)?.accumulatorSeconds ?? 0) && sec != 0) {
+    final cur = r.blockOf(kind)?.accumulatorSeconds ?? 0;
+    if (sec == cur && sec != 0) {
       setState(() => _editingKind = null);
       _editCtrl?.dispose();
       _editCtrl = null;
@@ -341,7 +307,6 @@ class _RoutineCardState extends State<RoutineCard> {
     );
   }
 
-  // ─── Один блок чрез единый Block ───
   Widget _buildBlock({
     Key? key,
     required String title,
@@ -360,9 +325,7 @@ class _RoutineCardState extends State<RoutineCard> {
     required dynamic i18n,
     required List<RoutineBlock> allBlocks,
   }) {
-    // ─── Пятёрка цветов ───
     final Color bg;
-    final Color bgdim;
     final Color dim;
     final Color fg;
     final Color signal;
@@ -370,20 +333,17 @@ class _RoutineCardState extends State<RoutineCard> {
       final opp = bort.colorsForOpposite() as Map<String, Color>?;
       if (opp != null) {
         bg = opp['bg']!;
-        bgdim = opp['bgdim']!;
         dim = opp['dim']!;
         fg = opp['fg']!;
         signal = opp['signal']!;
       } else {
         bg = bort.signal as Color;
-        bgdim = bort.signal as Color;
         dim = bort.dim as Color;
         fg = bort.bg as Color;
         signal = bort.bg as Color;
       }
     } else {
       bg = _dimBg(kind) ? (bort.bgdim as Color) : (bort.bg as Color);
-      bgdim = bort.bgdim as Color;
       dim = bort.dim as Color;
       fg = bort.fg as Color;
       signal = bort.signal as Color;
@@ -397,7 +357,6 @@ class _RoutineCardState extends State<RoutineCard> {
     final numberSize = side * (bort.kNumber as double);
     final pultSide = side * (bort.kPultSmall as double);
 
-    // ─── Правый верхний угол ───
     Widget? cornerTop;
 
     if (showPulse) {
@@ -439,21 +398,19 @@ class _RoutineCardState extends State<RoutineCard> {
           ],
         );
       } else {
-        // Пульс блока. Икона — по роду. Долгое — правка времени.
         Widget pulse = Pulse(
           spec: PultSpec(
             id: 'block_$kind',
             icon: _blockIcon(kind),
             selected: running,
             onTap: () => app.toggleBlockWithShift(routine.id, kind),
-            onLongPress: () => _startEdit(seconds, kind),
+            onLongPress: () => _startEdit(routine, kind),
           ),
           seconds: seconds,
           running: running,
           fg: fg,
           dim: dim,
           bg: bg,
-          bgdim: bgdim,
           signal: signal,
           side: side,
           colonVisible: colonVisible,
@@ -481,7 +438,6 @@ class _RoutineCardState extends State<RoutineCard> {
               running: false,
               fg: fg,
               dim: dim,
-              signal: signal,
               numberSize: numberSize,
               colonVisible: colonVisible,
             ),
@@ -504,13 +460,11 @@ class _RoutineCardState extends State<RoutineCard> {
         running: false,
         fg: fg,
         dim: dim,
-        signal: signal,
         numberSize: numberSize,
         colonVisible: colonVisible,
       );
     }
 
-    // ─── Тело ───
     Widget? body;
     if (kind == 'summary') {
       final rows = <Widget>[];
@@ -521,7 +475,7 @@ class _RoutineCardState extends State<RoutineCard> {
               padding: EdgeInsets.only(top: side * 0.1),
               child: Text(
                 '${i18n.t('routine.block.${b.kind}')}: '
-                '${_shortTime(b.accumulatorSeconds)}.',
+                '${fmtTime(b.accumulatorSeconds)}.',
                 style: TextStyle(
                   color: dim,
                   fontSize: side * (bort.kNumberSmall as double),
@@ -554,11 +508,8 @@ class _RoutineCardState extends State<RoutineCard> {
     }
 
     final bool canCollapse = kind != 'summary';
-
-    // Флаги — только у нулевого блока; выводятся после заголовка.
     final bool showFlags = kind == 'note';
-    // Ежели флаги есть, а заголовок у Block — с cornerRightTop,
-    // флаги надобно поместить туда же в ряд с правым углом.
+
     Widget? topRight = cornerTop;
     if (showFlags) {
       final flagsPult = Pult(
@@ -605,16 +556,6 @@ class _RoutineCardState extends State<RoutineCard> {
       reserveBottom: 0,
       child: body,
     );
-  }
-
-  String _shortTime(int sec) {
-    final days = sec ~/ 86400;
-    final hours = (sec % 86400) ~/ 3600;
-    final minutes = (sec % 3600) ~/ 60;
-    String two(int n) => n.toString().padLeft(2, '0');
-    if (days > 0) return '$daysд $hoursч';
-    if (hours > 0) return '$hoursч ${two(minutes)}м';
-    return '${two(minutes)}м';
   }
 
   List<PultSpec> _flagSubs(dynamic app, Routine routine, dynamic i18n) {

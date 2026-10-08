@@ -2,19 +2,13 @@
 // rubka_tab.dart — вкладка рубки.
 //
 // Четыре блока: артель, оформление, интерфейс, данные.
+// Блоки строятся единым Block.
 //
-// Блоки строятся единым Block (ui/block.dart): те же рамки,
-// заголовок, значок свёртки в левом верхнем углу.
-//
-// Артель. Поле «полночь» (чч:мм).
-//
-// Оформление. Пульт выбора темы; обе темы разом; мягкий текст (dim)
-// единый; десять коэффициентов размеров.
-//
-// Интерфейс. Масштаб, язык, подписи.
-//
-// Данные. Первою строкою — время борта (приглушённо). Далее счёт
-// записей и объём. Пульты: перечитать, очистить, удалить, сброс.
+// Артель — поле «полночь» (чч:мм).
+// Оформление — тема, обе темы разом, dim, коэффициенты.
+// Интерфейс — масштаб, язык, подписи.
+// Данные — время борта (сегодня + вчера, приглушённо), счёт записей
+// и объём, четыре пульта управления.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -23,9 +17,11 @@ import 'package:flutter/material.dart';
 
 import '../data/journal_types.dart';
 import '../data/operational_layer.dart';
+import '../data/theme_store.dart';
 import 'app_scope.dart';
 import 'block.dart';
 import 'bort_field.dart';
+import 'format.dart';
 import 'pult_core.dart';
 import 'pult_tick.dart';
 
@@ -37,20 +33,6 @@ class RubkaTab extends StatefulWidget {
 }
 
 class _RubkaTabState extends State<RubkaTab> {
-  @override
-  void initState() {
-    super.initState();
-    // Данные берутся из слоёв при построении — перечитывать надобно
-    // при открытии вкладки. Сие делается в didChangeDependencies.
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Лёгкое уведомление: пересборка при входе на вкладку.
-    // Счёт и объём берутся из полей journal — они всегда свежие.
-  }
-
   String _fmtNum(int n) {
     final s = n.toString();
     final buf = StringBuffer();
@@ -62,15 +44,9 @@ class _RubkaTabState extends State<RubkaTab> {
   }
 
   // Время борта — «9ч 03м», «3д 5ч», «03м».
-  String _fmtBortTime(int sec) {
+  String _fmtBort(int sec) {
     if (sec <= 0) return '0м';
-    final days = sec ~/ 86400;
-    final hours = (sec % 86400) ~/ 3600;
-    final minutes = (sec % 3600) ~/ 60;
-    String two(int n) => n.toString().padLeft(2, '0');
-    if (days > 0) return '$daysд $hoursч';
-    if (hours > 0) return '$hoursч ${two(minutes)}м';
-    return '${two(minutes)}м';
+    return fmtTime(sec);
   }
 
   Future<void> _reload() async {
@@ -234,15 +210,19 @@ class _RubkaTabState extends State<RubkaTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Время борта — первою строкою, приглушённо.
+              // Время борта: сегодня — живой счёт; вчера — приглушённо.
+              Text(
+                _fmtBort(bort.bortTime),
+                style: TextStyle(color: fg, fontSize: side * 0.4),
+              ),
               Padding(
-                padding: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.only(top: 2, bottom: 10),
                 child: Text(
-                  _fmtBortTime(bort.bortTime),
+                  _fmtBort(bort.bortTimeYesterday),
                   style: TextStyle(color: dim, fontSize: side * 0.35),
                 ),
               ),
-              // Счёт записей и объём.
+              // Счёт записей и объём — из полей journal.
               Row(
                 children: [
                   SizedBox(
@@ -434,7 +414,7 @@ class _RubkaTabState extends State<RubkaTab> {
     final bort = app.bort;
     final key = 'theme.$themeName.$role';
     final value = bort.allAsStrings[key] ?? '';
-    final c = _parseColor(value) ?? Colors.transparent;
+    final c = parseColor(value) ?? Colors.transparent;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -484,7 +464,7 @@ class _RubkaTabState extends State<RubkaTab> {
     final app = AppScope.of(context);
     final bort = app.bort;
     final value = bort.allAsStrings['dim'] ?? '';
-    final c = _parseColor(value) ?? Colors.transparent;
+    final c = parseColor(value) ?? Colors.transparent;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -698,14 +678,5 @@ class _RubkaTabState extends State<RubkaTab> {
         ],
       ),
     );
-  }
-
-  Color? _parseColor(String s) {
-    var t = s.trim();
-    if (t.startsWith('#')) t = t.substring(1);
-    if (t.length != 6) return null;
-    final v = int.tryParse(t, radix: 16);
-    if (v == null) return null;
-    return Color(0xFF000000 | v);
   }
 }

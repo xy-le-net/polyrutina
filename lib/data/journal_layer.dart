@@ -210,6 +210,13 @@ class JournalLayer extends ChangeNotifier {
         .get();
   }
 
+  // Все записи по возрастанию номера.
+  Future<List<JournalData>> all() {
+    return (db.select(
+      db.journal,
+    )..orderBy([(t) => OrderingTerm.asc(t.id)])).get();
+  }
+
   // ─── Управление ───
   Future<({int count, int bytes})> size() async {
     return (count: entryCount, bytes: entryBytes);

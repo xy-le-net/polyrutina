@@ -1,22 +1,10 @@
 // ═══════════════════════════════════════════════════════════════════
 // timer_text.dart — вид таймера по единому образцу.
 //
-// Три единицы: дни, часы, минуты. Показываются две старшие, что
-// ненулевые. Исключение — идущий меньше минуты: показывает секунды.
+// Ведущий ноль — только у второго числа в паре. Одиночное число —
+// без нуля.
 //
-// Оформление:
-//   числа — цветом fg;
-//   подписи «д», «ч», «м», «с» — приглушённым, две трети кегля,
-//     слитно с числом, без точки;
-//   разделитель — пробел у покоящегося, мерцающее двоеточие
-//     у идущего. Двоеточие ставится ПЕРЕД последним числом: «9ч :03м»,
-//     «:3с». Ежели число одно — перед ним. Сие даёт единообразие
-//     вида: где бы ни стояло двоеточие, оно всегда перед младшей
-//     частью.
-//   мелькание — от единого тикера: colonVisible истина — видно,
-//     ложь — нет. Период пятьсот миллисекунд (полсекунды видно,
-//     полсекунды нет).
-//   ведущих нулей нет у дней, часов, секунд; у минут — есть.
+// Поля signal нет: цвета числа и подписей — fg и dim.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -28,7 +16,6 @@ class TimerText extends StatelessWidget {
   final bool running;
   final Color fg;
   final Color dim;
-  final Color signal;
   final double numberSize;
   final bool colonVisible;
 
@@ -38,14 +25,10 @@ class TimerText extends StatelessWidget {
     required this.running,
     required this.fg,
     required this.dim,
-    required this.signal,
     required this.numberSize,
     this.colonVisible = true,
   });
 
-  // ─── Разбор на две старшие единицы ───
-  // Возвращает список пар. Пусто — коли всё нуль. Идущий меньше
-  // минуты — одна пара секунд.
   static List<(String, String)> parts(int sec, {required bool running}) {
     if (sec < 0) sec = 0;
     const daySec = 86400;
@@ -56,23 +39,21 @@ class TimerText extends StatelessWidget {
     final minutes = (sec % hourSec) ~/ 60;
     final secs = sec % 60;
 
-    String mm(int n) => n.toString().padLeft(2, '0');
+    String two(int n) => n.toString().padLeft(2, '0');
 
-    // Идущий меньше минуты: секунды.
     if (running && days == 0 && hours == 0 && minutes == 0) {
-      if (secs == 0) return [('0', 'с')];
       return [('$secs', 'с')];
     }
 
     final out = <(String, String)>[];
     if (days > 0) {
       out.add(('$days', 'д'));
-      if (hours > 0) out.add(('$hours', 'ч'));
+      if (hours > 0) out.add((two(hours), 'ч'));
     } else if (hours > 0) {
       out.add(('$hours', 'ч'));
-      out.add((mm(minutes), 'м'));
+      out.add((two(minutes), 'м'));
     } else if (minutes > 0) {
-      out.add((mm(minutes), 'м'));
+      out.add(('$minutes', 'м'));
     }
     return out;
   }
@@ -90,36 +71,45 @@ class TimerText extends StatelessWidget {
     for (var i = 0; i < partsList.length; i++) {
       final (numText, unit) = partsList[i];
 
-      // Двоеточие — ПЕРЕД последним числом. У покоящегося — пробел.
-      // У идущего — мерцающее двоеточие (см. правило в шапке файла).
       final isLast = i == partsList.length - 1;
-      if (isLast) {
-        if (running) {
-          children.add(Opacity(
+      if (isLast && running) {
+        children.add(
+          Opacity(
             opacity: colonVisible ? 1.0 : 0.0,
-            child: Text(':',
-                style: TextStyle(
-                    color: primary,
-                    fontFamily: 'monospace',
-                    fontSize: numberSize)),
-          ));
-        } else {
-          // Пробел между парами.
-          if (i > 0) children.add(const SizedBox(width: 4));
-        }
-      } else {
-        // Между числами — пробел (только у покоящегося).
-        if (i > 0 || true) {
-          children.add(const SizedBox(width: 4));
-        }
+            child: Text(
+              ':',
+              style: TextStyle(
+                color: primary,
+                fontFamily: 'monospace',
+                fontSize: numberSize,
+              ),
+            ),
+          ),
+        );
+      } else if (i > 0) {
+        children.add(const SizedBox(width: 4));
       }
 
-      children.add(Text(numText,
+      children.add(
+        Text(
+          numText,
           style: TextStyle(
-              color: primary, fontFamily: 'monospace', fontSize: numberSize)));
-      children.add(Text(unit,
+            color: primary,
+            fontFamily: 'monospace',
+            fontSize: numberSize,
+          ),
+        ),
+      );
+      children.add(
+        Text(
+          unit,
           style: TextStyle(
-              color: secondary, fontFamily: 'monospace', fontSize: unitSize)));
+            color: secondary,
+            fontFamily: 'monospace',
+            fontSize: unitSize,
+          ),
+        ),
+      );
     }
 
     return Row(

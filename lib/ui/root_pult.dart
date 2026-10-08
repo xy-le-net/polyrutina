@@ -4,10 +4,12 @@
 // Свёрнутый — компас. Касание открывает веер вкладок. Перетаскивание
 // за любое место иконы — по глобальным координатам пальца.
 //
-// Веер вкладок строится единым виджетом Pult: подписи автоматически
-// получают подложку, как у прочих подпультов. Столбец икон — ровный;
-// подписи выступают с той стороны, где просторнее: пульт в правой
-// половине экрана — подписи слева, иначе справа.
+// Веер вкладок строится единым Pult: подписи с подложкой; столбец
+// икон ровный; подписи выступают с той стороны, где просторнее.
+//
+// Размер пультов в веере — тот же side, что и корневой (уже
+// уменьшенный в main). Прежде умножение на 2/3 делало их мельче
+// и подписи обрезались.
 //
 // onDragStart / onDragUpdate принимают ГЛОБАЛЬНЫЕ координаты пальца.
 // onDragEnd без параметра.
@@ -36,11 +38,9 @@ class RootPult extends StatelessWidget {
   final Color bg;
   final Color signal;
 
-  // Подписи.
   final bool labelsSystem;
   final String Function(String key) translate;
 
-  // Глобальные координаты пальца.
   final void Function(Offset globalPosition) onDragStart;
   final void Function(Offset globalPosition) onDragUpdate;
   final VoidCallback onDragEnd;
@@ -81,11 +81,12 @@ class RootPult extends StatelessWidget {
     }
 
     // ─── Сторона подписей ───
-    // Пульт в правой половине экрана — подписи слева, иначе справа.
+    // Пульт в правой половине — подписи слева, иначе справа.
     final centerX = position.dx + side / 2;
     final labelsLeft = centerX > area.width / 2;
 
     // ─── Построение вкладок ───
+    // Размер пультов в веере — тот же side, что и корневой.
     final items = <Widget>[];
     for (var i = 0; i < tabs.length; i++) {
       final t = tabs[i];
@@ -105,7 +106,7 @@ class RootPult extends StatelessWidget {
             fg: fg,
             bg: bg,
             signal: signal,
-            overrideSize: side * 2 / 3,
+            overrideSize: side,
             labelSideLeft: labelsLeft,
           ),
         ),
@@ -117,17 +118,13 @@ class RootPult extends StatelessWidget {
     final pushDown = centerY <= area.height / 2;
 
     final maxW = pushRight ? (position.dx + side) : (area.width - position.dx);
-    final maxH =
-        pushDown ? (area.height - position.dy - side) : (position.dy + side);
+    final maxH = pushDown
+        ? (area.height - position.dy - side)
+        : (position.dy + side);
 
     final layout = ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxW, maxHeight: maxH),
-      child: _layout(
-        items,
-        Size(maxW, maxH),
-        side * 2 / 3 + 8,
-        alignEnd: pushRight,
-      ),
+      child: _layout(items, Size(maxW, maxH), side + 12, alignEnd: pushRight),
     );
 
     final dx = pushRight ? (side - maxW) : 0.0;
@@ -139,10 +136,7 @@ class RootPult extends StatelessWidget {
         width: maxW,
         height: maxH,
         child: Align(
-          alignment: Alignment(
-            pushRight ? 1.0 : -1.0,
-            pushDown ? -1.0 : 1.0,
-          ),
+          alignment: Alignment(pushRight ? 1.0 : -1.0, pushDown ? -1.0 : 1.0),
           child: layout,
         ),
       ),
@@ -173,8 +167,10 @@ class RootPult extends StatelessWidget {
     core = Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(rInner),
-        border:
-            Border.all(color: selected ? iconColor : coreColor, width: borderW),
+        border: Border.all(
+          color: selected ? iconColor : coreColor,
+          width: borderW,
+        ),
       ),
       child: core,
     );
@@ -190,7 +186,7 @@ class RootPult extends StatelessWidget {
     return core;
   }
 
-  // Раскладка веера вкладок: столбец, при нехватке — несколько столбцов.
+  // Раскладка веера вкладок.
   Widget _layout(
     List<Widget> items,
     Size available,

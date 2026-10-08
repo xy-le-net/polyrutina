@@ -8,12 +8,12 @@
 //   PultScope — провайдер состояния;
 //   Pult      — суперкнопка (тройная вложенная обводка).
 //
-// Подпись пульта — с подложкою. labelSideLeft — подпись слева.
+// Подпись пульта — с подложкою. labelBg задаёт её заливку; без
+// заданья — заливка ядра. labelSideLeft — подпись слева.
 //
 // centerText — текст в ядре вместо иконы.
 //
-// Касание снимает фокус с полей ввода и уведомляет борт (pulseBort)
-// о действии — для отсчёта времени активной работы.
+// Касание снимает фокус с полей и уведомляет борт (pulseBort).
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -27,7 +27,7 @@ class PultSpec {
   final String id;
   final IconData icon;
   final String? label;
-  final Widget? labelWidget;
+  final Color? labelBg;
   final String? centerText;
   final bool selected;
   final List<PultSpec> Function()? subsBuilder;
@@ -41,7 +41,7 @@ class PultSpec {
     required this.id,
     required this.icon,
     this.label,
-    this.labelWidget,
+    this.labelBg,
     this.centerText,
     this.selected = false,
     this.subsBuilder,
@@ -157,8 +157,6 @@ class _PultState extends State<Pult> {
   final _coreKey = GlobalKey();
 
   // Уведомить борт о действии — для времени борта.
-  // Зовётся при касании; молча, ежели AppScope не найден (напр.
-  // в тестах или до инициализации).
   void _pulseBort() {
     try {
       AppScope.of(context).pulseBort();
@@ -228,30 +226,23 @@ class _PultState extends State<Pult> {
     Widget content;
     final screenW = MediaQuery.of(context).size.width;
     final maxLabelW = screenW - side - 32;
-    final hasLabel =
-        widget.spec.label != null || widget.spec.labelWidget != null;
+    final hasLabel = widget.spec.label != null;
 
     if (!hasLabel || maxLabelW < side * 1.5) {
       content = core;
     } else {
-      double textW;
-      final labelText = widget.spec.label;
-      if (labelText != null) {
-        final painter = TextPainter(
-          text: TextSpan(
-            text: labelText,
-            style: TextStyle(fontSize: side * 0.4),
-          ),
-          textDirection: TextDirection.ltr,
-          maxLines: 1,
-        )..layout();
-        // Кириллица шире латиницы; берём с запасом.
-        textW = painter.width * 1.3;
-      } else {
-        textW = 6 * side * 0.4;
-      }
-      final desired = textW + 24;
-      final labelWidth = desired.clamp(side * 1.8, maxLabelW);
+      // Кириллица шире латиницы — painter неточен, берём с запасом.
+      final painter = TextPainter(
+        text: TextSpan(
+          text: widget.spec.label!,
+          style: TextStyle(fontSize: side * 0.4),
+        ),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout();
+      final textW = painter.width * 1.2;
+      final desired = textW + 12;
+      final labelWidth = desired.clamp(side * 1.5, maxLabelW);
 
       final borderRadius = widget.labelSideLeft
           ? const BorderRadius.horizontal(left: Radius.circular(6))
@@ -260,8 +251,11 @@ class _PultState extends State<Pult> {
       final labelWidget = Container(
         height: side * 0.75,
         width: labelWidth,
-        decoration: BoxDecoration(color: coreColor, borderRadius: borderRadius),
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          color: widget.spec.labelBg ?? coreColor,
+          borderRadius: borderRadius,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 6),
         child: MediaQuery(
           data: MediaQuery.of(
             context,
@@ -270,19 +264,17 @@ class _PultState extends State<Pult> {
             alignment: widget.labelSideLeft
                 ? Alignment.centerRight
                 : Alignment.centerLeft,
-            child:
-                widget.spec.labelWidget ??
-                Text(
-                  widget.spec.label!,
-                  style: TextStyle(
-                    color: iconColor,
-                    fontSize: side * 0.4,
-                    decoration: TextDecoration.none,
-                  ),
-                  softWrap: false,
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                ),
+            child: Text(
+              widget.spec.label!,
+              style: TextStyle(
+                color: iconColor,
+                fontSize: side * 0.4,
+                decoration: TextDecoration.none,
+              ),
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
           ),
         ),
       );

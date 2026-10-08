@@ -3,8 +3,8 @@
 //
 // Пульс — ряд: слева таймер (TimerText), справа пульт (Pult).
 //
-// Цвета берутся из переданной пятёрки — обычной гаммы либо
-// противоположной (для сигнальных объектов).
+// Цвета берутся из переданной пятёрки (bg, dim, fg, signal).
+// bgdim не передаётся — он не нужен.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -19,7 +19,6 @@ class Pulse extends StatelessWidget {
   final int seconds;
   final bool running;
   final Color bg;
-  final Color bgdim;
   final Color dim;
   final Color fg;
   final Color signal;
@@ -33,7 +32,6 @@ class Pulse extends StatelessWidget {
     required this.seconds,
     required this.running,
     required this.bg,
-    required this.bgdim,
     required this.dim,
     required this.fg,
     required this.signal,
@@ -56,7 +54,6 @@ class Pulse extends StatelessWidget {
           running: running,
           fg: fg,
           dim: dim,
-          signal: signal,
           numberSize: numberSize,
           colonVisible: colonVisible,
         ),

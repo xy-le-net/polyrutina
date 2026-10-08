@@ -7,10 +7,10 @@
 //
 // Пульс рутины:
 //   в ходе — пауза (короткое);
-//   в покое — пуск блока «выполнение» (не последнего пущенного!);
+//   в покое — пуск блока «выполнение»;
 //   завершена — короткое открывает карточку;
 //   долгое — веер: дублировать, удалить, отметить завершённой
-//     (только для незапущенной и незавершённой).
+//     (для незапущенной незавершённой).
 //
 // Смена: долгое нажатие на пульс — правка времени.
 //
@@ -23,6 +23,7 @@ import '../data/journal_types.dart';
 import '../data/routine.dart';
 import '../data/ticker.dart';
 import 'app_scope.dart';
+import 'format.dart';
 import 'pulse.dart';
 import 'pult_core.dart';
 import 'report.dart';
@@ -79,16 +80,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
     super.dispose();
   }
 
-  String _fmtDate(int unixSec) {
-    final d = DateTime.fromMillisecondsSinceEpoch(unixSec * 1000);
-    const weekdays = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
-    final wd = weekdays[d.weekday - 1];
-    return '$wd ${d.day.toString().padLeft(2, '0')}.'
-        '${d.month.toString().padLeft(2, '0')} '
-        '${d.hour.toString().padLeft(2, '0')}:'
-        '${d.minute.toString().padLeft(2, '0')}';
-  }
-
   Future<void> _create(BuildContext context) async {
     final app = AppScope.of(context);
     final r = await app.routineLayer.createRoutine(app.journal);
@@ -100,8 +91,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
   // ─── Экспорт отчёта ───
   Future<void> _export(BuildContext context) async {
     final app = AppScope.of(context);
-    // Мессенджер берётся ДО await, дабы context не пересекал
-    // асинхронный разрыв.
     final messenger = ScaffoldMessenger.of(context);
     final path = await ReportBuilder.build(app, app.i18n);
     if (!mounted) return;
@@ -111,60 +100,15 @@ class _RoutinesTabState extends State<RoutinesTab> {
   }
 
   // ─── Смена: правка времени ───
-  String _fmtEditable(int sec) {
-    final d = sec ~/ 86400;
-    final h = (sec % 86400) ~/ 3600;
-    final m = (sec % 3600) ~/ 60;
-    final s = sec % 60;
-    String two(int n) => n.toString().padLeft(2, '0');
-    if (d > 0) return '${two(d)}:${two(h)}:${two(m)}:${two(s)}';
-    if (h > 0) return '${two(h)}:${two(m)}:${two(s)}';
-    return '${two(m)}:${two(s)}';
-  }
-
-  int? _parseEditable(String s) {
-    final t = s.trim();
-    if (t.isEmpty) return 0;
-    final parts = t.split(':');
-    int? n(int i) => int.tryParse(parts[i]);
-    if (parts.length == 1) {
-      final a = n(0);
-      if (a == null) return null;
-      return a;
-    }
-    if (parts.length == 2) {
-      final a = n(0);
-      final b = n(1);
-      if (a == null || b == null) return null;
-      return a * 60 + b;
-    }
-    if (parts.length == 3) {
-      final a = n(0);
-      final b = n(1);
-      final c = n(2);
-      if (a == null || b == null || c == null) return null;
-      return a * 3600 + b * 60 + c;
-    }
-    if (parts.length == 4) {
-      final a = n(0);
-      final b = n(1);
-      final c = n(2);
-      final d = n(3);
-      if (a == null || b == null || c == null || d == null) return null;
-      return a * 86400 + b * 3600 + c * 60 + d;
-    }
-    return null;
-  }
-
   void _startShiftEdit(int seconds) {
     _shiftEditCtrl?.dispose();
-    _shiftEditCtrl = TextEditingController(text: _fmtEditable(seconds));
+    _shiftEditCtrl = TextEditingController(text: fmtEditable(seconds));
     setState(() => _editingShift = true);
   }
 
   Future<void> _confirmShiftEdit() async {
     final app = AppScope.of(context);
-    final sec = _parseEditable(_shiftEditCtrl?.text ?? '');
+    final sec = parseEditable(_shiftEditCtrl?.text ?? '');
     if (sec == null) {
       setState(() => _editingShift = false);
       _shiftEditCtrl?.dispose();
@@ -301,7 +245,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
         },
       ),
     ];
-    // Отметить завершённой — только у незапущенной незавершённой.
     if (!r.completed && !running) {
       subs.add(
         PultSpec(
@@ -354,9 +297,9 @@ class _RoutinesTabState extends State<RoutinesTab> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 10),
                   Text(
-                    _fmtDate(r.createdAt),
+                    fmtDate(r.createdAt),
                     style: TextStyle(color: textSoft, fontSize: dateSize),
                   ),
                   if (r.totalSeconds > 0) ...[
@@ -366,7 +309,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
                       running: running,
                       fg: textMain,
                       dim: textSoft,
-                      signal: accent,
                       numberSize: numberSize,
                       colonVisible: app.ticker.colonVisible,
                     ),
@@ -450,7 +392,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
       fg: fg,
       dim: dim,
       bg: bg,
-      bgdim: bgdim,
       signal: signal,
       side: side,
       colonVisible: app.ticker.colonVisible,

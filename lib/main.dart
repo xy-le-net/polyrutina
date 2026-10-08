@@ -1,17 +1,17 @@
 // ═══════════════════════════════════════════════════════════════════
 // main.dart — точка входа и управитель.
 //
-// Порядок пуска: журнал открывает базу и подписывается на поток;
-// слои регистрируются в нём и читают кэши; проверяется полночь.
+// Порядок пуска: журнал, борт, слои. Затем проверка полуночи.
 //
 // Действие пользователя. Listener вокруг всего дерева ловит всякое
 // касание — борт получает сигнал (pulseBort) и продлевает отсчёт
-// времени активной работы. Касания пультов дублируют сей сигнал
-// изнутри Pult (надёжнее).
+// времени активной работы.
 //
-// Время борта. Подписка на единый тикер — раз в 500 мс борт тикает.
+// Время борта. Подписка на тикер: раз в 500 мс борт тикает.
 //
-// Вложенность. AppScope, PultScope, PultLayer живут в MaterialApp.builder.
+// Корневой пульт — на треть меньше базового (rootSide).
+//
+// Вложенность. AppScope, PultScope, PultLayer — в MaterialApp.builder.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -63,7 +63,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   Offset? _dragStartGlobal;
   bool _rootOpen = false;
 
-  // Открытая рутина: восстанавливается при возврате на Рутины.
+  // Открытая рутина.
   int? _openedRoutineId;
 
   // Подписка на тикер — для времени борта.
@@ -91,7 +91,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _traceLayer = TraceLayer();
     _ticker = AppTicker();
 
-    // Подписка на тикер: борт тикает.
     _onTickerTick = () => _bort.tickBort();
     _ticker.addListener(_onTickerTick!);
 
@@ -255,6 +254,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _pultState.baseSide = side;
     _pultState.maxSide = _pultMax;
 
+    // Корневой пульт — на треть меньше базового.
+    final rootSide = side * 2 / 3;
+
     final appContext = AppContext(
       bort: _bort,
       routineLayer: _routineLayer,
@@ -309,8 +311,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
               data: MediaQuery.of(
                 context,
               ).copyWith(textScaler: TextScaler.linear(_bort.scale)),
-              // Listener ловит всякое касание в приложении — борт
-              // узнаёт, что действие было.
+              // Listener ловит всякое касание — борт узнаёт о действии.
               child: Listener(
                 behavior: HitTestBehavior.translucent,
                 onPointerDown: (_) => _bort.pulseBort(),
@@ -327,7 +328,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                         );
                         final pos =
                             _dragOffset ??
-                            _anchorPosition(_bort.anchor, size, side);
+                            _anchorPosition(_bort.anchor, size, rootSide);
                         return Stack(
                           children: [
                             child ?? const SizedBox.shrink(),
@@ -338,7 +339,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                                 tabs: _tabs,
                                 activeTab: _tab,
                                 open: _rootOpen,
-                                side: side,
+                                side: rootSide,
                                 position: pos,
                                 area: size,
                                 fg: _bort.fg,
@@ -359,7 +360,11 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                                 },
                                 onDragEnd: () {
                                   final p = _dragOffset ?? pos;
-                                  final nearest = _nearestAnchor(p, size, side);
+                                  final nearest = _nearestAnchor(
+                                    p,
+                                    size,
+                                    rootSide,
+                                  );
                                   setState(() {
                                     _dragOffset = null;
                                     _dragStartPultPos = null;

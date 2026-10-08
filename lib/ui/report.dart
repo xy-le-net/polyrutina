@@ -14,7 +14,7 @@
 // journal_ГГГГММДД_ЧЧММСС.txt. Кодировка — UTF-8.
 //
 // По завершении шлётся запись в борте: lastExportId = последняя
-// запись журнала. Кнопка экспорта оживает только при новых записях.
+// запись журнала.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -27,6 +27,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../data/routine.dart';
 import '../data/trace_layer.dart';
+import 'format.dart';
 
 class ReportBuilder {
   // ─── Сборка и сохранение ───
@@ -60,7 +61,8 @@ class ReportBuilder {
 
     final dir = await getApplicationDocumentsDirectory();
     final now = DateTime.now();
-    final name = 'journal_'
+    final name =
+        'journal_'
         '${now.year.toString().padLeft(4, '0')}'
         '${now.month.toString().padLeft(2, '0')}'
         '${now.day.toString().padLeft(2, '0')}_'
@@ -80,8 +82,11 @@ class ReportBuilder {
 
   // ─── Одна рутина ───
   static void _writeRoutine(
-      StringBuffer buf, dynamic app, dynamic i18n, Routine r) {
-    // Заголовок.
+    StringBuffer buf,
+    dynamic app,
+    dynamic i18n,
+    Routine r,
+  ) {
     final mark = r.completed ? '✓' : '○';
     final name = r.name.isEmpty ? i18n.t('routine.no_name') as String : r.name;
     final stateText = r.completed
@@ -90,7 +95,7 @@ class ReportBuilder {
 
     buf.writeln('$mark $name');
     buf.writeln('   ($stateText)');
-    buf.writeln('   ${_fmtDate(r.createdAt)}');
+    buf.writeln('   ${fmtDateFull(r.createdAt)}');
     buf.writeln();
 
     // Блоки.
@@ -101,7 +106,7 @@ class ReportBuilder {
       final title = i18n.t('routine.block.$kind') as String;
 
       if (sec > 0) {
-        buf.writeln('   $title: ${_fmtTime(sec)}');
+        buf.writeln('   $title: ${fmtTime(sec)}');
       } else {
         buf.writeln('   $title');
       }
@@ -115,8 +120,12 @@ class ReportBuilder {
       }
 
       // Чек-лист.
-      final t = app.traceLayer.findFirstBySlot(r.id, kind);
-      if (t != null && t.kind == TraceKind.checklist) {
+      final t = app.traceLayer.findFirstByKindSlot(
+        r.id,
+        TraceKind.checklist,
+        kind,
+      );
+      if (t != null) {
         for (final it in t.items) {
           final s = (it.text as String);
           if (s.trim().isEmpty) continue;
@@ -131,31 +140,13 @@ class ReportBuilder {
 
   // ─── Текстовый след блока ───
   static String? _textOf(dynamic app, int routineId, String slot) {
-    final t = app.traceLayer.findFirstBySlot(routineId, slot);
+    final t = app.traceLayer.findFirstByKindSlot(
+      routineId,
+      TraceKind.text,
+      slot,
+    );
     if (t == null) return null;
-    if (t.kind != TraceKind.text) return null;
     final s = t.text as String;
     return s.isEmpty ? null : s;
-  }
-
-  // ─── Дата «пн 06.10.2025 10:31» ───
-  static String _fmtDate(int unixSec) {
-    final d = DateTime.fromMillisecondsSinceEpoch(unixSec * 1000);
-    const weekdays = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
-    final wd = weekdays[d.weekday - 1];
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '$wd ${two(d.day)}.${two(d.month)}.${d.year} '
-        '${two(d.hour)}:${two(d.minute)}';
-  }
-
-  // ─── Время «9ч 03м», «3д 5ч», «03м» ───
-  static String _fmtTime(int sec) {
-    final days = sec ~/ 86400;
-    final hours = (sec % 86400) ~/ 3600;
-    final minutes = (sec % 3600) ~/ 60;
-    String two(int n) => n.toString().padLeft(2, '0');
-    if (days > 0) return '${days}д ${hours}ч';
-    if (hours > 0) return '${hours}ч ${two(minutes)}м';
-    return '${two(minutes)}м';
   }
 }

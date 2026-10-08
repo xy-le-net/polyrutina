@@ -1,17 +1,13 @@
 // ═══════════════════════════════════════════════════════════════════
 // operational_layer.dart — оперативный слой («борт»).
 //
-// Состояние интерфейса: цвета, коэффициенты, язык, вкладка, якорь,
-// черновики, метка запуска, смена, полночь, свёрнутость блоков,
-// метка экспорта, время борта.
+// Фасад над тремя модулями: ThemeStore (цвета и темы), BortTime
+// (время активной работы), DraftsStore (черновики полей). Здесь же
+// остаются коэффициенты размеров, вкладка, якорь, смена, метка
+// экспорта, свёрнутость блоков рубки и метка первого запуска.
 //
-// Время борта. Накопительное, за всё время. Идёт, покуда приложение
-// на экране и было действие за последние 20 секунд. Бездействие,
-// сворачивание, закрытие — стоп. При первом открытии после полуночи
-// суточная доля уходит в журнал записью рода bort с ключом «bort_time».
-//
-// Правка смены. Долгое нажатие — поле ввода (чч:мм:сс). Правленое
-// время подчёркнуто; до полуночи снимается.
+// Публичные поля и методы оставлены как геттеры и прокси — прочие
+// слои и вкладки читают их без изменений.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -25,28 +21,43 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'bort_time.dart';
 import 'database.dart';
+import 'drafts_store.dart';
 import 'journal_layer.dart';
 import 'journal_types.dart';
-
-// Таймаут бездействия для времени борта — 20 секунд.
-const int kBortTimeoutSec = 20;
+import 'theme_store.dart';
 
 class OperationalLayer extends ChangeNotifier {
-  // ─── Действующий набор цветов ───
-  Color bg = const Color(0xFFEFEFEF);
-  Color bgdim = const Color(0xFFE4E4E4);
-  Color dim = const Color(0xFF8F8F8F);
-  Color fg = const Color(0xFF101010);
-  Color signal = const Color(0xFF000000);
+  // ─── Подмодули ───
+  final ThemeStore _themes = ThemeStore();
+  final BortTime _bortTime = BortTime();
+  final DraftsStore _draftsStore = DraftsStore();
 
-  // ─── Все темы ───
-  Map<String, Map<String, Color>> themes = {};
+  // ─── Геттеры цветов ───
+  Color get bg => _themes.bg;
+  Color get bgdim => _themes.bgdim;
+  Color get dim => _themes.dim;
+  Color get fg => _themes.fg;
+  Color get signal => _themes.signal;
+  Map<String, Map<String, Color>> get themes => _themes.themes;
+  String get themeName => _themes.themeName;
+  Brightness get systemBrightness => _themes.systemBrightness;
 
-  String themeName = 'system';
-  Brightness systemBrightness = Brightness.light;
+  // ─── Геттеры времени борта ───
+  int get bortTime => _bortTime.bortTime;
+  int get bortLastActionAt => _bortTime.lastActionAt;
+  set bortLastActionAt(int v) => _bortTime.lastActionAt = v;
+  String get midnight => _bortTime.midnight;
 
-  // ─── Прочие настройки ───
+  // Вчерашний итог времени борта. Читается из журнала при пуске.
+  int bortTimeYesterday = 0;
+
+  // ─── Геттеры черновиков ───
+  String draft(String key) => _draftsStore.draft(key);
+  bool isTraceSent(String key) => _draftsStore.isSent(key);
+
+  // ─── Прочие поля ───
   double scale = 1.4;
   String lang = 'ru';
   int tab = 4;
@@ -59,25 +70,10 @@ class OperationalLayer extends ChangeNotifier {
   bool blockData = false;
   int selectedType = 4;
   int selectedFlags = 0;
-
-  // ─── Полночь ───
-  String midnight = '00:00';
-
-  // ─── Свёрнутые блоки рутин ───
+  int lastExportId = 0;
   Map<int, Set<String>> collapsedBlocks = {};
 
-  // ─── Метка последнего экспорта ───
-  int lastExportId = 0;
-
-  // ─── Время борта ───
-  // Накопительное за всё время. Идёт при действиях с таймаутом.
-  int bortTime = 0;
-  // Миг последнего действия (секунды Unix). 0 — нет действия.
-  int bortLastActionAt = 0;
-  // Миг последней прошедшей полуночи, для суточных записей.
-  int bortPrevMidnight = 0;
-
-  // ─── Коэффициенты размеров ───
+  // ─── Коэффициенты ───
   double kPult = 1.0;
   double kPultSmall = 0.8889;
   double kBlockGap = 0.2;
@@ -93,12 +89,7 @@ class OperationalLayer extends ChangeNotifier {
   bool onShift = false;
   int totalShiftSeconds = 0;
   int? shiftStartedAt;
-  // Пометка правки времени смены.
   bool shiftEdited = false;
-
-  // ─── Черновики и признак «отправлено» ───
-  Map<String, String> drafts = {};
-  Map<String, bool> traceSent = {};
 
   // ─── Метка первого запуска ───
   int firstRunUnixSec = 0;
@@ -112,14 +103,15 @@ class OperationalLayer extends ChangeNotifier {
 
   // ─── Пуск ───
   Future<void> init(JournalLayer journal, Brightness system) async {
-    systemBrightness = system;
+    _themes.setSystemBrightness(system);
     final dir = await getApplicationDocumentsDirectory();
     _file = File(p.join(dir.path, 'operational_layer.json'));
     _installFile = File(p.join(dir.path, 'install.json'));
     await _loadDefaults();
     await _loadInstall();
     await _loadFromFile();
-    _resolveTheme();
+    await _loadYesterdayBortTime(journal);
+    _themes.resolve();
 
     journal.register(
       name: 'bort',
@@ -128,7 +120,6 @@ class OperationalLayer extends ChangeNotifier {
       reset: _resetMemory,
     );
 
-    // Проверка полуночи — до первого тика.
     await checkMidnight(journal);
 
     notifyListeners();
@@ -157,32 +148,16 @@ class OperationalLayer extends ChangeNotifier {
     } catch (_) {}
   }
 
-  // ─── Разбор тем (единый) ───
-  void _parseThemes(Map<dynamic, dynamic> t) {
-    themes = {};
-    for (final k in t.keys) {
-      final v = t[k];
-      if (v is Map) {
-        themes[k.toString()] = {
-          'bg': _parseColor(v['bg'] as String?) ?? bg,
-          'bgdim': _parseColor(v['bgdim'] as String?) ?? bgdim,
-          'fg': _parseColor(v['fg'] as String?) ?? fg,
-          'signal': _parseColor(v['signal'] as String?) ?? signal,
-        };
-      }
-    }
-  }
-
   // ─── Умолчания ───
   Future<void> _loadDefaults() async {
     try {
       final raw = await rootBundle.loadString('assets/defaults.json');
       final data = jsonDecode(raw) as Map<String, dynamic>;
-      dim = _parseColor(data['dim'] as String?) ?? dim;
+      _themes.dim = parseColor(data['dim'] as String?) ?? _themes.dim;
       final t = data['themes'];
-      if (t is Map) _parseThemes(t);
+      if (t is Map) _themes.parseThemes(t);
+      _themes.themeName = data['theme'] as String? ?? _themes.themeName;
 
-      themeName = data['theme'] as String? ?? themeName;
       scale = (data['scale'] as num?)?.toDouble() ?? scale;
       lang = data['lang'] as String? ?? lang;
       tab = (data['tab'] as num?)?.toInt() ?? tab;
@@ -196,7 +171,7 @@ class OperationalLayer extends ChangeNotifier {
       selectedType = (data['selected_type'] as num?)?.toInt() ?? selectedType;
       selectedFlags =
           (data['selected_flags'] as num?)?.toInt() ?? selectedFlags;
-      midnight = data['midnight'] as String? ?? midnight;
+      _bortTime.midnight = data['midnight'] as String? ?? _bortTime.midnight;
 
       kPult = (data['k_pult'] as num?)?.toDouble() ?? kPult;
       kPultSmall = (data['k_pult_small'] as num?)?.toDouble() ?? kPultSmall;
@@ -210,22 +185,7 @@ class OperationalLayer extends ChangeNotifier {
       kRadius = (data['k_radius'] as num?)?.toDouble() ?? kRadius;
       kStroke = (data['k_stroke'] as num?)?.toDouble() ?? kStroke;
     } catch (_) {}
-    if (themes.isEmpty) {
-      themes = {
-        'day': {
-          'bg': const Color(0xFFEFEFEF),
-          'bgdim': const Color(0xFFE4E4E4),
-          'fg': const Color(0xFF101010),
-          'signal': const Color(0xFF000000),
-        },
-        'night': {
-          'bg': const Color(0xFF101010),
-          'bgdim': const Color(0xFF1C1C1C),
-          'fg': const Color(0xFFEFEFEF),
-          'signal': const Color(0xFFFFFFFF),
-        },
-      };
-    }
+    _themes.ensureThemes();
   }
 
   // ─── Рабочий файл ───
@@ -234,11 +194,11 @@ class OperationalLayer extends ChangeNotifier {
     try {
       final raw = await _file!.readAsString();
       final data = jsonDecode(raw) as Map<String, dynamic>;
-      dim = _parseColor(data['dim'] as String?) ?? dim;
+      _themes.dim = parseColor(data['dim'] as String?) ?? _themes.dim;
       final t = data['themes'];
-      if (t is Map) _parseThemes(t);
+      if (t is Map) _themes.parseThemes(t);
+      _themes.themeName = data['theme'] as String? ?? _themes.themeName;
 
-      themeName = data['theme'] as String? ?? themeName;
       scale = (data['scale'] as num?)?.toDouble() ?? scale;
       lang = data['lang'] as String? ?? lang;
       tab = (data['tab'] as num?)?.toInt() ?? tab;
@@ -252,7 +212,10 @@ class OperationalLayer extends ChangeNotifier {
       selectedType = (data['selected_type'] as num?)?.toInt() ?? selectedType;
       selectedFlags =
           (data['selected_flags'] as num?)?.toInt() ?? selectedFlags;
-      midnight = data['midnight'] as String? ?? midnight;
+      _bortTime.midnight = data['midnight'] as String? ?? _bortTime.midnight;
+      _bortTime.loadJson(data);
+      _draftsStore.loadJson(data);
+
       onShift = data['on_shift'] as bool? ?? onShift;
       totalShiftSeconds =
           (data['total_shift_seconds'] as num?)?.toInt() ?? totalShiftSeconds;
@@ -260,11 +223,6 @@ class OperationalLayer extends ChangeNotifier {
           (data['shift_started_at'] as num?)?.toInt() ?? shiftStartedAt;
       shiftEdited = data['shift_edited'] as bool? ?? shiftEdited;
       lastExportId = (data['last_export_id'] as num?)?.toInt() ?? lastExportId;
-      bortTime = (data['bort_time'] as num?)?.toInt() ?? bortTime;
-      bortLastActionAt =
-          (data['bort_last_action_at'] as num?)?.toInt() ?? bortLastActionAt;
-      bortPrevMidnight =
-          (data['bort_prev_midnight'] as num?)?.toInt() ?? bortPrevMidnight;
 
       kPult = (data['k_pult'] as num?)?.toDouble() ?? kPult;
       kPultSmall = (data['k_pult_small'] as num?)?.toDouble() ?? kPultSmall;
@@ -278,14 +236,6 @@ class OperationalLayer extends ChangeNotifier {
       kRadius = (data['k_radius'] as num?)?.toDouble() ?? kRadius;
       kStroke = (data['k_stroke'] as num?)?.toDouble() ?? kStroke;
 
-      final d = data['drafts'];
-      if (d is Map) {
-        drafts = d.map((k, v) => MapEntry(k.toString(), v.toString()));
-      }
-      final ts = data['trace_sent'];
-      if (ts is Map) {
-        traceSent = ts.map((k, v) => MapEntry(k.toString(), v == true));
-      }
       final cb = data['collapsed_blocks'];
       if (cb is Map) {
         collapsedBlocks = {};
@@ -301,51 +251,19 @@ class OperationalLayer extends ChangeNotifier {
     } catch (_) {}
   }
 
-  // ─── Разрешение темы ───
-  void _resolveTheme() {
-    String name = themeName;
-    if (name == 'system') {
-      name = systemBrightness == Brightness.dark ? 'night' : 'day';
-    }
-    final t = themes[name];
-    if (t == null) return;
-    bg = t['bg']!;
-    bgdim = t['bgdim']!;
-    fg = t['fg']!;
-    signal = t['signal']!;
-  }
-
+  // ─── Системная гамма ───
   void setSystemBrightness(Brightness b) {
-    if (systemBrightness == b) return;
-    systemBrightness = b;
-    if (themeName == 'system') {
-      _resolveTheme();
+    if (_themes.systemBrightness == b) return;
+    _themes.setSystemBrightness(b);
+    if (_themes.themeName == 'system') {
+      _themes.resolve();
       notifyListeners();
     }
   }
 
-  String oppositeThemeName() {
-    String name = themeName;
-    if (name == 'system') {
-      name = systemBrightness == Brightness.dark ? 'night' : 'day';
-    }
-    if (name == 'day') return 'night';
-    if (name == 'night') return 'day';
-    return 'night';
-  }
-
-  Map<String, Color>? colorsForOpposite() {
-    final name = oppositeThemeName();
-    final t = themes[name];
-    if (t == null) return null;
-    return {
-      'bg': t['bg']!,
-      'bgdim': t['bgdim']!,
-      'dim': dim,
-      'fg': t['fg']!,
-      'signal': t['signal']!,
-    };
-  }
+  // ─── Противоположная гамма ───
+  String oppositeThemeName() => _themes.oppositeName();
+  Map<String, Color>? colorsForOpposite() => _themes.colorsForOpposite();
 
   // ─── Свёрнутость блоков ───
   bool isBlockCollapsed(int routineId, String kind) {
@@ -385,60 +303,45 @@ class OperationalLayer extends ChangeNotifier {
   }
 
   // ─── Время борта ───
-  // Зовётся при всяком действии пользователя — от касания до ввода.
-  // Обновляет метку последнего действия; сам отсчёт идёт в tickBort.
   void pulseBort() {
-    bortLastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    _bortTime.pulse();
+    _scheduleSave();
   }
 
-  // Тик времени борта. Зовётся из тикера (500 мс).
-  // Ежели приложение активно и было действие за kBortTimeoutSec —
-  // прибавляет утекшие секунды.
   void tickBort() {
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    if (bortLastActionAt == 0) return;
-    if (now - bortLastActionAt > kBortTimeoutSec) return;
-    // Предыдущее значение bortTime уже учитывает всё до прошлого тика.
-    // Прибавляем дельту — берётся из разницы с «последним pulse».
-    // Проще: считать bortTime накопительно при каждом действии.
-    // Здесь только метка «дыхания»; реальный прирост — в pulseBort.
+    _bortTime.tick();
   }
 
-  // ─── Полуночь ───
-  // Проверка перехода чрез полночь. Зовётся при пуске.
-  // Ежели с последнего раза прошла полночь — суточная доля уходит
-  // в журнал рода bort с ключом «bort_time».
   Future<void> checkMidnight(JournalLayer journal) async {
-    final now = DateTime.now();
-    // Миг последней полуночи относительно сего момента.
-    final todayMidnight =
-        DateTime(now.year, now.month, now.day).millisecondsSinceEpoch ~/ 1000;
-    // Или предыдущей, ежели нынешняя ещё не наступила в сей день —
-    // но полночь текущих суток всегда в прошлом.
-    if (bortPrevMidnight == 0) {
-      // Первый запуск: записываем точку отсчёта, не пишем в журнал.
-      bortPrevMidnight = todayMidnight;
-      return;
-    }
-    if (todayMidnight <= bortPrevMidnight) return; // полночь не прошла
-    // Прошла хотя бы одна полночь. Записываем суточную долю:
-    // сие приблизительно — доля считается как всё накопленное,
-    // помеченное за прошедшие сутки. Простой путь: пишем текущее
-    // накопленное в ключ дня.
-    await journal.log(
-      type: JournalType.bort,
-      body:
-          '{"key":"bort_time","value":"$bortTime",'
-          '"midnight":$todayMidnight}',
-    );
-    bortPrevMidnight = todayMidnight;
+    await _bortTime.checkMidnight(journal);
+    _scheduleSave();
+  }
+
+  // ─── Вчерашний итог времени борта ───
+  // Читается из журнала: последняя запись рода bort с ключом
+  // bort_time, что записана при переходе чрез полночь.
+  Future<void> _loadYesterdayBortTime(JournalLayer journal) async {
+    try {
+      final entries = await journal.all();
+      for (final e in entries.reversed) {
+        if (e.type != JournalType.bort) continue;
+        try {
+          final data = jsonDecode(e.body) as Map<String, dynamic>;
+          if (data['key'] == 'bort_time') {
+            bortTimeYesterday =
+                int.tryParse(data['value']?.toString() ?? '') ?? 0;
+            return;
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
   }
 
   // ─── Правка смены ───
   void setShiftTime(int seconds) {
     totalShiftSeconds = seconds;
     shiftStartedAt = null;
-    shiftEdited = true;
+    shiftEdited = seconds > 0;
     _scheduleSave();
     notifyListeners();
   }
@@ -466,6 +369,13 @@ class OperationalLayer extends ChangeNotifier {
           }
           onShift = false;
           shiftStartedAt = null;
+        } else if (action == 'shift_edit') {
+          final secs = (data['seconds'] as num?)?.toInt();
+          if (secs != null) {
+            totalShiftSeconds = secs;
+            shiftStartedAt = null;
+            shiftEdited = secs > 0;
+          }
         }
       }
     } catch (_) {}
@@ -482,21 +392,18 @@ class OperationalLayer extends ChangeNotifier {
     if (_file != null && await _file!.exists()) {
       await _file!.delete();
     }
-    themes = {};
-    themeName = 'system';
+    _themes.themes = {};
+    _themes.themeName = 'system';
     onShift = false;
     totalShiftSeconds = 0;
     shiftStartedAt = null;
     shiftEdited = false;
-    drafts = {};
-    traceSent = {};
+    _draftsStore.reset();
+    _bortTime.reset();
     collapsedBlocks = {};
     lastExportId = 0;
-    bortTime = 0;
-    bortLastActionAt = 0;
-    bortPrevMidnight = 0;
     await _loadDefaults();
-    _resolveTheme();
+    _themes.resolve();
     await _saveToFile();
     notifyListeners();
   }
@@ -507,6 +414,7 @@ class OperationalLayer extends ChangeNotifier {
     await _saveToFile();
   }
 
+  // ─── Установка значений ───
   void set(String key, String value) {
     _apply(key, value);
     notifyListeners();
@@ -527,27 +435,22 @@ class OperationalLayer extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ─── Черновики ───
   void setDraft(String key, String text) {
-    drafts[key] = text;
-    traceSent.remove(key);
+    _draftsStore.setDraft(key, text);
   }
-
-  String draft(String key) => drafts[key] ?? '';
 
   void clearDraft(String key) {
-    drafts.remove(key);
-    traceSent.remove(key);
+    _draftsStore.clearDraft(key);
   }
 
-  bool isTraceSent(String key) => traceSent[key] == true;
-
   void markTraceSent(String key) {
-    traceSent[key] = true;
+    _draftsStore.markSent(key);
     notifyListeners();
   }
 
   static String traceDraftKey(int objectId, String slot) =>
-      'trace_${objectId}_$slot';
+      DraftsStore.traceKey(objectId, slot);
 
   // ─── Смена ───
   void startShift() {
@@ -580,31 +483,15 @@ class OperationalLayer extends ChangeNotifier {
   // ─── Применение одного ключа ───
   void _apply(String key, String value) {
     if (key == 'dim') {
-      dim = _parseColor(value) ?? dim;
+      _themes.applyDim(value);
       return;
     }
-    if (key.startsWith('theme.') && key.split('.').length == 3) {
-      final parts = key.split('.');
-      final name = parts[1];
-      final role = parts[2];
-      final c = _parseColor(value);
-      if (c == null) return;
-      themes.putIfAbsent(
-        name,
-        () => {'bg': bg, 'bgdim': bgdim, 'fg': fg, 'signal': signal},
-      );
-      themes[name]![role] = c;
-      final resolved = themeName == 'system'
-          ? (systemBrightness == Brightness.dark ? 'night' : 'day')
-          : themeName;
-      if (name == resolved) _resolveTheme();
-      return;
-    }
+    if (_themes.applyThemeKey(key, value)) return;
 
     switch (key) {
       case 'theme':
-        themeName = value;
-        _resolveTheme();
+        _themes.themeName = value;
+        _themes.resolve();
         break;
       case 'scale':
         scale = double.tryParse(value) ?? scale;
@@ -643,7 +530,7 @@ class OperationalLayer extends ChangeNotifier {
         selectedFlags = int.tryParse(value) ?? selectedFlags;
         break;
       case 'midnight':
-        midnight = value;
+        _bortTime.midnight = value;
         break;
       case 'on_shift':
         onShift = _parseBool(value) ?? onShift;
@@ -697,23 +584,14 @@ class OperationalLayer extends ChangeNotifier {
 
   Future<void> _saveToFile() async {
     if (_file == null) return;
-    final themeOut = <String, dynamic>{};
-    for (final e in themes.entries) {
-      themeOut[e.key] = {
-        'bg': colorToHex(e.value['bg']!),
-        'bgdim': colorToHex(e.value['bgdim']!),
-        'fg': colorToHex(e.value['fg']!),
-        'signal': colorToHex(e.value['signal']!),
-      };
-    }
     final cbOut = <String, dynamic>{};
     for (final e in collapsedBlocks.entries) {
       cbOut['${e.key}'] = e.value.toList();
     }
     final data = <String, dynamic>{
-      'dim': colorToHex(dim),
-      'themes': themeOut,
-      'theme': themeName,
+      'dim': colorToHex(_themes.dim),
+      'themes': _themes.toJson(),
+      'theme': _themes.themeName,
       'scale': scale,
       'lang': lang,
       'tab': tab,
@@ -726,15 +604,12 @@ class OperationalLayer extends ChangeNotifier {
       'block_data': blockData,
       'selected_type': selectedType,
       'selected_flags': selectedFlags,
-      'midnight': midnight,
+      'midnight': _bortTime.midnight,
       'on_shift': onShift,
       'total_shift_seconds': totalShiftSeconds,
       'shift_started_at': shiftStartedAt,
       'shift_edited': shiftEdited,
       'last_export_id': lastExportId,
-      'bort_time': bortTime,
-      'bort_last_action_at': bortLastActionAt,
-      'bort_prev_midnight': bortPrevMidnight,
       'k_pult': kPult,
       'k_pult_small': kPultSmall,
       'k_block_gap': kBlockGap,
@@ -745,45 +620,32 @@ class OperationalLayer extends ChangeNotifier {
       'k_name': kName,
       'k_radius': kRadius,
       'k_stroke': kStroke,
-      'drafts': drafts,
-      'trace_sent': traceSent,
       'collapsed_blocks': cbOut,
+      ..._bortTime.toJson(),
+      ..._draftsStore.toJson(),
     };
     await _file!.writeAsString(jsonEncode(data));
   }
 
-  Color? _parseColor(String? s) {
-    if (s == null) return null;
-    var t = s.trim();
-    if (t.startsWith('#')) t = t.substring(1);
-    if (t.length != 6) return null;
-    final v = int.tryParse(t, radix: 16);
-    if (v == null) return null;
-    return Color(0xFF000000 | v);
-  }
+  String colorToHex(Color c) => _colorToHex(c);
 
-  String colorToHex(Color c) {
+  static String _colorToHex(Color c) {
     final r = (c.r * 255).round().toRadixString(16).padLeft(2, '0');
     final g = (c.g * 255).round().toRadixString(16).padLeft(2, '0');
     final b = (c.b * 255).round().toRadixString(16).padLeft(2, '0');
     return '#$r$g$b';
   }
 
+  // ─── Плоское представление ───
   Map<String, String> get allAsStrings {
     final out = <String, String>{};
-    out['dim'] = colorToHex(dim);
-    for (final e in themes.entries) {
-      out['theme.${e.key}.bg'] = colorToHex(e.value['bg']!);
-      out['theme.${e.key}.bgdim'] = colorToHex(e.value['bgdim']!);
-      out['theme.${e.key}.fg'] = colorToHex(e.value['fg']!);
-      out['theme.${e.key}.signal'] = colorToHex(e.value['signal']!);
-    }
-    out['theme'] = themeName;
+    out.addAll(_themes.toFlatStrings());
+    out['theme'] = _themes.themeName;
     out['scale'] = scale.toStringAsFixed(2);
     out['lang'] = lang;
     out['labels_system'] = labelsSystem.toString();
     out['labels_field'] = labelsField.toString();
-    out['midnight'] = midnight;
+    out['midnight'] = _bortTime.midnight;
     out['k_pult'] = kPult.toStringAsFixed(4);
     out['k_pult_small'] = kPultSmall.toStringAsFixed(4);
     out['k_block_gap'] = kBlockGap.toStringAsFixed(4);
