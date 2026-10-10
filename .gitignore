@@ -1,3 +1,5 @@
+android/build/
+
 # Miscellaneous
 *.class
 *.log
@@ -46,3 +48,5 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+android/build/reports/problems/problems-report.html
+android/build/reports/problems/problems-report.html
