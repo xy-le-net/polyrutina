@@ -10,12 +10,16 @@
 // Раздача. pump читает всё после наименьшей отметки, раздаёт каждому
 // слою его роды, движет отметки вперёд.
 //
-// Счёт и объём. entryCount и entryBytes обновляются инкрементально
-// при pump — без чтения всей таблицы. Рубка читает их напрямую,
-// когда блок «данные» открыт.
+// Подписка. Заводится НЕ в init, а в start — после того, как все
+// слои зарегистрировались. Сим устраняется пропуск ранних записей.
 //
-// Состояние отметок пишется в файл ОТЛОЖЕННО и только когда отметки
-// действительно изменились.
+// Транзакции. Действия, рождающие несколько записей разом,
+// оборачиваются в transaction. Внутри неё log не пускает pump;
+// он исполняется однократно по выходе из внешней транзакции.
+//
+// Счёт и объём журнала не ведутся здесь: рубка читает размер файлов
+// борта напрямую. Флага «локальное» для различения бортовых записей
+// здесь не ставится: служба сего — бит JournalFlag.fromServer.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -56,26 +60,27 @@ class JournalLayer extends ChangeNotifier {
   final Map<String, _LayerReg> _layers = {};
   final Map<String, int> _savedIds = {};
 
-  // ─── Счёт и объём ───
-  // Обновляются инкрементально при pump. Рубка читает напрямую.
-  int entryCount = 0;
-  int entryBytes = 0;
-
   File? _stateFile;
   Timer? _saveTimer;
 
   bool _stateDirty = false;
   bool _pumping = false;
+  int _txDepth = 0;
+
   StreamSubscription<List<JournalData>>? _sub;
 
   // ─── Пуск ───
+  // Подписка не заводится здесь: она откладывается до start().
   Future<void> init() async {
     final dir = await getApplicationDocumentsDirectory();
     _stateFile = File(p.join(dir.path, 'journal_layer.json'));
     await _loadState();
-    // Начальный пересчёт счёта и объёма.
-    await _recomputeStats();
-    _sub = watchAll().listen((_) => pump());
+  }
+
+  // ─── Подписка ───
+  // Зовётся после регистрации всех слоёв.
+  void start() {
+    _sub ??= watchAll().listen((_) => pump());
   }
 
   @override
@@ -100,6 +105,17 @@ class JournalLayer extends ChangeNotifier {
     );
   }
 
+  // ─── Транзакция ───
+  Future<T> transaction<T>(Future<T> Function() action) async {
+    _txDepth++;
+    try {
+      return await db.transaction(action);
+    } finally {
+      _txDepth--;
+      if (_txDepth == 0) await pump();
+    }
+  }
+
   // ─── Раздача ───
   Future<void> pump() async {
     if (_pumping) return;
@@ -113,9 +129,6 @@ class JournalLayer extends ChangeNotifier {
         final entries = await entriesAfter(minLast);
         if (entries.isEmpty) break;
         for (final e in entries) {
-          // Обновление счёта и объёма — инкрементально.
-          entryCount += 1;
-          entryBytes += e.body.length + kJournalOverhead;
           for (final l in _layers.values) {
             if (e.id <= l.lastId) continue;
             if (l.types.contains(e.type)) {
@@ -144,19 +157,7 @@ class JournalLayer extends ChangeNotifier {
     _savedIds.clear();
     _stateDirty = true;
     await _saveStateNow();
-    await _recomputeStats();
     await pump();
-  }
-
-  // ─── Пересчёт счёта и объёма ───
-  // Зовётся при пуске и полном перечитывании. При обычной работе
-  // счёт движется инкрементально в pump.
-  Future<void> _recomputeStats() async {
-    final all = await db.select(db.journal).get();
-    entryCount = all.length;
-    entryBytes =
-        all.fold<int>(0, (s, e) => s + e.body.length) +
-        entryCount * kJournalOverhead;
   }
 
   // ─── Запись ───
@@ -175,7 +176,7 @@ class JournalLayer extends ChangeNotifier {
             body: body,
           ),
         );
-    await pump();
+    if (_txDepth == 0) await pump();
     return id;
   }
 
@@ -210,7 +211,6 @@ class JournalLayer extends ChangeNotifier {
         .get();
   }
 
-  // Все записи по возрастанию номера.
   Future<List<JournalData>> all() {
     return (db.select(
       db.journal,
@@ -218,10 +218,6 @@ class JournalLayer extends ChangeNotifier {
   }
 
   // ─── Управление ───
-  Future<({int count, int bytes})> size() async {
-    return (count: entryCount, bytes: entryBytes);
-  }
-
   Future<void> clearAll() async {
     await db.delete(db.journal).go();
     for (final l in _layers.values) {
@@ -231,8 +227,9 @@ class JournalLayer extends ChangeNotifier {
     _savedIds.clear();
     _stateDirty = true;
     await _saveStateNow();
-    entryCount = 0;
-    entryBytes = 0;
+    try {
+      await db.customStatement('VACUUM');
+    } catch (_) {}
     notifyListeners();
   }
 
@@ -244,7 +241,6 @@ class JournalLayer extends ChangeNotifier {
         .toList();
     if (ids.isEmpty) return;
     await (db.delete(db.journal)..where((t) => t.id.isIn(ids))).go();
-    await _recomputeStats();
     notifyListeners();
   }
 
@@ -264,7 +260,6 @@ class JournalLayer extends ChangeNotifier {
     );
   }
 
-  // Номер последней записи в журнале.
   Future<int> lastEntryId() async {
     final rows =
         await (db.select(db.journal)

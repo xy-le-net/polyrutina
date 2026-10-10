@@ -34,6 +34,7 @@
 
     "routine.none": "рутин нет",
     "routine.no_name": "без имени",
+    "routine.noname": "noname",
     "routine.not_found": "рутина не найдена",
     "routine.in_work": "в работе",
     "routine.waiting": "ожидает",
@@ -88,10 +89,21 @@
     "bort.delete": "удалить",
     "bort.reset": "сброс",
     "bort.duplicate": "дублировать",
+    "bort.select": "выбрать",
+    "bort.deselect": "снять выделение",
 
     "checklist.mark_all": "отметить все",
     "checklist.unmark_all": "снять все",
     "checklist.clear_all": "очистить всё",
+
+    "media.audio": "аудио",
+    "media.photo": "фото",
+    "media.video": "видео",
+    "media.geo": "место",
+    "media.file": "файл",
+    "media.attach": "прикрепить",
+    "media.attached": "прикреплено",
+    "media.share": "поделиться",
 
     "time.d": "д",
     "time.h": "ч",
@@ -148,6 +160,7 @@
 
     "routine.none": "no routines",
     "routine.no_name": "no name",
+    "routine.noname": "noname",
     "routine.not_found": "routine not found",
     "routine.in_work": "in work",
     "routine.waiting": "waiting",
@@ -202,10 +215,21 @@
     "bort.delete": "delete",
     "bort.reset": "reset",
     "bort.duplicate": "duplicate",
+    "bort.select": "select",
+    "bort.deselect": "deselect",
 
     "checklist.mark_all": "mark all",
     "checklist.unmark_all": "unmark all",
     "checklist.clear_all": "clear all",
+
+    "media.audio": "audio",
+    "media.photo": "photo",
+    "media.video": "video",
+    "media.geo": "place",
+    "media.file": "file",
+    "media.attach": "attach",
+    "media.attached": "attached",
+    "media.share": "share",
 
     "time.d": "d",
     "time.h": "h",

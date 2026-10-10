@@ -11,7 +11,8 @@
 // Подпись пульта — с подложкою. labelBg задаёт её заливку; без
 // заданья — заливка ядра. labelSideLeft — подпись слева.
 //
-// centerText — текст в ядре вместо иконы.
+// centerText — текст в ядре вместо иконы. Число выводится моноширинно
+// и центруется по вертикали с поправкою на высоту строки.
 //
 // Касание снимает фокус с полей и уведомляет борт (pulseBort).
 //
@@ -156,7 +157,6 @@ class Pult extends StatefulWidget {
 class _PultState extends State<Pult> {
   final _coreKey = GlobalKey();
 
-  // Уведомить борт о действии — для времени борта.
   void _pulseBort() {
     try {
       AppScope.of(context).pulseBort();
@@ -180,6 +180,7 @@ class _PultState extends State<Pult> {
     final rCore = side * 0.10;
 
     final iconSize = selected ? side * 0.60 : side * 0.45;
+    final hasCenter = widget.spec.centerText != null;
 
     Widget core = Container(
       key: _coreKey,
@@ -190,14 +191,20 @@ class _PultState extends State<Pult> {
         borderRadius: BorderRadius.circular(rCore),
       ),
       child: Center(
-        child: widget.spec.centerText != null
-            ? Text(
-                widget.spec.centerText!,
-                style: TextStyle(
-                  color: iconColor,
-                  fontFamily: 'monospace',
-                  fontSize: iconSize,
-                  decoration: TextDecoration.none,
+        child: hasCenter
+            ? Padding(
+                // Небольшая поправка: моноширинная цифра в ядре
+                // выравнивается по вертикали.
+                padding: EdgeInsets.only(bottom: side * 0.04),
+                child: Text(
+                  widget.spec.centerText!,
+                  style: TextStyle(
+                    color: iconColor,
+                    fontFamily: 'monospace',
+                    fontSize: iconSize,
+                    height: 1.0,
+                    decoration: TextDecoration.none,
+                  ),
                 ),
               )
             : Icon(widget.spec.icon, color: iconColor, size: iconSize),
@@ -231,7 +238,6 @@ class _PultState extends State<Pult> {
     if (!hasLabel || maxLabelW < side * 1.5) {
       content = core;
     } else {
-      // Кириллица шире латиницы — painter неточен, берём с запасом.
       final painter = TextPainter(
         text: TextSpan(
           text: widget.spec.label!,

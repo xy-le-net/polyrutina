@@ -4,17 +4,22 @@
 // Сверху таблица записей, под нею консоль ручного ввода, внизу ряд
 // пультов: род записи, флаги, отправка.
 //
-// Роды записи в сем пульте: след, рутина, таймер, актор. Род «борт»
-// (интерфейс) вручную не вводится: настройки пишутся системою, коли
-// надобно.
+// Журнал показывается от новых к старым. Сперва грузится последняя
+// сотня; при долистывании вниз подгружаются следующие сотни по мере
+// надобности. Так память не держит весь журнал разом.
 //
-// Таблица обновляется чрез поток watchRecent.
+// Роды записи в сем пульте: след, рутина, актор. Роды «таймер»
+// и «борт» упразднены: настройки живут в файле борта, а «таймер»
+// в запасе. Прежние записи сих родов всё равно прочтутся.
+//
+// Таблица обновляется чрез поток watchRecent и подгрузку старых.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:async';
 
+import 'package:drift/drift.dart' as drift;
 import 'package:flutter/material.dart';
 import 'package:table_view_ex/table_view_ex.dart';
 
@@ -31,16 +36,20 @@ class JournalTab extends StatefulWidget {
 }
 
 class _JournalTabState extends State<JournalTab> {
+  static const int _pageSize = 100;
+
   final _inputController = TextEditingController();
   List<JournalData> _entries = [];
   StreamSubscription<List<JournalData>>? _journalSub;
   final _widthCalc = _JournalWidthCalculator();
 
-  // Роды, доступные вручную: без «борта».
+  bool _loadingMore = false;
+  bool _reachedEnd = false;
+
+  // Роды, доступные вручную: без «таймера» и без «борта».
   static const List<int> _manualTypes = [
     JournalType.trace,
     JournalType.routine,
-    JournalType.timer,
     JournalType.actor,
   ];
 
@@ -52,9 +61,49 @@ class _JournalTabState extends State<JournalTab> {
 
   void _subscribe() {
     final app = AppScope.of(context);
-    _journalSub = app.journal.watchRecent(limit: 50).listen((entries) {
-      if (mounted) setState(() => _entries = entries);
+    // Первая страница: последние _pageSize записей (от новых к старым).
+    _journalSub = app.journal.watchRecent(limit: _pageSize).listen((entries) {
+      if (!mounted) return;
+      // Ежели уже подгружали старые — не затираем их: свежие встают
+      // в начало, а хвост сохраняется.
+      final loadedOld = _entries.length > _pageSize;
+      if (loadedOld) {
+        final cutoff = entries.isNotEmpty ? entries.first.id : 0;
+        final tail = _entries.where((e) => e.id < cutoff).toList();
+        setState(() {
+          _entries = [...entries, ...tail];
+        });
+      } else {
+        setState(() {
+          _entries = entries;
+          _reachedEnd = entries.length < _pageSize;
+        });
+      }
     });
+  }
+
+  // ─── Подгрузка следующей страницы ───
+  Future<void> _loadMore() async {
+    if (_loadingMore || _reachedEnd) return;
+    if (_entries.isEmpty) return;
+    _loadingMore = true;
+    final app = AppScope.of(context);
+    final oldest = _entries.last.id;
+    final next =
+        await (app.journal.db.select(app.journal.db.journal)
+              ..where((t) => t.id.isSmallerThanValue(oldest))
+              ..orderBy([(t) => drift.OrderingTerm.desc(t.id)])
+              ..limit(_pageSize))
+            .get();
+    if (!mounted) {
+      _loadingMore = false;
+      return;
+    }
+    setState(() {
+      _entries = [..._entries, ...next];
+      if (next.length < _pageSize) _reachedEnd = true;
+    });
+    _loadingMore = false;
   }
 
   @override
@@ -78,15 +127,12 @@ class _JournalTabState extends State<JournalTab> {
       body: text,
       flags: bort.selectedFlags,
     );
-
-    if (bort.selectedType == JournalType.bort && text.contains('"lang"')) {
-      await app.reloadI18n();
-    }
   }
 
   Widget _cell(BuildContext context, int colIndex, int rowIndex) {
     final app = AppScope.of(context);
     final i18n = app.i18n;
+    if (rowIndex >= _entries.length) return const SizedBox.shrink();
     final e = _entries[rowIndex];
     final when = DateTime.fromMillisecondsSinceEpoch(e.time * 1000);
     final t =
@@ -142,7 +188,6 @@ class _JournalTabState extends State<JournalTab> {
     return i >= 0 ? icons[i] : Icons.help_outline;
   }
 
-  // Построитель подпультов рода: токмо четыре рода (без «борта»).
   List<PultSpec> _buildTypeSubs(BuildContext context) {
     final app = AppScope.of(context);
     final bort = app.bort;
@@ -159,12 +204,14 @@ class _JournalTabState extends State<JournalTab> {
     for (final t in _manualTypes) {
       if (t == bort.selectedType) continue;
       final i = JournalType.all.indexOf(t);
-      out.add(PultSpec(
-        id: 'type_$t',
-        icon: _typeIcon(t),
-        label: bort.labelsSystem ? i18n.t(keys[i]) : null,
-        onTap: () => bort.setInt('selected_type', t),
-      ));
+      out.add(
+        PultSpec(
+          id: 'type_$t',
+          icon: _typeIcon(t),
+          label: bort.labelsSystem ? i18n.t(keys[i]) : null,
+          onTap: () => bort.setInt('selected_type', t),
+        ),
+      );
     }
     return out;
   }
@@ -207,14 +254,16 @@ class _JournalTabState extends State<JournalTab> {
     final out = <PultSpec>[];
     for (var i = 0; i < JournalFlag.all.length; i++) {
       final f = JournalFlag.all[i];
-      out.add(PultSpec(
-        id: 'flag_$i',
-        icon: icons[i],
-        label: bort.labelsSystem ? i18n.t(keys[i]) : null,
-        selected: (bort.selectedFlags & f) != 0,
-        stayOpen: true,
-        onTap: () => bort.setInt('selected_flags', bort.selectedFlags ^ f),
-      ));
+      out.add(
+        PultSpec(
+          id: 'flag_$i',
+          icon: icons[i],
+          label: bort.labelsSystem ? i18n.t(keys[i]) : null,
+          selected: (bort.selectedFlags & f) != 0,
+          stayOpen: true,
+          onTap: () => bort.setInt('selected_flags', bort.selectedFlags ^ f),
+        ),
+      );
     }
     return out;
   }
@@ -229,8 +278,6 @@ class _JournalTabState extends State<JournalTab> {
     final signal = bort.signal;
     final side = PultScope.of(context).smallSide;
 
-    // Тип, выбранный в борте, может быть «борт» из прошлого. Тогда
-    // показываем «след» вместо него.
     int shownType = bort.selectedType;
     if (!_manualTypes.contains(shownType)) {
       shownType = JournalType.trace;
@@ -267,18 +314,28 @@ class _JournalTabState extends State<JournalTab> {
     return Column(
       children: [
         Expanded(
-          child: ViewOnlyTableViewEx(
-            columnDefinitions: columns,
-            showHeader: true,
-            contentRowsCount: _entries.length,
-            rowSpanBuilder: (rowIndex) => const FixedSpanExtent(44),
-            columnWidthCalculator: _widthCalc,
-            contentCellWidgetBuilder: (ctx, col, row) => DefaultTextStyle(
-              style: TextStyle(color: fg),
-              child: _cell(ctx, col, row),
+          // Ловим прокрутку таблицы: у дна грузим следующую страницу.
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (n) {
+              if (n is ScrollEndNotification ||
+                  n.metrics.pixels >= n.metrics.maxScrollExtent - 200) {
+                _loadMore();
+              }
+              return false;
+            },
+            child: ViewOnlyTableViewEx(
+              columnDefinitions: columns,
+              showHeader: true,
+              contentRowsCount: _entries.length,
+              rowSpanBuilder: (rowIndex) => const FixedSpanExtent(44),
+              columnWidthCalculator: _widthCalc,
+              contentCellWidgetBuilder: (ctx, col, row) => DefaultTextStyle(
+                style: TextStyle(color: fg),
+                child: _cell(ctx, col, row),
+              ),
+              onSortRequested: (colIndex) {},
+              enableColumnWidthResize: true,
             ),
-            onSortRequested: (colIndex) {},
-            enableColumnWidthResize: true,
           ),
         ),
         Padding(
@@ -290,8 +347,10 @@ class _JournalTabState extends State<JournalTab> {
               hintText: i18n.t('input.hint'),
               border: const OutlineInputBorder(),
               isDense: true,
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 10,
+              ),
             ),
             onChanged: (v) => bort.setDraft('console', v),
             onSubmitted: (_) => _send(),

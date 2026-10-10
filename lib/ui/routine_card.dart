@@ -8,19 +8,21 @@
 // ставится пауза, затем открывается поле.
 //
 // Формат правки: «дд:чч:мм:сс». Enter либо пульт подтверждения —
-// сохранить. Правленое время подчёркивается. Ноль либо пусто —
-// стирание.
+// сохранить. Правленое время подчёркивается ВСЕГДА, коли правлено,
+// — и в покое, и в ходу. Ноль либо пусто — стирание.
 //
-// Завершённость. Чек-бокс в блоке «итог». Установка гасит идущий
-// блок. Снятие — пуском блока.
+// Итог подчёркивается, коли правлен хоть один блок.
 //
-// Под таймером итога — список блоков с ненулевым временем.
-//
-// Свёртка блоков — в борте, у каждой рутины своя.
+// Умолчание свёртки: свёрнуто всё, кроме «описания» и «выполнения»;
+// блок со следом разворачивается, коли пользователь не решал иначе.
+// Ручное решение пользователя (касание значка) перебивает и хранится
+// за рутиной.
 //
 // Прокрутка к последнему пущенному блоку при открытии.
 //
-// Формат дат и длительностей — из format.dart.
+// Таймер перерисовывается по смене видимой единицы: покуда блок
+// идёт и его время менее минуты — каждую секунду (секунды видны);
+// далее — при смене минуты.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -30,6 +32,7 @@ import 'package:flutter/material.dart';
 import '../data/journal_types.dart';
 import '../data/routine.dart';
 import '../data/ticker.dart';
+import '../data/trace_layer.dart';
 import 'app_scope.dart';
 import 'block.dart';
 import 'bort_field.dart';
@@ -37,6 +40,7 @@ import 'format.dart';
 import 'pulse.dart';
 import 'pult_core.dart';
 import 'pult_tick.dart';
+import 'report.dart';
 import 'timer_text.dart';
 import 'trace_field.dart';
 
@@ -56,6 +60,10 @@ class _RoutineCardState extends State<RoutineCard> {
 
   String? _editingKind;
   TextEditingController? _editCtrl;
+  FocusNode? _editFocus;
+
+  int _lastMinute = 0;
+  int _lastSecond = 0;
 
   @override
   void initState() {
@@ -65,6 +73,9 @@ class _RoutineCardState extends State<RoutineCard> {
       _blockKeys[k] = GlobalKey();
     }
     _blockKeys['summary'] = GlobalKey();
+    final now = DateTime.now();
+    _lastMinute = now.millisecondsSinceEpoch ~/ 60000;
+    _lastSecond = now.millisecondsSinceEpoch ~/ 1000;
   }
 
   @override
@@ -80,7 +91,29 @@ class _RoutineCardState extends State<RoutineCard> {
     if (!mounted) return;
     final app = AppScope.of(context);
     final r = app.routineLayer.findRoutine(widget.routineId);
-    if (r != null && r.runningBlock != null) setState(() {});
+    if (r == null) return;
+    final running = r.runningBlock;
+    if (running == null) return;
+
+    final sec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final min = sec ~/ 60;
+
+    // Коли блок идёт и время менее минуты — секунды на глазах:
+    // перерисовываем каждую секунду.
+    final blockSec = running.secondsNowAt(sec);
+    if (blockSec < 60) {
+      if (sec != _lastSecond) {
+        _lastSecond = sec;
+        setState(() {});
+      }
+      return;
+    }
+    // Иначе — по смене минуты.
+    if (min != _lastMinute) {
+      _lastMinute = min;
+      _lastSecond = sec;
+      setState(() {});
+    }
   }
 
   @override
@@ -88,6 +121,7 @@ class _RoutineCardState extends State<RoutineCard> {
     _ticker?.removeListener(_onTick);
     _scrollController.dispose();
     _editCtrl?.dispose();
+    _editFocus?.dispose();
     super.dispose();
   }
 
@@ -132,8 +166,48 @@ class _RoutineCardState extends State<RoutineCard> {
     });
   }
 
+  // ─── Явное решение о свёртке либо null (умолчание) ───
+  bool? _explicitCollapsed(dynamic bort, int routineId, String kind) {
+    final set = (bort.collapsedBlocks as Map<int, Set<String>>)[routineId];
+    if (set == null) return null;
+    return set.contains(kind);
+  }
+
+  // ─── Есть ли в блоке след? ───
+  bool _hasTrace(int routineId, String kind) {
+    if (kind == 'summary') return false;
+    final app = AppScope.of(context);
+    final text = app.traceLayer.findFirstByKindSlot(
+      routineId,
+      TraceKind.text,
+      kind,
+    );
+    if (text != null && text.text.trim().isNotEmpty) return true;
+    if (text != null && text.files.isNotEmpty) return true;
+    final chk = app.traceLayer.findFirstByKindSlot(
+      routineId,
+      TraceKind.checklist,
+      kind,
+    );
+    if (chk != null) {
+      for (final it in chk.items) {
+        if (it.text.trim().isNotEmpty) return true;
+      }
+    }
+    return false;
+  }
+
+  // ─── Итоговая свёртка с учётом умолчания и следа ───
+  bool _collapsedFor(dynamic bort, Routine r, String kind) {
+    final explicit = _explicitCollapsed(bort, r.id, kind);
+    if (explicit != null) return explicit;
+    // Умолчание: описания и выполнения развёрнуты; прочие свёрнуты.
+    // Блок со следом — развёрнут.
+    if (kind == 'note' || kind == RoutineBlock.work) return false;
+    return !_hasTrace(r.id, kind);
+  }
+
   // ─── Правка времени ───
-  // Долгое нажатие — открыть поле. Ежели блок идёт — сперва пауза.
   Future<void> _startEdit(Routine r, String kind) async {
     final app = AppScope.of(context);
     final b = r.blockOf(kind);
@@ -145,33 +219,51 @@ class _RoutineCardState extends State<RoutineCard> {
 
     final seconds = r.blockOf(kind)?.accumulatorSeconds ?? 0;
     _editCtrl?.dispose();
+    _editFocus?.dispose();
     _editCtrl = TextEditingController(text: fmtEditable(seconds));
+    _editFocus = FocusNode();
+    _editFocus!.addListener(() {
+      if (!_editFocus!.hasFocus) _cancelEdit();
+    });
     setState(() => _editingKind = kind);
+  }
+
+  void _cancelEdit() {
+    if (_editingKind == null) return;
+    // Просто закрываем поле без записи: значения не менялись.
+    if (mounted) {
+      setState(() => _editingKind = null);
+    }
+    _editCtrl?.dispose();
+    _editFocus?.dispose();
+    _editCtrl = null;
+    _editFocus = null;
   }
 
   Future<void> _confirmEdit(Routine r, String kind) async {
     final app = AppScope.of(context);
     final text = _editCtrl?.text ?? '';
     final sec = parseEditable(text);
+    final cur = r.blockOf(kind)?.accumulatorSeconds ?? 0;
+
+    // Разбор провалился — закрываем без записи.
     if (sec == null) {
-      setState(() => _editingKind = null);
-      _editCtrl?.dispose();
-      _editCtrl = null;
+      _cancelEdit();
       return;
     }
-    final cur = r.blockOf(kind)?.accumulatorSeconds ?? 0;
-    if (sec == cur && sec != 0) {
-      setState(() => _editingKind = null);
-      _editCtrl?.dispose();
-      _editCtrl = null;
+    // Ничего не менялось — закрываем без записи.
+    if (sec == cur) {
+      _cancelEdit();
       return;
     }
     await app.routineLayer.setBlockTime(app.journal, r.id, kind, sec);
     if (mounted) {
       setState(() => _editingKind = null);
-      _editCtrl?.dispose();
-      _editCtrl = null;
     }
+    _editCtrl?.dispose();
+    _editFocus?.dispose();
+    _editCtrl = null;
+    _editFocus = null;
   }
 
   Future<void> _toggleCompleted(Routine r) async {
@@ -185,6 +277,11 @@ class _RoutineCardState extends State<RoutineCard> {
       }
     }
     await app.routineLayer.setCompleted(app.journal, r.id, value);
+  }
+
+  Future<void> _exportOne(Routine r) async {
+    final app = AppScope.of(context);
+    await ReportBuilder.buildSingle(app, app.i18n, r.id);
   }
 
   @override
@@ -211,6 +308,7 @@ class _RoutineCardState extends State<RoutineCard> {
     _autoScroll();
 
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final anyEdited = r.blocks.any((b) => b.timeEdited);
 
     final blocks = <Widget>[];
 
@@ -224,7 +322,7 @@ class _RoutineCardState extends State<RoutineCard> {
         showPulse: false,
         showCompletion: false,
         timeEdited: false,
-        collapsed: bort.isBlockCollapsed(r.id, 'note'),
+        collapsed: _collapsedFor(bort, r, 'note'),
         bort: bort,
         app: app,
         routine: r,
@@ -232,6 +330,7 @@ class _RoutineCardState extends State<RoutineCard> {
         colonVisible: app.ticker.colonVisible,
         i18n: i18n,
         allBlocks: r.blocks,
+        anyEdited: anyEdited,
       ),
     );
 
@@ -247,7 +346,7 @@ class _RoutineCardState extends State<RoutineCard> {
           showPulse: true,
           showCompletion: false,
           timeEdited: b?.timeEdited ?? false,
-          collapsed: bort.isBlockCollapsed(r.id, k),
+          collapsed: _collapsedFor(bort, r, k),
           bort: bort,
           app: app,
           routine: r,
@@ -255,6 +354,7 @@ class _RoutineCardState extends State<RoutineCard> {
           colonVisible: app.ticker.colonVisible,
           i18n: i18n,
           allBlocks: r.blocks,
+          anyEdited: anyEdited,
         ),
       );
     }
@@ -268,7 +368,7 @@ class _RoutineCardState extends State<RoutineCard> {
         seconds: r.totalSeconds,
         showPulse: false,
         showCompletion: true,
-        timeEdited: false,
+        timeEdited: anyEdited,
         collapsed: false,
         bort: bort,
         app: app,
@@ -277,6 +377,7 @@ class _RoutineCardState extends State<RoutineCard> {
         colonVisible: app.ticker.colonVisible,
         i18n: i18n,
         allBlocks: r.blocks,
+        anyEdited: anyEdited,
       ),
     );
 
@@ -295,12 +396,18 @@ class _RoutineCardState extends State<RoutineCard> {
         ),
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          controller: _scrollController,
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: blocks,
+        // Касание вне поля ввода снимает фокус — клавиатура уходит,
+        // курсор гаснет.
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: blocks,
+            ),
           ),
         ),
       ),
@@ -324,6 +431,7 @@ class _RoutineCardState extends State<RoutineCard> {
     required bool colonVisible,
     required dynamic i18n,
     required List<RoutineBlock> allBlocks,
+    required bool anyEdited,
   }) {
     final Color bg;
     final Color dim;
@@ -368,6 +476,7 @@ class _RoutineCardState extends State<RoutineCard> {
               width: side * 2.6,
               child: TextField(
                 controller: _editCtrl,
+                focusNode: _editFocus,
                 autofocus: true,
                 style: TextStyle(color: fg, fontSize: numberSize),
                 decoration: InputDecoration(
@@ -417,6 +526,7 @@ class _RoutineCardState extends State<RoutineCard> {
           pultSize: pultSide,
           t: i18n.t,
         );
+        // Правленое время подчёркивается ВСЕГДА: и в покое, и в ходу.
         if (timeEdited) {
           pulse = Container(
             decoration: BoxDecoration(
@@ -468,6 +578,18 @@ class _RoutineCardState extends State<RoutineCard> {
       );
     }
 
+    // ─── Подчёркивание итога, коли правлен хоть один блок ───
+    if (showCompletion && anyEdited && cornerTop != null) {
+      cornerTop = Container(
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: dim, width: strokeW * 2),
+          ),
+        ),
+        child: cornerTop,
+      );
+    }
+
     Widget? body;
     if (kind == 'summary') {
       final rows = <Widget>[];
@@ -512,8 +634,10 @@ class _RoutineCardState extends State<RoutineCard> {
 
     final bool canCollapse = kind != 'summary';
     final bool showFlags = kind == 'note';
+    final bool showExport = kind == 'summary';
 
     Widget? topRight = cornerTop;
+
     if (showFlags) {
       final flagsPult = Pult(
         spec: PultSpec(
@@ -537,6 +661,22 @@ class _RoutineCardState extends State<RoutineCard> {
       );
     }
 
+    // ─── Кнопка экспорта в правом нижнем углу итога ───
+    Widget? cornerBottom;
+    if (showExport) {
+      cornerBottom = Pult(
+        spec: PultSpec(
+          id: 'export_${routine.id}',
+          icon: Icons.ios_share,
+          onTap: () => _exportOne(routine),
+        ),
+        fg: dim,
+        bg: bg,
+        signal: signal,
+        overrideSize: pultSide,
+      );
+    }
+
     return Block(
       key: key,
       title: title,
@@ -546,6 +686,7 @@ class _RoutineCardState extends State<RoutineCard> {
         (bort.toggleBlockCollapsed as Function)(routine.id, kind);
       },
       cornerRightTop: topRight,
+      cornerRightBottom: cornerBottom,
       bg: bg,
       dim: dim,
       fg: fg,

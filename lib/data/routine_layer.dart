@@ -5,6 +5,10 @@
 //
 // Журнал. Регистрируется в JournalLayer на род routine.
 //
+// Транзакции. Действия, рождающие несколько записей разом
+// (завершение рутины, пуск блока с гашением прочих, переключение
+// блока при смене рутины), оборачиваются в journal.transaction.
+//
 // Кэш. Пишется отложенно (200 мс). currentRoutineId — в памяти;
 // lastActiveBlockKind — в кэше (для прокрутки после перезапуска).
 //
@@ -83,8 +87,9 @@ class RoutineLayer extends ChangeNotifier {
       final data = jsonDecode(raw) as Map<String, dynamic>;
       final r = data['routines'];
       if (r is List) {
-        routines =
-            r.map((e) => Routine.fromJson(e as Map<String, dynamic>)).toList();
+        routines = r
+            .map((e) => Routine.fromJson(e as Map<String, dynamic>))
+            .toList();
       }
       lastActiveBlockKind = data['last_active_block_kind'] as String?;
     } catch (_) {}
@@ -204,8 +209,6 @@ class RoutineLayer extends ChangeNotifier {
   }
 
   // ─── Дублирование ───
-  // Копируются имя, флаги и следы блоков note, prep, closeout
-  // (текст и чек-листы). Прочие следы не переносятся.
   Future<Routine?> duplicateRoutine(JournalLayer journal, int sourceId) async {
     final src = findRoutine(sourceId);
     if (src == null) return null;
@@ -217,7 +220,6 @@ class RoutineLayer extends ChangeNotifier {
       await setFlags(journal, r.id, src.flags);
     }
 
-    // Копирование следов.
     final traces = _traces;
     if (traces != null) {
       const copySlots = ['note', 'prep', 'closeout'];
@@ -225,7 +227,6 @@ class RoutineLayer extends ChangeNotifier {
         final t = traces.findFirstBySlot(src.id, slot);
         if (t == null) continue;
 
-        // Текстовый след.
         if (t.kind == TraceKind.text && t.text.isNotEmpty) {
           await traces.createText(
             journal,
@@ -235,7 +236,6 @@ class RoutineLayer extends ChangeNotifier {
           );
         }
 
-        // Чек-лист.
         if (t.kind == TraceKind.checklist) {
           final items = t.items
               .where((e) => e.text.trim().isNotEmpty)
@@ -317,32 +317,47 @@ class RoutineLayer extends ChangeNotifier {
     if (r.completed == value) return;
 
     if (value) {
-      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      for (final b in r.blocks) {
-        if (b.isRunning) {
-          b.pause(at: now);
-          await journal.log(
-            type: JournalType.routine,
-            body: '{"action":"pause_block","routine":$id,'
-                '"block":"${b.kind}","at":$now}',
-          );
+      // Пауза всех идущих блоков + отметка завершённости — одною
+      // транзакциею: либо всё, либо ничего.
+      await journal.transaction(() async {
+        final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+        for (final b in r.blocks) {
+          if (b.isRunning) {
+            b.pause(at: now);
+            await journal.log(
+              type: JournalType.routine,
+              body:
+                  '{"action":"pause_block","routine":$id,'
+                  '"block":"${b.kind}","at":$now}',
+            );
+          }
         }
-      }
-      if (currentRoutineId == id) currentRoutineId = null;
+        if (currentRoutineId == id) currentRoutineId = null;
+        r.completed = true;
+        r.lastActionAt = now;
+        await journal.log(
+          type: JournalType.routine,
+          body: '{"action":"complete","routine":$id,"value":true}',
+        );
+      });
+    } else {
+      r.completed = false;
+      r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      await journal.log(
+        type: JournalType.routine,
+        body: '{"action":"complete","routine":$id,"value":false}',
+      );
     }
-
-    r.completed = value;
-    r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    await journal.log(
-      type: JournalType.routine,
-      body: '{"action":"complete","routine":$id,"value":$value}',
-    );
     _scheduleSave();
     notifyListeners();
   }
 
   Future<void> setBlockTime(
-      JournalLayer journal, int routineId, String kind, int seconds) async {
+    JournalLayer journal,
+    int routineId,
+    String kind,
+    int seconds,
+  ) async {
     final r = findRoutine(routineId);
     if (r == null) return;
     final b = r.blockOf(kind);
@@ -351,7 +366,8 @@ class RoutineLayer extends ChangeNotifier {
     r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     await journal.log(
       type: JournalType.routine,
-      body: '{"action":"set_block_time","routine":$routineId,'
+      body:
+          '{"action":"set_block_time","routine":$routineId,'
           '"block":"$kind","seconds":$seconds}',
     );
     _scheduleSave();
@@ -359,7 +375,10 @@ class RoutineLayer extends ChangeNotifier {
   }
 
   Future<void> toggleBlock(
-      JournalLayer journal, int routineId, String kind) async {
+    JournalLayer journal,
+    int routineId,
+    String kind,
+  ) async {
     final r = findRoutine(routineId);
     if (r == null) return;
     final b = r.blockOf(kind);
@@ -371,58 +390,73 @@ class RoutineLayer extends ChangeNotifier {
     }
   }
 
+  // ─── Пуск блока ───
+  // Гасит идущие блоки (в сей рутине и в чужой), пускает целевой —
+  // всё одною транзакциею.
   Future<void> startBlock(
-      JournalLayer journal, int routineId, String kind) async {
+    JournalLayer journal,
+    int routineId,
+    String kind,
+  ) async {
     final r = findRoutine(routineId);
     if (r == null) return;
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
-    if (currentRoutineId != null && currentRoutineId != routineId) {
-      final other = findRoutine(currentRoutineId!);
-      if (other != null) {
-        for (final b in other.blocks) {
-          if (b.isRunning) {
-            b.pause(at: now);
-            await journal.log(
-              type: JournalType.routine,
-              body: '{"action":"pause_block","routine":${other.id},'
-                  '"block":"${b.kind}","at":$now}',
-            );
+    await journal.transaction(() async {
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
+      if (currentRoutineId != null && currentRoutineId != routineId) {
+        final other = findRoutine(currentRoutineId!);
+        if (other != null) {
+          for (final b in other.blocks) {
+            if (b.isRunning) {
+              b.pause(at: now);
+              await journal.log(
+                type: JournalType.routine,
+                body:
+                    '{"action":"pause_block","routine":${other.id},'
+                    '"block":"${b.kind}","at":$now}',
+              );
+            }
           }
         }
       }
-    }
 
-    for (final b in r.blocks) {
-      if (b.isRunning && b.kind != kind) {
-        b.pause(at: now);
+      for (final b in r.blocks) {
+        if (b.isRunning && b.kind != kind) {
+          b.pause(at: now);
+          await journal.log(
+            type: JournalType.routine,
+            body:
+                '{"action":"pause_block","routine":$routineId,'
+                '"block":"${b.kind}","at":$now}',
+          );
+        }
+      }
+
+      final target = r.blockOf(kind);
+      if (target != null && !target.isRunning) {
+        target.start(at: now);
         await journal.log(
           type: JournalType.routine,
-          body: '{"action":"pause_block","routine":$routineId,'
-              '"block":"${b.kind}","at":$now}',
+          body:
+              '{"action":"start_block","routine":$routineId,'
+              '"block":"$kind","at":$now}',
         );
       }
-    }
-
-    final target = r.blockOf(kind);
-    if (target != null && !target.isRunning) {
-      target.start(at: now);
-      await journal.log(
-        type: JournalType.routine,
-        body: '{"action":"start_block","routine":$routineId,'
-            '"block":"$kind","at":$now}',
-      );
-    }
-    r.lastActionAt = now;
-    r.completed = false;
-    currentRoutineId = routineId;
-    lastActiveBlockKind = kind;
+      r.lastActionAt = now;
+      r.completed = false;
+      currentRoutineId = routineId;
+      lastActiveBlockKind = kind;
+    });
     _scheduleSave();
     notifyListeners();
   }
 
   Future<void> pauseBlock(
-      JournalLayer journal, int routineId, String kind) async {
+    JournalLayer journal,
+    int routineId,
+    String kind,
+  ) async {
     final r = findRoutine(routineId);
     if (r == null) return;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -435,7 +469,8 @@ class RoutineLayer extends ChangeNotifier {
     }
     await journal.log(
       type: JournalType.routine,
-      body: '{"action":"pause_block","routine":$routineId,'
+      body:
+          '{"action":"pause_block","routine":$routineId,'
           '"block":"$kind","at":$now}',
     );
     _scheduleSave();

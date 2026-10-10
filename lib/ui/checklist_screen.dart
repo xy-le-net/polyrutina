@@ -10,12 +10,17 @@
 // пустое поле, из коего список растёт. Пустой не последний —
 // исчезает при уходе фокуса.
 //
-// Enter на клавиатуре — коммит пункта, фокус снять.
+// Enter на клавиатуре — коммит пункта и переход к последнему
+// (пустому) пункту; коли последний непуст — новый создаётся.
 //
 // Сохранение — телом целиком, записью в журнал с флагом «правка».
 //
-// Закрытие — висящая галка вниз. Долгое — подпульт: отметить все,
-// снять, очистить.
+// Закрытие — висящая галка вниз. Справа от неё — счётчик
+// «отмечено/всего» (пустые не считаются). Долгое нажатие на галке
+// открывает подпульт: отметить все, снять, очистить.
+//
+// Список прокручивается над нижнею кнопкою; клавиатура его
+// не перекрывает.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -81,8 +86,6 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     super.dispose();
   }
 
-  // Поиск существующего чек-листа по паре (objectId, slot)
-  // и роду checklist.
   void _loadTrace() {
     final app = AppScope.of(context);
     final t = app.traceLayer.findFirstByKindSlot(
@@ -140,7 +143,6 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
 
   Future<void> _toggleDone(int i) async {
     if (_items[i].text.trim().isEmpty) return;
-    // Снимаем фокус — курсор гаснет.
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _items[i] = (text: _items[i].text, done: !_items[i].done);
@@ -183,6 +185,23 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
         _controllers.add(TextEditingController());
         _focusNodes.add(FocusNode());
       });
+    }
+  }
+
+  // ─── Enter: коммит и переход к последнему (пустому) пункту ───
+  Future<void> _submitAndAdvance(int i) async {
+    final text = _controllers[i].text;
+    setState(() {
+      _items[i] = (text: text, done: _items[i].done);
+    });
+    _ensureTrailingEmpty();
+    await _save();
+    // Просим фокус у последнего (пустого) пункта.
+    if (_focusNodes.isNotEmpty) {
+      _focusNodes.last.requestFocus();
+      // Курсор в конец.
+      final ctrl = _controllers.last;
+      ctrl.selection = TextSelection.collapsed(offset: ctrl.text.length);
     }
   }
 
@@ -233,6 +252,17 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     Navigator.of(context).pop();
   }
 
+  ({int done, int total}) _counts() {
+    var done = 0;
+    var total = 0;
+    for (final it in _items) {
+      if (it.text.trim().isEmpty) continue;
+      total++;
+      if (it.done) done++;
+    }
+    return (done: done, total: total);
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
@@ -244,6 +274,9 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     final itemSize = side * bort.kNumberSmall;
     final pultSide = side * bort.kPultSmall;
     final radiusW = side * bort.kRadius;
+
+    final counts = _counts();
+    final allDone = counts.total > 0 && counts.done == counts.total;
 
     return Scaffold(
       backgroundColor: bort.bg,
@@ -266,7 +299,8 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
         child: Stack(
           children: [
             ListView.builder(
-              padding: EdgeInsets.fromLTRB(12, 8, 12, side * 2.5),
+              // Нижний отступ — под кнопку закрытия (она на дне).
+              padding: EdgeInsets.fromLTRB(12, 8, 12, side * 2.4),
               itemCount: _items.length,
               itemBuilder: (context, i) {
                 final it = _items[i];
@@ -323,10 +357,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                               }
                               setState(() {});
                             },
-                            onSubmitted: (_) {
-                              // Enter — коммит и снять фокус.
-                              FocusManager.instance.primaryFocus?.unfocus();
-                            },
+                            onSubmitted: (_) => _submitAndAdvance(i),
                           ),
                         ),
                       ),
@@ -339,41 +370,55 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
               left: 0,
               right: 0,
               bottom: 12,
-              child: Center(
-                child: Pult(
-                  spec: PultSpec(
-                    id: 'close_checklist',
-                    icon: Icons.keyboard_arrow_down,
-                    onTap: _close,
-                    longSubs: () => [
-                      PultSpec(
-                        id: 'chk_all',
-                        icon: Icons.done_all,
-                        label: i18n.t('checklist.mark_all'),
-                        confirm: true,
-                        onTap: _markAll,
-                      ),
-                      PultSpec(
-                        id: 'chk_none',
-                        icon: Icons.check_box_outline_blank,
-                        label: i18n.t('checklist.unmark_all'),
-                        confirm: true,
-                        onTap: _unmarkAll,
-                      ),
-                      PultSpec(
-                        id: 'chk_clear',
-                        icon: Icons.clear_all,
-                        label: i18n.t('checklist.clear_all'),
-                        confirm: true,
-                        onTap: _clearAll,
-                      ),
-                    ],
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Pult(
+                    spec: PultSpec(
+                      id: 'close_checklist',
+                      icon: Icons.keyboard_arrow_down,
+                      onTap: _close,
+                      longSubs: () => [
+                        PultSpec(
+                          id: 'chk_all',
+                          icon: Icons.done_all,
+                          label: i18n.t('checklist.mark_all'),
+                          confirm: true,
+                          onTap: _markAll,
+                        ),
+                        PultSpec(
+                          id: 'chk_none',
+                          icon: Icons.check_box_outline_blank,
+                          label: i18n.t('checklist.unmark_all'),
+                          confirm: true,
+                          onTap: _unmarkAll,
+                        ),
+                        PultSpec(
+                          id: 'chk_clear',
+                          icon: Icons.clear_all,
+                          label: i18n.t('checklist.clear_all'),
+                          confirm: true,
+                          onTap: _clearAll,
+                        ),
+                      ],
+                    ),
+                    fg: bort.fg,
+                    bg: bort.bg,
+                    signal: bort.signal,
+                    overrideSize: side,
                   ),
-                  fg: bort.fg,
-                  bg: bort.bg,
-                  signal: bort.signal,
-                  overrideSize: side,
-                ),
+                  SizedBox(width: side * 0.2),
+                  // Счётчик «отмечено/всего». Ежели все отмечены —
+                  // приглушён; иначе — сигнальный цвет.
+                  Text(
+                    '${counts.done}/${counts.total}',
+                    style: TextStyle(
+                      color: allDone ? bort.dim : bort.signal,
+                      fontFamily: 'monospace',
+                      fontSize: side * 0.5,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

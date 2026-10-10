@@ -12,13 +12,14 @@
 //     "items": [...],
 //     "parents": [...],
 //     "children": [...],
-//     "files": [...],
+//     "files": [{"kind":"audio","path":"...","name":"..."}],
 //     "deleted": true
 //   }
 //
-// slot — род блока рутины. kind — форма показа. Поиск надобен
-// по обоим: текст и чек-лист могут жить в одном слоте, и надобно
-// различать их. Метод findFirstByKindSlot — для сего.
+// slot — род блока рутины. kind — форма показа (text | checklist).
+// Медиа живут в files: перечень с родом (audio, photo, video, geo,
+// file), путём и именем. Файлы копируются внутрь приложения;
+// в теле следа — путь.
 //
 // Кэш — отложенный (200 мс).
 //
@@ -41,6 +42,17 @@ import 'journal_types.dart';
 class TraceKind {
   static const String text = 'text';
   static const String checklist = 'checklist';
+}
+
+// ─── Роды медиа ───
+class MediaKind {
+  static const String audio = 'audio';
+  static const String photo = 'photo';
+  static const String video = 'video';
+  static const String geo = 'geo';
+  static const String file = 'file';
+
+  static const List<String> all = [audio, photo, video, geo, file];
 }
 
 // ─── Один след в памяти ───
@@ -138,14 +150,16 @@ class TraceItem {
 class TraceFile {
   String kind;
   String path;
+  String name;
 
-  TraceFile({required this.kind, required this.path});
+  TraceFile({required this.kind, required this.path, this.name = ''});
 
-  Map<String, dynamic> toJson() => {'kind': kind, 'path': path};
+  Map<String, dynamic> toJson() => {'kind': kind, 'path': path, 'name': name};
 
   factory TraceFile.fromJson(Map<String, dynamic> j) => TraceFile(
-    kind: j['kind'] as String? ?? 'other',
+    kind: j['kind'] as String? ?? 'file',
     path: j['path'] as String? ?? '',
+    name: j['name'] as String? ?? '',
   );
 }
 
@@ -273,8 +287,6 @@ class TraceLayer extends ChangeNotifier {
     return out;
   }
 
-  // Первый след по слоту, независимо от рода (текст либо чек-лист).
-  // Оставлен для случаев, когда надобно любой след слота.
   Trace? findFirstBySlot(int objectId, String slot) {
     Trace? found;
     for (final t in traces.values) {
@@ -286,8 +298,6 @@ class TraceLayer extends ChangeNotifier {
     return found;
   }
 
-  // Первый след по роду И слоту. Нужно, когда в слоте живут и текст,
-  // и чек-лист: их надобно различать.
   Trace? findFirstByKindSlot(int objectId, String kind, String slot) {
     Trace? found;
     for (final t in traces.values) {
@@ -381,6 +391,42 @@ class TraceLayer extends ChangeNotifier {
     if (t == null) return;
     t.items = items;
     await _updateBody(journal, traceId, t);
+  }
+
+  // ─── Медиа ───
+  // Файл прикрепляется к следу слота. Коли следа нет — он создаётся
+  // (пустой текст), затем к нему добавляется файл.
+  Future<void> attachFile(
+    JournalLayer journal, {
+    required int objectId,
+    required String slot,
+    required TraceFile file,
+  }) async {
+    var t = findFirstByKindSlot(objectId, TraceKind.text, slot);
+    if (t == null) {
+      final id = await createText(
+        journal,
+        slot: slot,
+        text: '',
+        parents: [objectId],
+      );
+      t = traces[id];
+    }
+    if (t == null) return;
+    t.files = [...t.files, file];
+    await _updateBody(journal, t.id, t);
+    notifyListeners();
+  }
+
+  Future<void> removeFile(JournalLayer journal, int traceId, int index) async {
+    final t = traces[traceId];
+    if (t == null) return;
+    if (index < 0 || index >= t.files.length) return;
+    // Файл на диске не стираем: удаление — новая запись поверх,
+    // а сам файл остаётся вещдоком истории.
+    t.files = [...t.files]..removeAt(index);
+    await _updateBody(journal, traceId, t);
+    notifyListeners();
   }
 
   Future<void> remove(JournalLayer journal, int traceId) async {

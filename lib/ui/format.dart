@@ -8,6 +8,9 @@
 // Дни недели: time.mon, time.tue, time.wed, time.thu, time.fri,
 //             time.sat, time.sun.
 //
+// Ведущий ноль — только у второго числа в паре («3ч 07м», «3д 05ч»).
+// Одиночное число — без нуля («7м», «5с»).
+//
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -31,7 +34,7 @@ String fmtDateFull(int unixSec, Translate t) {
       '${two(d.hour)}:${two(d.minute)}';
 }
 
-// ─── Короткое время «9ч 03м», «3д 5ч», «03м» ───
+// ─── Короткое время «9ч 03м», «3д 5ч», «7м» ───
 String fmtTime(int sec, Translate t) {
   if (sec < 0) sec = 0;
   final days = sec ~/ 86400;
@@ -40,7 +43,7 @@ String fmtTime(int sec, Translate t) {
   String two(int n) => n.toString().padLeft(2, '0');
   if (days > 0) return '$days${t('time.d')} $hours${t('time.h')}';
   if (hours > 0) return '$hours${t('time.h')} ${two(minutes)}${t('time.m')}';
-  return '${two(minutes)}${t('time.m')}';
+  return '$minutes${t('time.m')}';
 }
 
 // ─── Формат правки времени: «дд:чч:мм:сс» ───

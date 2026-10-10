@@ -5,17 +5,24 @@
 // Блоки строятся единым Block.
 //
 // Артель — поле «полночь» (чч:мм).
-// Оформление — тема, обе темы разом, dim, коэффициенты.
+// Оформление — тема, цвета двух тем, dim, коэффициенты.
 // Интерфейс — масштаб, язык, подписи.
-// Данные — время борта (сегодня + вчера, приглушённо), счёт записей
-// и объём, четыре пульта управления.
+// Данные — время борта (сегодня + вчера, приглушённо), размер файлов
+// борта (база, WAL, SHM, кэши слоёв, установка), четыре пульта
+// управления.
+//
+// Все настройки пишутся токмо в файл борта — род «борт» в журнале
+// упразднён. Установка применяется тотчас и сохраняется отложенно.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
-import 'package:flutter/material.dart';
+import 'dart:io';
 
-import '../data/journal_types.dart';
+import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+
 import '../data/operational_layer.dart';
 import '../data/theme_store.dart';
 import 'app_scope.dart';
@@ -33,6 +40,9 @@ class RubkaTab extends StatefulWidget {
 }
 
 class _RubkaTabState extends State<RubkaTab> {
+  int _sizeBytes = 0;
+  bool _sizeLoaded = false;
+
   String _fmtNum(int n) {
     final s = n.toString();
     final buf = StringBuffer();
@@ -43,29 +53,66 @@ class _RubkaTabState extends State<RubkaTab> {
     return buf.toString();
   }
 
-  // Время борта — «9ч 03м», «3д 5ч», «03м».
-  // Подписи единиц — из словаря, потому ну́жен переводчик.
   String _fmtBort(int sec, Translate t) {
     if (sec <= 0) return '0${t('time.m')}';
     return fmtTime(sec, t);
   }
 
+  // ─── Размер файлов борта ───
+  Future<void> _refreshSize() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      var total = 0;
+      for (final name in const [
+        'polyrutina.sqlite',
+        'polyrutina.sqlite-wal',
+        'polyrutina.sqlite-shm',
+        'journal_layer.json',
+        'operational_layer.json',
+        'routine_layer.json',
+        'trace_layer.json',
+        'install.json',
+      ]) {
+        final f = File(p.join(dir.path, name));
+        if (await f.exists()) {
+          total += await f.length();
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _sizeBytes = total;
+          _sizeLoaded = true;
+        });
+      }
+    } catch (_) {}
+  }
+
+  // ─── Установка настройки: локально + сохранение ───
+  void _set(String key, String value) {
+    final app = AppScope.of(context);
+    app.bort.set(key, value);
+  }
+
+  // ─── Перечитать: полное перечитывание слоёв из журнала ───
   Future<void> _reload() async {
     final app = AppScope.of(context);
     await app.journal.reread();
     await app.reloadI18n();
+    await _refreshSize();
     if (mounted) setState(() {});
   }
 
   Future<void> _deleteSynced() async {
     final app = AppScope.of(context);
     await app.journal.deleteSynced();
+    await _refreshSize();
     if (mounted) setState(() {});
   }
 
   Future<void> _deleteAll() async {
     final app = AppScope.of(context);
     await app.journal.clearAll();
+    await _refreshSize();
     if (mounted) setState(() {});
   }
 
@@ -75,15 +122,14 @@ class _RubkaTabState extends State<RubkaTab> {
     await app.routineLayer.resetAll();
     await app.traceLayer.resetAll();
     await app.reloadI18n();
+    await _refreshSize();
     if (mounted) setState(() {});
   }
 
-  Future<void> _logBort(String key, String value) async {
-    final app = AppScope.of(context);
-    await app.journal.log(
-      type: JournalType.bort,
-      body: '{"key":"$key","value":"$value"}',
-    );
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_sizeLoaded) _refreshSize();
   }
 
   @override
@@ -111,7 +157,7 @@ class _RubkaTabState extends State<RubkaTab> {
           title: i18n.t('block.artel'),
           collapsed: !bort.blockArtel,
           onToggleCollapsed: () =>
-              _logBort('block_artel', (!bort.blockArtel).toString()),
+              _set('block_artel', (!bort.blockArtel).toString()),
           bg: bg,
           dim: dim,
           fg: fg,
@@ -128,7 +174,7 @@ class _RubkaTabState extends State<RubkaTab> {
           title: i18n.t('block.appearance'),
           collapsed: !bort.blockAppearance,
           onToggleCollapsed: () =>
-              _logBort('block_appearance', (!bort.blockAppearance).toString()),
+              _set('block_appearance', (!bort.blockAppearance).toString()),
           bg: bg,
           dim: dim,
           fg: fg,
@@ -173,7 +219,7 @@ class _RubkaTabState extends State<RubkaTab> {
           title: i18n.t('block.interface'),
           collapsed: !bort.blockInterface,
           onToggleCollapsed: () =>
-              _logBort('block_interface', (!bort.blockInterface).toString()),
+              _set('block_interface', (!bort.blockInterface).toString()),
           bg: bg,
           dim: dim,
           fg: fg,
@@ -198,7 +244,7 @@ class _RubkaTabState extends State<RubkaTab> {
           title: i18n.t('block.data'),
           collapsed: !bort.blockData,
           onToggleCollapsed: () =>
-              _logBort('block_data', (!bort.blockData).toString()),
+              _set('block_data', (!bort.blockData).toString()),
           bg: bg,
           dim: dim,
           fg: fg,
@@ -211,7 +257,6 @@ class _RubkaTabState extends State<RubkaTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Время борта: сегодня — живой счёт; вчера — приглушённо.
               Text(
                 _fmtBort(bort.bortTime, i18n.t),
                 style: TextStyle(color: fg, fontSize: side * 0.4),
@@ -219,11 +264,10 @@ class _RubkaTabState extends State<RubkaTab> {
               Padding(
                 padding: const EdgeInsets.only(top: 2, bottom: 10),
                 child: Text(
-                  _fmtBort(bort.bortTimeYesterday, i18n.t),
+                  _fmtBort(bort.bortYesterday, i18n.t),
                   style: TextStyle(color: dim, fontSize: side * 0.35),
                 ),
               ),
-              // Счёт записей и объём — из полей journal.
               Row(
                 children: [
                   SizedBox(
@@ -235,10 +279,7 @@ class _RubkaTabState extends State<RubkaTab> {
                   ),
                   Expanded(
                     child: Text(
-                      '${_fmtNum(app.journal.entryCount)} '
-                      '${i18n.t('bort.entries')}   '
-                      '${_fmtNum(app.journal.entryBytes)} '
-                      '${i18n.t('bort.bytes')}',
+                      '${_fmtNum(_sizeBytes)} ${i18n.t('bort.bytes')}',
                       style: TextStyle(color: fg, fontFamily: 'monospace'),
                     ),
                   ),
@@ -392,7 +433,7 @@ class _RubkaTabState extends State<RubkaTab> {
               onCommit: (v) async {
                 final ok = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(v);
                 if (!ok) return;
-                await _logBort('midnight', v);
+                _set('midnight', v);
               },
             ),
           ),
@@ -434,7 +475,7 @@ class _RubkaTabState extends State<RubkaTab> {
                     fg: fg,
                     readOnly: false,
                     onChanged: (v) => bort.setDraft(key, v),
-                    onCommit: (v) => _logBort(key, v),
+                    onCommit: (v) async => _set(key, v),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -481,7 +522,7 @@ class _RubkaTabState extends State<RubkaTab> {
                     fg: fg,
                     readOnly: false,
                     onChanged: (v) => bort.setDraft('dim', v),
-                    onCommit: (v) => _logBort('dim', v),
+                    onCommit: (v) async => _set('dim', v),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -528,7 +569,7 @@ class _RubkaTabState extends State<RubkaTab> {
               fg: fg,
               readOnly: false,
               onChanged: (v) => bort.setDraft(key, v),
-              onCommit: (v) => _logBort(key, v),
+              onCommit: (v) async => _set(key, v),
             ),
           ),
         ],
@@ -602,7 +643,7 @@ class _RubkaTabState extends State<RubkaTab> {
             bg: bg,
             signal: signal,
             overrideSize: side,
-            onTap: () => _logBort(key, (!b).toString()),
+            onTap: () => _set(key, (!b).toString()),
           ),
         );
       case 'theme':
@@ -613,7 +654,7 @@ class _RubkaTabState extends State<RubkaTab> {
           fg: fg,
           readOnly: OperationalLayer.readOnlyKeys.contains(key),
           onChanged: (v) => bort.setDraft(key, v),
-          onCommit: (v) => _logBort(key, v),
+          onCommit: (v) async => _set(key, v),
         );
     }
   }
@@ -652,7 +693,7 @@ class _RubkaTabState extends State<RubkaTab> {
                         id: 'theme_system',
                         icon: Icons.brightness_auto,
                         label: showLabels ? i18n.t('theme.system') : null,
-                        onTap: () => _logBort('theme', 'system'),
+                        onTap: () => _set('theme', 'system'),
                       ),
                     );
                   }
@@ -663,7 +704,7 @@ class _RubkaTabState extends State<RubkaTab> {
                         id: 'theme_$name',
                         icon: Icons.palette_outlined,
                         label: showLabels ? name : null,
-                        onTap: () => _logBort('theme', name),
+                        onTap: () => _set('theme', name),
                       ),
                     );
                   }

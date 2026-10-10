@@ -4,10 +4,20 @@
 // Фасад над тремя модулями: ThemeStore (цвета и темы), BortTime
 // (время активной работы), DraftsStore (черновики полей). Здесь же
 // остаются коэффициенты размеров, вкладка, якорь, смена, метка
-// экспорта, свёрнутость блоков рубки и метка первого запуска.
+// экспорта, свёрнутость блоков рубки, счётчики экспорта, признак
+// первого запуска и идентификатор устройства.
 //
-// Публичные поля и методы оставлены как геттеры и прокси — прочие
-// слои и вкладки читают их без изменений.
+// В журнал сей слой НЕ пишет и НЕ читает из журнала: настройки
+// и состояние вида живут токмо в файле борта. Умолчания — из
+// assets/defaults.json. Потеря файла — сброс к умолчаниям.
+//
+// Смена — локальная суточная мера: считается от последней
+// прошедшей полуночи. Записи рода «актор» (начало и конец смены)
+// пишутся в журнал для хронологии, но состояния слоя не двигают.
+//
+// Идентификатор устройства берётся у системы; коли недоступен —
+// случайный, заводится при первом пуске и хранится в install.json
+// рядом с меткою первого запуска.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -15,17 +25,16 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'bort_time.dart';
-import 'database.dart';
 import 'drafts_store.dart';
-import 'journal_layer.dart';
-import 'journal_types.dart';
 import 'theme_store.dart';
 
 class OperationalLayer extends ChangeNotifier {
@@ -46,12 +55,10 @@ class OperationalLayer extends ChangeNotifier {
 
   // ─── Геттеры времени борта ───
   int get bortTime => _bortTime.bortTime;
+  int get bortYesterday => _bortTime.yesterday;
   int get bortLastActionAt => _bortTime.lastActionAt;
   set bortLastActionAt(int v) => _bortTime.lastActionAt = v;
   String get midnight => _bortTime.midnight;
-
-  // Вчерашний итог времени борта. Читается из журнала при пуске.
-  int bortTimeYesterday = 0;
 
   // ─── Геттеры черновиков ───
   String draft(String key) => _draftsStore.draft(key);
@@ -73,6 +80,9 @@ class OperationalLayer extends ChangeNotifier {
   int lastExportId = 0;
   Map<int, Set<String>> collapsedBlocks = {};
 
+  // Счётчики экспорта: {«ГГГГММДД»: {ключ объекта: индекс}}.
+  Map<String, Map<String, int>> exportCounters = {};
+
   // ─── Коэффициенты ───
   double kPult = 1.0;
   double kPultSmall = 0.8889;
@@ -86,23 +96,28 @@ class OperationalLayer extends ChangeNotifier {
   double kStroke = 0.015;
 
   // ─── Смена ───
+  // Локальная суточная мера. Считается от последней прошедшей полуночи.
+  // Записи о начале и конце смены пишутся в журнал родом «актор»
+  // (AppContext), но состояния сего слоя не двигают.
   bool onShift = false;
   int totalShiftSeconds = 0;
   int? shiftStartedAt;
   bool shiftEdited = false;
 
-  // ─── Метка первого запуска ───
+  // ─── Метка первого запуска и устройство ───
   int firstRunUnixSec = 0;
+  String deviceId = '';
 
   // ─── Служебное ───
   File? _file;
   File? _installFile;
   Timer? _saveTimer;
+  int _lastMidnightCheck = 0;
 
   OperationalLayer();
 
   // ─── Пуск ───
-  Future<void> init(JournalLayer journal, Brightness system) async {
+  Future<void> init(Brightness system) async {
     _themes.setSystemBrightness(system);
     final dir = await getApplicationDocumentsDirectory();
     _file = File(p.join(dir.path, 'operational_layer.json'));
@@ -110,18 +125,19 @@ class OperationalLayer extends ChangeNotifier {
     await _loadDefaults();
     await _loadInstall();
     await _loadFromFile();
-    await _loadYesterdayBortTime(journal);
     _themes.resolve();
 
-    journal.register(
-      name: 'bort',
-      types: [JournalType.bort, JournalType.actor],
-      apply: _applyEntry,
-      reset: _resetMemory,
-    );
-
-    await checkMidnight(journal);
-
+    // Проверка полуночи при пуске: ежели приложение стояло, счётчик
+    // смены обнуляется, а время борта уходит во «вчерашнее».
+    final newMid = _bortTime.checkMidnight();
+    if (newMid > 0) {
+      totalShiftSeconds = 0;
+      if (onShift && shiftStartedAt != null && shiftStartedAt! < newMid) {
+        shiftStartedAt = newMid;
+      }
+      shiftEdited = false;
+    }
+    await _saveToFile();
     notifyListeners();
   }
 
@@ -131,21 +147,67 @@ class OperationalLayer extends ChangeNotifier {
     super.dispose();
   }
 
-  // ─── Метка первого запуска ───
+  // ─── Метка первого запуска и идентификатор устройства ───
   Future<void> _loadInstall() async {
     if (_installFile == null) return;
+    Map<String, dynamic>? data;
     try {
       if (await _installFile!.exists()) {
         final raw = await _installFile!.readAsString();
-        final data = jsonDecode(raw) as Map<String, dynamic>;
+        data = jsonDecode(raw) as Map<String, dynamic>;
         firstRunUnixSec = (data['first_run_unix_sec'] as num?)?.toInt() ?? 0;
-      } else {
-        firstRunUnixSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-        await _installFile!.writeAsString(
-          jsonEncode({'first_run_unix_sec': firstRunUnixSec}),
-        );
+        deviceId = data['device_id'] as String? ?? '';
       }
     } catch (_) {}
+
+    if (firstRunUnixSec == 0) {
+      firstRunUnixSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    }
+    if (deviceId.isEmpty) {
+      final sys = await _readSystemDeviceId();
+      deviceId = sys.isNotEmpty ? sys : _randomId();
+    }
+    try {
+      await _installFile!.writeAsString(
+        jsonEncode({
+          'first_run_unix_sec': firstRunUnixSec,
+          'device_id': deviceId,
+        }),
+      );
+    } catch (_) {}
+  }
+
+  static Future<String> _readSystemDeviceId() async {
+    try {
+      final info = DeviceInfoPlugin();
+      if (Platform.isAndroid) {
+        final a = await info.androidInfo;
+        return a.id;
+      } else if (Platform.isIOS) {
+        final i = await info.iosInfo;
+        return i.identifierForVendor ?? '';
+      } else if (Platform.isWindows) {
+        final w = await info.windowsInfo;
+        return w.deviceId;
+      } else if (Platform.isMacOS) {
+        final m = await info.macOsInfo;
+        return m.systemGUID ?? '';
+      } else if (Platform.isLinux) {
+        final l = await info.linuxInfo;
+        return l.machineId ?? '';
+      }
+    } catch (_) {}
+    return '';
+  }
+
+  static String _randomId() {
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    final r = Random.secure();
+    final b = StringBuffer();
+    for (var i = 0; i < 16; i++) {
+      b.write(chars[r.nextInt(chars.length)]);
+    }
+    return b.toString();
   }
 
   // ─── Умолчания ───
@@ -248,6 +310,21 @@ class OperationalLayer extends ChangeNotifier {
           }
         }
       }
+
+      final ec = data['export_counters'];
+      if (ec is Map) {
+        exportCounters = {};
+        for (final day in ec.keys) {
+          final m = ec[day];
+          if (m is Map) {
+            final inner = <String, int>{};
+            for (final k in m.keys) {
+              inner[k.toString()] = (m[k] as num?)?.toInt() ?? 0;
+            }
+            exportCounters[day.toString()] = inner;
+          }
+        }
+      }
     } catch (_) {}
   }
 
@@ -266,10 +343,12 @@ class OperationalLayer extends ChangeNotifier {
   Map<String, Color>? colorsForOpposite() => _themes.colorsForOpposite();
 
   // ─── Свёрнутость блоков ───
+  // Умолчание: всё свёрнуто, кроме «описания» и «выполнения»; блок
+  // со следом разворачивается вызывающим (по факту наличия следа).
   bool isBlockCollapsed(int routineId, String kind) {
     final set = collapsedBlocks[routineId];
     if (set == null) {
-      return kind == 'transit' || kind == 'idle';
+      return kind != 'note' && kind != 'work';
     }
     return set.contains(kind);
   }
@@ -277,11 +356,28 @@ class OperationalLayer extends ChangeNotifier {
   void toggleBlockCollapsed(int routineId, String kind) {
     final current = collapsedBlocks[routineId];
     if (current == null) {
-      final init = <String>{'transit', 'idle'};
-      if (init.contains(kind)) {
-        init.remove(kind);
-      } else {
-        init.add(kind);
+      // Первое касание: снимаем умолчание, ставим обратное ему.
+      final defaults = <String>{'note', 'work'};
+      final init = <String>{};
+      // Все известные роды сохраняются в явном виде, дабы умолчание
+      // более не срабатывало.
+      for (final k in const [
+        'note',
+        'prep',
+        'transit',
+        'work',
+        'idle',
+        'closeout',
+        'summary',
+      ]) {
+        final def = defaults.contains(k);
+        if (k == kind) {
+          init.add(k);
+        } else if (def) {
+          // было развёрнуто — оставляем развёрнутым
+        } else {
+          init.add(k);
+        }
       }
       collapsedBlocks[routineId] = init;
     } else {
@@ -302,6 +398,22 @@ class OperationalLayer extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ─── Счётчик экспорта ───
+  // Индекс — итерация экспорта данного объекта в этот календарный день.
+  int nextExportIndex(String objectKey) {
+    final n = DateTime.now();
+    final day =
+        '${n.year.toString().padLeft(4, '0')}'
+        '${n.month.toString().padLeft(2, '0')}'
+        '${n.day.toString().padLeft(2, '0')}';
+    exportCounters.removeWhere((k, _) => k != day);
+    final m = exportCounters.putIfAbsent(day, () => <String, int>{});
+    final idx = (m[objectKey] ?? 0);
+    m[objectKey] = idx + 1;
+    _scheduleSave();
+    return idx;
+  }
+
   // ─── Время борта ───
   void pulseBort() {
     _bortTime.pulse();
@@ -310,31 +422,21 @@ class OperationalLayer extends ChangeNotifier {
 
   void tickBort() {
     _bortTime.tick();
-  }
-
-  Future<void> checkMidnight(JournalLayer journal) async {
-    await _bortTime.checkMidnight(journal);
-    _scheduleSave();
-  }
-
-  // ─── Вчерашний итог времени борта ───
-  // Читается из журнала: последняя запись рода bort с ключом
-  // bort_time, что записана при переходе чрез полночь.
-  Future<void> _loadYesterdayBortTime(JournalLayer journal) async {
-    try {
-      final entries = await journal.all();
-      for (final e in entries.reversed) {
-        if (e.type != JournalType.bort) continue;
-        try {
-          final data = jsonDecode(e.body) as Map<String, dynamic>;
-          if (data['key'] == 'bort_time') {
-            bortTimeYesterday =
-                int.tryParse(data['value']?.toString() ?? '') ?? 0;
-            return;
-          }
-        } catch (_) {}
+    // Проверка полуночи — раз в тридцать секунд, дабы смена
+    // обнулялась и без перезапуска приложения.
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (now - _lastMidnightCheck >= 30) {
+      _lastMidnightCheck = now;
+      final newMid = _bortTime.checkMidnight();
+      if (newMid > 0) {
+        totalShiftSeconds = 0;
+        if (onShift && shiftStartedAt != null && shiftStartedAt! < newMid) {
+          shiftStartedAt = newMid;
+        }
+        shiftEdited = false;
+        notifyListeners();
       }
-    } catch (_) {}
+    }
   }
 
   // ─── Правка смены ───
@@ -343,48 +445,6 @@ class OperationalLayer extends ChangeNotifier {
     shiftStartedAt = null;
     shiftEdited = seconds > 0;
     _scheduleSave();
-    notifyListeners();
-  }
-
-  // ─── Применение записи журнала ───
-  void _applyEntry(JournalData e) {
-    try {
-      final data = jsonDecode(e.body) as Map<String, dynamic>;
-      if (e.type == JournalType.bort) {
-        final key = data['key'] as String?;
-        if (key == null) return;
-        if (key == 'bort_time') {
-          // Суточная запись — для истории; накопительное не трогаем.
-          return;
-        }
-        _apply(key, data['value']?.toString() ?? '');
-      } else if (e.type == JournalType.actor) {
-        final action = data['action'] as String?;
-        if (action == 'shift_start') {
-          onShift = true;
-          shiftStartedAt = e.time;
-        } else if (action == 'shift_stop') {
-          if (shiftStartedAt != null) {
-            totalShiftSeconds += e.time - shiftStartedAt!;
-          }
-          onShift = false;
-          shiftStartedAt = null;
-        } else if (action == 'shift_edit') {
-          final secs = (data['seconds'] as num?)?.toInt();
-          if (secs != null) {
-            totalShiftSeconds = secs;
-            shiftStartedAt = null;
-            shiftEdited = secs > 0;
-          }
-        }
-      }
-    } catch (_) {}
-  }
-
-  void _resetMemory() {
-    onShift = false;
-    totalShiftSeconds = 0;
-    shiftStartedAt = null;
     notifyListeners();
   }
 
@@ -401,6 +461,7 @@ class OperationalLayer extends ChangeNotifier {
     _draftsStore.reset();
     _bortTime.reset();
     collapsedBlocks = {};
+    exportCounters = {};
     lastExportId = 0;
     await _loadDefaults();
     _themes.resolve();
@@ -414,24 +475,28 @@ class OperationalLayer extends ChangeNotifier {
     await _saveToFile();
   }
 
-  // ─── Установка значений ───
+  // ─── Установка значений вида ───
   void set(String key, String value) {
     _apply(key, value);
+    _scheduleSave();
     notifyListeners();
   }
 
   void setSilent(String key, String value) {
     _apply(key, value);
+    _scheduleSave();
     notifyListeners();
   }
 
   void setBool(String key, bool v) {
     _apply(key, v ? 'true' : 'false');
+    _scheduleSave();
     notifyListeners();
   }
 
   void setInt(String key, int v) {
     _apply(key, v.toString());
+    _scheduleSave();
     notifyListeners();
   }
 
@@ -459,6 +524,7 @@ class OperationalLayer extends ChangeNotifier {
     onShift = true;
     shiftStartedAt = now;
     shiftEdited = false;
+    _scheduleSave();
     notifyListeners();
   }
 
@@ -470,14 +536,20 @@ class OperationalLayer extends ChangeNotifier {
     }
     onShift = false;
     shiftStartedAt = null;
+    _scheduleSave();
     notifyListeners();
   }
 
+  // Время смены за ТЕКУЩИЕ сутки. Отрезок непрерывной работы
+  // обрезается по ближайшей прошедшей полуночи.
   int get shiftSecondsNow {
     final base = totalShiftSeconds;
     if (shiftStartedAt == null) return base;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    return base + (now - shiftStartedAt!);
+    final dayStart = _bortTime.lastMidnightBefore(DateTime.now());
+    final start = shiftStartedAt! > dayStart ? shiftStartedAt! : dayStart;
+    if (start >= now) return base;
+    return base + (now - start);
   }
 
   // ─── Применение одного ключа ───
@@ -532,9 +604,6 @@ class OperationalLayer extends ChangeNotifier {
       case 'midnight':
         _bortTime.midnight = value;
         break;
-      case 'on_shift':
-        onShift = _parseBool(value) ?? onShift;
-        break;
       case 'k_pult':
         kPult = double.tryParse(value) ?? kPult;
         break;
@@ -588,6 +657,10 @@ class OperationalLayer extends ChangeNotifier {
     for (final e in collapsedBlocks.entries) {
       cbOut['${e.key}'] = e.value.toList();
     }
+    final ecOut = <String, dynamic>{};
+    for (final d in exportCounters.entries) {
+      ecOut[d.key] = Map<String, int>.from(d.value);
+    }
     final data = <String, dynamic>{
       'dim': colorToHex(_themes.dim),
       'themes': _themes.toJson(),
@@ -621,6 +694,7 @@ class OperationalLayer extends ChangeNotifier {
       'k_radius': kRadius,
       'k_stroke': kStroke,
       'collapsed_blocks': cbOut,
+      'export_counters': ecOut,
       ..._bortTime.toJson(),
       ..._draftsStore.toJson(),
     };

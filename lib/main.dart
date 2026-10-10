@@ -1,13 +1,19 @@
 // ═══════════════════════════════════════════════════════════════════
 // main.dart — точка входа и управитель.
 //
-// Порядок пуска: журнал, борт, слои. Затем проверка полуночи.
+// Порядок пуска: журнал (init без подписки), борт, слои, словарь.
+// Затем — journal.start(): подписка заводится ПОСЛЕ регистрации
+// всех слоёв, дабы ранние записи не пропустились.
 //
 // Действие пользователя. Listener вокруг всего дерева ловит всякое
-// касание — борт получает сигнал (pulseBort) и продлевает отсчёт
-// времени активной работы.
+// касание — борт получает сигнал (pulseBort).
 //
-// Время борта. Подписка на тикер: раз в 500 мс борт тикает.
+// Время борта. Подписка на тикер: борт тикает, а раз в тридцать
+// секунд сверяет полночь.
+//
+// Системная строка. Цвет знаков и фона выставляется от действующей
+// темы борта при всякой перестройке — дабы значки не пропадали
+// при смене гаммы.
 //
 // Корневой пульт — на треть меньше базового (rootSide).
 //
@@ -18,6 +24,7 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'ui/routines_tab.dart';
 import 'ui/routine_card.dart';
 import 'data/database.dart';
@@ -66,7 +73,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   // Открытая рутина.
   int? _openedRoutineId;
 
-  // Подписка на тикер — для времени борта.
   VoidCallback? _onTickerTick;
 
   static const List<RootTabItem> _tabs = [
@@ -113,10 +119,12 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     final systemBrightness =
         WidgetsBinding.instance.platformDispatcher.platformBrightness;
     await _journal.init();
-    await _bort.init(_journal, systemBrightness);
+    await _bort.init(systemBrightness);
     await _routineLayer.init(_journal, _traceLayer);
     await _traceLayer.init(_journal);
     _i18n = await I18n.load(_bort.lang);
+    // Подписка на журнал — после регистрации всех слоёв.
+    _journal.start();
     if (mounted) setState(() => _tab = _bort.tab);
   }
 
@@ -153,7 +161,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached ||
         state == AppLifecycleState.inactive) {
-      // Сворачивание/закрытие — время борта не идёт.
       _bort.bortLastActionAt = 0;
       _bort.saveNow();
       _routineLayer.saveNow();
@@ -246,6 +253,22 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     return raw > _pultMax ? _pultMax : raw;
   }
 
+  // ─── Системная строка: цвет знаков и фона от борта ───
+  void _syncSystemUi(Brightness brightness) {
+    final dark = brightness == Brightness.dark;
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        statusBarColor: _bort.bg,
+        statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
+        statusBarBrightness: dark ? Brightness.dark : Brightness.light,
+        systemNavigationBarColor: _bort.bg,
+        systemNavigationBarIconBrightness: dark
+            ? Brightness.light
+            : Brightness.dark,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_i18n == null) return const SizedBox.shrink();
@@ -254,7 +277,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _pultState.baseSide = side;
     _pultState.maxSide = _pultMax;
 
-    // Корневой пульт — на треть меньше базового.
     final rootSide = side * 2 / 3;
 
     final appContext = AppContext(
@@ -302,6 +324,14 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       builder: (context, child) {
         final systemBrightness = MediaQuery.platformBrightnessOf(context);
         _bort.setSystemBrightness(systemBrightness);
+        // Цвета системной строки — от действующей темы борта.
+        _syncSystemUi(
+          _bort.themeName == 'system'
+              ? systemBrightness
+              : (_bort.themeName == 'night'
+                    ? Brightness.dark
+                    : Brightness.light),
+        );
 
         return AppScope(
           appContext: appContext,
@@ -311,7 +341,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
               data: MediaQuery.of(
                 context,
               ).copyWith(textScaler: TextScaler.linear(_bort.scale)),
-              // Listener ловит всякое касание — борт узнаёт о действии.
               child: Listener(
                 behavior: HitTestBehavior.translucent,
                 onPointerDown: (_) => _bort.pulseBort(),

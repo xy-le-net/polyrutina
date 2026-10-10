@@ -2,32 +2,27 @@
 // bort_time.dart — время активной работы в приложении.
 //
 // Время борта — накопительное за ТЕКУЩИЕ сутки. С полуночи (той,
-// что настроена в рубке) до следующей. Живёт в файле борта.
+// что настроена в рубке) до следующей. Живёт в файле борта, в журнал
+// не пишется (род «борт» упразднён).
 //
 // Идёт при действиях с таймаутом в 20 секунд. Бездействие дольше —
 // стоп. Сворачивание, закрытие — стоп.
 //
-// При первом открытии после полуночи:
-//   — итог за прошедшие сутки пишется в журнал рода bort с ключом
-//     bort_time;
-//   — счётчик обнуляется, отсчёт начинается заново.
-//
-// Метод tickBort вызывается тикером (500 мс). PulseBort — при всяком
-// касании. Проверка полуночи — при пуске.
+// При переходе чрез полуночь: накопленное кладётся в yesterday
+// (для показа в рубке), счётчик обнуляется. Проверка — при пуске
+// и тикером.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
-import 'journal_layer.dart';
-import 'journal_types.dart';
-
-// Таймаут бездействия — 20 секунд.
 const int kBortTimeoutSec = 20;
 
 class BortTime {
   // ─── Состояние ───
   // Накопительное за текущие сутки.
   int bortTime = 0;
+  // Вчерашний итог — для показа в рубке.
+  int yesterday = 0;
   // Миг последнего действия (секунды Unix). 0 — нет действия.
   int lastActionAt = 0;
   // Миг последней прошедшей полуночи (секунды Unix).
@@ -37,9 +32,6 @@ class BortTime {
   String midnight = '00:00';
 
   // ─── Действие пользователя ───
-  // Зовётся при касании либо ином действии. Ежели прошло немного
-  // с прошлого раза — прибавляет прошедшее к накопленному. Иначе —
-  // просто ставит метку (пропуск — не засчитывается).
   void pulse() {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     if (lastActionAt != 0) {
@@ -52,8 +44,6 @@ class BortTime {
   }
 
   // ─── Тик ───
-  // Зовётся тикером. Ежели бездействие дольше таймаута — метка
-  // сбрасывается: отсчёт стоп.
   void tick() {
     if (lastActionAt == 0) return;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -63,44 +53,30 @@ class BortTime {
   }
 
   // ─── Свернуть/закрыть ───
-  // При уходе приложения в фон — метка сбрасывается.
   void stopNow() {
     lastActionAt = 0;
   }
 
   // ─── Проверка полуночи ───
-  // Зовётся при пуске. Ежели с прошлой отмеченной полуночи прошло
-  // более одной суточной границы — итог прошедших суток пишется
-  // в журнал рода bort с ключом bort_time, счётчик обнуляется.
-  //
-  // Бортовая полночь задаётся строкою midnight (чч:мм). Сие позволяет
-  // вести сутки не с 00:00, а с другого часа — для смен, идущих
-  // чрез ночь.
-  Future<void> checkMidnight(JournalLayer journal) async {
+  // Возвращает миг прошедшей полуночи, коли она прошла, иначе 0.
+  // При переходе: yesterday = bortTime, bortTime = 0.
+  int checkMidnight() {
     final now = DateTime.now();
-    // Ближайшая прошедшая «полночь» с учётом настроенного часа.
-    final curMidnight = _lastMidnightBefore(now);
+    final curMidnight = lastMidnightBefore(now);
     if (prevMidnight == 0) {
-      // Первый запуск — запоминаем, в журнал не пишем.
       prevMidnight = curMidnight;
-      return;
+      return 0;
     }
-    if (curMidnight <= prevMidnight) return;
-    // Прошла хотя бы одна полночь. Итог в журнал.
-    await journal.log(
-      type: JournalType.bort,
-      body:
-          '{"key":"bort_time","value":"$bortTime",'
-          '"midnight":$curMidnight}',
-    );
+    if (curMidnight <= prevMidnight) return 0;
+    yesterday = bortTime;
     bortTime = 0;
     prevMidnight = curMidnight;
+    return curMidnight;
   }
 
   // ─── Ближайшая полночь перед моментом ───
-  // Возвращает секунды Unix последней прошедшей «полночи» —
-  // настроенной как чч:мм, а не 00:00.
-  int _lastMidnightBefore(DateTime now) {
+  // Публичная — нужна смене.
+  int lastMidnightBefore(DateTime now) {
     final parts = midnight.split(':');
     int hh = 0, mm = 0;
     if (parts.length == 2) {
@@ -109,8 +85,6 @@ class BortTime {
     }
     var candidate = DateTime(now.year, now.month, now.day, hh, mm);
     if (candidate.isAfter(now)) {
-      // Ежели настроенная полночь ещё не наступила сегодня —
-      // берём вчерашнюю.
       candidate = candidate.subtract(const Duration(days: 1));
     }
     return candidate.millisecondsSinceEpoch ~/ 1000;
@@ -119,12 +93,14 @@ class BortTime {
   // ─── Сериализация ───
   Map<String, dynamic> toJson() => {
     'bort_time': bortTime,
+    'bort_yesterday': yesterday,
     'bort_last_action_at': lastActionAt,
     'bort_prev_midnight': prevMidnight,
   };
 
   void loadJson(Map<String, dynamic> data) {
     bortTime = (data['bort_time'] as num?)?.toInt() ?? 0;
+    yesterday = (data['bort_yesterday'] as num?)?.toInt() ?? 0;
     lastActionAt = (data['bort_last_action_at'] as num?)?.toInt() ?? 0;
     prevMidnight = (data['bort_prev_midnight'] as num?)?.toInt() ?? 0;
   }
@@ -132,6 +108,7 @@ class BortTime {
   // ─── Сброс ───
   void reset() {
     bortTime = 0;
+    yesterday = 0;
     lastActionAt = 0;
     prevMidnight = 0;
   }

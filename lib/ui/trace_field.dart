@@ -6,18 +6,24 @@
 //   справа — столбец: пульт чек-листа, пульт отправки/медиа.
 //
 // След различается парой (objectId, slot). Поиск чек-листа — по
-// kind=checklist + slot (не «любой след слота»): в одном слоте
-// могут жить и текст, и чек-лист.
+// kind=checklist + slot: в одном слоте могут жить и текст, и чек-лист.
 //
 // Пульт чек-листа:
 //   — нет неотмеченных — галочка в квадрате;
 //   — есть неотмеченные — сигнальное число в ядре (centerText).
 //
+// Скрепка (коли нет неотправленного текста) открывает подпульт медиа:
+// аудио, фото, видео, место, файл. Каждое добавление копирует файл
+// внутрь приложения и кладёт ссылку в тело следа.
+//
+// Под полем ввода — строка пультов тех родов медиа, что уже есть
+// в слоте. Справа от пульта — число. Касание открывает просмотр
+// последнего добавленного.
+//
 // Очистка поля. Коли текст был и стал пуст — тотчас запись правки
 // с пустым телом. Пульт отправки гаснет.
 //
-// Enter на клавиатуре — то же, что касание пульта отправки: коммит
-// и снятие фокуса.
+// Enter на клавиатуре — то же, что касание пульта отправки.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -28,6 +34,8 @@ import '../data/operational_layer.dart';
 import '../data/trace_layer.dart';
 import 'app_scope.dart';
 import 'checklist_screen.dart';
+import 'media_picker.dart';
+import 'media_viewer.dart';
 import 'pult_core.dart';
 
 class TraceField extends StatefulWidget {
@@ -65,7 +73,6 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
   bool _initialized = false;
   String _lastSent = '';
 
-  // Номер записи о следе — для правки и очистки.
   int _traceId = -1;
 
   String get _key =>
@@ -86,8 +93,11 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     super.didChangeDependencies();
     if (_initialized) return;
     _initialized = true;
+    _reloadFromLayer();
+  }
+
+  void _reloadFromLayer() {
     final app = AppScope.of(context);
-    // Текстовый след берём из слоя по kind=text + slot.
     final t = app.traceLayer.findFirstByKindSlot(
       widget.objectId,
       TraceKind.text,
@@ -98,7 +108,6 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
       _lastSent = t.text;
       _ctrl.text = t.text;
     } else {
-      // Кэш черновика — коли следа ещё нет.
       _ctrl.text = app.bort.draft(_key);
       _lastSent = _ctrl.text;
     }
@@ -122,19 +131,14 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     }
   }
 
-  // ─── Автоотправка ───
-  // Поле непустое — создание либо правка. Поле пустое, а след был —
-  // правка с пустым телом (стирание).
   Future<void> _autoSend() async {
     if (!_initialized) return;
     if (!mounted) return;
     final app = AppScope.of(context);
     final text = _ctrl.text;
 
-    // Тот же текст — ничего не делаем.
     if (text == _lastSent) return;
 
-    // Коли след уже есть — правим.
     if (_traceId != -1) {
       await app.traceLayer.updateText(app.journal, _traceId, text);
       _lastSent = text;
@@ -143,13 +147,11 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
       return;
     }
 
-    // Следа нет и текст пуст — ничего.
     if (text.trim().isEmpty) {
       _lastSent = text;
       return;
     }
 
-    // Создаём новый след.
     final id = await app.traceLayer.createText(
       app.journal,
       slot: widget.slot,
@@ -162,9 +164,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
-  bool _canSend() {
-    return _ctrl.text != _lastSent;
-  }
+  bool _canSend() => _ctrl.text != _lastSent;
 
   Future<void> _send() async {
     await _autoSend();
@@ -173,19 +173,22 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
 
   void _openChecklist() {
     _focus.unfocus();
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ChecklistScreen(
-          objectId: widget.objectId,
-          slot: widget.slot,
-          blockTitle: widget.blockTitle,
-          routineTitle: widget.routineTitle,
-        ),
-      ),
-    );
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => ChecklistScreen(
+              objectId: widget.objectId,
+              slot: widget.slot,
+              blockTitle: widget.blockTitle,
+              routineTitle: widget.routineTitle,
+            ),
+          ),
+        )
+        .then((_) {
+          if (mounted) setState(() {});
+        });
   }
 
-  // Число неотмеченных — по kind=checklist + slot.
   int _uncheckedCount() {
     final app = AppScope.of(context);
     final t = app.traceLayer.findFirstByKindSlot(
@@ -201,6 +204,83 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     return n;
   }
 
+  // ─── Медиа ───
+  List<TraceFile> _files() {
+    final app = AppScope.of(context);
+    final t = app.traceLayer.findFirstByKindSlot(
+      widget.objectId,
+      TraceKind.text,
+      widget.slot,
+    );
+    return t?.files ?? const [];
+  }
+
+  Map<String, int> _fileCounts(List<TraceFile> files) {
+    final m = <String, int>{};
+    for (final f in files) {
+      m[f.kind] = (m[f.kind] ?? 0) + 1;
+    }
+    return m;
+  }
+
+  IconData _mediaIcon(String kind) {
+    switch (kind) {
+      case MediaKind.audio:
+        return Icons.mic_none;
+      case MediaKind.photo:
+        return Icons.photo_camera_outlined;
+      case MediaKind.video:
+        return Icons.videocam_outlined;
+      case MediaKind.geo:
+        return Icons.place_outlined;
+      case MediaKind.file:
+      default:
+        return Icons.attach_file;
+    }
+  }
+
+  Future<void> _openMediaPicker() async {
+    _focus.unfocus();
+    await showMediaPicker(
+      context: context,
+      objectId: widget.objectId,
+      slot: widget.slot,
+      fg: widget.fg,
+      dim: widget.dim,
+      bg: widget.bg,
+      signal: widget.signal,
+      side: widget.side,
+    );
+    if (mounted) setState(() {});
+  }
+
+  void _openMediaViewer(List<TraceFile> files, int index) {
+    if (index < 0 || index >= files.length) return;
+    final t = AppScope.of(context).traceLayer.findFirstByKindSlot(
+      widget.objectId,
+      TraceKind.text,
+      widget.slot,
+    );
+    if (t == null) return;
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => MediaViewer(
+              traceId: t.id,
+              objectId: widget.objectId,
+              slot: widget.slot,
+              files: files,
+              startIndex: index,
+              blockTitle: widget.blockTitle,
+              routineTitle: widget.routineTitle,
+            ),
+          ),
+        )
+        .then((_) {
+          if (mounted) setState(() {});
+        });
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
@@ -210,9 +290,11 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     final pultSide = widget.side * bort.kPultSmall;
 
     final unchecked = _uncheckedCount();
-    const IconData chkIcon = Icons.check_box_outlined;
     final String? chkCenter = unchecked > 0 ? '$unchecked' : null;
     final bool chkSelected = unchecked > 0;
+
+    final files = _files();
+    final counts = _fileCounts(files);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -257,7 +339,6 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
                   bort.setDraft(_key, v);
                   setState(() {});
                 },
-                // Enter на клавиатуре — коммит и снять фокус.
                 onSubmitted: (_) {
                   _autoSend();
                   _focus.unfocus();
@@ -271,7 +352,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
                 Pult(
                   spec: PultSpec(
                     id: 'checklist',
-                    icon: chkIcon,
+                    icon: Icons.check_box_outlined,
                     centerText: chkCenter,
                     selected: chkSelected,
                     onTap: _openChecklist,
@@ -287,7 +368,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
                     id: 'send_or_media',
                     icon: canSend ? Icons.edit_note : Icons.attach_file,
                     selected: canSend,
-                    onTap: canSend ? _send : null,
+                    onTap: canSend ? _send : _openMediaPicker,
                   ),
                   fg: widget.dim,
                   bg: widget.bg,
@@ -298,6 +379,35 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
             ),
           ],
         ),
+        // ─── Строка медиа (коли есть) ───
+        if (counts.isNotEmpty) ...[
+          SizedBox(height: widget.side * 0.15),
+          Wrap(
+            spacing: widget.side * 0.15,
+            runSpacing: widget.side * 0.1,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (final kind in MediaKind.all)
+                if ((counts[kind] ?? 0) > 0)
+                  Pult(
+                    spec: PultSpec(
+                      id: 'media_$kind',
+                      icon: _mediaIcon(kind),
+                      label: '${counts[kind]}',
+                      onTap: () {
+                        // Последний файл сего рода.
+                        final idx = files.lastIndexWhere((f) => f.kind == kind);
+                        if (idx >= 0) _openMediaViewer(files, idx);
+                      },
+                    ),
+                    fg: widget.dim,
+                    bg: widget.bg,
+                    signal: widget.signal,
+                    overrideSize: pultSide,
+                  ),
+            ],
+          ),
+        ],
       ],
     );
   }
