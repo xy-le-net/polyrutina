@@ -525,6 +525,7 @@ class _RoutineCardState extends State<RoutineCard> {
           colonVisible: colonVisible,
           pultSize: pultSide,
           t: i18n.t,
+          ticker: app.ticker,
         );
         // Правленое время подчёркивается ВСЕГДА: и в покое, и в ходу.
         if (timeEdited) {
@@ -592,15 +593,17 @@ class _RoutineCardState extends State<RoutineCard> {
 
     Widget? body;
     if (kind == 'summary') {
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       final rows = <Widget>[];
       for (final b in allBlocks) {
-        if (b.accumulatorSeconds > 0) {
+        final sec = b.secondsNowAt(now);
+        if (sec > 0) {
           rows.add(
             Padding(
               padding: EdgeInsets.only(top: side * 0.1),
               child: Text(
                 '${i18n.t('routine.block.${b.kind}')}: '
-                '${fmtTime(b.accumulatorSeconds, i18n.t)}.',
+                '${fmtTime(sec, i18n.t)}.',
                 style: TextStyle(
                   color: dim,
                   fontSize: side * (bort.kNumberSmall as double),
@@ -697,7 +700,7 @@ class _RoutineCardState extends State<RoutineCard> {
       strokeW: strokeW,
       radiusW: radiusW,
       active: running,
-      reserveBottom: 0,
+      reserveBottom: showExport ? pultSide + side * 0.15 : 0,
       child: body,
     );
   }

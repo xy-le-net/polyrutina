@@ -394,6 +394,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
                       id: 'media_$kind',
                       icon: _mediaIcon(kind),
                       label: '${counts[kind]}',
+                      compactLabel: true,
                       onTap: () {
                         // Последний файл сего рода.
                         final idx = files.lastIndexWhere((f) => f.kind == kind);

@@ -11,6 +11,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../data/ticker.dart';
 import 'format.dart';
 import 'pult_core.dart';
 import 'timer_text.dart';
@@ -27,6 +28,7 @@ class Pulse extends StatelessWidget {
   final bool colonVisible;
   final double? pultSize;
   final Translate t;
+  final AppTicker? ticker;
 
   const Pulse({
     super.key,
@@ -41,6 +43,7 @@ class Pulse extends StatelessWidget {
     required this.t,
     this.colonVisible = true,
     this.pultSize,
+    this.ticker,
   });
 
   @override
@@ -60,6 +63,7 @@ class Pulse extends StatelessWidget {
           numberSize: numberSize,
           colonVisible: colonVisible,
           t: t,
+          ticker: ticker,
         ),
         if (seconds > 0) SizedBox(width: side * 0.15),
         Pult(

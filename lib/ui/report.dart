@@ -165,28 +165,39 @@ class ReportBuilder {
       final sec = b.accumulatorSeconds;
       final title = i18n.t('routine.block.$kind') as String;
 
+      final text = _textOf(app, r.id, kind);
+      final attached = _attachedLine(app, r.id, kind, i18n);
+      final t = app.traceLayer.findFirstByKindSlot(
+        r.id,
+        TraceKind.checklist,
+        kind,
+      );
+      final hasChecklist =
+          t != null && t.items.any((it) => it.text.trim().isNotEmpty);
+
+      // Пустой этап (ни времени, ни следа, ни медиа, ни чек-листа)
+      // в отчёт не попадает.
+      final empty =
+          sec == 0 &&
+          (text == null || text.trim().isEmpty) &&
+          attached == null &&
+          !hasChecklist;
+      if (empty) continue;
+
       if (sec > 0) {
         buf.writeln('   $title: ${fmtTime(sec, i18n.t as Translate)}');
       } else {
         buf.writeln('   $title');
       }
 
-      final text = _textOf(app, r.id, kind);
       if (text != null) {
         for (final line in text.split('\n')) {
           buf.writeln('      $line');
         }
       }
 
-      // Медиа.
-      final attached = _attachedLine(app, r.id, kind, i18n);
       if (attached != null) buf.writeln('      $attached');
 
-      final t = app.traceLayer.findFirstByKindSlot(
-        r.id,
-        TraceKind.checklist,
-        kind,
-      );
       if (t != null) {
         for (final it in t.items) {
           final s = it.text;

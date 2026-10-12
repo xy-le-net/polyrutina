@@ -447,6 +447,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
                   numberSize: numberSize,
                   colonVisible: app.ticker.colonVisible,
                   t: i18n.t,
+                  ticker: app.ticker,
                 ),
               ],
             ],
@@ -558,6 +559,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
       colonVisible: app.ticker.colonVisible,
       pultSize: side * bort.kPultSmall,
       t: i18n.t,
+      ticker: app.ticker,
     );
     if (bort.shiftEdited) {
       pulse = Container(

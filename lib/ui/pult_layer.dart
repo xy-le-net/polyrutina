@@ -101,10 +101,15 @@ class _PultLayerState extends State<PultLayer> {
     final side = state.smallSide;
     final itemH = side + 12;
     final screenW = MediaQuery.of(context).size.width;
+    final screenH = MediaQuery.of(context).size.height;
 
-    // Сколько строк в столбце поместится над родительским пультом.
+    // Сколько строк поместится над и под родительским пультом;
+    // сторона с большим простором предпочтительнее.
     final availAbove = local.dy - 8;
-    final rowsPerCol = (availAbove / itemH).floor().clamp(1, subs.length);
+    final availBelow = screenH - (local.dy + size.height) - 8;
+    final useBelow = availAbove < itemH * 2 && availBelow > availAbove;
+    final avail = useBelow ? availBelow : availAbove;
+    final rowsPerCol = (avail / itemH).floor().clamp(1, subs.length);
     final cols = (subs.length / rowsPerCol).ceil();
 
     // ─── Сторона подписей ───
@@ -170,8 +175,9 @@ class _PultLayerState extends State<PultLayer> {
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment:
-                labelsLeft ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            crossAxisAlignment: labelsLeft
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
             children: colItems,
           ),
         ),
@@ -186,10 +192,15 @@ class _PultLayerState extends State<PultLayer> {
     if (left + rowW > screenW - 8) left = screenW - 8 - rowW;
     if (left < 8) left = 8;
 
-    // Вертикальное положение: над родительским пультом.
+    // Вертикальное положение: над родительским пультом либо под ним.
     final totalH = rowsPerCol * itemH;
-    double top = local.dy - totalH - 6;
-    if (top < 8) top = 8;
+    double top;
+    if (useBelow) {
+      top = local.dy + size.height + 6;
+    } else {
+      top = local.dy - totalH - 6;
+      if (top < 8) top = 8;
+    }
 
     // Порядок столбцов: при подписях слева столбцы разворачиваем,
     // дабы первый столбец был у пульта.

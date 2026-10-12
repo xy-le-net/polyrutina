@@ -2,28 +2,14 @@
 // pult_core.dart — ядро пультов: спецификация, состояние, провайдер,
 // виджет Pult.
 //
-// Сущности:
-//   PultSpec  — описание пульта;
-//   PultState — состояние;
-//   PultScope — провайдер состояния;
-//   Pult      — суперкнопка (тройная вложенная обводка).
-//
-// Подпись пульта — с подложкою. labelBg задаёт её заливку; без
-// заданья — заливка ядра. labelSideLeft — подпись слева.
-//
-// centerText — текст в ядре вместо иконы. Число выводится моноширинно
-// и центруется по вертикали с поправкою на высоту строки.
-//
-// Касание снимает фокус с полей и уведомляет борт (pulseBort).
-//
-// Прозрачность не применяется.
+// compactLabel — подпись вплотную к тексту (для счётчиков медиа).
+// Внутри слоя подтверждение тоже работает (confirm).
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 
 import 'app_scope.dart';
 
-// ─── Спецификация пульта ───
 class PultSpec {
   final String id;
   final IconData icon;
@@ -37,6 +23,7 @@ class PultSpec {
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final bool stayOpen;
+  final bool compactLabel;
 
   const PultSpec({
     required this.id,
@@ -51,10 +38,10 @@ class PultSpec {
     this.onTap,
     this.onLongPress,
     this.stayOpen = false,
+    this.compactLabel = false,
   });
 }
 
-// ─── Состояние пультов ───
 class PultState extends ChangeNotifier {
   GlobalKey? parentKey;
   List<PultSpec> Function()? subsBuilder;
@@ -115,7 +102,6 @@ class PultState extends ChangeNotifier {
   }
 }
 
-// ─── Провайдер ───
 class PultScope extends InheritedNotifier<PultState> {
   const PultScope({super.key, required PultState state, required super.child})
     : super(notifier: state);
@@ -127,9 +113,6 @@ class PultScope extends InheritedNotifier<PultState> {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// Pult — суперкнопка.
-// ═══════════════════════════════════════════════════════════════════
 class Pult extends StatefulWidget {
   final PultSpec spec;
   final double? overrideSize;
@@ -193,8 +176,6 @@ class _PultState extends State<Pult> {
       child: Center(
         child: hasCenter
             ? Padding(
-                // Небольшая поправка: моноширинная цифра в ядре
-                // выравнивается по вертикали.
                 padding: EdgeInsets.only(bottom: side * 0.04),
                 child: Text(
                   widget.spec.centerText!,
@@ -248,7 +229,10 @@ class _PultState extends State<Pult> {
       )..layout();
       final textW = painter.width * 1.2;
       final desired = textW + 12;
-      final labelWidth = desired.clamp(side * 1.5, maxLabelW);
+      // compactLabel: подпись вплотную к тексту (для счётчиков медиа).
+      final labelWidth = widget.spec.compactLabel
+          ? desired.clamp(side * 0.8, maxLabelW)
+          : desired.clamp(side * 1.5, maxLabelW);
 
       final borderRadius = widget.labelSideLeft
           ? const BorderRadius.horizontal(left: Radius.circular(6))
@@ -321,6 +305,19 @@ class _PultState extends State<Pult> {
     _pulseBort();
 
     if (widget.insideLayer) {
+      // Подтверждение работает и внутри слоя.
+      if (widget.spec.confirm) {
+        if (state.isConfirming(widget.spec.id)) return;
+        if (widget.spec.onTap != null) {
+          state.askConfirm(
+            widget.spec.id,
+            _coreKey,
+            widget.spec.onTap!,
+            widget.spec.icon,
+          );
+        }
+        return;
+      }
       widget.spec.onTap?.call();
       if (!widget.spec.stayOpen) state.close();
       return;

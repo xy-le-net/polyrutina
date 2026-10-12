@@ -1,22 +1,17 @@
 // ═══════════════════════════════════════════════════════════════════
 // timer_text.dart — вид таймера по единому образцу.
 //
-// Три единицы: дни, часы, минуты. Показываются две старшие, что
-// ненулевые. Исключение — идущий меньше минуты: показывает секунды.
-//
-// Подписи единиц берутся из словаря чрез Translate (time.d, time.h,
-// time.m, time.s).
+// Мигание двоеточия — от тикера, независимо от частоты перерисовки
+// родителя. Родитель может перерисовываться редко (по смене минуты),
+// а мерцание идёт дважды в секунду.
 //
 // Ведущий ноль — только у второго числа в паре: «1ч 05м», «3д 07ч».
 // Одиночное число — без нуля: «7м», «5с».
-//
-// Двоеточие — пред последним числом, мерцает.
-//
-// Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 
+import '../data/ticker.dart';
 import 'format.dart';
 
 class TimerText extends StatelessWidget {
@@ -27,6 +22,7 @@ class TimerText extends StatelessWidget {
   final double numberSize;
   final bool colonVisible;
   final Translate t;
+  final AppTicker? ticker;
 
   const TimerText({
     super.key,
@@ -37,9 +33,9 @@ class TimerText extends StatelessWidget {
     required this.numberSize,
     required this.t,
     this.colonVisible = true,
+    this.ticker,
   });
 
-  // ─── Разбор на две старшие единицы ───
   static List<(String, String)> _parts(int sec, {required bool running}) {
     if (sec < 0) sec = 0;
     const daySec = 86400;
@@ -85,19 +81,39 @@ class TimerText extends StatelessWidget {
 
       final isLast = i == partsList.length - 1;
       if (isLast && running) {
-        children.add(
-          Opacity(
-            opacity: colonVisible ? 1.0 : 0.0,
-            child: Text(
-              ':',
-              style: TextStyle(
-                color: primary,
-                fontFamily: 'monospace',
-                fontSize: numberSize,
+        // Мигание — от тикера, ежели дан; иначе от переданного флага.
+        if (ticker != null) {
+          children.add(
+            AnimatedBuilder(
+              animation: ticker!,
+              builder: (_, __) => Opacity(
+                opacity: ticker!.colonVisible ? 1.0 : 0.0,
+                child: Text(
+                  ':',
+                  style: TextStyle(
+                    color: primary,
+                    fontFamily: 'monospace',
+                    fontSize: numberSize,
+                  ),
+                ),
               ),
             ),
-          ),
-        );
+          );
+        } else {
+          children.add(
+            Opacity(
+              opacity: colonVisible ? 1.0 : 0.0,
+              child: Text(
+                ':',
+                style: TextStyle(
+                  color: primary,
+                  fontFamily: 'monospace',
+                  fontSize: numberSize,
+                ),
+              ),
+            ),
+          );
+        }
       } else if (i > 0) {
         children.add(const SizedBox(width: 4));
       }
