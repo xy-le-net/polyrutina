@@ -25,8 +25,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'ui/routines_tab.dart';
-import 'ui/routine_card.dart';
 import 'data/database.dart';
 import 'data/journal_layer.dart';
 import 'data/operational_layer.dart';
@@ -34,13 +32,15 @@ import 'data/routine_layer.dart';
 import 'data/trace_layer.dart';
 import 'data/ticker.dart';
 import 'data/i18n.dart';
-import 'ui/app_scope.dart';
-import 'ui/pult_core.dart';
-import 'ui/pult_layer.dart';
-import 'ui/root_pult.dart';
-import 'ui/stub_tab.dart';
-import 'ui/rubka_tab.dart';
-import 'ui/journal_tab.dart';
+import 'ui/core/app_scope.dart';
+import 'ui/pults/pult_core.dart';
+import 'ui/pults/pult_layer.dart';
+import 'ui/pults/root_pult.dart';
+import 'ui/tabs/routines_tab.dart';
+import 'ui/tabs/journal_tab.dart';
+import 'ui/tabs/rubka_tab.dart';
+import 'ui/tabs/stub_tab.dart';
+import 'ui/cards/routine_card.dart';
 
 void main() => runApp(const PolyRutinaApp());
 
@@ -201,6 +201,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   }
 
   Future<void> _openRoutine(int id) async {
+    _pultState.close();
     _openedRoutineId = id;
     await _navigatorKey.currentState?.push(
       MaterialPageRoute(builder: (_) => RoutineCard(routineId: id)),

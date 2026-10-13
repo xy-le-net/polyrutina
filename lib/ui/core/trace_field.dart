@@ -30,13 +30,13 @@
 
 import 'package:flutter/material.dart';
 
-import '../data/operational_layer.dart';
-import '../data/trace_layer.dart';
-import 'app_scope.dart';
-import 'checklist_screen.dart';
-import 'media_picker.dart';
-import 'media_viewer.dart';
-import 'pult_core.dart';
+import '../../data/operational_layer.dart';
+import '../../data/trace_layer.dart';
+import '../core/app_scope.dart';
+import '../pults/pult_core.dart';
+import '../screens/checklist_screen.dart';
+import '../screens/media_viewer.dart';
+import '../services/media_picker.dart';
 
 class TraceField extends StatefulWidget {
   final int objectId;
@@ -204,7 +204,6 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     return n;
   }
 
-  // ─── Медиа ───
   List<TraceFile> _files() {
     final app = AppScope.of(context);
     final t = app.traceLayer.findFirstByKindSlot(
@@ -379,7 +378,6 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
             ),
           ],
         ),
-        // ─── Строка медиа (коли есть) ───
         if (counts.isNotEmpty) ...[
           SizedBox(height: widget.side * 0.15),
           Wrap(
@@ -396,7 +394,6 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
                       label: '${counts[kind]}',
                       compactLabel: true,
                       onTap: () {
-                        // Последний файл сего рода.
                         final idx = files.lastIndexWhere((f) => f.kind == kind);
                         if (idx >= 0) _openMediaViewer(files, idx);
                       },

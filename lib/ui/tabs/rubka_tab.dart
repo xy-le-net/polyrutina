@@ -8,11 +8,13 @@
 // Оформление — тема, цвета двух тем, dim, коэффициенты.
 // Интерфейс — масштаб, язык, подписи.
 // Данные — время борта (сегодня + вчера, приглушённо), размер файлов
-// борта (база, WAL, SHM, кэши слоёв, установка), четыре пульта
-// управления.
+// борта, пять пультов: перечитать, очистить, удалить, сброс, приём.
 //
 // Все настройки пишутся токмо в файл борта — род «борт» в журнале
 // упразднён. Установка применяется тотчас и сохраняется отложенно.
+//
+// Широкий экран: блоки идут слева направо, сверху вниз — как текст,
+// чрез Wrap с шириною половины экрана.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -23,14 +25,15 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import '../data/operational_layer.dart';
-import '../data/theme_store.dart';
-import 'app_scope.dart';
-import 'block.dart';
-import 'bort_field.dart';
-import 'format.dart';
-import 'pult_core.dart';
-import 'pult_tick.dart';
+import '../../data/operational_layer.dart';
+import '../../data/theme_store.dart';
+import '../core/app_scope.dart';
+import '../core/block.dart';
+import '../core/bort_field.dart';
+import '../core/format.dart';
+import '../screens/import_screen.dart';
+import '../pults/pult_core.dart';
+import '../pults/pult_tick.dart';
 
 class RubkaTab extends StatefulWidget {
   const RubkaTab({super.key});
@@ -58,7 +61,6 @@ class _RubkaTabState extends State<RubkaTab> {
     return fmtTime(sec, t);
   }
 
-  // ─── Размер файлов борта ───
   Future<void> _refreshSize() async {
     try {
       final dir = await getApplicationDocumentsDirectory();
@@ -87,13 +89,11 @@ class _RubkaTabState extends State<RubkaTab> {
     } catch (_) {}
   }
 
-  // ─── Установка настройки: локально + сохранение ───
   void _set(String key, String value) {
     final app = AppScope.of(context);
     app.bort.set(key, value);
   }
 
-  // ─── Перечитать: полное перечитывание слоёв из журнала ───
   Future<void> _reload() async {
     final app = AppScope.of(context);
     await app.journal.reread();
@@ -126,6 +126,16 @@ class _RubkaTabState extends State<RubkaTab> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _openImport() async {
+    final app = AppScope.of(context);
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const ImportScreen()));
+    await app.refresh();
+    await _refreshSize();
+    if (mounted) setState(() {});
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -149,231 +159,257 @@ class _RubkaTabState extends State<RubkaTab> {
     final strokeW = side * bort.kStroke;
     final radiusW = side * bort.kRadius;
 
+    final artel = Block(
+      title: i18n.t('block.artel'),
+      collapsed: !bort.blockArtel,
+      onToggleCollapsed: () =>
+          _set('block_artel', (!bort.blockArtel).toString()),
+      bg: bg,
+      dim: dim,
+      fg: fg,
+      signal: signal,
+      titleSize: titleSize,
+      pad: pad,
+      gap: gap,
+      strokeW: strokeW,
+      radiusW: radiusW,
+      child: _midnightRow(context, fg, dim, bg, signal, side),
+    );
+
+    final appearance = Block(
+      title: i18n.t('block.appearance'),
+      collapsed: !bort.blockAppearance,
+      onToggleCollapsed: () =>
+          _set('block_appearance', (!bort.blockAppearance).toString()),
+      bg: bg,
+      dim: dim,
+      fg: fg,
+      signal: signal,
+      titleSize: titleSize,
+      pad: pad,
+      gap: gap,
+      strokeW: strokeW,
+      radiusW: radiusW,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _themeRow(context, fg, dim, bg, signal, side),
+          _sectionTitle(i18n.t('theme.day'), dim, side),
+          _colorRow(context, 'day', 'bg', fg, dim, bg, signal, side),
+          _colorRow(context, 'day', 'bgdim', fg, dim, bg, signal, side),
+          _colorRow(context, 'day', 'fg', fg, dim, bg, signal, side),
+          _colorRow(context, 'day', 'signal', fg, dim, bg, signal, side),
+          _sectionTitle(i18n.t('theme.night'), dim, side),
+          _colorRow(context, 'night', 'bg', fg, dim, bg, signal, side),
+          _colorRow(context, 'night', 'bgdim', fg, dim, bg, signal, side),
+          _colorRow(context, 'night', 'fg', fg, dim, bg, signal, side),
+          _colorRow(context, 'night', 'signal', fg, dim, bg, signal, side),
+          _sectionTitle(i18n.t('bort.dim'), dim, side),
+          _dimRow(context, fg, dim, bg, signal, side),
+          _sectionTitle(i18n.t('block.appearance'), dim, side),
+          _kRow(context, 'k_pult', fg, dim, bg, signal, side),
+          _kRow(context, 'k_pult_small', fg, dim, bg, signal, side),
+          _kRow(context, 'k_block_gap', fg, dim, bg, signal, side),
+          _kRow(context, 'k_frame_pad', fg, dim, bg, signal, side),
+          _kRow(context, 'k_title', fg, dim, bg, signal, side),
+          _kRow(context, 'k_number', fg, dim, bg, signal, side),
+          _kRow(context, 'k_number_small', fg, dim, bg, signal, side),
+          _kRow(context, 'k_name', fg, dim, bg, signal, side),
+          _kRow(context, 'k_radius', fg, dim, bg, signal, side),
+          _kRow(context, 'k_stroke', fg, dim, bg, signal, side),
+        ],
+      ),
+    );
+
+    final interface = Block(
+      title: i18n.t('block.interface'),
+      collapsed: !bort.blockInterface,
+      onToggleCollapsed: () =>
+          _set('block_interface', (!bort.blockInterface).toString()),
+      bg: bg,
+      dim: dim,
+      fg: fg,
+      signal: signal,
+      titleSize: titleSize,
+      pad: pad,
+      gap: gap,
+      strokeW: strokeW,
+      radiusW: radiusW,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _settingRow(context, 'scale', fg, dim, bg, signal, side),
+          _settingRow(context, 'lang', fg, dim, bg, signal, side),
+          _settingRow(context, 'labels_system', fg, dim, bg, signal, side),
+          _settingRow(context, 'labels_field', fg, dim, bg, signal, side),
+        ],
+      ),
+    );
+
+    final data = Block(
+      title: i18n.t('block.data'),
+      collapsed: !bort.blockData,
+      onToggleCollapsed: () => _set('block_data', (!bort.blockData).toString()),
+      bg: bg,
+      dim: dim,
+      fg: fg,
+      signal: signal,
+      titleSize: titleSize,
+      pad: pad,
+      gap: gap,
+      strokeW: strokeW,
+      radiusW: radiusW,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _fmtBort(bort.bortTime, i18n.t),
+            style: TextStyle(color: fg, fontSize: side * 0.4),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 2, bottom: 10),
+            child: Text(
+              _fmtBort(bort.bortYesterday, i18n.t),
+              style: TextStyle(color: dim, fontSize: side * 0.35),
+            ),
+          ),
+          Row(
+            children: [
+              SizedBox(
+                width: 140,
+                child: Text(
+                  i18n.t('bort.journal'),
+                  style: TextStyle(color: fg),
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  '${_fmtNum(_sizeBytes)} ${i18n.t('bort.bytes')}',
+                  style: TextStyle(color: fg, fontFamily: 'monospace'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _pultRow(
+            label: i18n.t('bort.reload'),
+            fg: fg,
+            pult: Pult(
+              spec: PultSpec(
+                id: 'reload',
+                icon: Icons.refresh,
+                confirm: true,
+                onTap: _reload,
+              ),
+              fg: fg,
+              bg: bg,
+              signal: signal,
+              overrideSize: side,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _pultRow(
+            label: i18n.t('bort.cleanup'),
+            fg: fg,
+            pult: Pult(
+              spec: PultSpec(
+                id: 'cleanup',
+                icon: Icons.cloud_done,
+                confirm: true,
+                onTap: _deleteSynced,
+              ),
+              fg: fg,
+              bg: bg,
+              signal: signal,
+              overrideSize: side,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _pultRow(
+            label: i18n.t('bort.delete'),
+            fg: fg,
+            pult: Pult(
+              spec: PultSpec(
+                id: 'delete',
+                icon: Icons.delete_outline,
+                confirm: true,
+                onTap: _deleteAll,
+              ),
+              fg: fg,
+              bg: bg,
+              signal: signal,
+              overrideSize: side,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _pultRow(
+            label: i18n.t('bort.reset'),
+            fg: fg,
+            pult: Pult(
+              spec: PultSpec(
+                id: 'reset',
+                icon: Icons.cleaning_services,
+                confirm: true,
+                onTap: _resetCache,
+              ),
+              fg: fg,
+              bg: bg,
+              signal: signal,
+              overrideSize: side,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _pultRow(
+            label: i18n.t('bort.import'),
+            fg: fg,
+            pult: Pult(
+              spec: PultSpec(
+                id: 'import',
+                icon: Icons.download,
+                onTap: _openImport,
+              ),
+              fg: fg,
+              bg: bg,
+              signal: signal,
+              overrideSize: side,
+            ),
+          ),
+        ],
+      ),
+    );
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        final wide = constraints.maxWidth > 640;
+        final width = constraints.maxWidth;
+        final wide = width > 640;
 
-        final artel = Block(
-          title: i18n.t('block.artel'),
-          collapsed: !bort.blockArtel,
-          onToggleCollapsed: () =>
-              _set('block_artel', (!bort.blockArtel).toString()),
-          bg: bg,
-          dim: dim,
-          fg: fg,
-          signal: signal,
-          titleSize: titleSize,
-          pad: pad,
-          gap: gap,
-          strokeW: strokeW,
-          radiusW: radiusW,
-          child: _midnightRow(context, fg, dim, bg, signal, side),
-        );
-
-        final appearance = Block(
-          title: i18n.t('block.appearance'),
-          collapsed: !bort.blockAppearance,
-          onToggleCollapsed: () =>
-              _set('block_appearance', (!bort.blockAppearance).toString()),
-          bg: bg,
-          dim: dim,
-          fg: fg,
-          signal: signal,
-          titleSize: titleSize,
-          pad: pad,
-          gap: gap,
-          strokeW: strokeW,
-          radiusW: radiusW,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _themeRow(context, fg, dim, bg, signal, side),
-              _sectionTitle(i18n.t('theme.day'), dim, side),
-              _colorRow(context, 'day', 'bg', fg, dim, bg, signal, side),
-              _colorRow(context, 'day', 'bgdim', fg, dim, bg, signal, side),
-              _colorRow(context, 'day', 'fg', fg, dim, bg, signal, side),
-              _colorRow(context, 'day', 'signal', fg, dim, bg, signal, side),
-              _sectionTitle(i18n.t('theme.night'), dim, side),
-              _colorRow(context, 'night', 'bg', fg, dim, bg, signal, side),
-              _colorRow(context, 'night', 'bgdim', fg, dim, bg, signal, side),
-              _colorRow(context, 'night', 'fg', fg, dim, bg, signal, side),
-              _colorRow(context, 'night', 'signal', fg, dim, bg, signal, side),
-              _sectionTitle(i18n.t('bort.dim'), dim, side),
-              _dimRow(context, fg, dim, bg, signal, side),
-              _sectionTitle(i18n.t('block.appearance'), dim, side),
-              _kRow(context, 'k_pult', fg, dim, bg, signal, side),
-              _kRow(context, 'k_pult_small', fg, dim, bg, signal, side),
-              _kRow(context, 'k_block_gap', fg, dim, bg, signal, side),
-              _kRow(context, 'k_frame_pad', fg, dim, bg, signal, side),
-              _kRow(context, 'k_title', fg, dim, bg, signal, side),
-              _kRow(context, 'k_number', fg, dim, bg, signal, side),
-              _kRow(context, 'k_number_small', fg, dim, bg, signal, side),
-              _kRow(context, 'k_name', fg, dim, bg, signal, side),
-              _kRow(context, 'k_radius', fg, dim, bg, signal, side),
-              _kRow(context, 'k_stroke', fg, dim, bg, signal, side),
-            ],
-          ),
-        );
-
-        final interface = Block(
-          title: i18n.t('block.interface'),
-          collapsed: !bort.blockInterface,
-          onToggleCollapsed: () =>
-              _set('block_interface', (!bort.blockInterface).toString()),
-          bg: bg,
-          dim: dim,
-          fg: fg,
-          signal: signal,
-          titleSize: titleSize,
-          pad: pad,
-          gap: gap,
-          strokeW: strokeW,
-          radiusW: radiusW,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _settingRow(context, 'scale', fg, dim, bg, signal, side),
-              _settingRow(context, 'lang', fg, dim, bg, signal, side),
-              _settingRow(context, 'labels_system', fg, dim, bg, signal, side),
-              _settingRow(context, 'labels_field', fg, dim, bg, signal, side),
-            ],
-          ),
-        );
-
-        final data = Block(
-          title: i18n.t('block.data'),
-          collapsed: !bort.blockData,
-          onToggleCollapsed: () =>
-              _set('block_data', (!bort.blockData).toString()),
-          bg: bg,
-          dim: dim,
-          fg: fg,
-          signal: signal,
-          titleSize: titleSize,
-          pad: pad,
-          gap: gap,
-          strokeW: strokeW,
-          radiusW: radiusW,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _fmtBort(bort.bortTime, i18n.t),
-                style: TextStyle(color: fg, fontSize: side * 0.4),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(top: 2, bottom: 10),
-                child: Text(
-                  _fmtBort(bort.bortYesterday, i18n.t),
-                  style: TextStyle(color: dim, fontSize: side * 0.35),
-                ),
-              ),
-              Row(
-                children: [
-                  SizedBox(
-                    width: 140,
-                    child: Text(
-                      i18n.t('bort.journal'),
-                      style: TextStyle(color: fg),
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      '${_fmtNum(_sizeBytes)} ${i18n.t('bort.bytes')}',
-                      style: TextStyle(color: fg, fontFamily: 'monospace'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _pultRow(
-                label: i18n.t('bort.reload'),
-                fg: fg,
-                pult: Pult(
-                  spec: PultSpec(
-                    id: 'reload',
-                    icon: Icons.refresh,
-                    confirm: true,
-                    onTap: _reload,
-                  ),
-                  fg: fg,
-                  bg: bg,
-                  signal: signal,
-                  overrideSize: side,
-                ),
-              ),
-              const SizedBox(height: 12),
-              _pultRow(
-                label: i18n.t('bort.cleanup'),
-                fg: fg,
-                pult: Pult(
-                  spec: PultSpec(
-                    id: 'cleanup',
-                    icon: Icons.cloud_done,
-                    confirm: true,
-                    onTap: _deleteSynced,
-                  ),
-                  fg: fg,
-                  bg: bg,
-                  signal: signal,
-                  overrideSize: side,
-                ),
-              ),
-              const SizedBox(height: 12),
-              _pultRow(
-                label: i18n.t('bort.delete'),
-                fg: fg,
-                pult: Pult(
-                  spec: PultSpec(
-                    id: 'delete',
-                    icon: Icons.delete_outline,
-                    confirm: true,
-                    onTap: _deleteAll,
-                  ),
-                  fg: fg,
-                  bg: bg,
-                  signal: signal,
-                  overrideSize: side,
-                ),
-              ),
-              const SizedBox(height: 12),
-              _pultRow(
-                label: i18n.t('bort.reset'),
-                fg: fg,
-                pult: Pult(
-                  spec: PultSpec(
-                    id: 'reset',
-                    icon: Icons.cleaning_services,
-                    confirm: true,
-                    onTap: _resetCache,
-                  ),
-                  fg: fg,
-                  bg: bg,
-                  signal: signal,
-                  overrideSize: side,
-                ),
-              ),
-            ],
-          ),
-        );
-
-        if (wide) {
-          return SingleChildScrollView(
+        if (!wide) {
+          return ListView(
             padding: const EdgeInsets.fromLTRB(16, 80, 16, 16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: Column(children: [artel, appearance, data])),
-                const SizedBox(width: 24),
-                Expanded(child: Column(children: [interface])),
-              ],
-            ),
+            children: [artel, appearance, interface, data],
           );
         }
 
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 80, 16, 16),
-          children: [artel, appearance, interface, data],
+        // ─── Широкий экран: блоки идут слева направо, сверху вниз,
+        //     как текст. Две колонки, ширина каждой — половина.
+        const hPad = 16.0;
+        const spacing = 16.0;
+        final colW = (width - hPad * 2 - spacing) / 2;
+
+        Widget cell(Widget child) => SizedBox(width: colW, child: child);
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(hPad, 80, hPad, 16),
+          child: Wrap(
+            spacing: spacing,
+            runSpacing: 0,
+            children: [
+              cell(artel),
+              cell(appearance),
+              cell(interface),
+              cell(data),
+            ],
+          ),
         );
       },
     );

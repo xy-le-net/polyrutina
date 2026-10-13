@@ -11,7 +11,7 @@
 
 import 'package:flutter/material.dart';
 
-import '../data/ticker.dart';
+import '../../data/ticker.dart';
 import 'format.dart';
 
 class TimerText extends StatelessWidget {

@@ -152,14 +152,37 @@ class TraceFile {
   String path;
   String name;
 
-  TraceFile({required this.kind, required this.path, this.name = ''});
+  // Для рода «место»: координаты и точность кладутся прямо в тело
+  // следа — отдельный json-файл не нужен.
+  double? lat;
+  double? lon;
+  double? acc;
 
-  Map<String, dynamic> toJson() => {'kind': kind, 'path': path, 'name': name};
+  TraceFile({
+    required this.kind,
+    required this.path,
+    this.name = '',
+    this.lat,
+    this.lon,
+    this.acc,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'kind': kind,
+    'path': path,
+    'name': name,
+    if (lat != null) 'lat': lat,
+    if (lon != null) 'lon': lon,
+    if (acc != null) 'acc': acc,
+  };
 
   factory TraceFile.fromJson(Map<String, dynamic> j) => TraceFile(
     kind: j['kind'] as String? ?? 'file',
     path: j['path'] as String? ?? '',
     name: j['name'] as String? ?? '',
+    lat: (j['lat'] as num?)?.toDouble(),
+    lon: (j['lon'] as num?)?.toDouble(),
+    acc: (j['acc'] as num?)?.toDouble(),
   );
 }
 

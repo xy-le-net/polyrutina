@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════
 // routine_card.dart — карточка рутины.
 //
-// Блоки строятся единым Block (ui/block.dart).
+// Блоки строятся единым Block (ui/core/block.dart).
 //
 // Время правится долгим нажатием на пульс любого блока (и идущего,
 // и покоящегося, и с нулевым временем). При идущем блоке сперва
@@ -29,20 +29,20 @@
 
 import 'package:flutter/material.dart';
 
-import '../data/journal_types.dart';
-import '../data/routine.dart';
-import '../data/ticker.dart';
-import '../data/trace_layer.dart';
-import 'app_scope.dart';
-import 'block.dart';
-import 'bort_field.dart';
-import 'format.dart';
-import 'pulse.dart';
-import 'pult_core.dart';
-import 'pult_tick.dart';
-import 'report.dart';
-import 'timer_text.dart';
-import 'trace_field.dart';
+import '../../data/journal_types.dart';
+import '../../data/routine.dart';
+import '../../data/ticker.dart';
+import '../../data/trace_layer.dart';
+import '../core/app_scope.dart';
+import '../core/block.dart';
+import '../core/bort_field.dart';
+import '../core/format.dart';
+import '../core/timer_text.dart';
+import '../core/trace_field.dart';
+import '../pults/pulse.dart';
+import '../pults/pult_core.dart';
+import '../pults/pult_tick.dart';
+import '../services/report.dart';
 
 class RoutineCard extends StatefulWidget {
   final int routineId;
@@ -98,8 +98,6 @@ class _RoutineCardState extends State<RoutineCard> {
     final sec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final min = sec ~/ 60;
 
-    // Коли блок идёт и время менее минуты — секунды на глазах:
-    // перерисовываем каждую секунду.
     final blockSec = running.secondsNowAt(sec);
     if (blockSec < 60) {
       if (sec != _lastSecond) {
@@ -108,7 +106,6 @@ class _RoutineCardState extends State<RoutineCard> {
       }
       return;
     }
-    // Иначе — по смене минуты.
     if (min != _lastMinute) {
       _lastMinute = min;
       _lastSecond = sec;
@@ -166,14 +163,12 @@ class _RoutineCardState extends State<RoutineCard> {
     });
   }
 
-  // ─── Явное решение о свёртке либо null (умолчание) ───
   bool? _explicitCollapsed(dynamic bort, int routineId, String kind) {
     final set = (bort.collapsedBlocks as Map<int, Set<String>>)[routineId];
     if (set == null) return null;
     return set.contains(kind);
   }
 
-  // ─── Есть ли в блоке след? ───
   bool _hasTrace(int routineId, String kind) {
     if (kind == 'summary') return false;
     final app = AppScope.of(context);
@@ -197,17 +192,13 @@ class _RoutineCardState extends State<RoutineCard> {
     return false;
   }
 
-  // ─── Итоговая свёртка с учётом умолчания и следа ───
   bool _collapsedFor(dynamic bort, Routine r, String kind) {
     final explicit = _explicitCollapsed(bort, r.id, kind);
     if (explicit != null) return explicit;
-    // Умолчание: описания и выполнения развёрнуты; прочие свёрнуты.
-    // Блок со следом — развёрнут.
     if (kind == 'note' || kind == RoutineBlock.work) return false;
     return !_hasTrace(r.id, kind);
   }
 
-  // ─── Правка времени ───
   Future<void> _startEdit(Routine r, String kind) async {
     final app = AppScope.of(context);
     final b = r.blockOf(kind);
@@ -230,7 +221,6 @@ class _RoutineCardState extends State<RoutineCard> {
 
   void _cancelEdit() {
     if (_editingKind == null) return;
-    // Просто закрываем поле без записи: значения не менялись.
     if (mounted) {
       setState(() => _editingKind = null);
     }
@@ -246,12 +236,10 @@ class _RoutineCardState extends State<RoutineCard> {
     final sec = parseEditable(text);
     final cur = r.blockOf(kind)?.accumulatorSeconds ?? 0;
 
-    // Разбор провалился — закрываем без записи.
     if (sec == null) {
       _cancelEdit();
       return;
     }
-    // Ничего не менялось — закрываем без записи.
     if (sec == cur) {
       _cancelEdit();
       return;
@@ -396,8 +384,6 @@ class _RoutineCardState extends State<RoutineCard> {
         ),
       ),
       body: SafeArea(
-        // Касание вне поля ввода снимает фокус — клавиатура уходит,
-        // курсор гаснет.
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,
           onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
@@ -527,7 +513,6 @@ class _RoutineCardState extends State<RoutineCard> {
           t: i18n.t,
           ticker: app.ticker,
         );
-        // Правленое время подчёркивается ВСЕГДА: и в покое, и в ходу.
         if (timeEdited) {
           pulse = Container(
             decoration: BoxDecoration(
@@ -559,7 +544,7 @@ class _RoutineCardState extends State<RoutineCard> {
             id: 'complete_${routine.id}',
             value: routine.completed,
             binary: true,
-            fg: dim,
+            fg: fg,
             bg: bg,
             signal: signal,
             overrideSize: pultSide,
@@ -579,7 +564,6 @@ class _RoutineCardState extends State<RoutineCard> {
       );
     }
 
-    // ─── Подчёркивание итога, коли правлен хоть один блок ───
     if (showCompletion && anyEdited && cornerTop != null) {
       cornerTop = Container(
         decoration: BoxDecoration(
@@ -649,7 +633,7 @@ class _RoutineCardState extends State<RoutineCard> {
           selected: routine.flags != 0,
           subsBuilder: () => _flagSubs(app, routine, i18n),
         ),
-        fg: dim,
+        fg: fg,
         bg: bg,
         signal: signal,
         overrideSize: pultSide,
@@ -664,7 +648,6 @@ class _RoutineCardState extends State<RoutineCard> {
       );
     }
 
-    // ─── Кнопка экспорта в правом нижнем углу итога ───
     Widget? cornerBottom;
     if (showExport) {
       cornerBottom = Pult(
@@ -673,7 +656,7 @@ class _RoutineCardState extends State<RoutineCard> {
           icon: Icons.ios_share,
           onTap: () => _exportOne(routine),
         ),
-        fg: dim,
+        fg: fg,
         bg: bg,
         signal: signal,
         overrideSize: pultSide,

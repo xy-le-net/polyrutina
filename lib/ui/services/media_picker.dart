@@ -18,7 +18,6 @@
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -29,9 +28,9 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
-import '../data/trace_layer.dart';
-import 'app_scope.dart';
-import 'pult_core.dart';
+import '../../data/trace_layer.dart';
+import '../core/app_scope.dart';
+import '../pults/pult_core.dart';
 
 Future<void> showMediaPicker({
   required BuildContext context,
@@ -220,6 +219,7 @@ Future<void> _addFile(AppContext app, int objectId, String slot) async {
 }
 
 // ─── Геопозиция ───
+// Отдельный файл не пишется: координаты кладутся прямо в тело следа.
 Future<void> _addGeo(AppContext app, int objectId, String slot) async {
   try {
     var perm = await Geolocator.checkPermission();
@@ -231,27 +231,21 @@ Future<void> _addGeo(AppContext app, int objectId, String slot) async {
       return;
     }
     final pos = await Geolocator.getCurrentPosition();
-    final dir = await getApplicationDocumentsDirectory();
-    final idx = app.bort.nextExportIndex('media_${objectId}_${slot}_geo');
-    final name = _safe(
-      '${app.bort.deviceId}_${objectId}_${slot}_geo_$idx.json',
-    );
-    final media = Directory(p.join(dir.path, 'media'));
-    if (!await media.exists()) await media.create(recursive: true);
-    final target = File(p.join(media.path, name));
-    await target.writeAsString(
-      jsonEncode({
-        'lat': pos.latitude,
-        'lon': pos.longitude,
-        'acc': pos.accuracy,
-        't': DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      }),
-    );
+    final bort = app.bort;
+    final idx = bort.nextExportIndex('media_${objectId}_${slot}_geo');
+    final name = _safe('${bort.deviceId}_${objectId}_${slot}_geo_$idx');
     await app.traceLayer.attachFile(
       app.journal,
       objectId: objectId,
       slot: slot,
-      file: TraceFile(kind: MediaKind.geo, path: target.path, name: name),
+      file: TraceFile(
+        kind: MediaKind.geo,
+        path: '',
+        name: name,
+        lat: pos.latitude,
+        lon: pos.longitude,
+        acc: pos.accuracy,
+      ),
     );
   } catch (_) {}
 }

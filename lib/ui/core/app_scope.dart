@@ -15,13 +15,13 @@
 
 import 'package:flutter/material.dart';
 
-import '../data/journal_layer.dart';
-import '../data/journal_types.dart';
-import '../data/operational_layer.dart';
-import '../data/routine_layer.dart';
-import '../data/trace_layer.dart';
-import '../data/ticker.dart';
-import '../data/i18n.dart';
+import '../../data/journal_layer.dart';
+import '../../data/journal_types.dart';
+import '../../data/operational_layer.dart';
+import '../../data/routine_layer.dart';
+import '../../data/trace_layer.dart';
+import '../../data/ticker.dart';
+import '../../data/i18n.dart';
 
 class AppContext {
   final OperationalLayer bort;

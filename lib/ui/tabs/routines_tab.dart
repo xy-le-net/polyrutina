@@ -19,6 +19,9 @@
 // «крестиком» (снять выделение). Подпульт для отмеченных — удалить
 // и отметить выполненным. Кнопка отчёта внизу — экспорт выбранных.
 //
+// Широкий экран (мозаика). Активные — сеткою. Затем — полоса
+// «завершено» на всю ширину. Затем — завершённые сеткою.
+//
 // Таймер перерисовывается по смене видимой единицы: покуда блок
 // идёт и его время менее минуты — каждую секунду; далее — по минуте.
 //
@@ -27,16 +30,16 @@
 
 import 'package:flutter/material.dart';
 
-import '../data/journal_types.dart';
-import '../data/routine.dart';
-import '../data/ticker.dart';
-import 'app_scope.dart';
-import 'format.dart';
-import 'pulse.dart';
-import 'pult_core.dart';
-import 'pult_tick.dart';
-import 'report.dart';
-import 'timer_text.dart';
+import '../../data/journal_types.dart';
+import '../../data/routine.dart';
+import '../../data/ticker.dart';
+import '../core/app_scope.dart';
+import '../core/format.dart';
+import '../core/timer_text.dart';
+import '../pults/pulse.dart';
+import '../pults/pult_core.dart';
+import '../pults/pult_tick.dart';
+import '../services/report.dart';
 
 class RoutinesTab extends StatefulWidget {
   const RoutinesTab({super.key});
@@ -83,7 +86,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final sec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final min = sec ~/ 60;
 
-    // Есть ли блок или смена моложе минуты? Тогда — каждую секунду.
     var subMinute = false;
     for (final r in app.routineLayer.routines) {
       final b = r.runningBlock;
@@ -351,7 +353,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
       };
     }
 
-    // ─── Подпульт одной рутины: копировать, отметить, удалить ───
     final subs = <PultSpec>[];
     subs.add(
       PultSpec(
@@ -397,22 +398,20 @@ class _RoutinesTabState extends State<RoutinesTab> {
         onTap: pulseTap,
         longSubs: () => subs,
       ),
-      fg: running ? textMain : textSoft,
+      fg: textMain,
       bg: plateBg,
       signal: accent,
       overrideSize: pultSide,
     );
 
-    // ─── Содержимое блока ───
     Widget body = Row(
       children: [
-        // Чекбокс слева — токмо в режиме выбора.
         if (_selectMode) ...[
           PultTick(
             id: 'sel_${r.id}',
             value: _selected.contains(r.id),
             binary: true,
-            fg: textSoft,
+            fg: textMain,
             bg: plateBg,
             signal: accent,
             overrideSize: pultSide,
@@ -484,7 +483,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
     );
   }
 
-  // ─── Строка смены ───
   Widget _shiftRow(
     BuildContext context,
     Color fg,
@@ -600,53 +598,101 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
         final shiftPulse = _shiftRow(context, fg, dim, bg, bgdim, signal, side);
 
-        final items = <Widget>[];
+        Widget plateOf(Routine r) => Padding(
+          padding: const EdgeInsets.all(4),
+          child: _plate(
+            context,
+            r,
+            fg: fg,
+            bg: bg,
+            bgdim: bgdim,
+            dim: dim,
+            signal: signal,
+            side: side,
+          ),
+        );
 
-        for (final r in groups.active) {
-          items.add(
-            Padding(
-              padding: const EdgeInsets.all(4),
-              child: _plate(
-                context,
-                r,
-                fg: fg,
-                bg: bg,
-                bgdim: bgdim,
-                dim: dim,
-                signal: signal,
-                side: side,
-              ),
-            ),
-          );
-        }
+        Widget body;
 
-        if (groups.done.isNotEmpty) {
-          items.add(
-            Padding(
-              padding: EdgeInsets.fromLTRB(8, side * 0.6, 8, side * 0.15),
-              child: Text(
-                i18n.t('routine.completed'),
-                style: TextStyle(color: dim, fontSize: side * 0.4),
-              ),
-            ),
+        if (groups.active.isEmpty && groups.done.isEmpty) {
+          body = Center(
+            child: Text(i18n.t('routine.none'), style: TextStyle(color: dim)),
           );
-          for (final r in groups.done) {
+        } else if (!mosaic) {
+          // ─── Узкий экран: единый список ───
+          final items = <Widget>[];
+          for (final r in groups.active) {
+            items.add(plateOf(r));
+          }
+          if (groups.done.isNotEmpty) {
             items.add(
               Padding(
-                padding: const EdgeInsets.all(4),
-                child: _plate(
-                  context,
-                  r,
-                  fg: fg,
-                  bg: bg,
-                  bgdim: bgdim,
-                  dim: dim,
-                  signal: signal,
-                  side: side,
+                padding: EdgeInsets.fromLTRB(8, side * 0.6, 8, side * 0.15),
+                child: Text(
+                  i18n.t('routine.completed'),
+                  style: TextStyle(color: dim, fontSize: side * 0.4),
                 ),
               ),
             );
+            for (final r in groups.done) {
+              items.add(plateOf(r));
+            }
           }
+          body = ListView(
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 80),
+            children: items,
+          );
+        } else {
+          // ─── Широкий экран: активные сеткою, полоса «завершено»,
+          //     завершённые сеткою ───
+          final children = <Widget>[];
+          if (groups.active.isNotEmpty) {
+            children.add(
+              GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: cols,
+                childAspectRatio: 2.5,
+                children: groups.active.map(plateOf).toList(),
+              ),
+            );
+          }
+          if (groups.done.isNotEmpty) {
+            children.add(
+              Padding(
+                padding: EdgeInsets.fromLTRB(4, side * 0.6, 4, side * 0.15),
+                child: Row(
+                  children: [
+                    Expanded(child: Divider(color: dim, thickness: 1)),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: side * 0.3),
+                      child: Text(
+                        i18n.t('routine.completed'),
+                        style: TextStyle(color: dim, fontSize: side * 0.4),
+                      ),
+                    ),
+                    Expanded(child: Divider(color: dim, thickness: 1)),
+                  ],
+                ),
+              ),
+            );
+            children.add(
+              GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: cols,
+                childAspectRatio: 2.5,
+                children: groups.done.map(plateOf).toList(),
+              ),
+            );
+          }
+          body = SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 80),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
+            ),
+          );
         }
 
         return Stack(
@@ -654,29 +700,9 @@ class _RoutinesTabState extends State<RoutinesTab> {
             Column(
               children: [
                 shiftPulse,
-                Expanded(
-                  child: items.isEmpty
-                      ? Center(
-                          child: Text(
-                            i18n.t('routine.none'),
-                            style: TextStyle(color: dim),
-                          ),
-                        )
-                      : (mosaic
-                            ? GridView.count(
-                                padding: const EdgeInsets.fromLTRB(8, 4, 8, 80),
-                                crossAxisCount: cols,
-                                childAspectRatio: 2.5,
-                                children: items,
-                              )
-                            : ListView(
-                                padding: const EdgeInsets.fromLTRB(8, 4, 8, 80),
-                                children: items,
-                              )),
-                ),
+                Expanded(child: body),
               ],
             ),
-            // ─── Нижний левый пульт: «плюс» либо «крестик» ───
             Positioned(
               left: 12,
               bottom: 12,
@@ -692,7 +718,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
                 overrideSize: side,
               ),
             ),
-            // ─── Нижний правый пульт отчёта ───
             Positioned(
               right: 12,
               bottom: 12,
@@ -709,7 +734,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
                 overrideSize: side,
               ),
             ),
-            // ─── В режиме выбора: средний пульт для отмеченных ───
             if (_selectMode)
               Positioned(
                 left: 0,

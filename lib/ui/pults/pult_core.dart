@@ -8,7 +8,7 @@
 
 import 'package:flutter/material.dart';
 
-import 'app_scope.dart';
+import '../core/app_scope.dart';
 
 class PultSpec {
   final String id;

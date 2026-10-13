@@ -25,9 +25,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../data/trace_layer.dart';
-import 'app_scope.dart';
-import 'pult_core.dart';
+import '../../data/trace_layer.dart';
+import '../core/app_scope.dart';
+import '../pults/pult_core.dart';
 
 class MediaViewer extends StatefulWidget {
   final int traceId;

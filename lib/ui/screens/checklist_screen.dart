@@ -27,10 +27,10 @@
 
 import 'package:flutter/material.dart';
 
-import '../data/trace_layer.dart';
-import 'app_scope.dart';
-import 'pult_core.dart';
-import 'pult_tick.dart';
+import '../../data/trace_layer.dart';
+import '../core/app_scope.dart';
+import '../pults/pult_core.dart';
+import '../pults/pult_tick.dart';
 
 typedef _Item = ({String text, bool done});
 

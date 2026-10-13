@@ -23,10 +23,10 @@ import 'package:drift/drift.dart' as drift;
 import 'package:flutter/material.dart';
 import 'package:table_view_ex/table_view_ex.dart';
 
-import '../data/database.dart';
-import '../data/journal_types.dart';
-import 'app_scope.dart';
-import 'pult_core.dart';
+import '../../data/database.dart';
+import '../../data/journal_types.dart';
+import '../core/app_scope.dart';
+import '../pults/pult_core.dart';
 
 class JournalTab extends StatefulWidget {
   const JournalTab({super.key});

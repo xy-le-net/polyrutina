@@ -29,10 +29,10 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../data/routine.dart';
-import '../data/trace_layer.dart';
-import 'app_scope.dart';
-import 'format.dart';
+import '../../data/routine.dart';
+import '../../data/trace_layer.dart';
+import '../core/app_scope.dart';
+import '../core/format.dart';
 
 class ReportBuilder {
   // ─── Замена запретных знаков в имени файла ───

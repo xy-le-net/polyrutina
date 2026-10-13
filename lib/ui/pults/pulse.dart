@@ -11,10 +11,10 @@
 
 import 'package:flutter/material.dart';
 
-import '../data/ticker.dart';
-import 'format.dart';
+import '../../data/ticker.dart';
+import '../core/format.dart';
+import '../core/timer_text.dart';
 import 'pult_core.dart';
-import 'timer_text.dart';
 
 class Pulse extends StatelessWidget {
   final PultSpec spec;
