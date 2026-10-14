@@ -1,20 +1,27 @@
 {
-  "_notes": "Умолчания. Темы: themes.<имя>.{bg,bgdim,fg,signal}. Мягкий текст (dim) един для обеих гамм. Коэффициенты — доли от базовой величины side.",
-
-  "dim": "#8F8F8F",
+  "_notes": "Умолчания. Темы: themes.<имя>.{bg,bgdim,dim,fg,signal}. Своя тема (custom) — с инклюзивною палитрою: цвета различимы при протанопии, дейтеранопии, тританопии. Коэффициенты — доли от базовой величины side.",
 
   "themes": {
     "day": {
       "bg": "#EFEFEF",
       "bgdim": "#E4E4E4",
+      "dim": "#8F8F8F",
       "fg": "#101010",
       "signal": "#000000"
     },
     "night": {
       "bg": "#101010",
       "bgdim": "#1C1C1C",
+      "dim": "#8F8F8F",
       "fg": "#EFEFEF",
       "signal": "#FFFFFF"
+    },
+    "custom": {
+      "bg": "#0F1416",
+      "bgdim": "#1B2225",
+      "dim": "#8A9296",
+      "fg": "#E8EDEF",
+      "signal": "#5AA9E6"
     }
   },
 
@@ -23,7 +30,7 @@
   "scale": 1.4,
   "lang": "ru",
   "tab": 4,
-  "anchor": "tr",
+  "anchor": "tl",
   "labels_system": true,
   "labels_field": true,
   "block_artel": false,

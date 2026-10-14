@@ -3,7 +3,14 @@
 // виджет Pult.
 //
 // compactLabel — подпись вплотную к тексту (для счётчиков медиа).
-// Внутри слоя подтверждение тоже работает (confirm).
+//
+// Подтверждение (confirm). Внутри панели подпультов подтверждаемый
+// пульт при касании не закрывает панель, а вырастает на четверть
+// (side * 1.25) на своём месте. Прочие пульты при этом раздвигаются
+// естественным ходом Column. Повторное касание по увеличенному —
+// исполнить. Касание мимо — отмена.
+//
+// Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -77,18 +84,25 @@ class PultState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ─── Запрос подтверждения ───
+  // Панель подпультов не закрывается: подтверждаемый пульт вырастет
+  // на месте. Вне панели — отдельный случай, когда родительский
+  // пульт сам просит подтверждения (тогда parentKey сбрасывается).
   void askConfirm(
     String id,
     GlobalKey key,
     VoidCallback action,
-    IconData icon,
-  ) {
+    IconData icon, {
+    bool keepPanel = false,
+  }) {
     confirmingId = id;
     confirmingKey = key;
     confirmingAction = action;
     confirmingIcon = icon;
-    parentKey = null;
-    subsBuilder = null;
+    if (!keepPanel) {
+      parentKey = null;
+      subsBuilder = null;
+    }
     notifyListeners();
   }
 
@@ -149,9 +163,14 @@ class _PultState extends State<Pult> {
   @override
   Widget build(BuildContext context) {
     final state = PultScope.of(context);
-    final side =
+    final baseSide =
         widget.overrideSize ??
         (widget.insideLayer ? state.smallSide : state.side);
+
+    // Подтверждаемый пульт — на четверть больше.
+    final bool confirming = state.isConfirming(widget.spec.id);
+    final side = confirming ? baseSide * 1.25 : baseSide;
+
     final selected = widget.spec.selected;
 
     final coreColor = selected ? widget.signal : widget.fg;
@@ -229,7 +248,6 @@ class _PultState extends State<Pult> {
       )..layout();
       final textW = painter.width * 1.2;
       final desired = textW + 12;
-      // compactLabel: подпись вплотную к тексту (для счётчиков медиа).
       final labelWidth = widget.spec.compactLabel
           ? desired.clamp(side * 0.8, maxLabelW)
           : desired.clamp(side * 1.5, maxLabelW);
@@ -280,13 +298,52 @@ class _PultState extends State<Pult> {
     if (widget.insideLayer) {
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => _handleTap(state),
+        onTap: () {
+          _pulseBort();
+          if (confirming) {
+            state.runConfirm(widget.spec.id);
+            return;
+          }
+          if (widget.spec.confirm) {
+            if (widget.spec.onTap != null) {
+              state.askConfirm(
+                widget.spec.id,
+                _coreKey,
+                widget.spec.onTap!,
+                widget.spec.icon,
+                keepPanel: true,
+              );
+            }
+            return;
+          }
+          widget.spec.onTap?.call();
+          if (!widget.spec.stayOpen) state.close();
+        },
         child: content,
       );
     }
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => _handleTap(state),
+      onTap: () {
+        _pulseBort();
+        if (widget.spec.confirm) {
+          if (state.isConfirming(widget.spec.id)) return;
+          if (widget.spec.onTap != null) {
+            state.askConfirm(
+              widget.spec.id,
+              _coreKey,
+              widget.spec.onTap!,
+              widget.spec.icon,
+            );
+          }
+          return;
+        }
+        if (widget.spec.subsBuilder != null) {
+          state.open(_coreKey, widget.spec.subsBuilder!);
+          return;
+        }
+        widget.spec.onTap?.call();
+      },
       onLongPress: () {
         FocusManager.instance.primaryFocus?.unfocus();
         _pulseBort();
@@ -298,49 +355,5 @@ class _PultState extends State<Pult> {
       },
       child: content,
     );
-  }
-
-  void _handleTap(PultState state) {
-    FocusManager.instance.primaryFocus?.unfocus();
-    _pulseBort();
-
-    if (widget.insideLayer) {
-      // Подтверждение работает и внутри слоя.
-      if (widget.spec.confirm) {
-        if (state.isConfirming(widget.spec.id)) return;
-        if (widget.spec.onTap != null) {
-          state.askConfirm(
-            widget.spec.id,
-            _coreKey,
-            widget.spec.onTap!,
-            widget.spec.icon,
-          );
-        }
-        return;
-      }
-      widget.spec.onTap?.call();
-      if (!widget.spec.stayOpen) state.close();
-      return;
-    }
-
-    if (widget.spec.confirm) {
-      if (state.isConfirming(widget.spec.id)) return;
-      if (widget.spec.onTap != null) {
-        state.askConfirm(
-          widget.spec.id,
-          _coreKey,
-          widget.spec.onTap!,
-          widget.spec.icon,
-        );
-      }
-      return;
-    }
-
-    if (widget.spec.subsBuilder != null) {
-      state.open(_coreKey, widget.spec.subsBuilder!);
-      return;
-    }
-
-    widget.spec.onTap?.call();
   }
 }

@@ -1,13 +1,18 @@
 // ═══════════════════════════════════════════════════════════════════
 // pult_layer.dart — слой поверх всего приложения.
 //
-// Подпульты. По нажатию пульта с subsBuilder открывается всплывающая
-// панель у левого либо правого края экрана — смотря где исходный
-// пульт. Внутри — вертикальная колонка пультов, прокручивается.
-// Тап по затемнённой подложке — закрыть.
+// Подпульты. По нажатию пульта с subsBuilder открывается панель
+// подпультов (PultSubsPanel): вертикальная колонка у левого либо
+// правого края, смотря где исходный пульт.
 //
-// Подтверждение (confirm). Увеличенный пульт показывается над
-// родителем — отдельным слоем.
+// Подтверждение (confirm). Внутри панели подтверждаемый пульт
+// вырастает на месте — отдельного слоя нет. Вне панели (пульт сам
+// просит подтверждения) — тот же рост, слой не нужен.
+//
+// Кнопка «назад». PopScope перехватывает: коли панель открыта либо
+// идёт подтверждение — закрыть, не покидая экран.
+//
+// Тап по затемнённой подложке — закрыть.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -15,6 +20,7 @@
 import 'package:flutter/material.dart';
 
 import 'pult_core.dart';
+import 'pult_subs_panel.dart';
 
 class PultLayer extends StatefulWidget {
   final Widget child;
@@ -64,18 +70,24 @@ class _PultLayerState extends State<PultLayer> {
   @override
   Widget build(BuildContext context) {
     final state = PultScope.of(context);
+    final open = state.subsBuilder != null || state.confirmingId != null;
 
-    return Stack(
-      key: _layerKey,
-      children: [
-        widget.child,
-        if (state.subsBuilder != null) _buildSubs(context, state),
-        if (state.confirmingId != null) _buildConfirm(context, state),
-      ],
+    return PopScope(
+      canPop: !open,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) state.close();
+      },
+      child: Stack(
+        key: _layerKey,
+        children: [
+          widget.child,
+          if (state.subsBuilder != null) _buildSubs(context, state),
+        ],
+      ),
     );
   }
 
-  // ─── Всплывающая панель подпультов ───
+  // ─── Панель подпультов ───
   Widget _buildSubs(BuildContext context, PultState state) {
     final subs = state.subsBuilder!.call();
     if (subs.isEmpty) return const SizedBox.shrink();
@@ -88,34 +100,14 @@ class _PultLayerState extends State<PultLayer> {
     final side = state.smallSide;
 
     // Сторона панели: пульт в правой половине — панель справа,
-    // иначе слева. Подписи встают с внутренней стороны (к центру).
+    // иначе слева. Подписи встают к центру.
     final parentCenter = local.dx + size.width / 2;
     final fromRight = parentCenter > screenW / 2;
 
-    final panelWidth = side + 24;
-
-    final items = <Widget>[];
-    for (final s in subs) {
-      items.add(
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-          child: Pult(
-            spec: s,
-            fg: widget.fg,
-            bg: widget.bg,
-            signal: widget.signal,
-            insideLayer: true,
-            overrideSize: side,
-            // Подпись с внутренней стороны панели.
-            labelSideLeft: fromRight,
-          ),
-        ),
-      );
-    }
+    final panelWidth = side + 160;
 
     return Stack(
       children: [
-        // Подложка: тап мимо — закрыть.
         Positioned.fill(
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
@@ -123,7 +115,6 @@ class _PultLayerState extends State<PultLayer> {
             child: Container(color: widget.bg.withAlpha(200)),
           ),
         ),
-        // Панель.
         Positioned(
           top: 0,
           bottom: 0,
@@ -133,102 +124,18 @@ class _PultLayerState extends State<PultLayer> {
           child: Container(
             color: widget.bg,
             child: SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: fromRight
-                      ? CrossAxisAlignment.end
-                      : CrossAxisAlignment.start,
-                  children: items,
-                ),
+              child: PultSubsPanel(
+                subs: subs,
+                fg: widget.fg,
+                bg: widget.bg,
+                signal: widget.signal,
+                side: side,
+                labelSideLeft: fromRight,
               ),
             ),
           ),
         ),
       ],
     );
-  }
-
-  // ─── Подтверждение: увеличенный пульт над родителем ───
-  Widget _buildConfirm(BuildContext context, PultState state) {
-    final local = _parentLocal(state.confirmingKey);
-    final size = _parentSize(state.confirmingKey);
-    if (local == null || size == null) return const SizedBox.shrink();
-
-    final side = state.side * 1.3;
-    final screenW = MediaQuery.of(context).size.width;
-    final screenH = MediaQuery.of(context).size.height;
-
-    double left = local.dx + (size.width - side) / 2;
-    if (left < 8) left = 8;
-    if (left + side > screenW - 8) left = screenW - 8 - side;
-
-    double top = local.dy - side - 8;
-    if (top < 8) top = local.dy + size.height + 8;
-    if (top + side > screenH - 8) top = screenH - 8 - side;
-
-    final icon = state.confirmingIcon ?? Icons.delete_forever;
-
-    return Stack(
-      children: [
-        // Подложка: тап мимо — отмена.
-        Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => state.close(),
-            child: Container(color: widget.bg.withAlpha(160)),
-          ),
-        ),
-        Positioned(
-          left: left,
-          top: top,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => state.runConfirm(state.confirmingId!),
-            child: _confirmBody(icon, side),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _confirmBody(IconData icon, double side) {
-    final coreColor = widget.signal;
-    final iconColor = widget.bg;
-    final borderW = side / 16;
-    final rOuter = side * 0.18;
-    final rInner = side * 0.14;
-    final rCore = side * 0.10;
-
-    Widget core = Container(
-      width: side,
-      height: side,
-      decoration: BoxDecoration(
-        color: coreColor,
-        borderRadius: BorderRadius.circular(rCore),
-      ),
-      child: Center(
-        child: Icon(icon, color: iconColor, size: side * 0.5),
-      ),
-    );
-
-    core = Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(rInner),
-        border: Border.all(color: iconColor, width: borderW),
-      ),
-      child: core,
-    );
-
-    core = Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(rOuter),
-        border: Border.all(color: coreColor, width: borderW),
-      ),
-      child: core,
-    );
-
-    return core;
   }
 }

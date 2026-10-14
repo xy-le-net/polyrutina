@@ -1,15 +1,10 @@
 // ═══════════════════════════════════════════════════════════════════
-// root_pult.dart — корневой пульт (компас) и панель вкладок.
+// root_pult.dart — корневой пульт (компас) и меню вкладок.
 //
-// Корневой пульт жёстко привязан к левому верхнему углу: без
-// перетаскивания, без выбора якоря. Размер — side.
-//
-// Касание открывает панель вкладок: вертикальная колонка у левого
-// края, как подпульт медиа. Тап мимо — закрыть, тап по вкладке —
-// переключить и закрыть.
-//
-// Панель рисуется тут же, в Stack, локально для виджета. Никаких
-// внешних слоёв и перетаскивания.
+// Корневой пульт жёстко привязан к левому верхнему углу.
+// Касание открывает меню вкладок — выезжает СВЕРХУ экрана, полосою
+// сверху вниз с горизонтальною прокруткою (панель PultSubsPanel).
+// Тап мимо — закрыть.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -17,6 +12,7 @@
 import 'package:flutter/material.dart';
 
 import 'pult_core.dart';
+import 'pult_subs_panel.dart';
 
 class RootTabItem {
   final IconData icon;
@@ -67,36 +63,27 @@ class _RootPultState extends State<RootPult> {
 
     final side = widget.side;
 
-    // ─── Панель вкладок у левого края ───
-    final items = <Widget>[];
+    // ─── Меню вкладок: сверху, вертикально ───
+    final specs = <PultSpec>[];
     for (var i = 0; i < widget.tabs.length; i++) {
       final t = widget.tabs[i];
       final active = widget.activeTab == i;
       final label = widget.labelsSystem ? widget.translate(t.labelKey) : null;
-      items.add(
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-          child: Pult(
-            spec: PultSpec(
-              id: 'tab_$i',
-              icon: t.icon,
-              label: label,
-              selected: active,
-              onTap: () {
-                setState(() => _open = false);
-                widget.onSwitchTab(i);
-              },
-            ),
-            fg: widget.fg,
-            bg: widget.bg,
-            signal: widget.signal,
-            overrideSize: side,
-          ),
+      specs.add(
+        PultSpec(
+          id: 'tab_$i',
+          icon: t.icon,
+          label: label,
+          selected: active,
+          onTap: () {
+            setState(() => _open = false);
+            widget.onSwitchTab(i);
+          },
         ),
       );
     }
 
-    final panelWidth = side + 160;
+    final panelHeight = side + 80;
 
     return Stack(
       children: [
@@ -110,18 +97,21 @@ class _RootPultState extends State<RootPult> {
         ),
         Positioned(
           top: 0,
-          bottom: 0,
           left: 0,
-          width: panelWidth,
+          right: 0,
+          height: panelHeight,
           child: Container(
             color: widget.bg,
             child: SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: items,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: PultSubsPanel(
+                  subs: specs,
+                  fg: widget.fg,
+                  bg: widget.bg,
+                  signal: widget.signal,
+                  side: side,
+                  labelSideLeft: false,
                 ),
               ),
             ),

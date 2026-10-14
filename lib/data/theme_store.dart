@@ -2,8 +2,7 @@
 // theme_store.dart — цвета и темы.
 //
 // Действующий набор из пяти ролей: bg, bgdim, dim, fg, signal.
-// Роли bg, bgdim, fg, signal — парные по темам (day, night).
-// dim — единый для обеих гамм (средний серый).
+// Все пять ролей — внутри каждой темы. Темы: day, night, custom.
 //
 // Темы образуют пары: day ↔ night. Сигнальный объект берёт цвета
 // противоположной темы целиком (colorsForOpposite).
@@ -25,7 +24,7 @@ class ThemeStore {
   Color signal = const Color(0xFF000000);
 
   // ─── Все темы ───
-  // Имя → {bg, bgdim, fg, signal}. dim — общий.
+  // Имя → {bg, bgdim, dim, fg, signal}.
   Map<String, Map<String, Color>> themes = {};
 
   // Имя действующей темы. «system» — особая.
@@ -43,6 +42,7 @@ class ThemeStore {
         themes[k.toString()] = {
           'bg': parseColor(v['bg'] as String?) ?? bg,
           'bgdim': parseColor(v['bgdim'] as String?) ?? bgdim,
+          'dim': parseColor(v['dim'] as String?) ?? dim,
           'fg': parseColor(v['fg'] as String?) ?? fg,
           'signal': parseColor(v['signal'] as String?) ?? signal,
         };
@@ -62,9 +62,9 @@ class ThemeStore {
     if (t == null) return;
     bg = t['bg']!;
     bgdim = t['bgdim']!;
+    dim = t['dim']!;
     fg = t['fg']!;
     signal = t['signal']!;
-    // dim — общий, не меняется.
   }
 
   void setSystemBrightness(Brightness b) {
@@ -79,10 +79,11 @@ class ThemeStore {
     }
     if (name == 'day') return 'night';
     if (name == 'night') return 'day';
+    // Своя тема — противоположной считается ночь.
     return 'night';
   }
 
-  // Пятёрка цветов противоположной темы (четыре роли + общий dim).
+  // Пятёрка цветов противоположной темы.
   Map<String, Color>? colorsForOpposite() {
     final name = oppositeName();
     final t = themes[name];
@@ -90,7 +91,7 @@ class ThemeStore {
     return {
       'bg': t['bg']!,
       'bgdim': t['bgdim']!,
-      'dim': dim,
+      'dim': t['dim']!,
       'fg': t['fg']!,
       'signal': t['signal']!,
     };
@@ -108,7 +109,7 @@ class ThemeStore {
     if (c == null) return true;
     themes.putIfAbsent(
       name,
-      () => {'bg': bg, 'bgdim': bgdim, 'fg': fg, 'signal': signal},
+      () => {'bg': bg, 'bgdim': bgdim, 'dim': dim, 'fg': fg, 'signal': signal},
     );
     themes[name]![role] = c;
     final resolved = themeName == 'system'
@@ -118,9 +119,15 @@ class ThemeStore {
     return true;
   }
 
-  // ─── Ключ dim ───
+  // ─── Ключ dim (ныне без отдельного применения — dim внутри темы) ───
+  // Оставлен для совместимости с прежним ключом в файле борта:
+  // при загрузке применяется к теме, коя разрешится.
   bool applyDim(String value) {
-    dim = parseColor(value) ?? dim;
+    final c = parseColor(value);
+    if (c == null) return true;
+    // Кладём во все темы? Нет: dim — часть темы. Правка ключа 'dim'
+    // в рубке не применяется (поля нет). При загрузке старого файла
+    // — игнор.
     return true;
   }
 
@@ -131,6 +138,7 @@ class ThemeStore {
       out[e.key] = {
         'bg': colorToHex(e.value['bg']!),
         'bgdim': colorToHex(e.value['bgdim']!),
+        'dim': colorToHex(e.value['dim']!),
         'fg': colorToHex(e.value['fg']!),
         'signal': colorToHex(e.value['signal']!),
       };
@@ -140,10 +148,10 @@ class ThemeStore {
 
   Map<String, String> toFlatStrings() {
     final out = <String, String>{};
-    out['dim'] = colorToHex(dim);
     for (final e in themes.entries) {
       out['theme.${e.key}.bg'] = colorToHex(e.value['bg']!);
       out['theme.${e.key}.bgdim'] = colorToHex(e.value['bgdim']!);
+      out['theme.${e.key}.dim'] = colorToHex(e.value['dim']!);
       out['theme.${e.key}.fg'] = colorToHex(e.value['fg']!);
       out['theme.${e.key}.signal'] = colorToHex(e.value['signal']!);
     }
@@ -157,14 +165,23 @@ class ThemeStore {
       'day': {
         'bg': const Color(0xFFEFEFEF),
         'bgdim': const Color(0xFFE4E4E4),
+        'dim': const Color(0xFF8F8F8F),
         'fg': const Color(0xFF101010),
         'signal': const Color(0xFF000000),
       },
       'night': {
         'bg': const Color(0xFF101010),
         'bgdim': const Color(0xFF1C1C1C),
+        'dim': const Color(0xFF8F8F8F),
         'fg': const Color(0xFFEFEFEF),
         'signal': const Color(0xFFFFFFFF),
+      },
+      'custom': {
+        'bg': const Color(0xFF0F1416),
+        'bgdim': const Color(0xFF1B2225),
+        'dim': const Color(0xFF8A9296),
+        'fg': const Color(0xFFE8EDEF),
+        'signal': const Color(0xFF5AA9E6),
       },
     };
   }

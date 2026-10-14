@@ -3,28 +3,26 @@
 //
 // Фасад над тремя модулями: ThemeStore (цвета и темы), BortTime
 // (время активной работы), DraftsStore (черновики полей). Здесь же
-// остаются коэффициенты размеров, вкладка, якорь, смена, метка
-// экспорта, свёрнутость блоков рубки, счётчики экспорта, признак
-// первого запуска, идентификатор устройства и набор слотов,
-// показываемых в карточке рутины по умолчанию.
+// остаются коэффициенты размеров, вкладка, смена, метка экспорта,
+// свёрнутость блоков рубки, счётчики экспорта, признак первого
+// запуска, идентификатор устройства и набор слотов, показываемых
+// в карточке рутины по умолчанию.
+//
+// Цвета: пять ролей (bg, bgdim, dim, fg, signal) — внутри каждой
+// темы. Отдельного общего dim нет.
 //
 // defaultSlots — список родов слотов, отображаемых в карточке
-// независимо от содержимого. «Описание» — вне списка, всегда
-// показывается. «Итог» — тоже вне списка: показывается, коли
-// есть пульсы. Прочие слоты показываются, ежели сей список
-// содержит их род.
+// независимо от содержимого. «Описание», «итог» — вне списка.
 //
 // В журнал сей слой НЕ пишет и НЕ читает из журнала: настройки
 // и состояние вида живут токмо в файле борта. Умолчания — из
 // assets/defaults.json. Потеря файла — сброс к умолчаниям.
 //
 // Смена — локальная суточная мера: считается от последней
-// прошедшей полуночи. Записи рода «актор» (начало и конец смены)
-// пишутся в журнал для хронологии, но состояния слоя не двигают.
+// прошедшей полуночи.
 //
 // Идентификатор устройства берётся у системы; коли недоступен —
-// случайный, заводится при первом пуске и хранится в install.json
-// рядом с меткою первого запуска.
+// случайный, заводится при первом пуске и хранится в install.json.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -75,7 +73,7 @@ class OperationalLayer extends ChangeNotifier {
   double scale = 1.4;
   String lang = 'ru';
   int tab = 4;
-  String anchor = 'tr';
+  String anchor = 'tl';
   bool labelsSystem = true;
   bool labelsField = true;
   bool blockArtel = false;
@@ -88,8 +86,6 @@ class OperationalLayer extends ChangeNotifier {
   Map<int, Set<String>> collapsedBlocks = {};
 
   // ─── Слоты по умолчанию ───
-  // Роды слотов, показываемых в карточке рутины независимо от
-  // содержимого. «Описание» и «итог» — вне сего списка.
   Set<String> defaultSlots = {'work'};
 
   // Счётчики экспорта: {«ГГГГММДД»: {ключ объекта: индекс}}.
@@ -222,7 +218,6 @@ class OperationalLayer extends ChangeNotifier {
     try {
       final raw = await rootBundle.loadString('assets/defaults.json');
       final data = jsonDecode(raw) as Map<String, dynamic>;
-      _themes.dim = parseColor(data['dim'] as String?) ?? _themes.dim;
       final t = data['themes'];
       if (t is Map) _themes.parseThemes(t);
       _themes.themeName = data['theme'] as String? ?? _themes.themeName;
@@ -242,7 +237,6 @@ class OperationalLayer extends ChangeNotifier {
           (data['selected_flags'] as num?)?.toInt() ?? selectedFlags;
       _bortTime.midnight = data['midnight'] as String? ?? _bortTime.midnight;
 
-      // Слоты по умолчанию: список строк из умолчаний.
       final ds = data['default_slots'];
       if (ds is List) {
         defaultSlots = ds.map((e) => e.toString()).toSet();
@@ -269,7 +263,6 @@ class OperationalLayer extends ChangeNotifier {
     try {
       final raw = await _file!.readAsString();
       final data = jsonDecode(raw) as Map<String, dynamic>;
-      _themes.dim = parseColor(data['dim'] as String?) ?? _themes.dim;
       final t = data['themes'];
       if (t is Map) _themes.parseThemes(t);
       _themes.themeName = data['theme'] as String? ?? _themes.themeName;
@@ -291,7 +284,6 @@ class OperationalLayer extends ChangeNotifier {
       _bortTime.loadJson(data);
       _draftsStore.loadJson(data);
 
-      // Слоты по умолчанию.
       final ds = data['default_slots'];
       if (ds is List) {
         defaultSlots = ds.map((e) => e.toString()).toSet();
@@ -575,10 +567,6 @@ class OperationalLayer extends ChangeNotifier {
 
   // ─── Применение одного ключа ───
   void _apply(String key, String value) {
-    if (key == 'dim') {
-      _themes.applyDim(value);
-      return;
-    }
     if (_themes.applyThemeKey(key, value)) return;
 
     switch (key) {
@@ -683,7 +671,6 @@ class OperationalLayer extends ChangeNotifier {
       ecOut[d.key] = Map<String, int>.from(d.value);
     }
     final data = <String, dynamic>{
-      'dim': colorToHex(_themes.dim),
       'themes': _themes.toJson(),
       'theme': _themes.themeName,
       'scale': scale,

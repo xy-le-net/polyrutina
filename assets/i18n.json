@@ -59,6 +59,10 @@
     "theme.system": "как в системе",
     "theme.day": "день",
     "theme.night": "ночь",
+    "theme.custom": "своя",
+
+    "lang.ru": "русский",
+    "lang.en": "english",
 
     "bort.theme": "тема",
     "bort.bg": "фон",
@@ -71,6 +75,8 @@
     "bort.labels_system": "подписи системные",
     "bort.labels_field": "подписи полевые",
     "bort.midnight": "полночь",
+    "bort.shift": "смена",
+    "bort.default_slots": "слоты по умолчанию",
 
     "bort.k_pult": "размер пульта",
     "bort.k_pult_small": "малый пульт",
@@ -92,7 +98,6 @@
     "bort.reset": "сброс",
     "bort.duplicate": "дублировать",
     "bort.import": "приём",
-    "bort.default_slots": "слоты по умолчанию",
     "bort.select": "выбрать",
     "bort.deselect": "снять выделение",
 
@@ -189,6 +194,10 @@
     "theme.system": "system",
     "theme.day": "day",
     "theme.night": "night",
+    "theme.custom": "custom",
+
+    "lang.ru": "русский",
+    "lang.en": "english",
 
     "bort.theme": "theme",
     "bort.bg": "background",
@@ -201,6 +210,8 @@
     "bort.labels_system": "system labels",
     "bort.labels_field": "field labels",
     "bort.midnight": "midnight",
+    "bort.shift": "shift",
+    "bort.default_slots": "default slots",
 
     "bort.k_pult": "pult size",
     "bort.k_pult_small": "small pult",
@@ -222,7 +233,6 @@
     "bort.reset": "reset",
     "bort.duplicate": "duplicate",
     "bort.import": "import",
-    "bort.default_slots": "default slots",
     "bort.select": "select",
     "bort.deselect": "deselect",
 

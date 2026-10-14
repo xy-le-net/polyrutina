@@ -20,6 +20,9 @@
 // в слоте. Справа от пульта — число. Касание открывает просмотр
 // последнего добавленного.
 //
+// Цвет пульсов — от блока (fg), а не dim: в блоке соседние пульсы
+// (флаг, показать все) стоят в fg. Единообразие.
+//
 // Очистка поля. Коли текст был и стал пуст — тотчас запись правки
 // с пустым телом. Пульт отправки гаснет.
 //
@@ -356,7 +359,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
                     selected: chkSelected,
                     onTap: _openChecklist,
                   ),
-                  fg: widget.dim,
+                  fg: widget.fg,
                   bg: widget.bg,
                   signal: widget.signal,
                   overrideSize: pultSide,
@@ -369,7 +372,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
                     selected: canSend,
                     onTap: canSend ? _send : _openMediaPicker,
                   ),
-                  fg: widget.dim,
+                  fg: widget.fg,
                   bg: widget.bg,
                   signal: widget.signal,
                   overrideSize: pultSide,
@@ -398,7 +401,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
                         if (idx >= 0) _openMediaViewer(files, idx);
                       },
                     ),
-                    fg: widget.dim,
+                    fg: widget.fg,
                     bg: widget.bg,
                     signal: widget.signal,
                     overrideSize: pultSide,
