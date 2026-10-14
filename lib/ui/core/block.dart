@@ -147,13 +147,11 @@ class Block extends StatelessWidget {
                 ),
               ),
             ),
-          // Пульс — правый нижний угол.
+          // Пульс — правый нижний угол. По тому же краю, что и
+          // верхний: right = pad (совпадает с концом паддинга,
+          // где выстроен cornerRightTop), bottom = pad.
           if (cornerRightBottom != null)
-            Positioned(
-              right: pad * 0.5,
-              bottom: pad * 0.5,
-              child: cornerRightBottom!,
-            ),
+            Positioned(right: pad, bottom: pad, child: cornerRightBottom!),
         ],
       ),
     );

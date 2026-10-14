@@ -17,11 +17,11 @@
       "signal": "#FFFFFF"
     },
     "custom": {
-      "bg": "#0F1416",
-      "bgdim": "#1B2225",
-      "dim": "#8A9296",
-      "fg": "#E8EDEF",
-      "signal": "#5AA9E6"
+      "bg": "#0E1D26",
+      "bgdim": "#192B36",
+      "dim": "#7F9198",
+      "fg": "#E7EEF1",
+      "signal": "#DBA85E"
     }
   },
 

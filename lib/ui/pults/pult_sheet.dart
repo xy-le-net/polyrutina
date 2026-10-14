@@ -10,6 +10,13 @@
 // колонка пультов у левого края, шириною side + 24. Выезд —
 // SlideTransition от левого края.
 //
+// Обработка касания. Внутренний Pult имеет свой GestureDetector
+// с opaque-поведением и перехватывал бы жест у внешнего; посему
+// Pult обёрнут в IgnorePointer, а тап ловится внешним
+// GestureDetector. Сей приём единообразен для всех пунктов листа;
+// вложенные подпульты (subsBuilder, longSubs) здесь не открываются:
+// перечень плоский.
+//
 // Подтверждение (confirm). Подтверждаемый пульт при касании
 // вырастает на четверть на своём месте. Повторное касание по
 // увеличенному — исполнить и закрыть лист. Касание по иному пульту
@@ -25,6 +32,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../core/app_scope.dart';
 import 'pult_core.dart';
 
 Future<void> showPultSheet({
@@ -118,6 +126,12 @@ class _SheetBodyState extends State<_SheetBody> {
     cb?.call();
   }
 
+  void _pulse() {
+    try {
+      AppScope.of(context).pulseBort();
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     final items = <Widget>[];
@@ -146,13 +160,20 @@ class _SheetBodyState extends State<_SheetBody> {
           padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () => _onTap(s),
-            child: Pult(
-              spec: spec,
-              fg: widget.fg,
-              bg: widget.bg,
-              signal: widget.signal,
-              overrideSize: sSide,
+            onTap: () {
+              _pulse();
+              _onTap(s);
+            },
+            // Внутренний Pult обёрнут: его собственный GestureDetector
+            // не должен перехватывать жест у сего внешнего.
+            child: IgnorePointer(
+              child: Pult(
+                spec: spec,
+                fg: widget.fg,
+                bg: widget.bg,
+                signal: widget.signal,
+                overrideSize: sSide,
+              ),
             ),
           ),
         ),

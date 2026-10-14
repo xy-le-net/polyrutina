@@ -134,6 +134,12 @@ class _ShiftRowState extends State<ShiftRow> {
       );
     }
 
+    // «Идёт отсчёт» — не одно только onShift: после ручной правки
+    // времени (setShiftTime) shiftStartedAt обнуляется, отсчёт
+    // стоит, а двоеточие мигать не должно. Смена сама по себе
+    // остаётся открытою.
+    final bool ticking = bort.onShift && bort.shiftStartedAt != null;
+
     Widget pulse = Pulse(
       spec: PultSpec(
         id: 'shift',
@@ -146,7 +152,7 @@ class _ShiftRowState extends State<ShiftRow> {
         onLongPress: () => _startEdit(bort.shiftSecondsNow),
       ),
       seconds: bort.shiftSecondsNow,
-      running: bort.onShift,
+      running: ticking,
       fg: fg,
       dim: dim,
       bg: bg,

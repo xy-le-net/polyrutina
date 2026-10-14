@@ -178,12 +178,25 @@ class ThemeStore {
         'fg': const Color(0xFFEFEFEF),
         'signal': const Color(0xFFFFFFFF),
       },
+      // Своя тема — с инклюзивною палитрою. Сигнальный цвет —
+      // голубой Okabe-Ito (#56B4E9): не задействует красно-зелёный
+      // канал, оттого различим при протанопии и дейтеранопии;
+      // при тританопии даёт контраст к тёмному фону; при чёрно-белом
+      // отображении и на ярком свету сохраняет достаточную светлоту
+      // против фона и текста. Прочие роли — по образцу day и night:
+      // bg/bgdim — тёмные, dim — средний серый, fg — почти белый.
+      // Своя тема — запасной набор, согласный с assets/defaults.json.
+      // Крайние роли (bg, signal) — обе цветные, но приглушённые:
+      // глубокий морской сине-зелёный и тихое тёплое золото.
+      // Противоположные по температуре, они различимы в любом канале
+      // и при полной утрате цветоразличения; контраст bg↔signal
+      // достаточен и на ярком свету, и на чёрно-белом экране.
       'custom': {
-        'bg': const Color(0xFF0F1416),
-        'bgdim': const Color(0xFF1B2225),
-        'dim': const Color(0xFF8A9296),
-        'fg': const Color(0xFFE8EDEF),
-        'signal': const Color(0xFF5AA9E6),
+        'bg': const Color(0xFF0E1D26),
+        'bgdim': const Color(0xFF192B36),
+        'dim': const Color(0xFF7F9198),
+        'fg': const Color(0xFFE7EEF1),
+        'signal': const Color(0xFFDBA85E),
       },
     };
     for (final e in defaults.entries) {

@@ -5,10 +5,16 @@
 // иначе scheduledAt, иначе createdAt. Старшинство именно такое:
 // завершённость > пульс > наметка.
 //
-// Помета в клетке:
-//   — завершённая — подчёркнутое число;
-//   — иначе с lastPulseAt — круглая рамка;
-//   — иначе намеченная — квадратная рамка.
+// Пометы в клетке — сочетаются:
+//   — завершённая (completedAt на сей день) — подчёркнутое число;
+//   — с пульсом (lastPulseAt на сей день) — круглая рамка;
+//   — намеченная (scheduledAt на сей день) — квадратная рамка.
+// Ежели на день приходятся рутины разных родов, пометы выводятся
+// разом: подчёркивание, круг и квадрат совмещаются.
+//
+// Верхний ряд управления месяцем резервирует место корневого
+// пульта: левый край отступает на его ширину, дабы переключатели
+// не заезжали под компас.
 //
 // Касание клетки с рутинами открывает единый левосторонний лист
 // (pult_sheet.dart) со списком рутин того дня; касание рутины
@@ -63,40 +69,30 @@ class _DaysTabState extends State<DaysTab> {
     return d.day;
   }
 
-  // ─── Род пометы для клетки ───
-  // Старшинство помет: завершённость > пульс > наметка.
-  _Mark _markOf(int day, List<Routine> routines) {
-    var hasCompleted = false;
-    var hasPulse = false;
-    var hasScheduled = false;
+  // ─── Совокупность помет для клетки ───
+  // Каждая помета ставится независимо: рутина одного рода не
+  // отменяет помету другого.
+  ({bool completed, bool pulse, bool scheduled}) _marksOf(
+    int day,
+    List<Routine> routines,
+  ) {
+    var completed = false;
+    var pulse = false;
+    var scheduled = false;
     for (final r in routines) {
       if (r.completed &&
           r.completedAt != null &&
           _sameMonth(r.completedAt!) == day) {
-        hasCompleted = true;
-        break;
+        completed = true;
+      }
+      if (r.lastPulseAt != null && _sameMonth(r.lastPulseAt!) == day) {
+        pulse = true;
+      }
+      if (r.scheduledAt != null && _sameMonth(r.scheduledAt!) == day) {
+        scheduled = true;
       }
     }
-    if (!hasCompleted) {
-      for (final r in routines) {
-        if (r.lastPulseAt != null && _sameMonth(r.lastPulseAt!) == day) {
-          hasPulse = true;
-          break;
-        }
-      }
-    }
-    if (!hasCompleted && !hasPulse) {
-      for (final r in routines) {
-        if (r.scheduledAt != null && _sameMonth(r.scheduledAt!) == day) {
-          hasScheduled = true;
-          break;
-        }
-      }
-    }
-    if (hasCompleted) return _Mark.completed;
-    if (hasPulse) return _Mark.pulse;
-    if (hasScheduled) return _Mark.scheduled;
-    return _Mark.none;
+    return (completed: completed, pulse: pulse, scheduled: scheduled);
   }
 
   @override
@@ -127,12 +123,18 @@ class _DaysTabState extends State<DaysTab> {
       grid.add(_cell(dayNum, list, side, bort));
     }
 
+    // Резерв под корневой пульт: компас висит в левом верхнем углу
+    // поверх экрана; переключатели месяца не должны под него заезжать.
+    final rootReserve = side * 2 / 3 + side * 0.4;
+
     return Column(
       children: [
         Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: side * 0.4,
-            vertical: side * 0.3,
+          padding: EdgeInsets.fromLTRB(
+            rootReserve,
+            side * 0.3,
+            side * 0.4,
+            side * 0.3,
           ),
           child: Row(
             children: [
@@ -183,44 +185,47 @@ class _DaysTabState extends State<DaysTab> {
   }
 
   Widget _cell(int day, List<Routine> routines, double side, dynamic bort) {
-    final mark = _markOf(day, routines);
+    final marks = _marksOf(day, routines);
 
     final TextStyle style = TextStyle(
       color: bort.fg,
       fontSize: side * 0.4,
-      decoration: mark == _Mark.completed
+      decoration: marks.completed
           ? TextDecoration.underline
           : TextDecoration.none,
+      decorationColor: bort.fg,
     );
 
-    BoxDecoration deco;
-    switch (mark) {
-      case _Mark.pulse:
-        deco = BoxDecoration(
+    // Совмещение помет: квадрат (наметка) — внешняя рамка,
+    // круг (пульс) — вписанный, подчёркивание — на самом числе.
+    // Все три выводятся разом, коли присутствуют.
+    Widget content = Text('$day', style: style);
+
+    if (marks.pulse) {
+      content = Container(
+        decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: Border.all(color: bort.signal, width: side * 0.04),
-        );
-        break;
-      case _Mark.scheduled:
-        deco = BoxDecoration(
+        ),
+        alignment: Alignment.center,
+        child: content,
+      );
+    }
+
+    if (marks.scheduled) {
+      content = Container(
+        decoration: BoxDecoration(
           border: Border.all(color: bort.dim, width: side * 0.04),
           borderRadius: BorderRadius.circular(side * 0.05),
-        );
-        break;
-      default:
-        deco = const BoxDecoration();
+        ),
+        alignment: Alignment.center,
+        child: content,
+      );
     }
 
     return GestureDetector(
       onTap: routines.isEmpty ? null : () => _openDay(routines),
-      child: Padding(
-        padding: EdgeInsets.all(side * 0.1),
-        child: Container(
-          decoration: deco,
-          alignment: Alignment.center,
-          child: Text('$day', style: style),
-        ),
-      ),
+      child: Padding(padding: EdgeInsets.all(side * 0.1), child: content),
     );
   }
 
@@ -244,5 +249,3 @@ class _DaysTabState extends State<DaysTab> {
     );
   }
 }
-
-enum _Mark { none, scheduled, pulse, completed }

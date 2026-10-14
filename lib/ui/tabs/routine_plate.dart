@@ -181,13 +181,20 @@ class RoutinePlate extends StatelessWidget {
                 ),
               const SizedBox(height: 10),
               if (routine.scheduledAt != null)
-                Text(
-                  fmtDate(routine.scheduledAt!, i18n.t),
-                  style: TextStyle(
-                    color: accent,
-                    fontSize: dateSize,
-                    decoration: TextDecoration.underline,
-                    decorationColor: accent,
+                // Намеченная дата — прямоугольною рамкою, единообразно
+                // с календарём вкладки «дни» (там наметка — квадрат).
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: dateSize * 0.3,
+                    vertical: dateSize * 0.1,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: accent, width: strokeW * 2),
+                    borderRadius: BorderRadius.circular(radiusW * 0.3),
+                  ),
+                  child: Text(
+                    fmtDate(routine.scheduledAt!, i18n.t),
+                    style: TextStyle(color: accent, fontSize: dateSize),
                   ),
                 )
               else

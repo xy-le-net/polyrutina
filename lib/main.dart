@@ -101,6 +101,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _onTickerTick = () => _bort.tickBort();
     _ticker.addListener(_onTickerTick!);
 
+    _bort.addListener(_onLayerChanged);
     _routineLayer.addListener(_onLayerChanged);
     _traceLayer.addListener(_onLayerChanged);
     _journal.addListener(_onLayerChanged);
@@ -142,9 +143,11 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     if (_onTickerTick != null) {
       _ticker.removeListener(_onTickerTick!);
     }
+    _bort.removeListener(_onLayerChanged);
     _routineLayer.removeListener(_onLayerChanged);
     _traceLayer.removeListener(_onLayerChanged);
     _journal.removeListener(_onLayerChanged);
+    _bort.dispose();
     _routineLayer.dispose();
     _traceLayer.dispose();
     _journal.dispose();
@@ -179,15 +182,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     }
 
     setState(() => _tab = i);
-
-    if (i == 1 && _openedRoutineId != null) {
-      final id = _openedRoutineId!;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _navigatorKey.currentState?.push(
-          MaterialPageRoute(builder: (_) => RoutineCard(routineId: id)),
-        );
-      });
-    }
   }
 
   Future<void> _openRoutine(int id) async {
@@ -277,10 +271,10 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        brightness: _bort.systemBrightness,
+        brightness: _effectiveBrightness(_bort.systemBrightness),
         colorScheme: ColorScheme.fromSeed(
           seedColor: _bort.fg,
-          brightness: _bort.systemBrightness,
+          brightness: _effectiveBrightness(_bort.systemBrightness),
         ).copyWith(surface: _bort.bg, onSurface: _bort.fg),
         scaffoldBackgroundColor: _bort.bg,
         appBarTheme: AppBarTheme(

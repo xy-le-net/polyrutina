@@ -10,22 +10,24 @@
 // планируемых человекочасов (формат «дни:часы:минуты», подсказка
 // «план»).
 //
+// Уступ заголовка. Корневой пульт висит в левом верхнем углу
+// поверх экрана; заголовок отступает на его ширину, дабы не
+// заезжать под компас.
+//
 // Пульт намеченной даты. При касании открывает системный выбор
 // даты; ежели дата уже была — начально подставляется она же.
 // Сброс — чрез подпульт по долгому касанию: единый левосторонний
-// лист с пунком «снять дату», коий запрашивает подтверждение
+// лист с пунктом «снять дату», коий запрашивает подтверждение
 // (рост на четверть, значок корзинки, тап мимо — возврат).
-//
-// Уступ имени. Минимальный слева и справа — отступ темы (ради
-// компаса) для сего экрана не надобен, компас карточку не покрывает.
 //
 // Показ слотов. «Описание» и «итог» — по правилам слоя. Прочие пять
 // — коли род в defaultSlots (рубка) либо пульс отработал, либо есть
 // след. Пульт «показать все слоты» — сессионный.
 //
-// Свёртка слотов — сессионная. При создании рутины описание
-// развёрнуто, всё прочее свёрнуто. При последующих заходах — всё
-// свёрнуто.
+// Разворот слотов — сессионный. При создании рутины (первая минута
+// её жизни) развёрнуто описание. При последующих заходах — развёрнут
+// активный (идущий) блок, прочие свёрнуты; итог видим всегда.
+// Состояние в пределах сессии не сохраняется.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -94,7 +96,14 @@ class _RoutineCardState extends State<RoutineCard> {
       if (r != null) {
         final fresh =
             (DateTime.now().millisecondsSinceEpoch ~/ 1000) - r.createdAt < 60;
-        if (fresh) _expanded.add('note');
+        if (fresh) {
+          // Только что созданная — развёрнуто описание.
+          _expanded.add('note');
+        } else {
+          // Последующие открытия — развёрнут активный блок.
+          final running = r.runningBlock;
+          if (running != null) _expanded.add(running.kind);
+        }
       }
     }
   }
@@ -256,17 +265,11 @@ class _RoutineCardState extends State<RoutineCard> {
     _editFocus = null;
   }
 
+  // Завершение — слой сам гасит идущие блоки в транзакции;
+  // отдельный цикл паузы здесь избыточен.
   Future<void> _toggleCompleted(Routine r) async {
     final app = AppScope.of(context);
-    final value = !r.completed;
-    if (value) {
-      for (final b in r.blocks) {
-        if (b.isRunning) {
-          await app.routineLayer.pauseBlock(app.journal, r.id, b.kind);
-        }
-      }
-    }
-    await app.routineLayer.setCompleted(app.journal, r.id, value);
+    await app.routineLayer.setCompleted(app.journal, r.id, !r.completed);
   }
 
   Future<void> _exportOne(Routine r) async {
@@ -275,8 +278,6 @@ class _RoutineCardState extends State<RoutineCard> {
   }
 
   // ─── Намеченная дата: выбор ───
-  // Начальною подставляется уже выбранная дата, коли она есть;
-  // иначе — нынешний день.
   Future<void> _pickSchedule(Routine r) async {
     final app = AppScope.of(context);
     final now = DateTime.now();
@@ -297,9 +298,6 @@ class _RoutineCardState extends State<RoutineCard> {
     );
   }
 
-  // ─── Плановое время ───
-  // Формат «дни:часы:минуты». Одно число — минуты; два — часы
-  // и минуты; три — дни, часы, минуты. Пересчёт — в parsePlannedTime.
   Future<void> _setPlanned(Routine r, String text) async {
     final app = AppScope.of(context);
     final sec = parsePlannedTime(text);
@@ -385,9 +383,6 @@ class _RoutineCardState extends State<RoutineCard> {
     }
 
     // ─── Пульт намеченной даты ───
-    // Касание — выбор даты (с тою же самою начальною, коли уже есть).
-    // Долгое касание — подпульт «снять дату»; подтверждение чрез
-    // общий механизм (рост, значок корзинки, тап мимо — возврат).
     final schedulePult = Pult(
       spec: PultSpec(
         id: 'sched_${r.id}',
@@ -414,15 +409,18 @@ class _RoutineCardState extends State<RoutineCard> {
       overrideSize: side * bort.kPultSmall,
     );
 
+    // Уступ заголовка: компас (корневой пульт) висит в левом
+    // верхнем углу поверх экрана; ширина его — сторона side * 2/3
+    // плюс отступ от края.
+    final rootReserve = side * 2 / 3 + 6.0 * 2;
+
     return Scaffold(
       backgroundColor: bort.bg,
       appBar: AppBar(
         backgroundColor: bort.bg,
         foregroundColor: bort.fg,
         elevation: 0,
-        // Минимальный уступ: тематический отступ ради компаса
-        // для сего экрана не надобен — компас карточку не покрывает.
-        titleSpacing: side * 0.4,
+        titleSpacing: rootReserve,
         actions: [SizedBox(width: side * 0.4)],
         title: BortField(
           initial: r.name,

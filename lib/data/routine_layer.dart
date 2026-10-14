@@ -162,6 +162,7 @@ class RoutineLayer extends ChangeNotifier {
           final r = findRoutine(id);
           if (r != null) {
             r.flags = (data['value'] as num?)?.toInt() ?? r.flags;
+            r.lastActionAt = e.time;
           }
           break;
         case 'complete':
@@ -171,6 +172,7 @@ class RoutineLayer extends ChangeNotifier {
           if (r != null) {
             r.completed = v;
             r.completedAt = v ? e.time : null;
+            r.lastActionAt = e.time;
           }
           break;
         case 'set_schedule':

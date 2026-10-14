@@ -4,6 +4,7 @@
 
     "tab.field": "поле",
     "tab.routines": "рутины",
+    "tab.days": "дни",
     "tab.artel": "артель",
     "tab.rubka": "рубка",
     "tab.journal": "журнал",
@@ -115,6 +116,7 @@
     "media.attach": "прикрепить",
     "media.attached": "прикреплено",
     "media.share": "поделиться",
+    "media.open": "открыть",
 
     "time.d": "д",
     "time.h": "ч",
@@ -141,6 +143,7 @@
 
     "tab.field": "field",
     "tab.routines": "routines",
+    "tab.days": "days",
     "tab.artel": "artel",
     "tab.rubka": "cabin",
     "tab.journal": "journal",
@@ -252,6 +255,7 @@
     "media.attach": "attach",
     "media.attached": "attached",
     "media.share": "share",
+    "media.open": "open",
 
     "time.d": "d",
     "time.h": "h",
