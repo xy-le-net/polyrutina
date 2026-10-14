@@ -12,6 +12,13 @@
 //   <устройство>_<номер рутины>_<слот>_<род>_<индекс>.<расш>
 // Индекс не уменьшается при удалении: берётся из счётчика борта.
 //
+// Серия фото/видео. После возврата из системной съёмки подпульт
+// не закрывается: открывается снова, дабы делать серию. Выход —
+// кнопкою «назад» либо закрытием подпутя.
+//
+// Место. Отдельный json-файл не пишется: координаты (широта,
+// долгота, точность) кладутся прямо в TraceFile.
+//
 // AppContext берётся ДО awaits — дабы BuildContext не тянулся
 // чрез асинхронные промежутки.
 //
@@ -61,13 +68,13 @@ Future<void> showMediaPicker({
           MediaKind.photo,
           Icons.photo_camera_outlined,
           i18n.t('media.photo'),
-          () => _addPhoto(app, objectId, slot),
+          () => _addPhotoLoop(app, objectId, slot),
         ),
         (
           MediaKind.video,
           Icons.videocam_outlined,
           i18n.t('media.video'),
-          () => _addVideo(app, objectId, slot),
+          () => _addVideoLoop(app, objectId, slot),
         ),
         (
           MediaKind.geo,
@@ -163,12 +170,20 @@ String _safe(String s) {
   return s.replaceAllMapped(bad, (_) => 'X');
 }
 
-// ─── Фото ───
-Future<void> _addPhoto(AppContext app, int objectId, String slot) async {
+// ─── Фото: серия ───
+// После каждой съёмки — снова открыть камеру. Выход — «назад».
+Future<void> _addPhotoLoop(AppContext app, int objectId, String slot) async {
+  while (true) {
+    final took = await _pickOncePhoto(app, objectId, slot);
+    if (!took) return;
+  }
+}
+
+Future<bool> _pickOncePhoto(AppContext app, int objectId, String slot) async {
   try {
     final picker = ImagePicker();
     final x = await picker.pickImage(source: ImageSource.camera);
-    if (x == null) return;
+    if (x == null) return false;
     final ext = p.extension(x.path);
     await _attach(
       app,
@@ -178,15 +193,25 @@ Future<void> _addPhoto(AppContext app, int objectId, String slot) async {
       sourcePath: x.path,
       ext: ext.isEmpty ? '.jpg' : ext,
     );
-  } catch (_) {}
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
-// ─── Видео ───
-Future<void> _addVideo(AppContext app, int objectId, String slot) async {
+// ─── Видео: серия ───
+Future<void> _addVideoLoop(AppContext app, int objectId, String slot) async {
+  while (true) {
+    final took = await _pickOnceVideo(app, objectId, slot);
+    if (!took) return;
+  }
+}
+
+Future<bool> _pickOnceVideo(AppContext app, int objectId, String slot) async {
   try {
     final picker = ImagePicker();
     final x = await picker.pickVideo(source: ImageSource.camera);
-    if (x == null) return;
+    if (x == null) return false;
     final ext = p.extension(x.path);
     await _attach(
       app,
@@ -196,7 +221,10 @@ Future<void> _addVideo(AppContext app, int objectId, String slot) async {
       sourcePath: x.path,
       ext: ext.isEmpty ? '.mp4' : ext,
     );
-  } catch (_) {}
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 // ─── Файл ───
@@ -271,6 +299,9 @@ class _AudioDialog extends StatefulWidget {
 class _AudioDialogState extends State<_AudioDialog> {
   final _rec = AudioRecorder();
   bool _running = false;
+  String? _path;
+  String? _name;
+
   Future<void> _start() async {
     try {
       if (!await _rec.hasPermission()) return;
@@ -291,40 +322,25 @@ class _AudioDialogState extends State<_AudioDialog> {
       if (!mounted) return;
       setState(() {
         _running = true;
+        _path = path;
+        _name = name;
       });
     } catch (_) {}
   }
 
   Future<void> _stop({required bool attach}) async {
     try {
-      final path = await _rec.stop();
+      await _rec.stop();
       if (!mounted) return;
-      if (attach && path != null) {
+      final path = _path;
+      final name = _name;
+      if (attach && path != null && name != null) {
         final app = AppScope.of(context);
-        final idx2 = app.bort.nextExportIndex(
-          'media_${widget.objectId}_${widget.slot}_audio',
-        );
-        final name = _safe(
-          '${app.bort.deviceId}_${widget.objectId}_${widget.slot}'
-          '_audio_$idx2.m4a',
-        );
-        final dir = await getApplicationDocumentsDirectory();
-        final media = Directory(p.join(dir.path, 'media'));
-        final target = File(p.join(media.path, name));
-        try {
-          await File(path).rename(target.path);
-        } catch (_) {
-          try {
-            await File(path).copy(target.path);
-          } catch (_) {
-            return;
-          }
-        }
         await app.traceLayer.attachFile(
           app.journal,
           objectId: widget.objectId,
           slot: widget.slot,
-          file: TraceFile(kind: MediaKind.audio, path: target.path, name: name),
+          file: TraceFile(kind: MediaKind.audio, path: path, name: name),
         );
       }
     } catch (_) {}
@@ -381,7 +397,7 @@ class _AudioDialogState extends State<_AudioDialog> {
                         ? _stop(attach: false)
                         : Navigator.of(context).pop(),
                   ),
-                  fg: bort.dim,
+                  fg: bort.fg,
                   bg: bort.bg,
                   signal: bort.signal,
                   overrideSize: side,

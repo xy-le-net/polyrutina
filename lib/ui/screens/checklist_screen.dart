@@ -188,7 +188,6 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     }
   }
 
-  // ─── Enter: коммит и переход к последнему (пустому) пункту ───
   Future<void> _submitAndAdvance(int i) async {
     final text = _controllers[i].text;
     setState(() {
@@ -196,10 +195,8 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     });
     _ensureTrailingEmpty();
     await _save();
-    // Просим фокус у последнего (пустого) пункта.
     if (_focusNodes.isNotEmpty) {
       _focusNodes.last.requestFocus();
-      // Курсор в конец.
       final ctrl = _controllers.last;
       ctrl.selection = TextSelection.collapsed(offset: ctrl.text.length);
     }
@@ -284,6 +281,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
         backgroundColor: bort.bg,
         foregroundColor: bort.fg,
         elevation: 0,
+        automaticallyImplyLeading: false,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -299,7 +297,6 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
         child: Stack(
           children: [
             ListView.builder(
-              // Нижний отступ — под кнопку закрытия (она на дне).
               padding: EdgeInsets.fromLTRB(12, 8, 12, side * 2.4),
               itemCount: _items.length,
               itemBuilder: (context, i) {
@@ -313,7 +310,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                         id: 'chk_$i',
                         value: it.done,
                         binary: true,
-                        fg: bort.dim,
+                        fg: bort.fg,
                         bg: bort.bg,
                         signal: bort.signal,
                         overrideSize: pultSide,
@@ -408,8 +405,6 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                     overrideSize: side,
                   ),
                   SizedBox(width: side * 0.2),
-                  // Счётчик «отмечено/всего». Ежели все отмечены —
-                  // приглушён; иначе — сигнальный цвет.
                   Text(
                     '${counts.done}/${counts.total}',
                     style: TextStyle(

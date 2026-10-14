@@ -32,6 +32,8 @@
     "input.hint": "запись в журнал...",
     "button.send": "отправить",
 
+    "import.hint": "выбрать zip-архивы полирутины для приёма",
+
     "routine.none": "рутин нет",
     "routine.no_name": "без имени",
     "routine.noname": "noname",
@@ -89,6 +91,8 @@
     "bort.delete": "удалить",
     "bort.reset": "сброс",
     "bort.duplicate": "дублировать",
+    "bort.import": "приём",
+    "bort.default_slots": "слоты по умолчанию",
     "bort.select": "выбрать",
     "bort.deselect": "снять выделение",
 
@@ -158,6 +162,8 @@
     "input.hint": "write to journal...",
     "button.send": "send",
 
+    "import.hint": "pick polyrutina zip archives to import",
+
     "routine.none": "no routines",
     "routine.no_name": "no name",
     "routine.noname": "noname",
@@ -215,6 +221,8 @@
     "bort.delete": "delete",
     "bort.reset": "reset",
     "bort.duplicate": "duplicate",
+    "bort.import": "import",
+    "bort.default_slots": "default slots",
     "bort.select": "select",
     "bort.deselect": "deselect",
 

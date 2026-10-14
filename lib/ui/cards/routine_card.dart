@@ -3,26 +3,28 @@
 //
 // Блоки строятся единым Block (ui/core/block.dart).
 //
-// Время правится долгим нажатием на пульс любого блока (и идущего,
-// и покоящегося, и с нулевым временем). При идущем блоке сперва
-// ставится пауза, затем открывается поле.
+// Время правится долгим нажатием на пульс любого блока. При идущем
+// блоке сперва ставится пауза, затем открывается поле.
 //
 // Формат правки: «дд:чч:мм:сс». Enter либо пульт подтверждения —
-// сохранить. Правленое время подчёркивается ВСЕГДА, коли правлено,
-// — и в покое, и в ходу. Ноль либо пусто — стирание.
+// сохранить. Правленое время подчёркивается ВСЕГДА, коли правлено.
 //
-// Итог подчёркивается, коли правлен хоть один блок.
+// Показ слотов. «Описание» и «итог» — всегда. «Итог» показывается,
+// коли есть накопленное время. Прочие пять — коли род в наборе
+// defaultSlots (из рубки) либо пульс отработал, либо есть след.
+// Пульт «показать все слоты» (в «описании», слева от флагов) —
+// сессионный: покуда карточка открыта, показывает все слоты разом,
+// включая пустые.
 //
-// Умолчание свёртки: свёрнуто всё, кроме «описания» и «выполнения»;
-// блок со следом разворачивается, коли пользователь не решал иначе.
-// Ручное решение пользователя (касание значка) перебивает и хранится
-// за рутиной.
+// Свёртка слотов — сессионная. При создании рутины описание
+// развёрнуто, всё прочее свёрнуто. При последующих заходах — всё
+// свёрнуто. Разворачивается касанием заголовка; состояние живёт,
+// покуда карточка открыта.
 //
 // Прокрутка к последнему пущенному блоку при открытии.
 //
 // Таймер перерисовывается по смене видимой единицы: покуда блок
-// идёт и его время менее минуты — каждую секунду (секунды видны);
-// далее — при смене минуты.
+// идёт и его время менее минуты — каждую секунду; далее — по минуте.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -65,6 +67,11 @@ class _RoutineCardState extends State<RoutineCard> {
   int _lastMinute = 0;
   int _lastSecond = 0;
 
+  // Сессионные состояния карточки: развёрнутые слоты и «показать все».
+  final Set<String> _expanded = {};
+  bool _showAllSlots = false;
+  bool _initializedExpand = false;
+
   @override
   void initState() {
     super.initState();
@@ -85,6 +92,19 @@ class _RoutineCardState extends State<RoutineCard> {
     _ticker?.removeListener(_onTick);
     _ticker = app.ticker;
     _ticker?.addListener(_onTick);
+
+    // Развёрнутость слотов — по свежести рутины. Ежели создана
+    // только что (в пределах минуты) — описание развёрнуто.
+    // Иначе всё свёрнуто. Решается единожды на карточку.
+    if (!_initializedExpand) {
+      _initializedExpand = true;
+      final r = app.routineLayer.findRoutine(widget.routineId);
+      if (r != null) {
+        final fresh =
+            (DateTime.now().millisecondsSinceEpoch ~/ 1000) - r.createdAt < 60;
+        if (fresh) _expanded.add('note');
+      }
+    }
   }
 
   void _onTick() {
@@ -163,12 +183,7 @@ class _RoutineCardState extends State<RoutineCard> {
     });
   }
 
-  bool? _explicitCollapsed(dynamic bort, int routineId, String kind) {
-    final set = (bort.collapsedBlocks as Map<int, Set<String>>)[routineId];
-    if (set == null) return null;
-    return set.contains(kind);
-  }
-
+  // ─── Есть ли в слоте след? ───
   bool _hasTrace(int routineId, String kind) {
     if (kind == 'summary') return false;
     final app = AppScope.of(context);
@@ -192,13 +207,39 @@ class _RoutineCardState extends State<RoutineCard> {
     return false;
   }
 
-  bool _collapsedFor(dynamic bort, Routine r, String kind) {
-    final explicit = _explicitCollapsed(bort, r.id, kind);
-    if (explicit != null) return explicit;
-    if (kind == 'note' || kind == RoutineBlock.work) return false;
-    return !_hasTrace(r.id, kind);
+  // ─── Показывать ли слот ───
+  // При «показать все» — всегда.
+  // «Описание» — всегда. «Итог» — коли есть пульсы.
+  // Прочие пять — коли род в defaultSlots (рубка), либо пульс
+  // отработал, либо есть след.
+  bool _shouldShowSlot(Routine r, String kind) {
+    if (_showAllSlots) return true;
+    if (kind == 'note') return true;
+    if (kind == 'summary') return r.totalSeconds > 0;
+
+    final app = AppScope.of(context);
+    if (app.bort.defaultSlots.contains(kind)) return true;
+
+    final b = r.blockOf(kind);
+    if (b != null && (b.accumulatorSeconds > 0 || b.isRunning)) return true;
+
+    return _hasTrace(r.id, kind);
   }
 
+  // ─── Развёрнут ли слот ───
+  bool _isExpanded(String kind) => _expanded.contains(kind);
+
+  void _toggleExpanded(String kind) {
+    setState(() {
+      if (_expanded.contains(kind)) {
+        _expanded.remove(kind);
+      } else {
+        _expanded.add(kind);
+      }
+    });
+  }
+
+  // ─── Правка времени ───
   Future<void> _startEdit(Routine r, String kind) async {
     final app = AppScope.of(context);
     final b = r.blockOf(kind);
@@ -300,41 +341,18 @@ class _RoutineCardState extends State<RoutineCard> {
 
     final blocks = <Widget>[];
 
-    blocks.add(
-      _buildBlock(
-        key: _blockKeys['note'],
-        title: i18n.t('routine.block.note'),
-        kind: 'note',
-        running: false,
-        seconds: 0,
-        showPulse: false,
-        showCompletion: false,
-        timeEdited: false,
-        collapsed: _collapsedFor(bort, r, 'note'),
-        bort: bort,
-        app: app,
-        routine: r,
-        side: side,
-        colonVisible: app.ticker.colonVisible,
-        i18n: i18n,
-        allBlocks: r.blocks,
-        anyEdited: anyEdited,
-      ),
-    );
-
-    for (final k in RoutineBlock.kinds) {
-      final b = r.blockOf(k);
+    if (_shouldShowSlot(r, 'note')) {
       blocks.add(
         _buildBlock(
-          key: _blockKeys[k],
-          title: i18n.t('routine.block.$k'),
-          kind: k,
-          running: b?.isRunning ?? false,
-          seconds: b?.secondsNowAt(now) ?? 0,
-          showPulse: true,
+          key: _blockKeys['note'],
+          title: i18n.t('routine.block.note'),
+          kind: 'note',
+          running: false,
+          seconds: 0,
+          showPulse: false,
           showCompletion: false,
-          timeEdited: b?.timeEdited ?? false,
-          collapsed: _collapsedFor(bort, r, k),
+          timeEdited: false,
+          collapsed: !_isExpanded('note'),
           bort: bort,
           app: app,
           routine: r,
@@ -347,27 +365,55 @@ class _RoutineCardState extends State<RoutineCard> {
       );
     }
 
-    blocks.add(
-      _buildBlock(
-        key: _blockKeys['summary'],
-        title: i18n.t('routine.summary'),
-        kind: 'summary',
-        running: false,
-        seconds: r.totalSeconds,
-        showPulse: false,
-        showCompletion: true,
-        timeEdited: anyEdited,
-        collapsed: false,
-        bort: bort,
-        app: app,
-        routine: r,
-        side: side,
-        colonVisible: app.ticker.colonVisible,
-        i18n: i18n,
-        allBlocks: r.blocks,
-        anyEdited: anyEdited,
-      ),
-    );
+    for (final k in RoutineBlock.kinds) {
+      if (!_shouldShowSlot(r, k)) continue;
+      final b = r.blockOf(k);
+      blocks.add(
+        _buildBlock(
+          key: _blockKeys[k],
+          title: i18n.t('routine.block.$k'),
+          kind: k,
+          running: b?.isRunning ?? false,
+          seconds: b?.secondsNowAt(now) ?? 0,
+          showPulse: true,
+          showCompletion: false,
+          timeEdited: b?.timeEdited ?? false,
+          collapsed: !_isExpanded(k),
+          bort: bort,
+          app: app,
+          routine: r,
+          side: side,
+          colonVisible: app.ticker.colonVisible,
+          i18n: i18n,
+          allBlocks: r.blocks,
+          anyEdited: anyEdited,
+        ),
+      );
+    }
+
+    if (_shouldShowSlot(r, 'summary')) {
+      blocks.add(
+        _buildBlock(
+          key: _blockKeys['summary'],
+          title: i18n.t('routine.summary'),
+          kind: 'summary',
+          running: false,
+          seconds: r.totalSeconds,
+          showPulse: false,
+          showCompletion: true,
+          timeEdited: anyEdited,
+          collapsed: false,
+          bort: bort,
+          app: app,
+          routine: r,
+          side: side,
+          colonVisible: app.ticker.colonVisible,
+          i18n: i18n,
+          allBlocks: r.blocks,
+          anyEdited: anyEdited,
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: bort.bg,
@@ -597,12 +643,14 @@ class _RoutineCardState extends State<RoutineCard> {
           );
         }
       }
-      if (rows.isNotEmpty) {
-        body = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: rows,
-        );
-      }
+      // Резерв снизу — под кнопку экспорта, дабы не слипалась
+      // с пультом завершения.
+      body = rows.isEmpty
+          ? SizedBox(height: pultSide + side * 0.15)
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: rows,
+            );
     } else {
       body = TraceField(
         objectId: routine.id,
@@ -626,6 +674,19 @@ class _RoutineCardState extends State<RoutineCard> {
     Widget? topRight = cornerTop;
 
     if (showFlags) {
+      // Пульт «показать все слоты» — слева от флагов. Сессионный.
+      final showAllPult = Pult(
+        spec: PultSpec(
+          id: 'show_all_${routine.id}',
+          icon: _showAllSlots ? Icons.visibility : Icons.visibility_off,
+          selected: _showAllSlots,
+          onTap: () => setState(() => _showAllSlots = !_showAllSlots),
+        ),
+        fg: fg,
+        bg: bg,
+        signal: signal,
+        overrideSize: pultSide,
+      );
       final flagsPult = Pult(
         spec: PultSpec(
           id: 'flags_${routine.id}',
@@ -641,6 +702,8 @@ class _RoutineCardState extends State<RoutineCard> {
       topRight = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          showAllPult,
+          SizedBox(width: side * 0.15),
           flagsPult,
           if (cornerTop != null) SizedBox(width: side * 0.15),
           if (cornerTop != null) cornerTop,
@@ -668,9 +731,7 @@ class _RoutineCardState extends State<RoutineCard> {
       title: title,
       collapsed: collapsed,
       canCollapse: canCollapse,
-      onToggleCollapsed: () {
-        (bort.toggleBlockCollapsed as Function)(routine.id, kind);
-      },
+      onToggleCollapsed: () => _toggleExpanded(kind),
       cornerRightTop: topRight,
       cornerRightBottom: cornerBottom,
       bg: bg,

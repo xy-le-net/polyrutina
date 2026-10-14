@@ -33,6 +33,8 @@
   "selected_type": 4,
   "selected_flags": 0,
 
+  "default_slots": ["work"],
+
   "midnight": "00:00",
 
   "k_pult": 1.0,

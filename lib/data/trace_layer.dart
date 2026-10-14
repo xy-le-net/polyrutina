@@ -19,7 +19,8 @@
 // slot — род блока рутины. kind — форма показа (text | checklist).
 // Медиа живут в files: перечень с родом (audio, photo, video, geo,
 // file), путём и именем. Файлы копируются внутрь приложения;
-// в теле следа — путь.
+// в теле следа — путь. Для рода «место» отдельный json-файл не
+// пишется: координаты (lat, lon, acc) кладутся прямо в TraceFile.
 //
 // Кэш — отложенный (200 мс).
 //
@@ -299,7 +300,6 @@ class TraceLayer extends ChangeNotifier {
 
   Trace? find(int id) => traces[id];
 
-  // ─── Поиск следов ───
   List<Trace> attachedTo(int objectId) {
     final out = <Trace>[];
     for (final t in traces.values) {
@@ -333,7 +333,6 @@ class TraceLayer extends ChangeNotifier {
     return found;
   }
 
-  // ─── Создание ───
   Future<int> createText(
     JournalLayer journal, {
     String slot = '',
@@ -416,9 +415,6 @@ class TraceLayer extends ChangeNotifier {
     await _updateBody(journal, traceId, t);
   }
 
-  // ─── Медиа ───
-  // Файл прикрепляется к следу слота. Коли следа нет — он создаётся
-  // (пустой текст), затем к нему добавляется файл.
   Future<void> attachFile(
     JournalLayer journal, {
     required int objectId,
@@ -445,8 +441,6 @@ class TraceLayer extends ChangeNotifier {
     final t = traces[traceId];
     if (t == null) return;
     if (index < 0 || index >= t.files.length) return;
-    // Файл на диске не стираем: удаление — новая запись поверх,
-    // а сам файл остаётся вещдоком истории.
     t.files = [...t.files]..removeAt(index);
     await _updateBody(journal, traceId, t);
     notifyListeners();

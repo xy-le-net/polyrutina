@@ -1,20 +1,13 @@
 // ═══════════════════════════════════════════════════════════════════
 // pult_layer.dart — слой поверх всего приложения.
 //
-// Рисует веер подпультов над родительским пультом и подтверждение
-// увеличенным пультом.
+// Подпульты. По нажатию пульта с subsBuilder открывается всплывающая
+// панель у левого либо правого края экрана — смотря где исходный
+// пульт. Внутри — вертикальная колонка пультов, прокручивается.
+// Тап по затемнённой подложке — закрыть.
 //
-// Веер. Иконы — ровным столбцом. Подписи выступают сбоку от иконы:
-//   пульт в правой половине экрана — подписи слева;
-//   в левой или по центру — подписи справа.
-// Ряд целиком может сдвинуться, дабы уместиться с подписями,
-// но столбец икон остаётся ровным.
-//
-// Ежели весь ряд с подписями не умещается по ширине — подписи
-// не показываются вовсе, одни иконы.
-//
-// Перехватчик касаний: касание мимо закрывает веер либо отменяет
-// подтверждение. Ставится, только коли что-то открыто.
+// Подтверждение (confirm). Увеличенный пульт показывается над
+// родителем — отдельным слоем.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -76,147 +69,88 @@ class _PultLayerState extends State<PultLayer> {
       key: _layerKey,
       children: [
         widget.child,
-        if (state.subsBuilder != null || state.confirmingId != null)
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => state.close(),
-            ),
-          ),
         if (state.subsBuilder != null) _buildSubs(context, state),
         if (state.confirmingId != null) _buildConfirm(context, state),
       ],
     );
   }
 
-  // ─── Веер подпультов ───
+  // ─── Всплывающая панель подпультов ───
   Widget _buildSubs(BuildContext context, PultState state) {
+    final subs = state.subsBuilder!.call();
+    if (subs.isEmpty) return const SizedBox.shrink();
+
     final local = _parentLocal(state.parentKey);
     final size = _parentSize(state.parentKey);
     if (local == null || size == null) return const SizedBox.shrink();
 
-    final subs = state.subsBuilder!.call();
-    if (subs.isEmpty) return const SizedBox.shrink();
-
-    final side = state.smallSide;
-    final itemH = side + 12;
     final screenW = MediaQuery.of(context).size.width;
-    final screenH = MediaQuery.of(context).size.height;
+    final side = state.smallSide;
 
-    // Сколько строк поместится над и под родительским пультом;
-    // сторона с большим простором предпочтительнее.
-    final availAbove = local.dy - 8;
-    final availBelow = screenH - (local.dy + size.height) - 8;
-    final useBelow = availAbove < itemH * 2 && availBelow > availAbove;
-    final avail = useBelow ? availBelow : availAbove;
-    final rowsPerCol = (avail / itemH).floor().clamp(1, subs.length);
-    final cols = (subs.length / rowsPerCol).ceil();
-
-    // ─── Сторона подписей ───
-    // Пульт в правой половине — подписи слева; иначе справа.
+    // Сторона панели: пульт в правой половине — панель справа,
+    // иначе слева. Подписи встают с внутренней стороны (к центру).
     final parentCenter = local.dx + size.width / 2;
-    final labelsLeft = parentCenter > screenW / 2;
+    final fromRight = parentCenter > screenW / 2;
 
-    // Проверка подписей: ежели хоть одна длинная и весь ряд
-    // не умещается — отказываемся от подписей вовсе.
-    double maxLabelW = 0;
-    bool anyLabel = false;
+    final panelWidth = side + 24;
+
+    final items = <Widget>[];
     for (final s in subs) {
-      if (s.label != null) {
-        anyLabel = true;
-        final w = s.label!.length * side * 0.4 + 16;
-        if (w > maxLabelW) maxLabelW = w;
-      }
-    }
-    final colWWithLabels = side + (anyLabel ? maxLabelW : 0) + 16;
-    final totalWWithLabels = cols * colWWithLabels;
-    final fitsWithLabels = anyLabel && (totalWWithLabels < screenW - 16);
-
-    final colW = fitsWithLabels ? colWWithLabels : (side + 16);
-
-    // ─── Построение столбцов ───
-    // Иконы — ровным столбцом. Подписи выступают сбоку.
-    final colWidgets = <Widget>[];
-    for (var c = 0; c < cols; c++) {
-      final colItems = <Widget>[];
-      for (var r = 0; r < rowsPerCol; r++) {
-        final i = c * rowsPerCol + r;
-        if (i >= subs.length) break;
-        final s = subs[i];
-        final spec = fitsWithLabels
-            ? s
-            : PultSpec(
-                id: s.id,
-                icon: s.icon,
-                centerText: s.centerText,
-                selected: s.selected,
-                confirm: s.confirm,
-                onTap: s.onTap,
-                stayOpen: s.stayOpen,
-              );
-        colItems.add(
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Pult(
-              spec: spec,
-              fg: widget.fg,
-              bg: widget.bg,
-              signal: widget.signal,
-              insideLayer: true,
-              overrideSize: side,
-              // Подпись встаёт слева от иконы, ежели так решено.
-              labelSideLeft: labelsLeft,
-            ),
-          ),
-        );
-      }
-      colWidgets.add(
+      items.add(
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: labelsLeft
-                ? CrossAxisAlignment.end
-                : CrossAxisAlignment.start,
-            children: colItems,
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+          child: Pult(
+            spec: s,
+            fg: widget.fg,
+            bg: widget.bg,
+            signal: widget.signal,
+            insideLayer: true,
+            overrideSize: side,
+            // Подпись с внутренней стороны панели.
+            labelSideLeft: fromRight,
           ),
         ),
       );
     }
 
-    // Горизонтальное положение: по центру родительского пульта,
-    // с ограничением по краям экрана.
-    final rowW = cols * colW;
-    double left = local.dx + (size.width - rowW) / 2;
-    if (left < 8) left = 8;
-    if (left + rowW > screenW - 8) left = screenW - 8 - rowW;
-    if (left < 8) left = 8;
-
-    // Вертикальное положение: над родительским пультом либо под ним.
-    final totalH = rowsPerCol * itemH;
-    double top;
-    if (useBelow) {
-      top = local.dy + size.height + 6;
-    } else {
-      top = local.dy - totalH - 6;
-      if (top < 8) top = 8;
-    }
-
-    // Порядок столбцов: при подписях слева столбцы разворачиваем,
-    // дабы первый столбец был у пульта.
-    final ordered = labelsLeft ? colWidgets.reversed.toList() : colWidgets;
-
-    return Positioned(
-      left: left,
-      top: top,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: ordered,
-      ),
+    return Stack(
+      children: [
+        // Подложка: тап мимо — закрыть.
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => state.close(),
+            child: Container(color: widget.bg.withAlpha(200)),
+          ),
+        ),
+        // Панель.
+        Positioned(
+          top: 0,
+          bottom: 0,
+          left: fromRight ? null : 0,
+          right: fromRight ? 0 : null,
+          width: panelWidth,
+          child: Container(
+            color: widget.bg,
+            child: SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: fromRight
+                      ? CrossAxisAlignment.end
+                      : CrossAxisAlignment.start,
+                  children: items,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
+  // ─── Подтверждение: увеличенный пульт над родителем ───
   Widget _buildConfirm(BuildContext context, PultState state) {
     final local = _parentLocal(state.confirmingKey);
     final size = _parentSize(state.confirmingKey);
@@ -224,6 +158,7 @@ class _PultLayerState extends State<PultLayer> {
 
     final side = state.side * 1.3;
     final screenW = MediaQuery.of(context).size.width;
+    final screenH = MediaQuery.of(context).size.height;
 
     double left = local.dx + (size.width - side) / 2;
     if (left < 8) left = 8;
@@ -231,17 +166,30 @@ class _PultLayerState extends State<PultLayer> {
 
     double top = local.dy - side - 8;
     if (top < 8) top = local.dy + size.height + 8;
+    if (top + side > screenH - 8) top = screenH - 8 - side;
 
     final icon = state.confirmingIcon ?? Icons.delete_forever;
 
-    return Positioned(
-      left: left,
-      top: top,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => state.runConfirm(state.confirmingId!),
-        child: _confirmBody(icon, side),
-      ),
+    return Stack(
+      children: [
+        // Подложка: тап мимо — отмена.
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => state.close(),
+            child: Container(color: widget.bg.withAlpha(160)),
+          ),
+        ),
+        Positioned(
+          left: left,
+          top: top,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => state.runConfirm(state.confirmingId!),
+            child: _confirmBody(icon, side),
+          ),
+        ),
+      ],
     );
   }
 

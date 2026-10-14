@@ -5,7 +5,14 @@
 // (время активной работы), DraftsStore (черновики полей). Здесь же
 // остаются коэффициенты размеров, вкладка, якорь, смена, метка
 // экспорта, свёрнутость блоков рубки, счётчики экспорта, признак
-// первого запуска и идентификатор устройства.
+// первого запуска, идентификатор устройства и набор слотов,
+// показываемых в карточке рутины по умолчанию.
+//
+// defaultSlots — список родов слотов, отображаемых в карточке
+// независимо от содержимого. «Описание» — вне списка, всегда
+// показывается. «Итог» — тоже вне списка: показывается, коли
+// есть пульсы. Прочие слоты показываются, ежели сей список
+// содержит их род.
 //
 // В журнал сей слой НЕ пишет и НЕ читает из журнала: настройки
 // и состояние вида живут токмо в файле борта. Умолчания — из
@@ -80,6 +87,11 @@ class OperationalLayer extends ChangeNotifier {
   int lastExportId = 0;
   Map<int, Set<String>> collapsedBlocks = {};
 
+  // ─── Слоты по умолчанию ───
+  // Роды слотов, показываемых в карточке рутины независимо от
+  // содержимого. «Описание» и «итог» — вне сего списка.
+  Set<String> defaultSlots = {'work'};
+
   // Счётчики экспорта: {«ГГГГММДД»: {ключ объекта: индекс}}.
   Map<String, Map<String, int>> exportCounters = {};
 
@@ -96,9 +108,6 @@ class OperationalLayer extends ChangeNotifier {
   double kStroke = 0.015;
 
   // ─── Смена ───
-  // Локальная суточная мера. Считается от последней прошедшей полуночи.
-  // Записи о начале и конце смены пишутся в журнал родом «актор»
-  // (AppContext), но состояния сего слоя не двигают.
   bool onShift = false;
   int totalShiftSeconds = 0;
   int? shiftStartedAt;
@@ -127,8 +136,6 @@ class OperationalLayer extends ChangeNotifier {
     await _loadFromFile();
     _themes.resolve();
 
-    // Проверка полуночи при пуске: ежели приложение стояло, счётчик
-    // смены обнуляется, а время борта уходит во «вчерашнее».
     final newMid = _bortTime.checkMidnight();
     if (newMid > 0) {
       totalShiftSeconds = 0;
@@ -235,6 +242,12 @@ class OperationalLayer extends ChangeNotifier {
           (data['selected_flags'] as num?)?.toInt() ?? selectedFlags;
       _bortTime.midnight = data['midnight'] as String? ?? _bortTime.midnight;
 
+      // Слоты по умолчанию: список строк из умолчаний.
+      final ds = data['default_slots'];
+      if (ds is List) {
+        defaultSlots = ds.map((e) => e.toString()).toSet();
+      }
+
       kPult = (data['k_pult'] as num?)?.toDouble() ?? kPult;
       kPultSmall = (data['k_pult_small'] as num?)?.toDouble() ?? kPultSmall;
       kBlockGap = (data['k_block_gap'] as num?)?.toDouble() ?? kBlockGap;
@@ -277,6 +290,12 @@ class OperationalLayer extends ChangeNotifier {
       _bortTime.midnight = data['midnight'] as String? ?? _bortTime.midnight;
       _bortTime.loadJson(data);
       _draftsStore.loadJson(data);
+
+      // Слоты по умолчанию.
+      final ds = data['default_slots'];
+      if (ds is List) {
+        defaultSlots = ds.map((e) => e.toString()).toSet();
+      }
 
       onShift = data['on_shift'] as bool? ?? onShift;
       totalShiftSeconds =
@@ -343,8 +362,6 @@ class OperationalLayer extends ChangeNotifier {
   Map<String, Color>? colorsForOpposite() => _themes.colorsForOpposite();
 
   // ─── Свёрнутость блоков ───
-  // Умолчание: всё свёрнуто, кроме «описания» и «выполнения»; блок
-  // со следом разворачивается вызывающим (по факту наличия следа).
   bool isBlockCollapsed(int routineId, String kind) {
     final set = collapsedBlocks[routineId];
     if (set == null) {
@@ -356,11 +373,8 @@ class OperationalLayer extends ChangeNotifier {
   void toggleBlockCollapsed(int routineId, String kind) {
     final current = collapsedBlocks[routineId];
     if (current == null) {
-      // Первое касание: снимаем умолчание, ставим обратное ему.
       final defaults = <String>{'note', 'work'};
       final init = <String>{};
-      // Все известные роды сохраняются в явном виде, дабы умолчание
-      // более не срабатывало.
       for (final k in const [
         'note',
         'prep',
@@ -391,6 +405,17 @@ class OperationalLayer extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ─── Слоты по умолчанию ───
+  void setDefaultSlot(String kind, bool on) {
+    if (on) {
+      defaultSlots.add(kind);
+    } else {
+      defaultSlots.remove(kind);
+    }
+    _scheduleSave();
+    notifyListeners();
+  }
+
   // ─── Метка экспорта ───
   void setLastExportId(int id) {
     lastExportId = id;
@@ -399,7 +424,6 @@ class OperationalLayer extends ChangeNotifier {
   }
 
   // ─── Счётчик экспорта ───
-  // Индекс — итерация экспорта данного объекта в этот календарный день.
   int nextExportIndex(String objectKey) {
     final n = DateTime.now();
     final day =
@@ -422,8 +446,6 @@ class OperationalLayer extends ChangeNotifier {
 
   void tickBort() {
     _bortTime.tick();
-    // Проверка полуночи — раз в тридцать секунд, дабы смена
-    // обнулялась и без перезапуска приложения.
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     if (now - _lastMidnightCheck >= 30) {
       _lastMidnightCheck = now;
@@ -462,6 +484,7 @@ class OperationalLayer extends ChangeNotifier {
     _bortTime.reset();
     collapsedBlocks = {};
     exportCounters = {};
+    defaultSlots = {'work'};
     lastExportId = 0;
     await _loadDefaults();
     _themes.resolve();
@@ -540,8 +563,6 @@ class OperationalLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Время смены за ТЕКУЩИЕ сутки. Отрезок непрерывной работы
-  // обрезается по ближайшей прошедшей полуночи.
   int get shiftSecondsNow {
     final base = totalShiftSeconds;
     if (shiftStartedAt == null) return base;
@@ -678,6 +699,7 @@ class OperationalLayer extends ChangeNotifier {
       'selected_type': selectedType,
       'selected_flags': selectedFlags,
       'midnight': _bortTime.midnight,
+      'default_slots': defaultSlots.toList(),
       'on_shift': onShift,
       'total_shift_seconds': totalShiftSeconds,
       'shift_started_at': shiftStartedAt,

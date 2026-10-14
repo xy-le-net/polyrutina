@@ -6,12 +6,17 @@
 //
 // Артель — поле «полночь» (чч:мм).
 // Оформление — тема, цвета двух тем, dim, коэффициенты.
-// Интерфейс — масштаб, язык, подписи.
-// Данные — время борта (сегодня + вчера, приглушённо), размер файлов
-// борта, пять пультов: перечитать, очистить, удалить, сброс, приём.
+// Интерфейс — масштаб, язык, подписи, слоты по умолчанию.
+// Данные — время борта, размер файлов борта, пять пультов:
+// перечитать, очистить, удалить, сброс, приём.
+//
+// Слоты по умолчанию. Чек-лист в блоке «интерфейс»: какие роды
+// слотов показывать в карточке рутины постоянно. «Описание»,
+// «итог» — вне списка. По умолчанию отмечен токмо «выполнение».
+// Список хранится в файле борта, ключ default_slots.
 //
 // Все настройки пишутся токмо в файл борта — род «борт» в журнале
-// упразднён. Установка применяется тотчас и сохраняется отложенно.
+// упразднён.
 //
 // Широкий экран: блоки идут слева направо, сверху вниз — как текст,
 // чрез Wrap с шириною половины экрана.
@@ -31,9 +36,9 @@ import '../core/app_scope.dart';
 import '../core/block.dart';
 import '../core/bort_field.dart';
 import '../core/format.dart';
-import '../screens/import_screen.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_tick.dart';
+import '../screens/import_screen.dart';
 
 class RubkaTab extends StatefulWidget {
   const RubkaTab({super.key});
@@ -45,6 +50,14 @@ class RubkaTab extends StatefulWidget {
 class _RubkaTabState extends State<RubkaTab> {
   int _sizeBytes = 0;
   bool _sizeLoaded = false;
+
+  static const List<String> _slotKinds = [
+    'prep',
+    'transit',
+    'work',
+    'idle',
+    'closeout',
+  ];
 
   String _fmtNum(int n) {
     final s = n.toString();
@@ -242,6 +255,8 @@ class _RubkaTabState extends State<RubkaTab> {
           _settingRow(context, 'lang', fg, dim, bg, signal, side),
           _settingRow(context, 'labels_system', fg, dim, bg, signal, side),
           _settingRow(context, 'labels_field', fg, dim, bg, signal, side),
+          _sectionTitle(i18n.t('bort.default_slots'), dim, side),
+          ..._slotTicks(context, fg, dim, bg, signal, side),
         ],
       ),
     );
@@ -390,8 +405,8 @@ class _RubkaTabState extends State<RubkaTab> {
           );
         }
 
-        // ─── Широкий экран: блоки идут слева направо, сверху вниз,
-        //     как текст. Две колонки, ширина каждой — половина.
+        // ─── Широкий экран: блоки слева направо, сверху вниз, чрез
+        //     Wrap. Ширина ячейки — половина, как столбец текста. ───
         const hPad = 16.0;
         const spacing = 16.0;
         final colW = (width - hPad * 2 - spacing) / 2;
@@ -413,6 +428,51 @@ class _RubkaTabState extends State<RubkaTab> {
         );
       },
     );
+  }
+
+  // ─── Слоты по умолчанию: чек-лист ───
+  List<Widget> _slotTicks(
+    BuildContext context,
+    Color fg,
+    Color dim,
+    Color bg,
+    Color signal,
+    double side,
+  ) {
+    final app = AppScope.of(context);
+    final bort = app.bort;
+    final i18n = app.i18n;
+    final out = <Widget>[];
+    for (final k in _slotKinds) {
+      final on = bort.defaultSlots.contains(k);
+      out.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 140,
+                child: Text(
+                  i18n.t('routine.block.$k'),
+                  style: TextStyle(color: fg),
+                ),
+              ),
+              PultTick(
+                id: 'slot_$k',
+                value: on,
+                binary: true,
+                fg: fg,
+                bg: bg,
+                signal: signal,
+                overrideSize: side,
+                onTap: () => bort.setDefaultSlot(k, !on),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return out;
   }
 
   Widget _sectionTitle(String text, Color dim, double side) {

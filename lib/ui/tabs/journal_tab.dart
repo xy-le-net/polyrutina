@@ -5,14 +5,10 @@
 // пультов: род записи, флаги, отправка.
 //
 // Журнал показывается от новых к старым. Сперва грузится последняя
-// сотня; при долистывании вниз подгружаются следующие сотни по мере
-// надобности. Так память не держит весь журнал разом.
+// сотня; при долистывании вниз подгружаются следующие сотни.
 //
 // Роды записи в сем пульте: след, рутина, актор. Роды «таймер»
-// и «борт» упразднены: настройки живут в файле борта, а «таймер»
-// в запасе. Прежние записи сих родов всё равно прочтутся.
-//
-// Таблица обновляется чрез поток watchRecent и подгрузку старых.
+// и «борт» упразднены.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -46,7 +42,6 @@ class _JournalTabState extends State<JournalTab> {
   bool _loadingMore = false;
   bool _reachedEnd = false;
 
-  // Роды, доступные вручную: без «таймера» и без «борта».
   static const List<int> _manualTypes = [
     JournalType.trace,
     JournalType.routine,
@@ -61,11 +56,8 @@ class _JournalTabState extends State<JournalTab> {
 
   void _subscribe() {
     final app = AppScope.of(context);
-    // Первая страница: последние _pageSize записей (от новых к старым).
     _journalSub = app.journal.watchRecent(limit: _pageSize).listen((entries) {
       if (!mounted) return;
-      // Ежели уже подгружали старые — не затираем их: свежие встают
-      // в начало, а хвост сохраняется.
       final loadedOld = _entries.length > _pageSize;
       if (loadedOld) {
         final cutoff = entries.isNotEmpty ? entries.first.id : 0;
@@ -82,7 +74,6 @@ class _JournalTabState extends State<JournalTab> {
     });
   }
 
-  // ─── Подгрузка следующей страницы ───
   Future<void> _loadMore() async {
     if (_loadingMore || _reachedEnd) return;
     if (_entries.isEmpty) return;
@@ -314,7 +305,6 @@ class _JournalTabState extends State<JournalTab> {
     return Column(
       children: [
         Expanded(
-          // Ловим прокрутку таблицы: у дна грузим следующую страницу.
           child: NotificationListener<ScrollNotification>(
             onNotification: (n) {
               if (n is ScrollEndNotification ||

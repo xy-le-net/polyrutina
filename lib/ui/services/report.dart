@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════
-// report.dart — текстовый отчёт по рутинам.
+// report.dart — отчёт по рутинам и упаковка в zip.
 //
-// Каждая рутина — отдельным разделом:
+// Отчёт — текстовый, человекочитаемый. Рутина отдельным разделом:
 //   — знак завершённости перед именем: ✓ либо ○;
 //   — имя рутины;
 //   — под ним: «(завершено)» либо «(в процессе)»;
@@ -11,9 +11,17 @@
 //   — чек-лист: пункты, у каждого ✓ (отмечено) либо ○ (нет);
 //   — строка «прикреплено:» — счётчики по родам медиа, приглушённо.
 //
-// Файл кладётся в папку документов приложения. Имя:
-//   общий  — polyrutina_ГГ_ММ_ДД_индекс.txt
-//   частный — polyrutina_<имярутины>_ГГ_ММ_ДД_индекс.txt
+// Для рода «место» координаты (широта, долгота, точность) выводятся
+// построчно — отдельного json-файла нет.
+//
+// Упаковка. Каждый отчёт кладётся в zip-архив:
+//   report.txt — человекочитаемый отчёт;
+//   data.json — рутина целиком (универсальный формат);
+//   media/ — файлы медиа с исходными именами.
+//
+// Имя архива:
+//   общий  — polyrutina_ГГ_ММ_ДД_индекс.zip
+//   частный — polyrutina_<имярутины>_ГГ_ММ_ДД_индекс.zip
 // где индекс — итерация экспорта данного объекта в этот день;
 // запретные знаки заменены заглавным «X»; рутина без имени — noname.
 //
@@ -25,6 +33,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -33,6 +42,7 @@ import '../../data/routine.dart';
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
 import '../core/format.dart';
+import 'report_json.dart';
 
 class ReportBuilder {
   // ─── Замена запретных знаков в имени файла ───
@@ -93,7 +103,7 @@ class ReportBuilder {
     return _buildAndShare(app, i18n, routines, objectKey: 'selected');
   }
 
-  // ─── Сборка, сохранение, отправка ───
+  // ─── Сборка, упаковка, отправка ───
   static Future<String?> _buildAndShare(
     AppContext app,
     dynamic i18n,
@@ -108,6 +118,7 @@ class ReportBuilder {
       return b.lastActionAt.compareTo(a.lastActionAt);
     });
 
+    // ─── Текст отчёта ───
     final buf = StringBuffer();
     bool first = true;
     for (final r in routines) {
@@ -120,28 +131,73 @@ class ReportBuilder {
       _writeRoutine(buf, app, i18n, r);
     }
 
+    // ─── Архив ───
+    final archive = Archive();
+    final reportBytes = utf8.encode(buf.toString());
+    archive.addFile(ArchiveFile('report.txt', reportBytes.length, reportBytes));
+
+    final jsonObj = routines.length == 1
+        ? ReportJson.buildRoutine(app, routines.first)
+        : {
+            'schema': ReportJson.schemaVersion,
+            'routines': [
+              for (final r in routines) ReportJson.buildRoutine(app, r),
+            ],
+          };
+    final jsonBytes = utf8.encode(jsonEncode(jsonObj));
+    archive.addFile(ArchiveFile('data.json', jsonBytes.length, jsonBytes));
+
+    // ─── Медиа ───
+    final seenNames = <String>{};
+    for (final r in routines) {
+      for (final t in app.traceLayer.traces.values) {
+        if (t.deleted) continue;
+        if (!t.parents.contains(r.id)) continue;
+        for (final f in t.files) {
+          if (f.path.isEmpty) continue;
+          final file = File(f.path);
+          if (!await file.exists()) continue;
+          var name = f.name.isEmpty ? p.basename(f.path) : f.name;
+          if (seenNames.contains(name)) {
+            var i = 1;
+            final base = p.basenameWithoutExtension(name);
+            final ext = p.extension(name);
+            while (seenNames.contains('${base}_$i$ext')) {
+              i++;
+            }
+            name = '${base}_$i$ext';
+          }
+          seenNames.add(name);
+          final bytes = await file.readAsBytes();
+          archive.addFile(ArchiveFile('media/$name', bytes.length, bytes));
+        }
+      }
+    }
+
+    // ─── Запись zip ───
     final dir = await getApplicationDocumentsDirectory();
     final idx = app.bort.nextExportIndex(objectKey);
     final stamp = _stamp();
     final name = routineLabel == null
-        ? 'polyrutina_${stamp}_$idx.txt'
-        : 'polyrutina_${routineLabel}_${stamp}_$idx.txt';
+        ? 'polyrutina_${stamp}_$idx.zip'
+        : 'polyrutina_${routineLabel}_${stamp}_$idx.zip';
 
-    final file = File(p.join(dir.path, name));
-    await file.writeAsString(buf.toString(), encoding: utf8);
+    final zipFile = File(p.join(dir.path, name));
+    final zipBytes = ZipEncoder().encode(archive);
+    if (zipBytes == null) return null;
+    await zipFile.writeAsBytes(zipBytes, flush: true);
 
     final lastId = await app.journal.lastEntryId();
     app.bort.setLastExportId(lastId);
 
-    // Системный лист «поделиться».
     try {
-      await Share.shareXFiles([XFile(file.path)], subject: name);
+      await Share.shareXFiles([XFile(zipFile.path)], subject: name);
     } catch (_) {}
 
-    return file.path;
+    return zipFile.path;
   }
 
-  // ─── Одна рутина ───
+  // ─── Одна рутина (текст) ───
   static void _writeRoutine(
     StringBuffer buf,
     AppContext app,
@@ -175,8 +231,6 @@ class ReportBuilder {
       final hasChecklist =
           t != null && t.items.any((it) => it.text.trim().isNotEmpty);
 
-      // Пустой этап (ни времени, ни следа, ни медиа, ни чек-листа)
-      // в отчёт не попадает.
       final empty =
           sec == 0 &&
           (text == null || text.trim().isEmpty) &&
@@ -197,6 +251,15 @@ class ReportBuilder {
       }
 
       if (attached != null) buf.writeln('      $attached');
+
+      // ─── Гео-координаты — построчно ───
+      final geoFiles = _geoFilesOf(app, r.id, kind);
+      for (final g in geoFiles) {
+        final lat = g.lat?.toStringAsFixed(6) ?? '?';
+        final lon = g.lon?.toStringAsFixed(6) ?? '?';
+        final acc = g.acc?.toStringAsFixed(1) ?? '?';
+        buf.writeln('      $lat, $lon (±$acc ${i18n.t('time.m')})');
+      }
 
       if (t != null) {
         for (final it in t.items) {
@@ -220,6 +283,20 @@ class ReportBuilder {
     if (t == null) return null;
     final s = t.text;
     return s.isEmpty ? null : s;
+  }
+
+  static List<TraceFile> _geoFilesOf(
+    AppContext app,
+    int routineId,
+    String slot,
+  ) {
+    final t = app.traceLayer.findFirstByKindSlot(
+      routineId,
+      TraceKind.text,
+      slot,
+    );
+    if (t == null) return const [];
+    return t.files.where((f) => f.kind == MediaKind.geo).toList();
   }
 
   // ─── «прикреплено: N аудио, M фото.» ───

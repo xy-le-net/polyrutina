@@ -1,18 +1,15 @@
 // ═══════════════════════════════════════════════════════════════════
-// root_pult.dart — корневой пульт (компас) и веер вкладок.
+// root_pult.dart — корневой пульт (компас) и панель вкладок.
 //
-// Свёрнутый — компас. Касание открывает веер вкладок. Перетаскивание
-// за любое место иконы — по глобальным координатам пальца.
+// Корневой пульт жёстко привязан к левому верхнему углу: без
+// перетаскивания, без выбора якоря. Размер — side.
 //
-// Веер вкладок строится единым Pult: подписи с подложкой; столбец
-// икон ровный; подписи выступают с той стороны, где просторнее.
+// Касание открывает панель вкладок: вертикальная колонка у левого
+// края, как подпульт медиа. Тап мимо — закрыть, тап по вкладке —
+// переключить и закрыть.
 //
-// Размер пультов в веере — тот же side, что и корневой (уже
-// уменьшенный в main). Прежде умножение на 2/3 делало их мельче
-// и подписи обрезались.
-//
-// onDragStart / onDragUpdate принимают ГЛОБАЛЬНЫЕ координаты пальца.
-// onDragEnd без параметра.
+// Панель рисуется тут же, в Stack, локально для виджета. Никаких
+// внешних слоёв и перетаскивания.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -27,126 +24,117 @@ class RootTabItem {
   const RootTabItem({required this.icon, required this.labelKey});
 }
 
-class RootPult extends StatelessWidget {
+class RootPult extends StatefulWidget {
   final List<RootTabItem> tabs;
   final int activeTab;
-  final bool open;
   final double side;
-  final Offset position;
-  final Size area;
   final Color fg;
   final Color bg;
   final Color signal;
-
   final bool labelsSystem;
   final String Function(String key) translate;
-
-  final void Function(Offset globalPosition) onDragStart;
-  final void Function(Offset globalPosition) onDragUpdate;
-  final VoidCallback onDragEnd;
-  final VoidCallback onOpen;
   final void Function(int index) onSwitchTab;
 
   const RootPult({
     super.key,
     required this.tabs,
     required this.activeTab,
-    required this.open,
     required this.side,
-    required this.position,
-    required this.area,
     required this.fg,
     required this.bg,
     required this.signal,
     required this.labelsSystem,
     required this.translate,
-    required this.onDragStart,
-    required this.onDragUpdate,
-    required this.onDragEnd,
-    required this.onOpen,
     required this.onSwitchTab,
   });
 
   @override
+  State<RootPult> createState() => _RootPultState();
+}
+
+class _RootPultState extends State<RootPult> {
+  bool _open = false;
+
+  @override
   Widget build(BuildContext context) {
-    if (!open) {
+    if (!_open) {
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onPanStart: (d) => onDragStart(d.globalPosition),
-        onPanUpdate: (d) => onDragUpdate(d.globalPosition),
-        onPanEnd: (_) => onDragEnd(),
-        onTapUp: (_) => onOpen(),
-        child: _core(Icons.explore, false, side),
+        onTapUp: (_) => setState(() => _open = true),
+        child: _core(Icons.explore, false, widget.side),
       );
     }
 
-    // ─── Сторона подписей ───
-    // Пульт в правой половине — подписи слева, иначе справа.
-    final centerX = position.dx + side / 2;
-    final labelsLeft = centerX > area.width / 2;
+    final side = widget.side;
 
-    // ─── Построение вкладок ───
-    // Размер пультов в веере — тот же side, что и корневой.
+    // ─── Панель вкладок у левого края ───
     final items = <Widget>[];
-    for (var i = 0; i < tabs.length; i++) {
-      final t = tabs[i];
-      final active = activeTab == i;
-      final label = labelsSystem ? translate(t.labelKey) : null;
+    for (var i = 0; i < widget.tabs.length; i++) {
+      final t = widget.tabs[i];
+      final active = widget.activeTab == i;
+      final label = widget.labelsSystem ? widget.translate(t.labelKey) : null;
       items.add(
         Padding(
-          padding: const EdgeInsets.all(2),
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
           child: Pult(
             spec: PultSpec(
               id: 'tab_$i',
               icon: t.icon,
               label: label,
               selected: active,
-              onTap: () => onSwitchTab(i),
+              onTap: () {
+                setState(() => _open = false);
+                widget.onSwitchTab(i);
+              },
             ),
-            fg: fg,
-            bg: bg,
-            signal: signal,
+            fg: widget.fg,
+            bg: widget.bg,
+            signal: widget.signal,
             overrideSize: side,
-            labelSideLeft: labelsLeft,
           ),
         ),
       );
     }
 
-    final centerY = position.dy + side / 2;
-    final pushRight = centerX > area.width / 2;
-    final pushDown = centerY <= area.height / 2;
+    final panelWidth = side + 160;
 
-    final maxW = pushRight ? (position.dx + side) : (area.width - position.dx);
-    final maxH = pushDown
-        ? (area.height - position.dy - side)
-        : (position.dy + side);
-
-    final layout = ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: maxW, maxHeight: maxH),
-      child: _layout(items, Size(maxW, maxH), side + 12, alignEnd: pushRight),
-    );
-
-    final dx = pushRight ? (side - maxW) : 0.0;
-    final dy = pushDown ? side : -maxH;
-
-    return Transform.translate(
-      offset: Offset(dx, dy),
-      child: SizedBox(
-        width: maxW,
-        height: maxH,
-        child: Align(
-          alignment: Alignment(pushRight ? 1.0 : -1.0, pushDown ? -1.0 : 1.0),
-          child: layout,
+    return Stack(
+      children: [
+        // Подложка: тап мимо — закрыть.
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _open = false),
+            child: Container(color: widget.bg.withAlpha(200)),
+          ),
         ),
-      ),
+        Positioned(
+          top: 0,
+          bottom: 0,
+          left: 0,
+          width: panelWidth,
+          child: Container(
+            color: widget.bg,
+            child: SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: items,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
   // Ядро пульта: тройная вложенная обводка.
   Widget _core(IconData icon, bool selected, double s) {
-    final coreColor = selected ? signal : fg;
-    final iconColor = bg;
+    final coreColor = selected ? widget.signal : widget.fg;
+    final iconColor = widget.bg;
     final borderW = s / 16;
     final rOuter = s * 0.18;
     final rInner = s * 0.14;
@@ -184,51 +172,5 @@ class RootPult extends StatelessWidget {
     );
 
     return core;
-  }
-
-  // Раскладка веера вкладок.
-  Widget _layout(
-    List<Widget> items,
-    Size available,
-    double itemHeight, {
-    bool alignEnd = false,
-  }) {
-    final n = items.length;
-    if (n == 0) return const SizedBox.shrink();
-
-    final cross = alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start;
-
-    if (n * itemHeight <= available.height) {
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: cross,
-        children: items,
-      );
-    }
-
-    final maxRows = (available.height / itemHeight).floor().clamp(1, n);
-    final cols = (n / maxRows).ceil();
-
-    final colWidgets = <Widget>[];
-    for (var c = 0; c < cols; c++) {
-      final colItems = <Widget>[];
-      for (var r = 0; r < maxRows; r++) {
-        final i = c * maxRows + r;
-        if (i < n) colItems.add(items[i]);
-      }
-      colWidgets.add(
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: cross,
-          children: colItems,
-        ),
-      );
-    }
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: colWidgets,
-    );
   }
 }

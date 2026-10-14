@@ -2,22 +2,21 @@
 // main.dart — точка входа и управитель.
 //
 // Порядок пуска: журнал (init без подписки), борт, слои, словарь.
-// Затем — journal.start(): подписка заводится ПОСЛЕ регистрации
-// всех слоёв, дабы ранние записи не пропустились.
+// Затем — journal.start().
 //
-// Действие пользователя. Listener вокруг всего дерева ловит всякое
-// касание — борт получает сигнал (pulseBort).
+// Действие пользователя. Listener вокруг дерева ловит касание —
+// борт получает сигнал (pulseBort).
 //
-// Время борта. Подписка на тикер: борт тикает, а раз в тридцать
+// Время борта. Подписка на тикер: борт тикает, раз в тридцать
 // секунд сверяет полночь.
 //
-// Системная строка. Цвет знаков и фона выставляется от действующей
-// темы борта при всякой перестройке — дабы значки не пропадали
-// при смене гаммы.
+// Системная строка. Стиль overlay-полосы — от темы борта. Тот же
+// стиль продублирован в appBarTheme, дабы экраны со своим AppBar
+// (карточка, чек-лист, медиа, приём) не перебивали значки.
 //
-// Корневой пульт — на треть меньше базового (rootSide).
-//
-// Вложенность. AppScope, PultScope, PultLayer — в MaterialApp.builder.
+// Корневой пульт — жёстко в левом верхнем углу, на треть меньше
+// базового пульта. Перетаскивания нет: положение неизменно.
+// Заголовкам AppBar дан отступ слева, дабы не заезжали под пульт.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -64,13 +63,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   I18n? _i18n;
   int _tab = 4;
 
-  // Перетаскивание компаса.
-  Offset? _dragOffset;
-  Offset? _dragStartPultPos;
-  Offset? _dragStartGlobal;
-  bool _rootOpen = false;
-
-  // Открытая рутина.
   int? _openedRoutineId;
 
   VoidCallback? _onTickerTick;
@@ -85,6 +77,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   static const double _pultBase = 32.0;
   static const double _pultMax = 64.0;
+
+  // Отступ корневого пульта от верхнего левого угла.
+  static const double _rootPad = 6.0;
 
   @override
   void initState() {
@@ -123,7 +118,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     await _routineLayer.init(_journal, _traceLayer);
     await _traceLayer.init(_journal);
     _i18n = await I18n.load(_bort.lang);
-    // Подписка на журнал — после регистрации всех слоёв.
     _journal.start();
     if (mounted) setState(() => _tab = _bort.tab);
   }
@@ -176,7 +170,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     final sameRoutines = i == 1 && cardOpen;
 
     if (sameRoutines) {
-      setState(() => _rootOpen = false);
       return;
     }
 
@@ -186,7 +179,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
     setState(() {
       _tab = i;
-      _rootOpen = false;
     });
     _bort.setSilent('tab', i.toString());
 
@@ -209,45 +201,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _openedRoutineId = null;
   }
 
-  Offset _anchorPosition(String anchor, Size size, double s) {
-    const m = 6.0;
-    switch (anchor) {
-      case 'tl':
-        return const Offset(m, m);
-      case 'tc':
-        return Offset((size.width - s) / 2, m);
-      case 'tr':
-        return Offset(size.width - s - m, m);
-      case 'lc':
-        return Offset(m, (size.height - s) / 2);
-      case 'rc':
-        return Offset(size.width - s - m, (size.height - s) / 2);
-      case 'bl':
-        return Offset(m, size.height - s - m);
-      case 'bc':
-        return Offset((size.width - s) / 2, size.height - s - m);
-      case 'br':
-        return Offset(size.width - s - m, size.height - s - m);
-      default:
-        return Offset(size.width - s - m, m);
-    }
-  }
-
-  String _nearestAnchor(Offset pos, Size size, double s) {
-    const keys = ['tl', 'tc', 'tr', 'lc', 'rc', 'bl', 'bc', 'br'];
-    var best = double.infinity;
-    var bestKey = 'tr';
-    for (final a in keys) {
-      final p = _anchorPosition(a, size, s);
-      final d = (p - pos).distanceSquared;
-      if (d < best) {
-        best = d;
-        bestKey = a;
-      }
-    }
-    return bestKey;
-  }
-
   double _pultSide(BuildContext context) {
     final systemScale = MediaQuery.textScalerOf(context).scale(1.0);
     final raw = _pultBase * systemScale * _bort.scale;
@@ -255,19 +208,22 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   }
 
   // ─── Системная строка: цвет знаков и фона от борта ───
-  void _syncSystemUi(Brightness brightness) {
+  SystemUiOverlayStyle _overlayStyle(Brightness brightness) {
     final dark = brightness == Brightness.dark;
-    SystemChrome.setSystemUIOverlayStyle(
-      SystemUiOverlayStyle(
-        statusBarColor: _bort.bg,
-        statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
-        statusBarBrightness: dark ? Brightness.dark : Brightness.light,
-        systemNavigationBarColor: _bort.bg,
-        systemNavigationBarIconBrightness: dark
-            ? Brightness.light
-            : Brightness.dark,
-      ),
+    return SystemUiOverlayStyle(
+      statusBarColor: _bort.bg,
+      statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
+      statusBarBrightness: dark ? Brightness.dark : Brightness.light,
+      systemNavigationBarColor: _bort.bg,
+      systemNavigationBarIconBrightness: dark
+          ? Brightness.light
+          : Brightness.dark,
     );
+  }
+
+  Brightness _effectiveBrightness(Brightness systemBrightness) {
+    if (_bort.themeName == 'system') return systemBrightness;
+    return _bort.themeName == 'night' ? Brightness.dark : Brightness.light;
   }
 
   @override
@@ -304,6 +260,17 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           brightness: _bort.systemBrightness,
         ).copyWith(surface: _bort.bg, onSurface: _bort.fg),
         scaffoldBackgroundColor: _bort.bg,
+        // Стиль системной строки для всех AppBar-ов разом.
+        // Отступ заголовка слева — под корневой пульт.
+        appBarTheme: AppBarTheme(
+          backgroundColor: _bort.bg,
+          foregroundColor: _bort.fg,
+          elevation: 0,
+          titleSpacing: rootSide + _rootPad + 4,
+          systemOverlayStyle: _overlayStyle(
+            _effectiveBrightness(_bort.systemBrightness),
+          ),
+        ),
         textTheme: TextTheme(
           bodyMedium: TextStyle(color: _bort.fg),
           bodyLarge: TextStyle(color: _bort.fg),
@@ -325,13 +292,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       builder: (context, child) {
         final systemBrightness = MediaQuery.platformBrightnessOf(context);
         _bort.setSystemBrightness(systemBrightness);
-        // Цвета системной строки — от действующей темы борта.
-        _syncSystemUi(
-          _bort.themeName == 'system'
-              ? systemBrightness
-              : (_bort.themeName == 'night'
-                    ? Brightness.dark
-                    : Brightness.light),
+        SystemChrome.setSystemUIOverlayStyle(
+          _overlayStyle(_effectiveBrightness(systemBrightness)),
         );
 
         return AppScope(
@@ -350,65 +312,26 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                   bg: _bort.bg,
                   signal: _bort.signal,
                   child: SafeArea(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final size = Size(
-                          constraints.maxWidth,
-                          constraints.maxHeight,
-                        );
-                        final pos =
-                            _dragOffset ??
-                            _anchorPosition(_bort.anchor, size, rootSide);
-                        return Stack(
-                          children: [
-                            child ?? const SizedBox.shrink(),
-                            Positioned(
-                              left: pos.dx,
-                              top: pos.dy,
-                              child: RootPult(
-                                tabs: _tabs,
-                                activeTab: _tab,
-                                open: _rootOpen,
-                                side: rootSide,
-                                position: pos,
-                                area: size,
-                                fg: _bort.fg,
-                                bg: _bort.bg,
-                                signal: _bort.signal,
-                                labelsSystem: _bort.labelsSystem,
-                                translate: (k) => _i18n!.t(k),
-                                onDragStart: (global) {
-                                  _dragStartPultPos = pos;
-                                  _dragStartGlobal = global;
-                                },
-                                onDragUpdate: (global) {
-                                  final start = _dragStartPultPos ?? pos;
-                                  final g0 = _dragStartGlobal ?? global;
-                                  setState(() {
-                                    _dragOffset = start + (global - g0);
-                                  });
-                                },
-                                onDragEnd: () {
-                                  final p = _dragOffset ?? pos;
-                                  final nearest = _nearestAnchor(
-                                    p,
-                                    size,
-                                    rootSide,
-                                  );
-                                  setState(() {
-                                    _dragOffset = null;
-                                    _dragStartPultPos = null;
-                                    _dragStartGlobal = null;
-                                  });
-                                  _bort.setSilent('anchor', nearest);
-                                },
-                                onOpen: () => setState(() => _rootOpen = true),
-                                onSwitchTab: (i) => _switchTab(i),
-                              ),
-                            ),
-                          ],
-                        );
-                      },
+                    child: Stack(
+                      children: [
+                        child ?? const SizedBox.shrink(),
+                        // Корневой пульт — жёстко в левом верхнем углу.
+                        Positioned(
+                          left: _rootPad,
+                          top: _rootPad,
+                          child: RootPult(
+                            tabs: _tabs,
+                            activeTab: _tab,
+                            side: rootSide,
+                            fg: _bort.fg,
+                            bg: _bort.bg,
+                            signal: _bort.signal,
+                            labelsSystem: _bort.labelsSystem,
+                            translate: (k) => _i18n!.t(k),
+                            onSwitchTab: (i) => _switchTab(i),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),

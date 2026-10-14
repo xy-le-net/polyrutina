@@ -19,7 +19,6 @@
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -60,7 +59,6 @@ class _MediaViewerState extends State<MediaViewer> {
   @override
   void initState() {
     super.initState();
-    // Собираем позиции файлов одного рода с открытым.
     final kind = widget.files.isEmpty
         ? ''
         : widget
@@ -143,6 +141,7 @@ class _MediaViewerState extends State<MediaViewer> {
         backgroundColor: bort.bg,
         foregroundColor: bort.fg,
         elevation: 0,
+        automaticallyImplyLeading: false,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -164,7 +163,6 @@ class _MediaViewerState extends State<MediaViewer> {
         child: Stack(
           children: [
             Positioned.fill(child: _body(f, bort, i18n, side)),
-            // Нижний ряд: назад / закрыть / вперёд.
             Positioned(
               left: 0,
               right: 0,
@@ -259,14 +257,12 @@ class _MediaViewerState extends State<MediaViewer> {
       }
     }
     if (f.kind == MediaKind.geo) {
-      String text = f.name;
-      try {
-        final file = File(f.path);
-        if (file.existsSync()) {
-          final j = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-          text = '${j['lat']}, ${j['lon']}\n${f.name}';
-        }
-      } catch (_) {}
+      // Координаты берутся прямо из полей TraceFile: отдельного
+      // json-файла нет.
+      final lat = f.lat?.toStringAsFixed(6) ?? '?';
+      final lon = f.lon?.toStringAsFixed(6) ?? '?';
+      final acc = f.acc?.toStringAsFixed(1) ?? '?';
+      final text = '$lat, $lon\n(±$acc ${i18n.t('time.m')})\n${f.name}';
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -285,7 +281,6 @@ class _MediaViewerState extends State<MediaViewer> {
         ),
       );
     }
-    // Прочие роды: значок, имя, путь.
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24),
