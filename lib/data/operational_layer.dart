@@ -1,45 +1,31 @@
 // ═══════════════════════════════════════════════════════════════════
 // operational_layer.dart — оперативный слой («борт»).
 //
-// Фасад над тремя модулями: ThemeStore (цвета и темы), BortTime
-// (время активной работы), DraftsStore (черновики полей). Здесь же
-// остаются коэффициенты размеров, вкладка, смена, метка экспорта,
-// свёрнутость блоков рубки, счётчики экспорта, признак первого
-// запуска, идентификатор устройства и набор слотов, показываемых
-// в карточке рутины по умолчанию.
+// Фасад над модулями: ThemeStore (цвета и темы), BortTime (время
+// активной работы), DraftsStore (черновики), InstallStore (первый
+// запуск, устройство), BortFile (файл борта).
 //
-// Цвета: пять ролей (bg, bgdim, dim, fg, signal) — внутри каждой
-// темы. Отдельного общего dim нет.
+// Здесь — поля состояния вида: коэффициенты, вкладка, смена, метка
+// экспорта, свёрнутость блоков, счётчики экспорта, слоты по
+// умолчанию. Установочные данные и работа с файлом — в модулях.
 //
-// defaultSlots — список родов слотов, отображаемых в карточке
-// независимо от содержимого. «Описание», «итог» — вне списка.
+// В журнал сей слой НЕ пишет и НЕ читает из журнала.
 //
-// В журнал сей слой НЕ пишет и НЕ читает из журнала: настройки
-// и состояние вида живут токмо в файле борта. Умолчания — из
-// assets/defaults.json. Потеря файла — сброс к умолчаниям.
-//
-// Смена — локальная суточная мера: считается от последней
-// прошедшей полуночи.
-//
-// Идентификатор устройства берётся у системы; коли недоступен —
-// случайный, заводится при первом пуске и хранится в install.json.
+// Смена — локальная суточная мера от последней прошедшей полуночи.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
-import 'dart:math';
 
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
+import 'bort_file.dart';
 import 'bort_time.dart';
 import 'drafts_store.dart';
+import 'install_store.dart';
 import 'theme_store.dart';
 
 class OperationalLayer extends ChangeNotifier {
@@ -47,6 +33,8 @@ class OperationalLayer extends ChangeNotifier {
   final ThemeStore _themes = ThemeStore();
   final BortTime _bortTime = BortTime();
   final DraftsStore _draftsStore = DraftsStore();
+  final InstallStore _install = InstallStore();
+  final BortFile _file = BortFile();
 
   // ─── Геттеры цветов ───
   Color get bg => _themes.bg;
@@ -69,7 +57,11 @@ class OperationalLayer extends ChangeNotifier {
   String draft(String key) => _draftsStore.draft(key);
   bool isTraceSent(String key) => _draftsStore.isSent(key);
 
-  // ─── Прочие поля ───
+  // ─── Геттеры установочных данных ───
+  int get firstRunUnixSec => _install.firstRunUnixSec;
+  String get deviceId => _install.deviceId;
+
+  // ─── Поля вида ───
   double scale = 1.4;
   String lang = 'ru';
   int tab = 4;
@@ -85,13 +77,10 @@ class OperationalLayer extends ChangeNotifier {
   int lastExportId = 0;
   Map<int, Set<String>> collapsedBlocks = {};
 
-  // ─── Слоты по умолчанию ───
   Set<String> defaultSlots = {'work'};
 
-  // Счётчики экспорта: {«ГГГГММДД»: {ключ объекта: индекс}}.
   Map<String, Map<String, int>> exportCounters = {};
 
-  // ─── Коэффициенты ───
   double kPult = 1.0;
   double kPultSmall = 0.8889;
   double kBlockGap = 0.2;
@@ -109,14 +98,7 @@ class OperationalLayer extends ChangeNotifier {
   int? shiftStartedAt;
   bool shiftEdited = false;
 
-  // ─── Метка первого запуска и устройство ───
-  int firstRunUnixSec = 0;
-  String deviceId = '';
-
   // ─── Служебное ───
-  File? _file;
-  File? _installFile;
-  Timer? _saveTimer;
   int _lastMidnightCheck = 0;
 
   OperationalLayer();
@@ -124,11 +106,9 @@ class OperationalLayer extends ChangeNotifier {
   // ─── Пуск ───
   Future<void> init(Brightness system) async {
     _themes.setSystemBrightness(system);
-    final dir = await getApplicationDocumentsDirectory();
-    _file = File(p.join(dir.path, 'operational_layer.json'));
-    _installFile = File(p.join(dir.path, 'install.json'));
+    await _file.init();
+    await _install.init();
     await _loadDefaults();
-    await _loadInstall();
     await _loadFromFile();
     _themes.resolve();
 
@@ -146,71 +126,8 @@ class OperationalLayer extends ChangeNotifier {
 
   @override
   void dispose() {
-    _saveTimer?.cancel();
+    _file.dispose();
     super.dispose();
-  }
-
-  // ─── Метка первого запуска и идентификатор устройства ───
-  Future<void> _loadInstall() async {
-    if (_installFile == null) return;
-    Map<String, dynamic>? data;
-    try {
-      if (await _installFile!.exists()) {
-        final raw = await _installFile!.readAsString();
-        data = jsonDecode(raw) as Map<String, dynamic>;
-        firstRunUnixSec = (data['first_run_unix_sec'] as num?)?.toInt() ?? 0;
-        deviceId = data['device_id'] as String? ?? '';
-      }
-    } catch (_) {}
-
-    if (firstRunUnixSec == 0) {
-      firstRunUnixSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    }
-    if (deviceId.isEmpty) {
-      final sys = await _readSystemDeviceId();
-      deviceId = sys.isNotEmpty ? sys : _randomId();
-    }
-    try {
-      await _installFile!.writeAsString(
-        jsonEncode({
-          'first_run_unix_sec': firstRunUnixSec,
-          'device_id': deviceId,
-        }),
-      );
-    } catch (_) {}
-  }
-
-  static Future<String> _readSystemDeviceId() async {
-    try {
-      final info = DeviceInfoPlugin();
-      if (Platform.isAndroid) {
-        final a = await info.androidInfo;
-        return a.id;
-      } else if (Platform.isIOS) {
-        final i = await info.iosInfo;
-        return i.identifierForVendor ?? '';
-      } else if (Platform.isWindows) {
-        final w = await info.windowsInfo;
-        return w.deviceId;
-      } else if (Platform.isMacOS) {
-        final m = await info.macOsInfo;
-        return m.systemGUID ?? '';
-      } else if (Platform.isLinux) {
-        final l = await info.linuxInfo;
-        return l.machineId ?? '';
-      }
-    } catch (_) {}
-    return '';
-  }
-
-  static String _randomId() {
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    final r = Random.secure();
-    final b = StringBuffer();
-    for (var i = 0; i < 16; i++) {
-      b.write(chars[r.nextInt(chars.length)]);
-    }
-    return b.toString();
   }
 
   // ─── Умолчания ───
@@ -257,86 +174,82 @@ class OperationalLayer extends ChangeNotifier {
     _themes.ensureThemes();
   }
 
-  // ─── Рабочий файл ───
+  // ─── Файл борта: чтение ───
   Future<void> _loadFromFile() async {
-    if (_file == null || !await _file!.exists()) return;
-    try {
-      final raw = await _file!.readAsString();
-      final data = jsonDecode(raw) as Map<String, dynamic>;
-      final t = data['themes'];
-      if (t is Map) _themes.parseThemes(t);
-      _themes.themeName = data['theme'] as String? ?? _themes.themeName;
+    final data = await _file.read();
+    if (data == null) return;
 
-      scale = (data['scale'] as num?)?.toDouble() ?? scale;
-      lang = data['lang'] as String? ?? lang;
-      tab = (data['tab'] as num?)?.toInt() ?? tab;
-      anchor = data['anchor'] as String? ?? anchor;
-      labelsSystem = data['labels_system'] as bool? ?? labelsSystem;
-      labelsField = data['labels_field'] as bool? ?? labelsField;
-      blockArtel = data['block_artel'] as bool? ?? blockArtel;
-      blockAppearance = data['block_appearance'] as bool? ?? blockAppearance;
-      blockInterface = data['block_interface'] as bool? ?? blockInterface;
-      blockData = data['block_data'] as bool? ?? blockData;
-      selectedType = (data['selected_type'] as num?)?.toInt() ?? selectedType;
-      selectedFlags =
-          (data['selected_flags'] as num?)?.toInt() ?? selectedFlags;
-      _bortTime.midnight = data['midnight'] as String? ?? _bortTime.midnight;
-      _bortTime.loadJson(data);
-      _draftsStore.loadJson(data);
+    final t = data['themes'];
+    if (t is Map) _themes.parseThemes(t);
+    _themes.themeName = data['theme'] as String? ?? _themes.themeName;
 
-      final ds = data['default_slots'];
-      if (ds is List) {
-        defaultSlots = ds.map((e) => e.toString()).toSet();
-      }
+    scale = (data['scale'] as num?)?.toDouble() ?? scale;
+    lang = data['lang'] as String? ?? lang;
+    tab = (data['tab'] as num?)?.toInt() ?? tab;
+    anchor = data['anchor'] as String? ?? anchor;
+    labelsSystem = data['labels_system'] as bool? ?? labelsSystem;
+    labelsField = data['labels_field'] as bool? ?? labelsField;
+    blockArtel = data['block_artel'] as bool? ?? blockArtel;
+    blockAppearance = data['block_appearance'] as bool? ?? blockAppearance;
+    blockInterface = data['block_interface'] as bool? ?? blockInterface;
+    blockData = data['block_data'] as bool? ?? blockData;
+    selectedType = (data['selected_type'] as num?)?.toInt() ?? selectedType;
+    selectedFlags = (data['selected_flags'] as num?)?.toInt() ?? selectedFlags;
+    _bortTime.midnight = data['midnight'] as String? ?? _bortTime.midnight;
+    _bortTime.loadJson(data);
+    _draftsStore.loadJson(data);
 
-      onShift = data['on_shift'] as bool? ?? onShift;
-      totalShiftSeconds =
-          (data['total_shift_seconds'] as num?)?.toInt() ?? totalShiftSeconds;
-      shiftStartedAt =
-          (data['shift_started_at'] as num?)?.toInt() ?? shiftStartedAt;
-      shiftEdited = data['shift_edited'] as bool? ?? shiftEdited;
-      lastExportId = (data['last_export_id'] as num?)?.toInt() ?? lastExportId;
+    final ds = data['default_slots'];
+    if (ds is List) {
+      defaultSlots = ds.map((e) => e.toString()).toSet();
+    }
 
-      kPult = (data['k_pult'] as num?)?.toDouble() ?? kPult;
-      kPultSmall = (data['k_pult_small'] as num?)?.toDouble() ?? kPultSmall;
-      kBlockGap = (data['k_block_gap'] as num?)?.toDouble() ?? kBlockGap;
-      kFramePad = (data['k_frame_pad'] as num?)?.toDouble() ?? kFramePad;
-      kTitle = (data['k_title'] as num?)?.toDouble() ?? kTitle;
-      kNumber = (data['k_number'] as num?)?.toDouble() ?? kNumber;
-      kNumberSmall =
-          (data['k_number_small'] as num?)?.toDouble() ?? kNumberSmall;
-      kName = (data['k_name'] as num?)?.toDouble() ?? kName;
-      kRadius = (data['k_radius'] as num?)?.toDouble() ?? kRadius;
-      kStroke = (data['k_stroke'] as num?)?.toDouble() ?? kStroke;
+    onShift = data['on_shift'] as bool? ?? onShift;
+    totalShiftSeconds =
+        (data['total_shift_seconds'] as num?)?.toInt() ?? totalShiftSeconds;
+    shiftStartedAt =
+        (data['shift_started_at'] as num?)?.toInt() ?? shiftStartedAt;
+    shiftEdited = data['shift_edited'] as bool? ?? shiftEdited;
+    lastExportId = (data['last_export_id'] as num?)?.toInt() ?? lastExportId;
 
-      final cb = data['collapsed_blocks'];
-      if (cb is Map) {
-        collapsedBlocks = {};
-        for (final k in cb.keys) {
-          final id = int.tryParse(k.toString());
-          if (id == null) continue;
-          final v = cb[k];
-          if (v is List) {
-            collapsedBlocks[id] = v.map((e) => e.toString()).toSet();
-          }
+    kPult = (data['k_pult'] as num?)?.toDouble() ?? kPult;
+    kPultSmall = (data['k_pult_small'] as num?)?.toDouble() ?? kPultSmall;
+    kBlockGap = (data['k_block_gap'] as num?)?.toDouble() ?? kBlockGap;
+    kFramePad = (data['k_frame_pad'] as num?)?.toDouble() ?? kFramePad;
+    kTitle = (data['k_title'] as num?)?.toDouble() ?? kTitle;
+    kNumber = (data['k_number'] as num?)?.toDouble() ?? kNumber;
+    kNumberSmall = (data['k_number_small'] as num?)?.toDouble() ?? kNumberSmall;
+    kName = (data['k_name'] as num?)?.toDouble() ?? kName;
+    kRadius = (data['k_radius'] as num?)?.toDouble() ?? kRadius;
+    kStroke = (data['k_stroke'] as num?)?.toDouble() ?? kStroke;
+
+    final cb = data['collapsed_blocks'];
+    if (cb is Map) {
+      collapsedBlocks = {};
+      for (final k in cb.keys) {
+        final id = int.tryParse(k.toString());
+        if (id == null) continue;
+        final v = cb[k];
+        if (v is List) {
+          collapsedBlocks[id] = v.map((e) => e.toString()).toSet();
         }
       }
+    }
 
-      final ec = data['export_counters'];
-      if (ec is Map) {
-        exportCounters = {};
-        for (final day in ec.keys) {
-          final m = ec[day];
-          if (m is Map) {
-            final inner = <String, int>{};
-            for (final k in m.keys) {
-              inner[k.toString()] = (m[k] as num?)?.toInt() ?? 0;
-            }
-            exportCounters[day.toString()] = inner;
+    final ec = data['export_counters'];
+    if (ec is Map) {
+      exportCounters = {};
+      for (final day in ec.keys) {
+        final m = ec[day];
+        if (m is Map) {
+          final inner = <String, int>{};
+          for (final k in m.keys) {
+            inner[k.toString()] = (m[k] as num?)?.toInt() ?? 0;
           }
+          exportCounters[day.toString()] = inner;
         }
       }
-    } catch (_) {}
+    }
   }
 
   // ─── Системная гамма ───
@@ -463,9 +376,7 @@ class OperationalLayer extends ChangeNotifier {
   }
 
   Future<void> resetCache() async {
-    if (_file != null && await _file!.exists()) {
-      await _file!.delete();
-    }
+    await _file.delete();
     _themes.themes = {};
     _themes.themeName = 'system';
     onShift = false;
@@ -485,9 +396,7 @@ class OperationalLayer extends ChangeNotifier {
   }
 
   Future<void> saveNow() async {
-    _saveTimer?.cancel();
-    _saveTimer = null;
-    await _saveToFile();
+    await _file.writeNow(_buildFileMap);
   }
 
   // ─── Установка значений вида ───
@@ -654,14 +563,15 @@ class OperationalLayer extends ChangeNotifier {
   }
 
   void _scheduleSave() {
-    _saveTimer?.cancel();
-    _saveTimer = Timer(const Duration(milliseconds: 200), () {
-      _saveToFile();
-    });
+    _file.schedule(_buildFileMap);
   }
 
   Future<void> _saveToFile() async {
-    if (_file == null) return;
+    await _file.write(_buildFileMap());
+  }
+
+  // ─── Карта для файла борта ───
+  Map<String, dynamic> _buildFileMap() {
     final cbOut = <String, dynamic>{};
     for (final e in collapsedBlocks.entries) {
       cbOut['${e.key}'] = e.value.toList();
@@ -670,7 +580,7 @@ class OperationalLayer extends ChangeNotifier {
     for (final d in exportCounters.entries) {
       ecOut[d.key] = Map<String, int>.from(d.value);
     }
-    final data = <String, dynamic>{
+    return <String, dynamic>{
       'themes': _themes.toJson(),
       'theme': _themes.themeName,
       'scale': scale,
@@ -707,7 +617,6 @@ class OperationalLayer extends ChangeNotifier {
       ..._bortTime.toJson(),
       ..._draftsStore.toJson(),
     };
-    await _file!.writeAsString(jsonEncode(data));
   }
 
   String colorToHex(Color c) => _colorToHex(c);

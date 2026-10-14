@@ -1,30 +1,18 @@
 // ═══════════════════════════════════════════════════════════════════
 // trace_field.dart — поле следа. Универсальный встраиваемый виджет.
 //
-// Устройство:
-//   слева — поле текста (три строки);
-//   справа — столбец: пульт чек-листа, пульт отправки/медиа.
+// Слева — поле текста (три строки). Справа — столбец: пульт
+// чек-листа, пульт отправки/медиа.
+//
+// Под полем — строка медиа-пультов (TraceMediaRow), ежели в слоте
+// есть медиа.
 //
 // След различается парой (objectId, slot). Поиск чек-листа — по
-// kind=checklist + slot: в одном слоте могут жить и текст, и чек-лист.
+// kind=checklist + slot.
 //
-// Пульт чек-листа:
-//   — нет неотмеченных — галочка в квадрате;
-//   — есть неотмеченные — сигнальное число в ядре (centerText).
+// Цвет пульсов — от блока (fg).
 //
-// Скрепка (коли нет неотправленного текста) открывает подпульт медиа:
-// аудио, фото, видео, место, файл. Каждое добавление копирует файл
-// внутрь приложения и кладёт ссылку в тело следа.
-//
-// Под полем ввода — строка пультов тех родов медиа, что уже есть
-// в слоте. Справа от пульта — число. Касание открывает просмотр
-// последнего добавленного.
-//
-// Цвет пульсов — от блока (fg), а не dim: в блоке соседние пульсы
-// (флаг, показать все) стоят в fg. Единообразие.
-//
-// Очистка поля. Коли текст был и стал пуст — тотчас запись правки
-// с пустым телом. Пульт отправки гаснет.
+// Очистка поля: текст был и стал пуст — запись правки с пустым телом.
 //
 // Enter на клавиатуре — то же, что касание пульта отправки.
 //
@@ -40,6 +28,7 @@ import '../pults/pult_core.dart';
 import '../screens/checklist_screen.dart';
 import '../screens/media_viewer.dart';
 import '../services/media_picker.dart';
+import 'trace_media_row.dart';
 
 class TraceField extends StatefulWidget {
   final int objectId;
@@ -217,30 +206,6 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     return t?.files ?? const [];
   }
 
-  Map<String, int> _fileCounts(List<TraceFile> files) {
-    final m = <String, int>{};
-    for (final f in files) {
-      m[f.kind] = (m[f.kind] ?? 0) + 1;
-    }
-    return m;
-  }
-
-  IconData _mediaIcon(String kind) {
-    switch (kind) {
-      case MediaKind.audio:
-        return Icons.mic_none;
-      case MediaKind.photo:
-        return Icons.photo_camera_outlined;
-      case MediaKind.video:
-        return Icons.videocam_outlined;
-      case MediaKind.geo:
-        return Icons.place_outlined;
-      case MediaKind.file:
-      default:
-        return Icons.attach_file;
-    }
-  }
-
   Future<void> _openMediaPicker() async {
     _focus.unfocus();
     await showMediaPicker(
@@ -296,7 +261,6 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     final bool chkSelected = unchecked > 0;
 
     final files = _files();
-    final counts = _fileCounts(files);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -381,32 +345,16 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
             ),
           ],
         ),
-        if (counts.isNotEmpty) ...[
+        if (files.isNotEmpty) ...[
           SizedBox(height: widget.side * 0.15),
-          Wrap(
-            spacing: widget.side * 0.15,
-            runSpacing: widget.side * 0.1,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              for (final kind in MediaKind.all)
-                if ((counts[kind] ?? 0) > 0)
-                  Pult(
-                    spec: PultSpec(
-                      id: 'media_$kind',
-                      icon: _mediaIcon(kind),
-                      label: '${counts[kind]}',
-                      compactLabel: true,
-                      onTap: () {
-                        final idx = files.lastIndexWhere((f) => f.kind == kind);
-                        if (idx >= 0) _openMediaViewer(files, idx);
-                      },
-                    ),
-                    fg: widget.fg,
-                    bg: widget.bg,
-                    signal: widget.signal,
-                    overrideSize: pultSide,
-                  ),
-            ],
+          TraceMediaRow(
+            files: files,
+            fg: widget.fg,
+            bg: widget.bg,
+            signal: widget.signal,
+            side: widget.side,
+            pultSide: pultSide,
+            onOpen: _openMediaViewer,
           ),
         ],
       ],
