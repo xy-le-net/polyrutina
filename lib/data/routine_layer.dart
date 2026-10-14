@@ -12,14 +12,23 @@
 // Кэш. Пишется отложенно (200 мс). currentRoutineId — в памяти;
 // lastActiveBlockKind — в кэше (для прокрутки после перезапуска).
 //
-// Завершённость. Установка гасит идущий блок.
+// Завершённость. Установка гасит идущий блок и ставит completedAt;
+// снятие очищает completedAt.
 //
 // Правка времени. setBlockTime ставит пометку timeEdited; при пуске
 // блока пометка снимается.
 //
-// Дублирование. Копируются: имя, флаги, следы блоков описания,
-// подготовки, завершения (текст и чек-лист). Следы перехода,
-// выполнения, простоя не переносятся — они о конкретной работе.
+// lastPulseAt. Двигается при пуске и остановке блока. Прочие
+// действия (переименование, смена флагов, правка плана) его не
+// трогают — иначе день в календаре «дни» сдвигался бы не по делу.
+//
+// Намеченная дата и планируемые человекочасы. Правятся в карточке;
+// хранятся секундами Unix и секундами соответственно.
+//
+// Дублирование. Копируются: имя, флаги, намеченная дата, плановые
+// человекочасы, следы блоков описания, подготовки, завершения
+// (текст и чек-лист). Следы перехода, выполнения, простоя
+// не переносятся — они о конкретной работе.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -159,7 +168,26 @@ class RoutineLayer extends ChangeNotifier {
           final id = (data['routine'] as num).toInt();
           final v = data['value'] as bool? ?? true;
           final r = findRoutine(id);
-          if (r != null) r.completed = v;
+          if (r != null) {
+            r.completed = v;
+            r.completedAt = v ? e.time : null;
+          }
+          break;
+        case 'set_schedule':
+          final id = (data['routine'] as num).toInt();
+          final r = findRoutine(id);
+          if (r != null) {
+            r.scheduledAt = (data['at'] as num?)?.toInt();
+            r.lastActionAt = e.time;
+          }
+          break;
+        case 'set_planned':
+          final id = (data['routine'] as num).toInt();
+          final r = findRoutine(id);
+          if (r != null) {
+            r.plannedSeconds = (data['seconds'] as num?)?.toInt() ?? 0;
+            r.lastActionAt = e.time;
+          }
           break;
         case 'start_block':
           final id = (data['routine'] as num).toInt();
@@ -169,7 +197,9 @@ class RoutineLayer extends ChangeNotifier {
           if (r != null && kind != null) {
             r.blockOf(kind)?.start(at: at);
             r.lastActionAt = at;
+            r.lastPulseAt = at;
             r.completed = false;
+            r.completedAt = null;
             currentRoutineId = id;
             lastActiveBlockKind = kind;
           }
@@ -182,6 +212,7 @@ class RoutineLayer extends ChangeNotifier {
           if (r != null && kind != null) {
             r.blockOf(kind)?.pause(at: at);
             r.lastActionAt = at;
+            r.lastPulseAt = at;
             if (r.runningBlock == null && currentRoutineId == id) {
               currentRoutineId = null;
             }
@@ -218,6 +249,12 @@ class RoutineLayer extends ChangeNotifier {
     }
     if (src.flags != 0) {
       await setFlags(journal, r.id, src.flags);
+    }
+    if (src.scheduledAt != null) {
+      await setSchedule(journal, r.id, src.scheduledAt);
+    }
+    if (src.plannedSeconds > 0) {
+      await setPlanned(journal, r.id, src.plannedSeconds);
     }
 
     final traces = _traces;
@@ -311,6 +348,34 @@ class RoutineLayer extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setSchedule(JournalLayer journal, int id, int? at) async {
+    final r = findRoutine(id);
+    if (r == null) return;
+    if (r.scheduledAt == at) return;
+    r.scheduledAt = at;
+    r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await journal.log(
+      type: JournalType.routine,
+      body: '{"action":"set_schedule","routine":$id,"at":${at ?? 'null'}}',
+    );
+    _scheduleSave();
+    notifyListeners();
+  }
+
+  Future<void> setPlanned(JournalLayer journal, int id, int seconds) async {
+    final r = findRoutine(id);
+    if (r == null) return;
+    if (r.plannedSeconds == seconds) return;
+    r.plannedSeconds = seconds;
+    r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await journal.log(
+      type: JournalType.routine,
+      body: '{"action":"set_planned","routine":$id,"seconds":$seconds}',
+    );
+    _scheduleSave();
+    notifyListeners();
+  }
+
   Future<void> setCompleted(JournalLayer journal, int id, bool value) async {
     final r = findRoutine(id);
     if (r == null) return;
@@ -334,6 +399,7 @@ class RoutineLayer extends ChangeNotifier {
         }
         if (currentRoutineId == id) currentRoutineId = null;
         r.completed = true;
+        r.completedAt = now;
         r.lastActionAt = now;
         await journal.log(
           type: JournalType.routine,
@@ -342,6 +408,7 @@ class RoutineLayer extends ChangeNotifier {
       });
     } else {
       r.completed = false;
+      r.completedAt = null;
       r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       await journal.log(
         type: JournalType.routine,
@@ -444,7 +511,9 @@ class RoutineLayer extends ChangeNotifier {
         );
       }
       r.lastActionAt = now;
+      r.lastPulseAt = now;
       r.completed = false;
+      r.completedAt = null;
       currentRoutineId = routineId;
       lastActiveBlockKind = kind;
     });
@@ -464,6 +533,7 @@ class RoutineLayer extends ChangeNotifier {
     if (b == null || !b.isRunning) return;
     b.pause(at: now);
     r.lastActionAt = now;
+    r.lastPulseAt = now;
     if (r.runningBlock == null && currentRoutineId == routineId) {
       currentRoutineId = null;
     }

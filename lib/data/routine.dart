@@ -2,12 +2,29 @@
 // routine.dart — модель рутины и её блоков.
 //
 // Рутина: идентификатор, имя, время создания, время последнего
-// действия, пять блоков, флаги, признак завершённости.
+// действия, время последнего отработавшего пульса, время установки
+// завершённости, намеченная дата, планируемые человекочасы, пять
+// блоков, флаги, признак завершённости.
 //
 // Блок: род, накопленные секунды, метка старта, признак правки
 // времени (timeEdited).
 //
 // lastActionAt. Время последнего действия — для сортировки.
+//
+// lastPulseAt. Время последнего отработавшего пульса — при пуске
+// либо остановке блока. Служит для выбора дня в календаре «дни»,
+// где прочие действия (переименование, смена флагов) не должны
+// сдвигать метку.
+//
+// completedAt. Миг установки завершённости; снимается при снятии
+// оной. Старшая мера дня при выборе пометы в календаре.
+//
+// scheduledAt. Намеченная конечная дата (секунды Unix). Нульозначие
+// отсутствия.
+//
+// plannedSeconds. Планируемые человекочасы в секундах; ввод и вывод
+// в формате «дд:чч:мм» (годы и месяцы сверх — не укладываются,
+// но за пределы 99 дней выходить не возбраняется).
 //
 // flags. Биты JournalFlag. Правятся в карточке.
 //
@@ -92,6 +109,11 @@ class Routine {
   final List<RoutineBlock> blocks;
 
   int lastActionAt;
+  int? lastPulseAt;
+  int? completedAt;
+  int? scheduledAt;
+  int plannedSeconds;
+
   int flags;
   bool completed;
 
@@ -101,6 +123,10 @@ class Routine {
     required this.createdAt,
     required this.blocks,
     int? lastActionAt,
+    this.lastPulseAt,
+    this.completedAt,
+    this.scheduledAt,
+    this.plannedSeconds = 0,
     this.flags = 0,
     this.completed = false,
   }) : lastActionAt = lastActionAt ?? createdAt;
@@ -140,6 +166,10 @@ class Routine {
     'name': name,
     'created_at': createdAt,
     'last_action_at': lastActionAt,
+    'last_pulse_at': lastPulseAt,
+    'completed_at': completedAt,
+    'scheduled_at': scheduledAt,
+    'planned_seconds': plannedSeconds,
     'flags': flags,
     'completed': completed,
     'blocks': blocks.map((b) => b.toJson()).toList(),
@@ -150,6 +180,10 @@ class Routine {
     name: j['name'] as String? ?? '',
     createdAt: (j['created_at'] as num).toInt(),
     lastActionAt: (j['last_action_at'] as num?)?.toInt(),
+    lastPulseAt: (j['last_pulse_at'] as num?)?.toInt(),
+    completedAt: (j['completed_at'] as num?)?.toInt(),
+    scheduledAt: (j['scheduled_at'] as num?)?.toInt(),
+    plannedSeconds: (j['planned_seconds'] as num?)?.toInt() ?? 0,
     flags: (j['flags'] as num?)?.toInt() ?? 0,
     completed: j['completed'] as bool? ?? false,
     blocks: (j['blocks'] as List)

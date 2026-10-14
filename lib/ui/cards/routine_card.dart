@@ -6,8 +6,16 @@
 // показ/скрытие слотов, свёртка, автопрокрутка к активному слоту,
 // завершение, экспорт.
 //
-// Показ слотов. «Описание» и «итог» — по правилам слоя. Прочие пять —
-// коли род в defaultSlots (рубка) либо пульс отработал, либо есть
+// Шапка. Под полем имени — ряд: пульт намеченной даты и поле
+// планируемых человекочасов (формат «дд:чч:мм»).
+//
+// Пульт намеченной даты. При наличии — сигнально отмечен и при
+// касании растёт на четверть (запрос подтверждения сброса); при
+// подтверждении — сброс, после чего снова открывается системный
+// выбор. При отсутствии — касание тотчас открывает системный выбор.
+//
+// Показ слотов. «Описание» и «итог» — по правилам слоя. Прочие пять
+// — коли род в defaultSlots (рубка) либо пульс отработал, либо есть
 // след. Пульт «показать все слоты» — сессионный.
 //
 // Свёртка слотов — сессионная. При создании рутины описание
@@ -25,6 +33,7 @@ import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
 import '../core/bort_field.dart';
 import '../core/format.dart';
+import '../pults/pult_core.dart';
 import '../services/report.dart';
 import 'routine_block_view.dart';
 
@@ -49,7 +58,6 @@ class _RoutineCardState extends State<RoutineCard> {
   int _lastMinute = 0;
   int _lastSecond = 0;
 
-  // Сессионные состояния: развёрнутые слоты и «показать все».
   final Set<String> _expanded = {};
   bool _showAllSlots = false;
   bool _initializedExpand = false;
@@ -261,11 +269,41 @@ class _RoutineCardState extends State<RoutineCard> {
     await ReportBuilder.buildSingle(app, app.i18n, r.id);
   }
 
+  // ─── Намеченная дата ───
+  Future<void> _pickSchedule(Routine r) async {
+    final app = AppScope.of(context);
+    final now = DateTime.now();
+    final initial = r.scheduledAt != null
+        ? DateTime.fromMillisecondsSinceEpoch(r.scheduledAt! * 1000)
+        : now;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(now.year - 5),
+      lastDate: DateTime(now.year + 5),
+    );
+    if (picked == null) return;
+    await app.routineLayer.setSchedule(
+      app.journal,
+      r.id,
+      picked.millisecondsSinceEpoch ~/ 1000,
+    );
+  }
+
+  // ─── Плановые человекочасы ───
+  Future<void> _setPlanned(Routine r, String text) async {
+    final app = AppScope.of(context);
+    final sec = parseEditable(text);
+    if (sec == null) return;
+    await app.routineLayer.setPlanned(app.journal, r.id, sec);
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final bort = app.bort;
     final i18n = app.i18n;
+    final side = PultScope.of(context).smallSide;
 
     final r = app.routineLayer.findRoutine(widget.routineId);
     if (r == null) {
@@ -337,6 +375,26 @@ class _RoutineCardState extends State<RoutineCard> {
       blocks.add(blockOf('summary', i18n.t('routine.summary')));
     }
 
+    final schedulePult = Pult(
+      spec: PultSpec(
+        id: 'sched_${r.id}',
+        icon: Icons.event,
+        selected: r.scheduledAt != null,
+        confirm: r.scheduledAt != null,
+        onTap: () {
+          if (r.scheduledAt != null) {
+            app.routineLayer.setSchedule(app.journal, r.id, null);
+          } else {
+            _pickSchedule(r);
+          }
+        },
+      ),
+      fg: bort.fg,
+      bg: bort.bg,
+      signal: bort.signal,
+      overrideSize: side * bort.kPultSmall,
+    );
+
     return Scaffold(
       backgroundColor: bort.bg,
       appBar: AppBar(
@@ -360,7 +418,32 @@ class _RoutineCardState extends State<RoutineCard> {
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: blocks,
+              children: [
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    side * 0.1,
+                    0,
+                    side * 0.1,
+                    side * 0.2,
+                  ),
+                  child: Row(
+                    children: [
+                      schedulePult,
+                      SizedBox(width: side * 0.15),
+                      Expanded(
+                        child: BortField(
+                          initial: fmtEditable(r.plannedSeconds),
+                          fg: bort.fg,
+                          readOnly: false,
+                          hint: i18n.t('routine.hours_hint'),
+                          onCommit: (v) => _setPlanned(r, v),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                ...blocks,
+              ],
             ),
           ),
         ),

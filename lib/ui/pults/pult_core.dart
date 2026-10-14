@@ -4,11 +4,16 @@
 //
 // compactLabel — подпись вплотную к тексту (для счётчиков медиа).
 //
-// Подтверждение (confirm). Внутри панели подпультов подтверждаемый
-// пульт при касании не закрывает панель, а вырастает на четверть
-// (side * 1.25) на своём месте. Прочие пульты при этом раздвигаются
-// естественным ходом Column. Повторное касание по увеличенному —
-// исполнить. Касание мимо — отмена.
+// Подтверждение (confirm). Подтверждаемый пульт при касании не
+// исполняет действие тотчас, а вырастает на четверть на своём месте.
+// Повторное касание по увеличенному — исполнить. Касание по иному
+// пульту либо мимо — отмена роста. Состояние подтверждения живёт
+// в вызывающем виджете либо в листе подпультов (pult_sheet.dart);
+// здесь — лишь запрос.
+//
+// Подпульты. Пульт с subsBuilder либо longSubs не открывает панель
+// сам: он просит о том чрез showPultSheet — единый левосторонний
+// лист (pult_sheet.dart). Прежний PultLayer упразднён.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -16,6 +21,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/app_scope.dart';
+import 'pult_sheet.dart';
 
 class PultSpec {
   final String id;
@@ -50,70 +56,11 @@ class PultSpec {
 }
 
 class PultState extends ChangeNotifier {
-  GlobalKey? parentKey;
-  List<PultSpec> Function()? subsBuilder;
-
-  String? confirmingId;
-  GlobalKey? confirmingKey;
-  VoidCallback? confirmingAction;
-  IconData? confirmingIcon;
-
   double baseSide = 32;
   double maxSide = 64;
 
   double get side => baseSide > maxSide ? maxSide : baseSide;
   double get smallSide => side * 2 / 3;
-
-  void open(GlobalKey key, List<PultSpec> Function() builder) {
-    parentKey = key;
-    subsBuilder = builder;
-    confirmingId = null;
-    confirmingKey = null;
-    confirmingAction = null;
-    confirmingIcon = null;
-    notifyListeners();
-  }
-
-  void close() {
-    parentKey = null;
-    subsBuilder = null;
-    confirmingId = null;
-    confirmingKey = null;
-    confirmingAction = null;
-    confirmingIcon = null;
-    notifyListeners();
-  }
-
-  // ─── Запрос подтверждения ───
-  // Панель подпультов не закрывается: подтверждаемый пульт вырастет
-  // на месте. Вне панели — отдельный случай, когда родительский
-  // пульт сам просит подтверждения (тогда parentKey сбрасывается).
-  void askConfirm(
-    String id,
-    GlobalKey key,
-    VoidCallback action,
-    IconData icon, {
-    bool keepPanel = false,
-  }) {
-    confirmingId = id;
-    confirmingKey = key;
-    confirmingAction = action;
-    confirmingIcon = icon;
-    if (!keepPanel) {
-      parentKey = null;
-      subsBuilder = null;
-    }
-    notifyListeners();
-  }
-
-  bool isConfirming(String id) => confirmingId == id;
-
-  void runConfirm(String id) {
-    if (confirmingId != id) return;
-    final a = confirmingAction;
-    close();
-    a?.call();
-  }
 }
 
 class PultScope extends InheritedNotifier<PultState> {
@@ -130,8 +77,6 @@ class PultScope extends InheritedNotifier<PultState> {
 class Pult extends StatefulWidget {
   final PultSpec spec;
   final double? overrideSize;
-  final bool insideLayer;
-  final bool labelSideLeft;
   final Color fg;
   final Color bg;
   final Color signal;
@@ -143,8 +88,6 @@ class Pult extends StatefulWidget {
     required this.bg,
     required this.signal,
     this.overrideSize,
-    this.insideLayer = false,
-    this.labelSideLeft = false,
   });
 
   @override
@@ -163,16 +106,9 @@ class _PultState extends State<Pult> {
   @override
   Widget build(BuildContext context) {
     final state = PultScope.of(context);
-    final baseSide =
-        widget.overrideSize ??
-        (widget.insideLayer ? state.smallSide : state.side);
-
-    // Подтверждаемый пульт — на четверть больше.
-    final bool confirming = state.isConfirming(widget.spec.id);
-    final side = confirming ? baseSide * 1.25 : baseSide;
+    final side = widget.overrideSize ?? state.side;
 
     final selected = widget.spec.selected;
-
     final coreColor = selected ? widget.signal : widget.fg;
     final iconColor = widget.bg;
 
@@ -252,16 +188,14 @@ class _PultState extends State<Pult> {
           ? desired.clamp(side * 0.8, maxLabelW)
           : desired.clamp(side * 1.5, maxLabelW);
 
-      final borderRadius = widget.labelSideLeft
-          ? const BorderRadius.horizontal(left: Radius.circular(6))
-          : const BorderRadius.horizontal(right: Radius.circular(6));
-
       final labelWidget = Container(
         height: side * 0.75,
         width: labelWidth,
         decoration: BoxDecoration(
           color: widget.spec.labelBg ?? coreColor,
-          borderRadius: borderRadius,
+          borderRadius: const BorderRadius.horizontal(
+            right: Radius.circular(6),
+          ),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 6),
         child: MediaQuery(
@@ -269,9 +203,7 @@ class _PultState extends State<Pult> {
             context,
           ).copyWith(textScaler: TextScaler.noScaling),
           child: Align(
-            alignment: widget.labelSideLeft
-                ? Alignment.centerRight
-                : Alignment.centerLeft,
+            alignment: Alignment.centerLeft,
             child: Text(
               widget.spec.label!,
               style: TextStyle(
@@ -289,57 +221,23 @@ class _PultState extends State<Pult> {
 
       content = Row(
         mainAxisSize: MainAxisSize.min,
-        children: widget.labelSideLeft
-            ? [labelWidget, core]
-            : [core, labelWidget],
+        children: [core, labelWidget],
       );
     }
 
-    if (widget.insideLayer) {
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          _pulseBort();
-          if (confirming) {
-            state.runConfirm(widget.spec.id);
-            return;
-          }
-          if (widget.spec.confirm) {
-            if (widget.spec.onTap != null) {
-              state.askConfirm(
-                widget.spec.id,
-                _coreKey,
-                widget.spec.onTap!,
-                widget.spec.icon,
-                keepPanel: true,
-              );
-            }
-            return;
-          }
-          widget.spec.onTap?.call();
-          if (!widget.spec.stayOpen) state.close();
-        },
-        child: content,
-      );
-    }
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
         _pulseBort();
-        if (widget.spec.confirm) {
-          if (state.isConfirming(widget.spec.id)) return;
-          if (widget.spec.onTap != null) {
-            state.askConfirm(
-              widget.spec.id,
-              _coreKey,
-              widget.spec.onTap!,
-              widget.spec.icon,
-            );
-          }
-          return;
-        }
         if (widget.spec.subsBuilder != null) {
-          state.open(_coreKey, widget.spec.subsBuilder!);
+          showPultSheet(
+            context: context,
+            subs: widget.spec.subsBuilder!(),
+            fg: widget.fg,
+            bg: widget.bg,
+            signal: widget.signal,
+            side: state.smallSide,
+          );
           return;
         }
         widget.spec.onTap?.call();
@@ -348,7 +246,14 @@ class _PultState extends State<Pult> {
         FocusManager.instance.primaryFocus?.unfocus();
         _pulseBort();
         if (widget.spec.longSubs != null) {
-          state.open(_coreKey, widget.spec.longSubs!);
+          showPultSheet(
+            context: context,
+            subs: widget.spec.longSubs!(),
+            fg: widget.fg,
+            bg: widget.bg,
+            signal: widget.signal,
+            side: state.smallSide,
+          );
           return;
         }
         widget.spec.onLongPress?.call();

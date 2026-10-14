@@ -212,11 +212,6 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
       context: context,
       objectId: widget.objectId,
       slot: widget.slot,
-      fg: widget.fg,
-      dim: widget.dim,
-      bg: widget.bg,
-      signal: widget.signal,
-      side: widget.side,
     );
     if (mounted) setState(() {});
   }

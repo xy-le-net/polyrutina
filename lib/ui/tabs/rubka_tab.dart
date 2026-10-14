@@ -1,18 +1,18 @@
 // ═══════════════════════════════════════════════════════════════════
 // rubka_tab.dart — вкладка рубки.
 //
-// Четыре блока: артель, оформление, интерфейс, данные.
-// Блоки строятся единым Block.
+// Четыре блока: артель, оформление, интерфейс, данные. Оформление
+// и интерфейс, данные — вынесены в отдельные виджеты
+// (rubka_appearance.dart, rubka_interface.dart, rubka_data.dart).
+// Здесь — лишь сборка блоков и раскладка.
+//
+// Дубликаты, что прежде жили в сем файле (повторы _refreshSize,
+// _slotTicks, _settingRow, _langRow, _pultRow, _midnightRow),
+// устранены: всякая частность — в своём виджете.
 //
 // Артель — поле «полночь» (чч:мм).
-// Оформление — RubkaAppearance.
-// Интерфейс — RubkaInterface.
-// Данные — RubkaData.
 //
-// Все настройки пишутся токмо в файл борта.
-//
-// Широкий экран: блоки слева направо, сверху вниз, чрез Wrap
-// с шириною половины экрана.
+// Широкий экран: блоки идут слева направо, сверху вниз — как текст.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -27,18 +27,8 @@ import 'rubka_appearance.dart';
 import 'rubka_data.dart';
 import 'rubka_interface.dart';
 
-class RubkaTab extends StatefulWidget {
+class RubkaTab extends StatelessWidget {
   const RubkaTab({super.key});
-
-  @override
-  State<RubkaTab> createState() => _RubkaTabState();
-}
-
-class _RubkaTabState extends State<RubkaTab> {
-  void _set(String key, String value) {
-    final app = AppScope.of(context);
-    app.bort.set(key, value);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,11 +47,13 @@ class _RubkaTabState extends State<RubkaTab> {
     final strokeW = side * bort.kStroke;
     final radiusW = side * bort.kRadius;
 
+    void set(String key, String value) => bort.set(key, value);
+
     final artel = Block(
       title: i18n.t('block.artel'),
       collapsed: !bort.blockArtel,
       onToggleCollapsed: () =>
-          _set('block_artel', (!bort.blockArtel).toString()),
+          set('block_artel', (!bort.blockArtel).toString()),
       bg: bg,
       dim: dim,
       fg: fg,
@@ -71,31 +63,16 @@ class _RubkaTabState extends State<RubkaTab> {
       gap: gap,
       strokeW: strokeW,
       radiusW: radiusW,
-      child: _midnightRow(context, fg, bg),
+      child: _midnightRow(context, fg, side),
     );
 
-    final appearance = Block(
-      title: i18n.t('block.appearance'),
-      collapsed: !bort.blockAppearance,
-      onToggleCollapsed: () =>
-          _set('block_appearance', (!bort.blockAppearance).toString()),
-      bg: bg,
-      dim: dim,
-      fg: fg,
-      signal: signal,
-      titleSize: titleSize,
-      pad: pad,
-      gap: gap,
-      strokeW: strokeW,
-      radiusW: radiusW,
-      child: RubkaAppearance(onSet: _set),
-    );
+    const appearance = RubkaAppearance();
 
     final interface = Block(
       title: i18n.t('block.interface'),
       collapsed: !bort.blockInterface,
       onToggleCollapsed: () =>
-          _set('block_interface', (!bort.blockInterface).toString()),
+          set('block_interface', (!bort.blockInterface).toString()),
       bg: bg,
       dim: dim,
       fg: fg,
@@ -105,13 +82,13 @@ class _RubkaTabState extends State<RubkaTab> {
       gap: gap,
       strokeW: strokeW,
       radiusW: radiusW,
-      child: RubkaInterface(onSet: _set),
+      child: RubkaInterface(onSet: set),
     );
 
     final data = Block(
       title: i18n.t('block.data'),
       collapsed: !bort.blockData,
-      onToggleCollapsed: () => _set('block_data', (!bort.blockData).toString()),
+      onToggleCollapsed: () => set('block_data', (!bort.blockData).toString()),
       bg: bg,
       dim: dim,
       fg: fg,
@@ -159,7 +136,8 @@ class _RubkaTabState extends State<RubkaTab> {
     );
   }
 
-  Widget _midnightRow(BuildContext context, Color fg, Color bg) {
+  // ─── Полночь: единственная частность, оставшаяся здесь ───
+  Widget _midnightRow(BuildContext context, Color fg, double side) {
     final app = AppScope.of(context);
     final bort = app.bort;
     final i18n = app.i18n;
@@ -180,7 +158,7 @@ class _RubkaTabState extends State<RubkaTab> {
               onCommit: (v) async {
                 final ok = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(v);
                 if (!ok) return;
-                _set('midnight', v);
+                bort.set('midnight', v);
               },
             ),
           ),

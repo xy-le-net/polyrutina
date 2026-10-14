@@ -159,9 +159,11 @@ class ThemeStore {
   }
 
   // ─── Встроенные умолчания ───
+  // Дополняет недостающие темы, не перетирая уже загруженные:
+  // ежели в файле борта темы custom нет (записан до правки), она
+  // добавится с умолчаниями, а day и night останутся как были.
   void ensureThemes() {
-    if (themes.isNotEmpty) return;
-    themes = {
+    final defaults = <String, Map<String, Color>>{
       'day': {
         'bg': const Color(0xFFEFEFEF),
         'bgdim': const Color(0xFFE4E4E4),
@@ -184,6 +186,11 @@ class ThemeStore {
         'signal': const Color(0xFF5AA9E6),
       },
     };
+    for (final e in defaults.entries) {
+      if (!themes.containsKey(e.key)) {
+        themes[e.key] = Map<String, Color>.from(e.value);
+      }
+    }
   }
 }
 

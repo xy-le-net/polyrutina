@@ -1,14 +1,18 @@
 // ═══════════════════════════════════════════════════════════════════
 // rubka_data.dart — блок «данные» в рубке.
 //
-// Вынесен из rubka_tab.
-//
-// Смена — длительность от последней прошедшей полуночи (shiftSecondsNow).
-// Строка как все прочие: слева подпись, справа значение.
+// Смена — длительность от последней прошедшей полуночи
+// (shiftSecondsNow). Строка как все прочие: слева подпись,
+// справа значение.
 //
 // Журнал — размер файлов борта в байтах.
 //
 // Пульты: перечитать, очистить, удалить, сброс, приём.
+//
+// Метки. Пульт перечитывания активен, лишь покуда верховный номер
+// журнала превосходит lastRereadId; иначе — бледен и бездействует.
+// Сие устраняет праздное перечитывание и даёт вид, что журнал
+// не изменился с прошлого раза.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -34,6 +38,7 @@ class RubkaData extends StatefulWidget {
 class _RubkaDataState extends State<RubkaData> {
   int _sizeBytes = 0;
   bool _sizeLoaded = false;
+  bool _canReread = false;
 
   String _fmtNum(int n) {
     final s = n.toString();
@@ -47,6 +52,7 @@ class _RubkaDataState extends State<RubkaData> {
 
   Future<void> _refreshSize() async {
     try {
+      final app = AppScope.of(context);
       final dir = await getApplicationDocumentsDirectory();
       var total = 0;
       for (final name in const [
@@ -64,18 +70,20 @@ class _RubkaDataState extends State<RubkaData> {
           total += await f.length();
         }
       }
-      if (mounted) {
-        setState(() {
-          _sizeBytes = total;
-          _sizeLoaded = true;
-        });
-      }
+      final last = await app.journal.lastEntryId();
+      if (!mounted) return;
+      setState(() {
+        _sizeBytes = total;
+        _sizeLoaded = true;
+        _canReread = last > app.bort.lastRereadId;
+      });
     } catch (_) {}
   }
 
   Future<void> _reload() async {
     final app = AppScope.of(context);
     await app.journal.reread();
+    app.bort.setLastRereadId(await app.journal.lastEntryId());
     await app.reloadI18n();
     await _refreshSize();
     if (mounted) setState(() {});
@@ -91,6 +99,7 @@ class _RubkaDataState extends State<RubkaData> {
   Future<void> _deleteAll() async {
     final app = AppScope.of(context);
     await app.journal.clearAll();
+    app.bort.setLastRereadId(await app.journal.lastEntryId());
     await _refreshSize();
     if (mounted) setState(() {});
   }
@@ -127,6 +136,7 @@ class _RubkaDataState extends State<RubkaData> {
     final bort = app.bort;
     final i18n = app.i18n;
     final fg = bort.fg;
+    final dim = bort.dim;
     final bg = bort.bg;
     final signal = bort.signal;
     final side = PultScope.of(context).smallSide;
@@ -176,9 +186,9 @@ class _RubkaDataState extends State<RubkaData> {
               id: 'reload',
               icon: Icons.refresh,
               confirm: true,
-              onTap: _reload,
+              onTap: _canReread ? _reload : null,
             ),
-            fg: fg,
+            fg: _canReread ? fg : dim,
             bg: bg,
             signal: signal,
             overrideSize: side,

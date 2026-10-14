@@ -6,12 +6,18 @@
 // запуск, устройство), BortFile (файл борта).
 //
 // Здесь — поля состояния вида: коэффициенты, вкладка, смена, метка
-// экспорта, свёрнутость блоков, счётчики экспорта, слоты по
-// умолчанию. Установочные данные и работа с файлом — в модулях.
+// экспорта, метка перечитывания, свёрнутость блоков, счётчики
+// экспорта, слоты по умолчанию. Установочные данные и работа
+// с файлом — в модулях.
 //
 // В журнал сей слой НЕ пишет и НЕ читает из журнала.
 //
 // Смена — локальная суточная мера от последней прошедшей полуночи.
+//
+// lastExportId и lastRereadId. Номера последней выгруженной
+// и последней перечитанной записей журнала. Кнопки экспорта
+// и перечитывания активны, лишь покуда верховный номер журнала их
+// превосходит; иначе бледнеют и бездействуют.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -75,6 +81,7 @@ class OperationalLayer extends ChangeNotifier {
   int selectedType = 4;
   int selectedFlags = 0;
   int lastExportId = 0;
+  int lastRereadId = 0;
   Map<int, Set<String>> collapsedBlocks = {};
 
   Set<String> defaultSlots = {'work'};
@@ -110,6 +117,8 @@ class OperationalLayer extends ChangeNotifier {
     await _install.init();
     await _loadDefaults();
     await _loadFromFile();
+    // Дополняем недостающие темы (custom из старого файла борта).
+    _themes.ensureThemes();
     _themes.resolve();
 
     final newMid = _bortTime.checkMidnight();
@@ -211,6 +220,7 @@ class OperationalLayer extends ChangeNotifier {
         (data['shift_started_at'] as num?)?.toInt() ?? shiftStartedAt;
     shiftEdited = data['shift_edited'] as bool? ?? shiftEdited;
     lastExportId = (data['last_export_id'] as num?)?.toInt() ?? lastExportId;
+    lastRereadId = (data['last_reread_id'] as num?)?.toInt() ?? lastRereadId;
 
     kPult = (data['k_pult'] as num?)?.toDouble() ?? kPult;
     kPultSmall = (data['k_pult_small'] as num?)?.toDouble() ?? kPultSmall;
@@ -328,6 +338,13 @@ class OperationalLayer extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ─── Метка перечитывания ───
+  void setLastRereadId(int id) {
+    lastRereadId = id;
+    _scheduleSave();
+    notifyListeners();
+  }
+
   // ─── Счётчик экспорта ───
   int nextExportIndex(String objectKey) {
     final n = DateTime.now();
@@ -389,6 +406,7 @@ class OperationalLayer extends ChangeNotifier {
     exportCounters = {};
     defaultSlots = {'work'};
     lastExportId = 0;
+    lastRereadId = 0;
     await _loadDefaults();
     _themes.resolve();
     await _saveToFile();
@@ -602,6 +620,7 @@ class OperationalLayer extends ChangeNotifier {
       'shift_started_at': shiftStartedAt,
       'shift_edited': shiftEdited,
       'last_export_id': lastExportId,
+      'last_reread_id': lastRereadId,
       'k_pult': kPult,
       'k_pult_small': kPultSmall,
       'k_block_gap': kBlockGap,

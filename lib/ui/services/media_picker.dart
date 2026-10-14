@@ -4,6 +4,10 @@
 // Пять родов: аудио, фото, видео, место, файл. Аудио — отдельным
 // диалогом (audio_dialog.dart). Прочие — здесь.
 //
+// Открывается единым левосторонним листом (pult_sheet.dart) —
+// тем же, что и все прочие подпульты. Прежний showModalBottomSheet
+// упразднён.
+//
 // Файл копируется в media/ с именем по образцу:
 //   <устройство>_<номер рутины>_<слот>_<род>_<индекс>.<расш>
 //
@@ -29,100 +33,57 @@ import 'package:path_provider/path_provider.dart';
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
 import '../pults/pult_core.dart';
+import '../pults/pult_sheet.dart';
 import 'audio_dialog.dart';
 
 Future<void> showMediaPicker({
   required BuildContext context,
   required int objectId,
   required String slot,
-  required Color fg,
-  required Color dim,
-  required Color bg,
-  required Color signal,
-  required double side,
 }) async {
   final app = AppScope.of(context);
   final i18n = app.i18n;
+  final bort = app.bort;
+  final side = PultScope.of(context).smallSide;
 
-  await showModalBottomSheet<void>(
+  showPultSheet(
     context: context,
-    backgroundColor: bg,
-    builder: (sheetContext) {
-      final pultSide = side * 0.9;
-      final items = <(String, IconData, String, Future<void> Function())>[
-        (
-          MediaKind.audio,
-          Icons.mic_none,
-          i18n.t('media.audio'),
-          () => showAudioDialog(
-            context,
-            objectId: objectId,
-            slot: slot,
-          ),
-        ),
-        (
-          MediaKind.photo,
-          Icons.photo_camera_outlined,
-          i18n.t('media.photo'),
-          () => _addPhotoLoop(app, objectId, slot),
-        ),
-        (
-          MediaKind.video,
-          Icons.videocam_outlined,
-          i18n.t('media.video'),
-          () => _addVideoLoop(app, objectId, slot),
-        ),
-        (
-          MediaKind.geo,
-          Icons.place_outlined,
-          i18n.t('media.geo'),
-          () => _addGeo(app, objectId, slot),
-        ),
-        (
-          MediaKind.file,
-          Icons.attach_file,
-          i18n.t('media.file'),
-          () => _addFile(app, objectId, slot),
-        ),
-      ];
-
-      return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Wrap(
-            spacing: side * 0.2,
-            runSpacing: side * 0.15,
-            children: [
-              for (final it in items)
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Pult(
-                      spec: PultSpec(
-                        id: 'pick_${it.$1}',
-                        icon: it.$2,
-                        onTap: () async {
-                          Navigator.of(sheetContext).pop();
-                          await it.$4();
-                        },
-                      ),
-                      fg: fg,
-                      bg: bg,
-                      signal: signal,
-                      overrideSize: pultSide,
-                    ),
-                    SizedBox(height: side * 0.1),
-                    Text(
-                      it.$3,
-                      style: TextStyle(color: dim, fontSize: side * 0.32),
-                    ),
-                  ],
-                ),
-            ],
-          ),
-        ),
-      );
-    },
+    subs: [
+      PultSpec(
+        id: 'pick_${MediaKind.audio}',
+        icon: Icons.mic_none,
+        label: i18n.t('media.audio'),
+        onTap: () => showAudioDialog(context, objectId: objectId, slot: slot),
+      ),
+      PultSpec(
+        id: 'pick_${MediaKind.photo}',
+        icon: Icons.photo_camera_outlined,
+        label: i18n.t('media.photo'),
+        onTap: () => _addPhotoLoop(app, objectId, slot),
+      ),
+      PultSpec(
+        id: 'pick_${MediaKind.video}',
+        icon: Icons.videocam_outlined,
+        label: i18n.t('media.video'),
+        onTap: () => _addVideoLoop(app, objectId, slot),
+      ),
+      PultSpec(
+        id: 'pick_${MediaKind.geo}',
+        icon: Icons.place_outlined,
+        label: i18n.t('media.geo'),
+        onTap: () => _addGeo(app, objectId, slot),
+      ),
+      PultSpec(
+        id: 'pick_${MediaKind.file}',
+        icon: Icons.attach_file,
+        label: i18n.t('media.file'),
+        onTap: () => _addFile(app, objectId, slot),
+      ),
+    ],
+    fg: bort.fg,
+    bg: bort.bg,
+    signal: bort.signal,
+    side: side,
   );
 }
 

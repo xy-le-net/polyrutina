@@ -19,10 +19,6 @@ dependencies:
   path: ^1.9.1
   path_provider: ^2.1.6
 
-  # Таблица журнала.
-  table_view_ex: ^0.1.6
-  two_dimensional_scrollables: ^0.3.9
-
   # Медиа: снимок, видео, файлы, звук, геопозиция.
   image_picker: ^1.1.2
   file_picker: ^10.3.3

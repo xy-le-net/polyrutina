@@ -4,42 +4,47 @@
 // Порядок пуска: журнал (init без подписки), борт, слои, словарь.
 // Затем — journal.start().
 //
+// Вкладка по умолчанию. При каждом запуске открывается вкладка
+// «рутины». Пометка о вкладке в файле борта не читается; поле
+// bort.tab в сем приложении более не употребительно.
+//
+// Вкладки: поле, рутины, дни, артель, рубка. Вкладка журнала
+// упразднена; слой JournalLayer жив внутри и кормит прочие слои.
+//
 // Действие пользователя. Listener вокруг дерева ловит касание —
 // борт получает сигнал (pulseBort).
 //
 // Время борта. Подписка на тикер: борт тикает, раз в тридцать
 // секунд сверяет полночь.
 //
-// Системная строка. Стиль overlay-полосы — от темы борта. Тот же
-// стиль продублирован в appBarTheme, дабы экраны со своим AppBar
-// (карточка, чек-лист, медиа, приём) не перебивали значки.
+// Системная строка. Стиль overlay-полосы — от темы борта.
 //
-// Корневой пульт — жёстко в левом верхнем углу, на треть меньше
-// базового пульта. Перетаскивания нет: положение неизменно.
-// Заголовкам AppBar дан отступ слева, дабы не заезжали под пульт.
+// Корневой пульт — жёстко в левом верхнем углу. Касание открывает
+// единый левосторонний лист подпультов (pult_sheet.dart) с родами
+// вкладок. PultLayer упразднён.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
 
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'data/database.dart';
+import 'data/i18n.dart';
 import 'data/journal_layer.dart';
 import 'data/operational_layer.dart';
 import 'data/routine_layer.dart';
-import 'data/trace_layer.dart';
 import 'data/ticker.dart';
-import 'data/i18n.dart';
+import 'data/trace_layer.dart';
+import 'ui/cards/routine_card.dart';
 import 'ui/core/app_scope.dart';
 import 'ui/pults/pult_core.dart';
-import 'ui/pults/pult_layer.dart';
+import 'ui/pults/pult_sheet.dart';
 import 'ui/pults/root_pult.dart';
+import 'ui/tabs/days_tab.dart';
 import 'ui/tabs/routines_tab.dart';
-import 'ui/tabs/journal_tab.dart';
 import 'ui/tabs/rubka_tab.dart';
 import 'ui/tabs/stub_tab.dart';
-import 'ui/cards/routine_card.dart';
 
 void main() => runApp(const PolyRutinaApp());
 
@@ -61,7 +66,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   final _navigatorKey = GlobalKey<NavigatorState>();
 
   I18n? _i18n;
-  int _tab = 4;
+
+  // Вкладка по умолчанию — рутины.
+  int _tab = 1;
 
   int? _openedRoutineId;
 
@@ -70,15 +77,14 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   static const List<RootTabItem> _tabs = [
     RootTabItem(icon: Icons.map, labelKey: 'tab.field'),
     RootTabItem(icon: Icons.checklist, labelKey: 'tab.routines'),
+    RootTabItem(icon: Icons.calendar_month, labelKey: 'tab.days'),
     RootTabItem(icon: Icons.groups, labelKey: 'tab.artel'),
     RootTabItem(icon: Icons.dashboard, labelKey: 'tab.rubka'),
-    RootTabItem(icon: Icons.list, labelKey: 'tab.journal'),
   ];
 
   static const double _pultBase = 32.0;
   static const double _pultMax = 64.0;
 
-  // Отступ корневого пульта от верхнего левого угла.
   static const double _rootPad = 6.0;
 
   @override
@@ -95,15 +101,10 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _onTickerTick = () => _bort.tickBort();
     _ticker.addListener(_onTickerTick!);
 
-    _bort.addListener(_onBortChanged);
     _routineLayer.addListener(_onLayerChanged);
     _traceLayer.addListener(_onLayerChanged);
     _journal.addListener(_onLayerChanged);
     _init();
-  }
-
-  void _onBortChanged() {
-    if (mounted) setState(() => _tab = _bort.tab);
   }
 
   void _onLayerChanged() {
@@ -119,7 +120,11 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     await _traceLayer.init(_journal);
     _i18n = await I18n.load(_bort.lang);
     _journal.start();
-    if (mounted) setState(() => _tab = _bort.tab);
+    // Метка перечитывания — на текущий конец журнала: кнопка
+    // «перечитать» становится активной, лишь ежели после сего
+    // в журнал что-то добавилось.
+    _bort.setLastRereadId(await _journal.lastEntryId());
+    if (mounted) setState(() {});
   }
 
   Future<void> _reloadI18n() async {
@@ -137,7 +142,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     if (_onTickerTick != null) {
       _ticker.removeListener(_onTickerTick!);
     }
-    _bort.removeListener(_onBortChanged);
     _routineLayer.removeListener(_onLayerChanged);
     _traceLayer.removeListener(_onLayerChanged);
     _journal.removeListener(_onLayerChanged);
@@ -163,24 +167,18 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   }
 
   Future<void> _switchTab(int i) async {
-    _pultState.close();
     _bort.pulseBort();
 
     final cardOpen = _openedRoutineId != null;
     final sameRoutines = i == 1 && cardOpen;
 
-    if (sameRoutines) {
-      return;
-    }
+    if (sameRoutines) return;
 
     if (cardOpen && i != 1) {
       _navigatorKey.currentState?.popUntil((r) => r.isFirst);
     }
 
-    setState(() {
-      _tab = i;
-    });
-    _bort.setSilent('tab', i.toString());
+    setState(() => _tab = i);
 
     if (i == 1 && _openedRoutineId != null) {
       final id = _openedRoutineId!;
@@ -193,12 +191,34 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   }
 
   Future<void> _openRoutine(int id) async {
-    _pultState.close();
+    setState(() {});
     _openedRoutineId = id;
     await _navigatorKey.currentState?.push(
       MaterialPageRoute(builder: (_) => RoutineCard(routineId: id)),
     );
     _openedRoutineId = null;
+  }
+
+  void _openTabsSheet(BuildContext context) {
+    final side = _pultState.smallSide;
+    final labels = _bort.labelsSystem;
+    showPultSheet(
+      context: context,
+      subs: [
+        for (var i = 0; i < _tabs.length; i++)
+          PultSpec(
+            id: 'tab_$i',
+            icon: _tabs[i].icon,
+            label: labels ? _i18n!.t(_tabs[i].labelKey) : null,
+            selected: _tab == i,
+            onTap: () => _switchTab(i),
+          ),
+      ],
+      fg: _bort.fg,
+      bg: _bort.bg,
+      signal: _bort.signal,
+      side: side,
+    );
   }
 
   double _pultSide(BuildContext context) {
@@ -207,7 +227,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     return raw > _pultMax ? _pultMax : raw;
   }
 
-  // ─── Системная строка: цвет знаков и фона от борта ───
   SystemUiOverlayStyle _overlayStyle(Brightness brightness) {
     final dark = brightness == Brightness.dark;
     return SystemUiOverlayStyle(
@@ -223,7 +242,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   Brightness _effectiveBrightness(Brightness systemBrightness) {
     if (_bort.themeName == 'system') return systemBrightness;
-    return _bort.themeName == 'night' ? Brightness.dark : Brightness.light;
+    if (_bort.themeName == 'night') return Brightness.dark;
+    if (_bort.themeName == 'custom') return Brightness.dark;
+    return Brightness.light;
   }
 
   @override
@@ -260,8 +281,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           brightness: _bort.systemBrightness,
         ).copyWith(surface: _bort.bg, onSurface: _bort.fg),
         scaffoldBackgroundColor: _bort.bg,
-        // Стиль системной строки для всех AppBar-ов разом.
-        // Отступ заголовка слева — под корневой пульт.
         appBarTheme: AppBarTheme(
           backgroundColor: _bort.bg,
           foregroundColor: _bort.fg,
@@ -307,32 +326,23 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
               child: Listener(
                 behavior: HitTestBehavior.translucent,
                 onPointerDown: (_) => _bort.pulseBort(),
-                child: PultLayer(
-                  fg: _bort.fg,
-                  bg: _bort.bg,
-                  signal: _bort.signal,
-                  child: SafeArea(
-                    child: Stack(
-                      children: [
-                        child ?? const SizedBox.shrink(),
-                        // Корневой пульт — жёстко в левом верхнем углу.
-                        Positioned(
-                          left: _rootPad,
-                          top: _rootPad,
-                          child: RootPult(
-                            tabs: _tabs,
-                            activeTab: _tab,
-                            side: rootSide,
-                            fg: _bort.fg,
-                            bg: _bort.bg,
-                            signal: _bort.signal,
-                            labelsSystem: _bort.labelsSystem,
-                            translate: (k) => _i18n!.t(k),
-                            onSwitchTab: (i) => _switchTab(i),
-                          ),
+                child: SafeArea(
+                  child: Stack(
+                    children: [
+                      child ?? const SizedBox.shrink(),
+                      // Корневой пульт — жёстко в левом верхнем углу.
+                      Positioned(
+                        left: _rootPad,
+                        top: _rootPad,
+                        child: RootPult(
+                          side: rootSide,
+                          fg: _bort.fg,
+                          bg: _bort.bg,
+                          signal: _bort.signal,
+                          onOpen: () => _openTabsSheet(context),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -344,11 +354,11 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
         body: IndexedStack(
           index: _tab,
           children: const [
-            StubTab(),
-            RoutinesTab(),
-            StubTab(),
-            RubkaTab(),
-            JournalTab(),
+            StubTab(), // поле
+            RoutinesTab(), // рутины
+            DaysTab(), // дни
+            StubTab(), // артель
+            RubkaTab(), // рубка
           ],
         ),
       ),
