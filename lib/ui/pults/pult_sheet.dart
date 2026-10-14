@@ -124,6 +124,23 @@ class _SheetBodyState extends State<_SheetBody> {
     for (final s in widget.subs) {
       final confirming = _confirmingId == s.id;
       final sSide = confirming ? widget.side * 1.25 : widget.side;
+      // При подтверждении значок подменяется, коли задан confirmIcon.
+      final spec = confirming && s.confirmIcon != null
+          ? PultSpec(
+              id: s.id,
+              icon: s.confirmIcon!,
+              confirmIcon: s.confirmIcon,
+              label: s.label,
+              labelBg: s.labelBg,
+              centerText: s.centerText,
+              selected: s.selected,
+              confirm: s.confirm,
+              onTap: s.onTap,
+              onLongPress: s.onLongPress,
+              stayOpen: s.stayOpen,
+              compactLabel: s.compactLabel,
+            )
+          : s;
       items.add(
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
@@ -131,7 +148,7 @@ class _SheetBodyState extends State<_SheetBody> {
             behavior: HitTestBehavior.opaque,
             onTap: () => _onTap(s),
             child: Pult(
-              spec: s,
+              spec: spec,
               fg: widget.fg,
               bg: widget.bg,
               signal: widget.signal,

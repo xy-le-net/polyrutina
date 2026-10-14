@@ -387,36 +387,43 @@ class RoutineBlockView extends StatelessWidget {
     );
   }
 
+  // Пять старших битов, что правятся из карточки. Три младших
+  // (локально, синхронизировано, правка) — служебные, из подпульта
+  // рутины изъяты: биты JournalFlag сохранены, но здесь не предъявляются.
+  static const List<int> _flagBits = [
+    JournalFlag.urgent,
+    JournalFlag.emergency,
+    JournalFlag.important,
+    JournalFlag.disputable,
+    JournalFlag.complexOp,
+  ];
+
+  static const List<String> _flagKeys = [
+    'flag.urgent',
+    'flag.emergency',
+    'flag.important',
+    'flag.disputable',
+    'flag.complexOp',
+  ];
+
+  static const List<IconData> _flagIcons = [
+    Icons.access_time,
+    Icons.warning_amber,
+    Icons.star_border,
+    Icons.help_outline,
+    Icons.fitness_center,
+  ];
+
   List<PultSpec> _flagSubs(dynamic app, Routine routine, dynamic i18n) {
-    const keys = [
-      'flag.urgent',
-      'flag.emergency',
-      'flag.important',
-      'flag.disputable',
-      'flag.complexOp',
-      'flag.local',
-      'flag.synced',
-      'flag.correction',
-    ];
-    const icons = [
-      Icons.access_time,
-      Icons.warning_amber,
-      Icons.star_border,
-      Icons.help_outline,
-      Icons.fitness_center,
-      Icons.phone_android,
-      Icons.cloud_done,
-      Icons.edit,
-    ];
     final out = <PultSpec>[];
     final cur = routine.flags;
-    for (var i = 0; i < JournalFlag.all.length; i++) {
-      final f = JournalFlag.all[i];
+    for (var i = 0; i < _flagBits.length; i++) {
+      final f = _flagBits[i];
       out.add(
         PultSpec(
           id: 'flag_$i',
-          icon: icons[i],
-          label: i18n.t(keys[i]),
+          icon: _flagIcons[i],
+          label: i18n.t(_flagKeys[i]),
           selected: (cur & f) != 0,
           stayOpen: true,
           onTap: () {

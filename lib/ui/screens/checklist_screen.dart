@@ -280,6 +280,9 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
         foregroundColor: bort.fg,
         elevation: 0,
         automaticallyImplyLeading: false,
+        // Уступ под корневой пульт: компас висит в левом верхнем
+        // углу поверх экрана, заголовок не должен под него заезжать.
+        titleSpacing: side * 1.4,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

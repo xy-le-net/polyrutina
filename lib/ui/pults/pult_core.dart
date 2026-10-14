@@ -26,6 +26,8 @@ import 'pult_sheet.dart';
 class PultSpec {
   final String id;
   final IconData icon;
+  // Значок подмены, предъявляемый при подтверждении (коли задан).
+  final IconData? confirmIcon;
   final String? label;
   final Color? labelBg;
   final String? centerText;
@@ -41,6 +43,7 @@ class PultSpec {
   const PultSpec({
     required this.id,
     required this.icon,
+    this.confirmIcon,
     this.label,
     this.labelBg,
     this.centerText,

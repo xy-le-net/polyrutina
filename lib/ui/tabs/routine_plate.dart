@@ -180,10 +180,21 @@ class RoutinePlate extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               const SizedBox(height: 10),
-              Text(
-                fmtDate(routine.createdAt, i18n.t),
-                style: TextStyle(color: textSoft, fontSize: dateSize),
-              ),
+              if (routine.scheduledAt != null)
+                Text(
+                  fmtDate(routine.scheduledAt!, i18n.t),
+                  style: TextStyle(
+                    color: accent,
+                    fontSize: dateSize,
+                    decoration: TextDecoration.underline,
+                    decorationColor: accent,
+                  ),
+                )
+              else
+                Text(
+                  fmtDate(routine.createdAt, i18n.t),
+                  style: TextStyle(color: textSoft, fontSize: dateSize),
+                ),
               if (routine.totalSeconds > 0) ...[
                 SizedBox(height: dateSize * 0.4),
                 TimerText(

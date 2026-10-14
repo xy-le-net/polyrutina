@@ -7,12 +7,17 @@
 // завершение, экспорт.
 //
 // Шапка. Под полем имени — ряд: пульт намеченной даты и поле
-// планируемых человекочасов (формат «дд:чч:мм»).
+// планируемых человекочасов (формат «дни:часы:минуты», подсказка
+// «план»).
 //
-// Пульт намеченной даты. При наличии — сигнально отмечен и при
-// касании растёт на четверть (запрос подтверждения сброса); при
-// подтверждении — сброс, после чего снова открывается системный
-// выбор. При отсутствии — касание тотчас открывает системный выбор.
+// Пульт намеченной даты. При касании открывает системный выбор
+// даты; ежели дата уже была — начально подставляется она же.
+// Сброс — чрез подпульт по долгому касанию: единый левосторонний
+// лист с пунком «снять дату», коий запрашивает подтверждение
+// (рост на четверть, значок корзинки, тап мимо — возврат).
+//
+// Уступ имени. Минимальный слева и справа — отступ темы (ради
+// компаса) для сего экрана не надобен, компас карточку не покрывает.
 //
 // Показ слотов. «Описание» и «итог» — по правилам слоя. Прочие пять
 // — коли род в defaultSlots (рубка) либо пульс отработал, либо есть
@@ -269,7 +274,9 @@ class _RoutineCardState extends State<RoutineCard> {
     await ReportBuilder.buildSingle(app, app.i18n, r.id);
   }
 
-  // ─── Намеченная дата ───
+  // ─── Намеченная дата: выбор ───
+  // Начальною подставляется уже выбранная дата, коли она есть;
+  // иначе — нынешний день.
   Future<void> _pickSchedule(Routine r) async {
     final app = AppScope.of(context);
     final now = DateTime.now();
@@ -290,10 +297,12 @@ class _RoutineCardState extends State<RoutineCard> {
     );
   }
 
-  // ─── Плановые человекочасы ───
+  // ─── Плановое время ───
+  // Формат «дни:часы:минуты». Одно число — минуты; два — часы
+  // и минуты; три — дни, часы, минуты. Пересчёт — в parsePlannedTime.
   Future<void> _setPlanned(Routine r, String text) async {
     final app = AppScope.of(context);
-    final sec = parseEditable(text);
+    final sec = parsePlannedTime(text);
     if (sec == null) return;
     await app.routineLayer.setPlanned(app.journal, r.id, sec);
   }
@@ -375,19 +384,29 @@ class _RoutineCardState extends State<RoutineCard> {
       blocks.add(blockOf('summary', i18n.t('routine.summary')));
     }
 
+    // ─── Пульт намеченной даты ───
+    // Касание — выбор даты (с тою же самою начальною, коли уже есть).
+    // Долгое касание — подпульт «снять дату»; подтверждение чрез
+    // общий механизм (рост, значок корзинки, тап мимо — возврат).
     final schedulePult = Pult(
       spec: PultSpec(
         id: 'sched_${r.id}',
         icon: Icons.event,
         selected: r.scheduledAt != null,
-        confirm: r.scheduledAt != null,
-        onTap: () {
-          if (r.scheduledAt != null) {
-            app.routineLayer.setSchedule(app.journal, r.id, null);
-          } else {
-            _pickSchedule(r);
-          }
-        },
+        onTap: () => _pickSchedule(r),
+        longSubs: r.scheduledAt == null
+            ? null
+            : () => [
+                PultSpec(
+                  id: 'sched_clear_${r.id}',
+                  icon: Icons.delete_outline,
+                  confirmIcon: Icons.delete_outline,
+                  label: i18n.t('routine.clear_date'),
+                  confirm: true,
+                  onTap: () =>
+                      app.routineLayer.setSchedule(app.journal, r.id, null),
+                ),
+              ],
       ),
       fg: bort.fg,
       bg: bort.bg,
@@ -401,6 +420,10 @@ class _RoutineCardState extends State<RoutineCard> {
         backgroundColor: bort.bg,
         foregroundColor: bort.fg,
         elevation: 0,
+        // Минимальный уступ: тематический отступ ради компаса
+        // для сего экрана не надобен — компас карточку не покрывает.
+        titleSpacing: side * 0.4,
+        actions: [SizedBox(width: side * 0.4)],
         title: BortField(
           initial: r.name,
           fg: bort.fg,
@@ -432,10 +455,10 @@ class _RoutineCardState extends State<RoutineCard> {
                       SizedBox(width: side * 0.15),
                       Expanded(
                         child: BortField(
-                          initial: fmtEditable(r.plannedSeconds),
+                          initial: fmtPlannedTime(r.plannedSeconds),
                           fg: bort.fg,
                           readOnly: false,
-                          hint: i18n.t('routine.hours_hint'),
+                          hint: i18n.t('routine.planned_hint'),
                           onCommit: (v) => _setPlanned(r, v),
                         ),
                       ),

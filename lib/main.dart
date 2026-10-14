@@ -199,11 +199,13 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _openedRoutineId = null;
   }
 
-  void _openTabsSheet(BuildContext context) {
+  void _openTabsSheet() {
+    final ctx = _navigatorKey.currentContext;
+    if (ctx == null) return;
     final side = _pultState.smallSide;
     final labels = _bort.labelsSystem;
     showPultSheet(
-      context: context,
+      context: ctx,
       subs: [
         for (var i = 0; i < _tabs.length; i++)
           PultSpec(
@@ -339,7 +341,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                           fg: _bort.fg,
                           bg: _bort.bg,
                           signal: _bort.signal,
-                          onOpen: () => _openTabsSheet(context),
+                          onOpen: _openTabsSheet,
                         ),
                       ),
                     ],

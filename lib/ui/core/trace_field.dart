@@ -1,16 +1,20 @@
 // ═══════════════════════════════════════════════════════════════════
 // trace_field.dart — поле следа. Универсальный встраиваемый виджет.
 //
-// Слева — поле текста (три строки). Справа — столбец: пульт
-// чек-листа, пульт отправки/медиа.
+// Слева — поле текста. Справа — столбец: пульт чек-листа, пульт
+// отправки/медиа.
+//
+// Разворот. При получении фокуса поле растёт в высоту — внутри
+// блока, без отдельного слоя; прочие элементы остаются видимыми,
+// разметка прокручивается. Предел — двадцать четыре строки либо
+// до начала клавиатуры, смотря что меньше. По утрате фокуса —
+// возврат к трём строкам.
 //
 // Под полем — строка медиа-пультов (TraceMediaRow), ежели в слоте
 // есть медиа.
 //
 // След различается парой (objectId, slot). Поиск чек-листа — по
 // kind=checklist + slot.
-//
-// Цвет пульсов — от блока (fg).
 //
 // Очистка поля: текст был и стал пуст — запись правки с пустым телом.
 //
@@ -59,10 +63,15 @@ class TraceField extends StatefulWidget {
 }
 
 class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
+  // Предел разворота: двадцать четыре строки.
+  static const int _maxExpandedLines = 24;
+  static const int _collapsedLines = 3;
+
   late final TextEditingController _ctrl;
   final _focus = FocusNode();
 
   bool _initialized = false;
+  bool _focused = false;
   String _lastSent = '';
 
   int _traceId = -1;
@@ -74,10 +83,16 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     _ctrl = TextEditingController();
-    _focus.addListener(() {
-      if (!_focus.hasFocus) _autoSend();
-    });
+    _focus.addListener(_onFocusChanged);
     WidgetsBinding.instance.addObserver(this);
+  }
+
+  void _onFocusChanged() {
+    final f = _focus.hasFocus;
+    if (_focused != f) {
+      setState(() => _focused = f);
+    }
+    if (!f) _autoSend();
   }
 
   @override
@@ -109,6 +124,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
   void dispose() {
     _autoSend();
     WidgetsBinding.instance.removeObserver(this);
+    _focus.removeListener(_onFocusChanged);
     _focus.dispose();
     _ctrl.dispose();
     super.dispose();
@@ -257,6 +273,25 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
 
     final files = _files();
 
+    // Разворот: в фокусе — до предела либо до клавиатуры;
+    // иначе — три строки.
+    final int maxLines;
+    final int? minLines;
+    if (_focused) {
+      final viewInsets = MediaQuery.of(context).viewInsets.bottom;
+      final lineH = (widget.side * bort.kNumberSmall) * 1.4;
+      final keyboardLines =
+          ((MediaQuery.of(context).size.height - viewInsets) / lineH).floor();
+      final limit = keyboardLines < _maxExpandedLines
+          ? keyboardLines
+          : _maxExpandedLines;
+      maxLines = limit < _collapsedLines ? _collapsedLines : limit;
+      minLines = maxLines;
+    } else {
+      maxLines = _collapsedLines;
+      minLines = _collapsedLines;
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -267,7 +302,8 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
               child: TextField(
                 controller: _ctrl,
                 focusNode: _focus,
-                maxLines: 3,
+                maxLines: maxLines,
+                minLines: minLines,
                 style: TextStyle(
                   color: widget.fg,
                   fontSize: widget.side * bort.kNumberSmall,

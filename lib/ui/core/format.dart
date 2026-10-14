@@ -94,6 +94,60 @@ int? parseEditable(String s) {
   return null;
 }
 
+// ─── Плановое время: «дни:часы:минуты» ───
+// Дни — до трёх знаков, часы и минуты — всегда по два знака.
+// Предел — 999 суток без малого.
+const int kPlannedMaxSec = 999 * 86400 + 23 * 3600 + 59 * 60;
+
+String fmtPlannedTime(int sec) {
+  if (sec < 0) sec = 0;
+  if (sec > kPlannedMaxSec) sec = kPlannedMaxSec;
+  final d = sec ~/ 86400;
+  final h = (sec % 86400) ~/ 3600;
+  final m = (sec % 3600) ~/ 60;
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '$d:${two(h)}:${two(m)}';
+}
+
+// ─── Разбор планового времени ───
+// Одно число — минуты. Два чрез двоеточие — часы и минуты.
+// Три — дни, часы, минуты. Любая часть — неотрицательное целое
+// без ограничения по разрядности; приведение к канону — в
+// fmtPlannedTime. Возвращает секунды; null — ежели знаки
+// не числовые, отрицательные либо итог превосходит предел.
+int? parsePlannedTime(String s) {
+  final t = s.trim();
+  if (t.isEmpty) return 0;
+  final parts = t.split(':');
+  int? n(String x) {
+    final v = int.tryParse(x.trim());
+    if (v == null || v < 0) return null;
+    return v;
+  }
+
+  int total;
+  if (parts.length == 1) {
+    final m = n(parts[0]);
+    if (m == null) return null;
+    total = m * 60;
+  } else if (parts.length == 2) {
+    final h = n(parts[0]);
+    final m = n(parts[1]);
+    if (h == null || m == null) return null;
+    total = h * 3600 + m * 60;
+  } else if (parts.length == 3) {
+    final d = n(parts[0]);
+    final h = n(parts[1]);
+    final m = n(parts[2]);
+    if (d == null || h == null || m == null) return null;
+    total = d * 86400 + h * 3600 + m * 60;
+  } else {
+    return null;
+  }
+  if (total > kPlannedMaxSec) return null;
+  return total;
+}
+
 // ─── Ключ дня недели ───
 String _weekdayKey(int weekday) {
   switch (weekday) {

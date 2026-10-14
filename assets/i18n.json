@@ -50,6 +50,8 @@
     "routine.block.idle": "простой",
     "routine.block.closeout": "завершение",
     "routine.summary": "итог",
+    "routine.clear_date": "снять дату",
+    "routine.planned_hint": "план",
 
     "block.artel": "артель",
     "block.appearance": "оформление",
@@ -185,6 +187,8 @@
     "routine.block.idle": "idle",
     "routine.block.closeout": "closeout",
     "routine.summary": "total",
+    "routine.clear_date": "clear date",
+    "routine.planned_hint": "plan",
 
     "block.artel": "artel",
     "block.appearance": "appearance",

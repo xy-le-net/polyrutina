@@ -11,34 +11,53 @@ class $JournalTable extends Journal with TableInfo<$JournalTable, JournalData> {
   static const VerificationMeta _idMeta = const VerificationMeta('id');
   @override
   late final GeneratedColumn<int> id = GeneratedColumn<int>(
-      'id', aliasedName, false,
-      hasAutoIncrement: true,
-      type: DriftSqlType.int,
-      requiredDuringInsert: false,
-      defaultConstraints:
-          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
   static const VerificationMeta _timeMeta = const VerificationMeta('time');
   @override
   late final GeneratedColumn<int> time = GeneratedColumn<int>(
-      'time', aliasedName, false,
-      type: DriftSqlType.int, requiredDuringInsert: true);
+    'time',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
   static const VerificationMeta _flagsMeta = const VerificationMeta('flags');
   @override
   late final GeneratedColumn<int> flags = GeneratedColumn<int>(
-      'flags', aliasedName, false,
-      type: DriftSqlType.int,
-      requiredDuringInsert: false,
-      defaultValue: const Constant(0));
+    'flags',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _typeMeta = const VerificationMeta('type');
   @override
   late final GeneratedColumn<int> type = GeneratedColumn<int>(
-      'type', aliasedName, false,
-      type: DriftSqlType.int, requiredDuringInsert: true);
+    'type',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
   static const VerificationMeta _bodyMeta = const VerificationMeta('body');
   @override
   late final GeneratedColumn<String> body = GeneratedColumn<String>(
-      'body', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
+    'body',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
   @override
   List<GeneratedColumn> get $columns => [id, time, flags, type, body];
   @override
@@ -47,8 +66,10 @@ class $JournalTable extends Journal with TableInfo<$JournalTable, JournalData> {
   String get actualTableName => $name;
   static const String $name = 'journal';
   @override
-  VerificationContext validateIntegrity(Insertable<JournalData> instance,
-      {bool isInserting = false}) {
+  VerificationContext validateIntegrity(
+    Insertable<JournalData> instance, {
+    bool isInserting = false,
+  }) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
@@ -56,23 +77,31 @@ class $JournalTable extends Journal with TableInfo<$JournalTable, JournalData> {
     }
     if (data.containsKey('time')) {
       context.handle(
-          _timeMeta, time.isAcceptableOrUnknown(data['time']!, _timeMeta));
+        _timeMeta,
+        time.isAcceptableOrUnknown(data['time']!, _timeMeta),
+      );
     } else if (isInserting) {
       context.missing(_timeMeta);
     }
     if (data.containsKey('flags')) {
       context.handle(
-          _flagsMeta, flags.isAcceptableOrUnknown(data['flags']!, _flagsMeta));
+        _flagsMeta,
+        flags.isAcceptableOrUnknown(data['flags']!, _flagsMeta),
+      );
     }
     if (data.containsKey('type')) {
       context.handle(
-          _typeMeta, type.isAcceptableOrUnknown(data['type']!, _typeMeta));
+        _typeMeta,
+        type.isAcceptableOrUnknown(data['type']!, _typeMeta),
+      );
     } else if (isInserting) {
       context.missing(_typeMeta);
     }
     if (data.containsKey('body')) {
       context.handle(
-          _bodyMeta, body.isAcceptableOrUnknown(data['body']!, _bodyMeta));
+        _bodyMeta,
+        body.isAcceptableOrUnknown(data['body']!, _bodyMeta),
+      );
     } else if (isInserting) {
       context.missing(_bodyMeta);
     }
@@ -85,16 +114,26 @@ class $JournalTable extends Journal with TableInfo<$JournalTable, JournalData> {
   JournalData map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return JournalData(
-      id: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
-      time: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}time'])!,
-      flags: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}flags'])!,
-      type: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}type'])!,
-      body: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}body'])!,
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      time: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}time'],
+      )!,
+      flags: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}flags'],
+      )!,
+      type: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}type'],
+      )!,
+      body: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}body'],
+      )!,
     );
   }
 
@@ -110,12 +149,13 @@ class JournalData extends DataClass implements Insertable<JournalData> {
   final int flags;
   final int type;
   final String body;
-  const JournalData(
-      {required this.id,
-      required this.time,
-      required this.flags,
-      required this.type,
-      required this.body});
+  const JournalData({
+    required this.id,
+    required this.time,
+    required this.flags,
+    required this.type,
+    required this.body,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -137,8 +177,10 @@ class JournalData extends DataClass implements Insertable<JournalData> {
     );
   }
 
-  factory JournalData.fromJson(Map<String, dynamic> json,
-      {ValueSerializer? serializer}) {
+  factory JournalData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return JournalData(
       id: serializer.fromJson<int>(json['id']),
@@ -160,15 +202,19 @@ class JournalData extends DataClass implements Insertable<JournalData> {
     };
   }
 
-  JournalData copyWith(
-          {int? id, int? time, int? flags, int? type, String? body}) =>
-      JournalData(
-        id: id ?? this.id,
-        time: time ?? this.time,
-        flags: flags ?? this.flags,
-        type: type ?? this.type,
-        body: body ?? this.body,
-      );
+  JournalData copyWith({
+    int? id,
+    int? time,
+    int? flags,
+    int? type,
+    String? body,
+  }) => JournalData(
+    id: id ?? this.id,
+    time: time ?? this.time,
+    flags: flags ?? this.flags,
+    type: type ?? this.type,
+    body: body ?? this.body,
+  );
   JournalData copyWithCompanion(JournalCompanion data) {
     return JournalData(
       id: data.id.present ? data.id.value : this.id,
@@ -223,9 +269,9 @@ class JournalCompanion extends UpdateCompanion<JournalData> {
     this.flags = const Value.absent(),
     required int type,
     required String body,
-  })  : time = Value(time),
-        type = Value(type),
-        body = Value(body);
+  }) : time = Value(time),
+       type = Value(type),
+       body = Value(body);
   static Insertable<JournalData> custom({
     Expression<int>? id,
     Expression<int>? time,
@@ -242,12 +288,13 @@ class JournalCompanion extends UpdateCompanion<JournalData> {
     });
   }
 
-  JournalCompanion copyWith(
-      {Value<int>? id,
-      Value<int>? time,
-      Value<int>? flags,
-      Value<int>? type,
-      Value<String>? body}) {
+  JournalCompanion copyWith({
+    Value<int>? id,
+    Value<int>? time,
+    Value<int>? flags,
+    Value<int>? type,
+    Value<String>? body,
+  }) {
     return JournalCompanion(
       id: id ?? this.id,
       time: time ?? this.time,
@@ -302,20 +349,22 @@ abstract class _$AppDb extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [journal];
 }
 
-typedef $$JournalTableCreateCompanionBuilder = JournalCompanion Function({
-  Value<int> id,
-  required int time,
-  Value<int> flags,
-  required int type,
-  required String body,
-});
-typedef $$JournalTableUpdateCompanionBuilder = JournalCompanion Function({
-  Value<int> id,
-  Value<int> time,
-  Value<int> flags,
-  Value<int> type,
-  Value<String> body,
-});
+typedef $$JournalTableCreateCompanionBuilder =
+    JournalCompanion Function({
+      Value<int> id,
+      required int time,
+      Value<int> flags,
+      required int type,
+      required String body,
+    });
+typedef $$JournalTableUpdateCompanionBuilder =
+    JournalCompanion Function({
+      Value<int> id,
+      Value<int> time,
+      Value<int> flags,
+      Value<int> type,
+      Value<String> body,
+    });
 
 class $$JournalTableFilterComposer extends Composer<_$AppDb, $JournalTable> {
   $$JournalTableFilterComposer({
@@ -326,19 +375,29 @@ class $$JournalTableFilterComposer extends Composer<_$AppDb, $JournalTable> {
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnFilters<int> get id => $composableBuilder(
-      column: $table.id, builder: (column) => ColumnFilters(column));
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<int> get time => $composableBuilder(
-      column: $table.time, builder: (column) => ColumnFilters(column));
+    column: $table.time,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<int> get flags => $composableBuilder(
-      column: $table.flags, builder: (column) => ColumnFilters(column));
+    column: $table.flags,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<int> get type => $composableBuilder(
-      column: $table.type, builder: (column) => ColumnFilters(column));
+    column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get body => $composableBuilder(
-      column: $table.body, builder: (column) => ColumnFilters(column));
+    column: $table.body,
+    builder: (column) => ColumnFilters(column),
+  );
 }
 
 class $$JournalTableOrderingComposer extends Composer<_$AppDb, $JournalTable> {
@@ -350,19 +409,29 @@ class $$JournalTableOrderingComposer extends Composer<_$AppDb, $JournalTable> {
     super.$removeJoinBuilderFromRootComposer,
   });
   ColumnOrderings<int> get id => $composableBuilder(
-      column: $table.id, builder: (column) => ColumnOrderings(column));
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<int> get time => $composableBuilder(
-      column: $table.time, builder: (column) => ColumnOrderings(column));
+    column: $table.time,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<int> get flags => $composableBuilder(
-      column: $table.flags, builder: (column) => ColumnOrderings(column));
+    column: $table.flags,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<int> get type => $composableBuilder(
-      column: $table.type, builder: (column) => ColumnOrderings(column));
+    column: $table.type,
+    builder: (column) => ColumnOrderings(column),
+  );
 
   ColumnOrderings<String> get body => $composableBuilder(
-      column: $table.body, builder: (column) => ColumnOrderings(column));
+    column: $table.body,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$JournalTableAnnotationComposer
@@ -390,20 +459,24 @@ class $$JournalTableAnnotationComposer
       $composableBuilder(column: $table.body, builder: (column) => column);
 }
 
-class $$JournalTableTableManager extends RootTableManager<
-    _$AppDb,
-    $JournalTable,
-    JournalData,
-    $$JournalTableFilterComposer,
-    $$JournalTableOrderingComposer,
-    $$JournalTableAnnotationComposer,
-    $$JournalTableCreateCompanionBuilder,
-    $$JournalTableUpdateCompanionBuilder,
-    (JournalData, BaseReferences<_$AppDb, $JournalTable, JournalData>),
-    JournalData,
-    PrefetchHooks Function()> {
+class $$JournalTableTableManager
+    extends
+        RootTableManager<
+          _$AppDb,
+          $JournalTable,
+          JournalData,
+          $$JournalTableFilterComposer,
+          $$JournalTableOrderingComposer,
+          $$JournalTableAnnotationComposer,
+          $$JournalTableCreateCompanionBuilder,
+          $$JournalTableUpdateCompanionBuilder,
+          (JournalData, BaseReferences<_$AppDb, $JournalTable, JournalData>),
+          JournalData,
+          PrefetchHooks Function()
+        > {
   $$JournalTableTableManager(_$AppDb db, $JournalTable table)
-      : super(TableManagerState(
+    : super(
+        TableManagerState(
           db: db,
           table: table,
           createFilteringComposer: () =>
@@ -412,57 +485,65 @@ class $$JournalTableTableManager extends RootTableManager<
               $$JournalTableOrderingComposer($db: db, $table: table),
           createComputedFieldComposer: () =>
               $$JournalTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback: ({
-            Value<int> id = const Value.absent(),
-            Value<int> time = const Value.absent(),
-            Value<int> flags = const Value.absent(),
-            Value<int> type = const Value.absent(),
-            Value<String> body = const Value.absent(),
-          }) =>
-              JournalCompanion(
-            id: id,
-            time: time,
-            flags: flags,
-            type: type,
-            body: body,
-          ),
-          createCompanionCallback: ({
-            Value<int> id = const Value.absent(),
-            required int time,
-            Value<int> flags = const Value.absent(),
-            required int type,
-            required String body,
-          }) =>
-              JournalCompanion.insert(
-            id: id,
-            time: time,
-            flags: flags,
-            type: type,
-            body: body,
-          ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> time = const Value.absent(),
+                Value<int> flags = const Value.absent(),
+                Value<int> type = const Value.absent(),
+                Value<String> body = const Value.absent(),
+              }) => JournalCompanion(
+                id: id,
+                time: time,
+                flags: flags,
+                type: type,
+                body: body,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int time,
+                Value<int> flags = const Value.absent(),
+                required int type,
+                required String body,
+              }) => JournalCompanion.insert(
+                id: id,
+                time: time,
+                flags: flags,
+                type: type,
+                body: body,
+              ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (
-                    e.readTable<$JournalTable, JournalData>(table),
-                    BaseReferences<_$AppDb, $JournalTable, JournalData>(
-                        db, table, e)
-                  ))
+              .map(
+                (e) => (
+                  e.readTable<$JournalTable, JournalData>(table),
+                  BaseReferences<_$AppDb, $JournalTable, JournalData>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
               .toList(),
           prefetchHooksCallback: null,
-        ));
+        ),
+      );
 }
 
-typedef $$JournalTableProcessedTableManager = ProcessedTableManager<
-    _$AppDb,
-    $JournalTable,
-    JournalData,
-    $$JournalTableFilterComposer,
-    $$JournalTableOrderingComposer,
-    $$JournalTableAnnotationComposer,
-    $$JournalTableCreateCompanionBuilder,
-    $$JournalTableUpdateCompanionBuilder,
-    (JournalData, BaseReferences<_$AppDb, $JournalTable, JournalData>),
-    JournalData,
-    PrefetchHooks Function()>;
+typedef $$JournalTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDb,
+      $JournalTable,
+      JournalData,
+      $$JournalTableFilterComposer,
+      $$JournalTableOrderingComposer,
+      $$JournalTableAnnotationComposer,
+      $$JournalTableCreateCompanionBuilder,
+      $$JournalTableUpdateCompanionBuilder,
+      (JournalData, BaseReferences<_$AppDb, $JournalTable, JournalData>),
+      JournalData,
+      PrefetchHooks Function()
+    >;
 
 class $AppDbManager {
   final _$AppDb _db;
