@@ -3,10 +3,11 @@
 //
 // Вынесен из rubka_tab.
 //
-// Масштаб, язык, подписи системные, подписи полевые — по строке.
-// Язык — выпадающий список человекочитаемый (русский / english).
-// Слоты по умолчанию — чек-лист из пяти родов: какие слоты
-// показывать в карточке рутины постоянно.
+// Масштаб, язык, подписи — по строке. Язык — выпадающий список
+// человекочитаемый (русский / english). Подписи — прежние
+// «системные подписи»; «полевые подписи» упразднены: подписи кнопок
+// едины. Слоты — чек-лист из пяти родов: какие слоты показывать
+// в карточке рутины постоянно.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -48,8 +49,7 @@ class RubkaInterface extends StatelessWidget {
       children: [
         _settingRow(context, 'scale', fg, dim, bg, signal, side),
         _langRow(context, fg, dim, bg, signal, side),
-        _settingRow(context, 'labels_system', fg, dim, bg, signal, side),
-        _settingRow(context, 'labels_field', fg, dim, bg, signal, side),
+        _settingRow(context, 'labels_buttons', fg, dim, bg, signal, side),
         _sectionTitle(i18n.t('bort.default_slots'), dim, side),
         ..._slotTicks(context, fg, dim, bg, signal, side),
       ],

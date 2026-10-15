@@ -25,7 +25,6 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -34,6 +33,7 @@ import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_sheet.dart';
+import '../screens/geo_picker.dart';
 import 'audio_dialog.dart';
 
 Future<void> showMediaPicker({
@@ -71,7 +71,13 @@ Future<void> showMediaPicker({
         id: 'pick_${MediaKind.geo}',
         icon: Icons.place_outlined,
         label: i18n.t('media.geo'),
-        onTap: () => _addGeo(app, objectId, slot),
+        // Геоточка выбирается на своей карте (geo_picker.dart):
+        // тап по карте, подтверждение — снимок виджета и координаты
+        // кладутся в media/ как род geo. Прежний прямой вызов
+        // геолокатора упразднён: пользователь не видел, куда
+        // ставится точка.
+        onTap: () =>
+            showGeoPicker(context: context, objectId: objectId, slot: slot),
       ),
       PultSpec(
         id: 'pick_${MediaKind.file}',
@@ -201,33 +207,7 @@ Future<void> _addFile(AppContext app, int objectId, String slot) async {
   } catch (_) {}
 }
 
-// ─── Геопозиция ───
-Future<void> _addGeo(AppContext app, int objectId, String slot) async {
-  try {
-    var perm = await Geolocator.checkPermission();
-    if (perm == LocationPermission.denied) {
-      perm = await Geolocator.requestPermission();
-    }
-    if (perm == LocationPermission.denied ||
-        perm == LocationPermission.deniedForever) {
-      return;
-    }
-    final pos = await Geolocator.getCurrentPosition();
-    final bort = app.bort;
-    final idx = bort.nextExportIndex('media_${objectId}_${slot}_geo');
-    final name = _safe('${bort.deviceId}_${objectId}_${slot}_geo_$idx');
-    await app.traceLayer.attachFile(
-      app.journal,
-      objectId: objectId,
-      slot: slot,
-      file: TraceFile(
-        kind: MediaKind.geo,
-        path: '',
-        name: name,
-        lat: pos.latitude,
-        lon: pos.longitude,
-        acc: pos.accuracy,
-      ),
-    );
-  } catch (_) {}
-}
+// Прежний прямой вызов геолокатора упразднён: пользователь не видел,
+// куда ставится точка. Ныне — своя карта (geo_picker.dart), где
+// точка подтверждается визуально, а вместе с координатами
+// сохраняется снимок виджета карты.

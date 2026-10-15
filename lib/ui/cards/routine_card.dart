@@ -4,30 +4,25 @@
 // Слоты строятся виджетом RoutineBlockView (routine_block_view.dart).
 // Здесь — состояние карточки: правка имени, правка времени блока,
 // показ/скрытие слотов, свёртка, автопрокрутка к активному слоту,
-// завершение, экспорт.
+// завершение, экспорт, выбор даты, выбор плановой длительности.
 //
-// Шапка. Под полем имени — ряд: пульт намеченной даты и поле
-// планируемых человекочасов (формат «дни:часы:минуты», подсказка
-// «план»).
+// Шапка. Только поле имени. Пульт назначенной даты и барабан
+// плановой длительности переехали в блок «описание»: прежний ряд
+// «дата + поле плана» упразднён, поле ручного ввода плана убрано.
+//
+// Барабан плановой длительности. Тройное колесо «дд : чч : мм» —
+// единый системный диалог showDialog с тремя барабанами.
+// Подтверждение — «ок»; отмена — «отмена». Результат кладётся
+// чрез routineLayer.setPlanned.
+//
+// Чередование фона. Показываемые блоки (кроме итога, который всегда
+// в обычном фоне) чередуются по порядку: первый — приглушённый
+// (bgdim), второй — обычный, третий — приглушённый, и так далее.
+// Идущий блок берёт цвета противоположной темы, сие чередование
+// его не касается.
 //
 // Уступ заголовка. Корневой пульт висит в левом верхнем углу
-// поверх экрана; заголовок отступает на его ширину, дабы не
-// заезжать под компас.
-//
-// Пульт намеченной даты. При касании открывает системный выбор
-// даты; ежели дата уже была — начально подставляется она же.
-// Сброс — чрез подпульт по долгому касанию: единый левосторонний
-// лист с пунктом «снять дату», коий запрашивает подтверждение
-// (рост на четверть, значок корзинки, тап мимо — возврат).
-//
-// Показ слотов. «Описание» и «итог» — по правилам слоя. Прочие пять
-// — коли род в defaultSlots (рубка) либо пульс отработал, либо есть
-// след. Пульт «показать все слоты» — сессионный.
-//
-// Разворот слотов — сессионный. При создании рутины (первая минута
-// её жизни) развёрнуто описание. При последующих заходах — развёрнут
-// активный (идущий) блок, прочие свёрнуты; итог видим всегда.
-// Состояние в пределах сессии не сохраняется.
+// поверх экрана; заголовок отступает на его ширину.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -97,10 +92,8 @@ class _RoutineCardState extends State<RoutineCard> {
         final fresh =
             (DateTime.now().millisecondsSinceEpoch ~/ 1000) - r.createdAt < 60;
         if (fresh) {
-          // Только что созданная — развёрнуто описание.
           _expanded.add('note');
         } else {
-          // Последующие открытия — развёрнут активный блок.
           final running = r.runningBlock;
           if (running != null) _expanded.add(running.kind);
         }
@@ -265,8 +258,6 @@ class _RoutineCardState extends State<RoutineCard> {
     _editFocus = null;
   }
 
-  // Завершение — слой сам гасит идущие блоки в транзакции;
-  // отдельный цикл паузы здесь избыточен.
   Future<void> _toggleCompleted(Routine r) async {
     final app = AppScope.of(context);
     await app.routineLayer.setCompleted(app.journal, r.id, !r.completed);
@@ -298,11 +289,93 @@ class _RoutineCardState extends State<RoutineCard> {
     );
   }
 
-  Future<void> _setPlanned(Routine r, String text) async {
+  // ─── Плановая длительность: барабан ───
+  // Три колеса: дни, часы, минуты. Часы — до 23, минуты — до 59.
+  // Возвращает секунды; null — отмена.
+  Future<void> _pickPlanned(Routine r) async {
     final app = AppScope.of(context);
-    final sec = parsePlannedTime(text);
-    if (sec == null) return;
-    await app.routineLayer.setPlanned(app.journal, r.id, sec);
+    final i18n = app.i18n;
+    final bort = app.bort;
+    final side = PultScope.of(context).smallSide;
+
+    final sec = r.plannedSeconds;
+    final curD = sec ~/ 86400;
+    final curH = (sec % 86400) ~/ 3600;
+    final curM = (sec % 3600) ~/ 60;
+
+    final result = await showDialog<({int d, int h, int m})>(
+      context: context,
+      builder: (ctx) {
+        int d = curD;
+        int h = curH;
+        int m = curM;
+
+        Widget wheel({
+          required int max,
+          required int initial,
+          required void Function(int) onChanged,
+        }) {
+          return SizedBox(
+            width: side * 2,
+            height: side * 5,
+            child: ListWheelScrollView.useDelegate(
+              itemExtent: side * 0.8,
+              diameterRatio: 1.6,
+              perspective: 0.003,
+              controller: FixedExtentScrollController(initialItem: initial),
+              onSelectedItemChanged: onChanged,
+              childDelegate: ListWheelChildBuilderDelegate(
+                childCount: max + 1,
+                builder: (_, i) => Center(
+                  child: Text(
+                    i.toString().padLeft(2, '0'),
+                    style: TextStyle(
+                      color: bort.fg,
+                      fontSize: side * 0.5,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
+        return StatefulBuilder(
+          builder: (_, setDlg) => AlertDialog(
+            backgroundColor: bort.bg,
+            title: Text(
+              i18n.t('routine.planned_hint'),
+              style: TextStyle(color: bort.fg),
+            ),
+            content: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                wheel(max: 999, initial: d, onChanged: (v) => d = v),
+                Text(':', style: TextStyle(color: bort.dim)),
+                wheel(max: 23, initial: h, onChanged: (v) => h = v),
+                Text(':', style: TextStyle(color: bort.dim)),
+                wheel(max: 59, initial: m, onChanged: (v) => m = v),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: Text(i18n.t('bort.deselect')),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop((d: d, h: h, m: m)),
+                child: Text(i18n.t('bort.select')),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (result == null) return;
+    final total = result.d * 86400 + result.h * 3600 + result.m * 60;
+    await app.routineLayer.setPlanned(app.journal, r.id, total);
   }
 
   @override
@@ -331,10 +404,22 @@ class _RoutineCardState extends State<RoutineCard> {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final anyEdited = r.blocks.any((b) => b.timeEdited);
 
+    // ─── Порядок показанных блоков ───
+    // Собираем список показываемых (кроме итога) для чередования.
+    final shown = <String>[];
+    if (_shouldShowSlot(r, 'note')) shown.add('note');
+    for (final k in RoutineBlock.kinds) {
+      if (_shouldShowSlot(r, k)) shown.add(k);
+    }
+
     final blocks = <Widget>[];
 
     Widget blockOf(String kind, String title, {bool isNote = false}) {
       final b = isNote ? null : r.blockOf(kind);
+      // Чередование: индекс в списке показанных; нечётный — обычный,
+      // чётный — приглушённый. Итог — вне чередования.
+      final idx = shown.indexOf(kind);
+      final dimmed = kind != 'summary' && idx >= 0 && idx % 2 == 0;
       return RoutineBlockView(
         key: _blockKeys[kind],
         routine: r,
@@ -366,6 +451,10 @@ class _RoutineCardState extends State<RoutineCard> {
             : null,
         onExport: (kind == 'summary') ? () => _exportOne(r) : null,
         onToggleShowAll: () => setState(() => _showAllSlots = !_showAllSlots),
+        dimmed: dimmed,
+        scheduledActive: r.scheduledAt != null,
+        onPickDate: kind == 'note' ? () => _pickSchedule(r) : null,
+        onPickPlanned: kind == 'note' ? () => _pickPlanned(r) : null,
       );
     }
 
@@ -382,33 +471,6 @@ class _RoutineCardState extends State<RoutineCard> {
       blocks.add(blockOf('summary', i18n.t('routine.summary')));
     }
 
-    // ─── Пульт намеченной даты ───
-    final schedulePult = Pult(
-      spec: PultSpec(
-        id: 'sched_${r.id}',
-        icon: Icons.event,
-        selected: r.scheduledAt != null,
-        onTap: () => _pickSchedule(r),
-        longSubs: r.scheduledAt == null
-            ? null
-            : () => [
-                PultSpec(
-                  id: 'sched_clear_${r.id}',
-                  icon: Icons.delete_outline,
-                  confirmIcon: Icons.delete_outline,
-                  label: i18n.t('routine.clear_date'),
-                  confirm: true,
-                  onTap: () =>
-                      app.routineLayer.setSchedule(app.journal, r.id, null),
-                ),
-              ],
-      ),
-      fg: bort.fg,
-      bg: bort.bg,
-      signal: bort.signal,
-      overrideSize: side * bort.kPultSmall,
-    );
-
     // Уступ заголовка: компас (корневой пульт) висит в левом
     // верхнем углу поверх экрана; ширина его — сторона side * 2/3
     // плюс отступ от края.
@@ -420,8 +482,6 @@ class _RoutineCardState extends State<RoutineCard> {
         backgroundColor: bort.bg,
         foregroundColor: bort.fg,
         elevation: 0,
-        // Кнопки «назад» нет: уход — системными средствами (жест,
-        // кнопка навигации).
         automaticallyImplyLeading: false,
         titleSpacing: rootReserve,
         actions: [SizedBox(width: side * 0.4)],
@@ -442,32 +502,7 @@ class _RoutineCardState extends State<RoutineCard> {
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    side * 0.1,
-                    0,
-                    side * 0.1,
-                    side * 0.2,
-                  ),
-                  child: Row(
-                    children: [
-                      schedulePult,
-                      SizedBox(width: side * 0.15),
-                      Expanded(
-                        child: BortField(
-                          initial: fmtPlannedTime(r.plannedSeconds),
-                          fg: bort.fg,
-                          readOnly: false,
-                          hint: i18n.t('routine.planned_hint'),
-                          onCommit: (v) => _setPlanned(r, v),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                ...blocks,
-              ],
+              children: blocks,
             ),
           ),
         ),

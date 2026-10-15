@@ -130,7 +130,8 @@ class _MediaViewerState extends State<MediaViewer> {
     } else if (f.kind == MediaKind.audio) {
       final player = AudioPlayer();
       _audio = player;
-      player.setFilePath(f.path).catchError((_) {});
+      // catchError должен вернуть Duration? — иначе ошибка типов.
+      player.setFilePath(f.path).catchError((_) => null);
       _audioStateSub = player.playerStateStream.listen((s) {
         if (!mounted || _audio != player) return;
         final playing =

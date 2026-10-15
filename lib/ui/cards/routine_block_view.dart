@@ -2,12 +2,17 @@
 // routine_block_view.dart — виджет одного слота рутины.
 //
 // Вынесен из routine_card: рамка, заголовок, пульс времени,
-// содержимое (TraceField либо сводка в «итоге»), угловые пульты
-// (флаг, показать все, завершение, экспорт).
+// содержимое (TraceField либо сводка в «итоге»), угловые пульты.
 //
-// Все слои берутся из AppScope. Состояние правки времени (какой
-// слот правится, контроллер, фокус) — снаружи, дабы на карточку
-// было одно поле правки.
+// Фон. Приглушённость (dimmed) задаётся снаружи: чередование
+// фона по порядку показанных блоков, начиная с приглушённого.
+// Поле ввода текста приглушению не поддаётся: оно кладётся
+// на обычный фон (bg), независимо от того, приглушён ли блок.
+//
+// Блок «описание». В правом верхнем ряду — четыре пульта слева
+// направо: дата назначения, плановая длительность, показ всех
+// слотов, флаги. Пульт даты и пульт длительности перемещены сюда
+// из начала страницы (поля ручного ввода плана более нет).
 //
 // Углы. Правый верхний и правый нижний — по одному правому краю,
 // один размер (pultSide). Кнопка экспорта в «итоге» не слипается
@@ -44,6 +49,16 @@ class RoutineBlockView extends StatelessWidget {
   final TextEditingController? editCtrl;
   final FocusNode? editFocus;
 
+  // ─── Внешние признаки и обработчики ───
+  // Приглушён ли блок — задаётся снаружи, от порядка показа.
+  final bool dimmed;
+  // Есть ли назначенная дата (для отмеченного пульта).
+  final bool scheduledActive;
+  // Открыть выбор даты; ежели null — блок даты не выводится.
+  final VoidCallback? onPickDate;
+  // Открыть барабан плановой длительности; null — не выводится.
+  final VoidCallback? onPickPlanned;
+
   final VoidCallback onToggleCollapsed;
   final VoidCallback? onStartEdit;
   final VoidCallback? onConfirmEdit;
@@ -72,6 +87,10 @@ class RoutineBlockView extends StatelessWidget {
     this.onToggleCompleted,
     this.onExport,
     required this.onToggleShowAll,
+    this.dimmed = false,
+    this.scheduledActive = false,
+    this.onPickDate,
+    this.onPickPlanned,
   });
 
   static IconData _blockIcon(String kind) {
@@ -91,12 +110,6 @@ class RoutineBlockView extends StatelessWidget {
     }
   }
 
-  static bool _dimBg(String kind) =>
-      kind == 'note' ||
-      kind == RoutineBlock.transit ||
-      kind == RoutineBlock.idle ||
-      kind == 'summary';
-
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
@@ -105,6 +118,9 @@ class RoutineBlockView extends StatelessWidget {
     final side = PultScope.of(context).smallSide;
     final colonVisible = app.ticker.colonVisible;
 
+    // ─── Цвета ───
+    // Идущий блок берёт цвета противоположной темы. Покойный —
+    // обычный фон либо приглушённый, по порядку показа.
     final Color bg;
     final Color dim;
     final Color fg;
@@ -123,7 +139,7 @@ class RoutineBlockView extends StatelessWidget {
         signal = bort.bg;
       }
     } else {
-      bg = _dimBg(kind) ? bort.bgdim : bort.bg;
+      bg = dimmed ? bort.bgdim : bort.bg;
       dim = bort.dim;
       fg = bort.fg;
       signal = bort.signal;
@@ -283,8 +299,6 @@ class RoutineBlockView extends StatelessWidget {
           );
         }
       }
-      // Резерв снизу — под кнопку экспорта, дабы не слипалась
-      // с пультом завершения.
       body = rows.isEmpty
           ? SizedBox(height: pultSide + side * 0.15)
           : Column(
@@ -292,6 +306,8 @@ class RoutineBlockView extends StatelessWidget {
               children: rows,
             );
     } else {
+      // Поле ввода — на обычном фоне (bg), даже ежели блок приглушён
+      // (bgdim): поле само по себе не затемняется.
       body = TraceField(
         objectId: routine.id,
         slot: kind,
@@ -299,6 +315,7 @@ class RoutineBlockView extends StatelessWidget {
         dim: dim,
         bg: bg,
         signal: signal,
+        fieldBg: bort.bg,
         side: side,
         blockTitle: title,
         routineTitle: routine.name.isEmpty
@@ -314,6 +331,36 @@ class RoutineBlockView extends StatelessWidget {
     Widget? topRight = cornerTop;
 
     if (showFlags) {
+      // Порядок слева направо: дата, план, показать все, флаги,
+      // затем таймер блока (ежели есть).
+      final datePult = onPickDate == null
+          ? null
+          : Pult(
+              spec: PultSpec(
+                id: 'date_${routine.id}',
+                icon: Icons.event,
+                selected: scheduledActive,
+                onTap: onPickDate,
+              ),
+              fg: fg,
+              bg: bg,
+              signal: signal,
+              overrideSize: pultSide,
+            );
+      final plannedPult = onPickPlanned == null
+          ? null
+          : Pult(
+              spec: PultSpec(
+                id: 'planned_${routine.id}',
+                icon: Icons.schedule,
+                selected: routine.plannedSeconds > 0,
+                onTap: onPickPlanned,
+              ),
+              fg: fg,
+              bg: bg,
+              signal: signal,
+              overrideSize: pultSide,
+            );
       final showAllPult = Pult(
         spec: PultSpec(
           id: 'show_all_${routine.id}',
@@ -341,6 +388,11 @@ class RoutineBlockView extends StatelessWidget {
       topRight = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (datePult != null) ...[datePult, SizedBox(width: side * 0.15)],
+          if (plannedPult != null) ...[
+            plannedPult,
+            SizedBox(width: side * 0.15),
+          ],
           showAllPult,
           SizedBox(width: side * 0.15),
           flagsPult,
@@ -387,9 +439,7 @@ class RoutineBlockView extends StatelessWidget {
     );
   }
 
-  // Пять старших битов, что правятся из карточки. Три младших
-  // (локально, синхронизировано, правка) — служебные, из подпульта
-  // рутины изъяты: биты JournalFlag сохранены, но здесь не предъявляются.
+  // ─── Пять старших битов, что правятся из карточки ───
   static const List<int> _flagBits = [
     JournalFlag.urgent,
     JournalFlag.emergency,

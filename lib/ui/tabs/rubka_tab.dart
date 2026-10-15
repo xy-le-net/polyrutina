@@ -1,18 +1,22 @@
 // ═══════════════════════════════════════════════════════════════════
 // rubka_tab.dart — вкладка рубки.
 //
-// Четыре блока: артель, оформление, интерфейс, данные. Оформление
-// и интерфейс, данные — вынесены в отдельные виджеты
-// (rubka_appearance.dart, rubka_interface.dart, rubka_data.dart).
-// Здесь — лишь сборка блоков и раскладка.
+// Четыре блока: артель, оформление, интерфейс, данные. Оформление,
+// интерфейс и данные вынесены в отдельные виджеты (rubka_appearance,
+// rubka_interface, rubka_data). Здесь — лишь сборка блоков, раскладка
+// и поле «полночь» с чекбоксами показа вкладок.
 //
-// Дубликаты, что прежде жили в сем файле (повторы _refreshSize,
-// _slotTicks, _settingRow, _langRow, _pultRow, _midnightRow),
-// устранены: всякая частность — в своём виджете.
+// Артель. Поле «полночь» (чч:мм) — начало технических суток.
+// Два чекбокса: показ вкладки «поле» и показ вкладки «артель».
+// По умолчанию обе скрыты; при отметке вкладка появляется в меню.
 //
-// Артель — поле «полночь» (чч:мм).
-//
-// Широкий экран: блоки идут слева направо, сверху вниз — как текст.
+// Раскладка.
+//   Узкий экран (менее 640): блоки в один столбец сверху вниз.
+//   Широкий экран: два столбца равной ширины, блоки стыкуются
+//   без вертикальных промежутков — каждое гнездо тянется по высоте
+//   своей колонны, остаток заполняет пустота внутри рамки соседа,
+//   ежели разница высот. Столбцы: левый — артель, интерфейс;
+//   правый — оформление, данные.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -23,6 +27,7 @@ import '../core/app_scope.dart';
 import '../core/block.dart';
 import '../core/bort_field.dart';
 import '../pults/pult_core.dart';
+import '../pults/pult_tick.dart';
 import 'rubka_appearance.dart';
 import 'rubka_data.dart';
 import 'rubka_interface.dart';
@@ -63,7 +68,30 @@ class RubkaTab extends StatelessWidget {
       gap: gap,
       strokeW: strokeW,
       radiusW: radiusW,
-      child: _midnightRow(context, fg, side),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _midnightRow(context, fg, side),
+          _tabTickRow(
+            context,
+            'show_field_tab',
+            i18n.t('bort.show_field_tab'),
+            fg,
+            bg,
+            signal,
+            side,
+          ),
+          _tabTickRow(
+            context,
+            'show_artel_tab',
+            i18n.t('bort.show_artel_tab'),
+            fg,
+            bg,
+            signal,
+            side,
+          ),
+        ],
+      ),
     );
 
     const appearance = RubkaAppearance();
@@ -117,18 +145,28 @@ class RubkaTab extends StatelessWidget {
         const spacing = 16.0;
         final colW = (width - hPad * 2 - spacing) / 2;
 
-        Widget cell(Widget child) => SizedBox(width: colW, child: child);
+        // Два столбца. Внутри — без вертикальных промежутков:
+        // Block уже имеет нижний отступ (gap) внутри себя, а Column
+        // располагает их вплотную. Разница высот столбцов не создаёт
+        // промежутков между блоками, лишь свободное место внизу
+        // короткого столбца.
+        Widget col(List<Widget> children) => SizedBox(
+          width: colW,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: children,
+          ),
+        );
 
         return SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(hPad, 80, hPad, 16),
-          child: Wrap(
-            spacing: spacing,
-            runSpacing: 0,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              cell(artel),
-              cell(appearance),
-              cell(interface),
-              cell(data),
+              col([artel, interface]),
+              const SizedBox(width: spacing),
+              col([appearance, data]),
             ],
           ),
         );
@@ -161,6 +199,42 @@ class RubkaTab extends StatelessWidget {
                 bort.set('midnight', v);
               },
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Чекбокс показа вкладки ───
+  Widget _tabTickRow(
+    BuildContext context,
+    String key,
+    String label,
+    Color fg,
+    Color bg,
+    Color signal,
+    double side,
+  ) {
+    final app = AppScope.of(context);
+    final bort = app.bort;
+    final value = (bort.allAsStrings[key] ?? 'false') == 'true';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 140,
+            child: Text(label, style: TextStyle(color: fg)),
+          ),
+          PultTick(
+            id: 'tick_$key',
+            value: value,
+            binary: true,
+            fg: fg,
+            bg: bg,
+            signal: signal,
+            overrideSize: side,
+            onTap: () => bort.setBool(key, !value),
           ),
         ],
       ),

@@ -41,6 +41,10 @@ class TraceField extends StatefulWidget {
   final Color dim;
   final Color bg;
   final Color signal;
+  // Фон поля ввода. Отличается от bg блока: блок может быть
+  // приглушён (bgdim), а поле ввода — обычное (bg). Сие разделение
+  // избавляет поле от лишнего затемнения.
+  final Color fieldBg;
   final double side;
   final String blockTitle;
   final String routineTitle;
@@ -53,10 +57,11 @@ class TraceField extends StatefulWidget {
     required this.dim,
     required this.bg,
     required this.signal,
+    Color? fieldBg,
     required this.side,
     this.blockTitle = '',
     this.routineTitle = '',
-  });
+  }) : fieldBg = fieldBg ?? bg;
 
   @override
   State<TraceField> createState() => _TraceFieldState();
@@ -197,19 +202,25 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
         });
   }
 
-  int _uncheckedCount() {
+  // ─── Счёт по чек-листу ───
+  // Возвращает число отмеченных и общее число заполненных пунктов.
+  // Пустые пункты не считаются ни в одном из чисел.
+  ({int done, int total}) _checklistCounts() {
     final app = AppScope.of(context);
     final t = app.traceLayer.findFirstByKindSlot(
       widget.objectId,
       TraceKind.checklist,
       widget.slot,
     );
-    if (t == null) return 0;
-    int n = 0;
+    if (t == null) return (done: 0, total: 0);
+    var done = 0;
+    var total = 0;
     for (final it in t.items) {
-      if (!it.done && it.text.trim().isNotEmpty) n++;
+      if (it.text.trim().isEmpty) continue;
+      total++;
+      if (it.done) done++;
     }
-    return n;
+    return (done: done, total: total);
   }
 
   List<TraceFile> _files() {
@@ -267,9 +278,12 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     final canSend = _canSend();
     final pultSide = widget.side * bort.kPultSmall;
 
-    final unchecked = _uncheckedCount();
+    // Пульт чек-листа показывает число неотмеченных. Когда отмечены
+    // все (и есть хоть один пункт) — пульт сигнальный, задача закрыта.
+    final counts = _checklistCounts();
+    final int unchecked = counts.total - counts.done;
     final String? chkCenter = unchecked > 0 ? '$unchecked' : null;
-    final bool chkSelected = unchecked > 0;
+    final bool chkSelected = counts.total > 0 && unchecked == 0;
 
     final files = _files();
 
@@ -310,6 +324,10 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
                 ),
                 decoration: InputDecoration(
                   isDense: true,
+                  // Поле ввода — на обычном фоне, вне зависимости от
+                  // приглушённости блока.
+                  filled: true,
+                  fillColor: widget.fieldBg,
                   hintText: i18n.t('routine.block.note'),
                   hintStyle: TextStyle(color: widget.dim),
                   border: OutlineInputBorder(

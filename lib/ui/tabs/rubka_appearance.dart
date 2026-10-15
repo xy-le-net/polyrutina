@@ -2,12 +2,15 @@
 // rubka_appearance.dart — блок «оформление» в рубке.
 //
 // Четыре пульта темы: система, день, ночь, своя. Текущая — отмечена.
-// Поля правки (bg, bgdim, dim, fg, signal) — токмо для «своей»,
-// и токмо коли она действует.
 //
-// Одноимённый подблок с коэффициентами размеров (k_pult, k_title
-// и прочие) упразднён: коэффициенты остаются в файле борта и в
-// умолчаниях, но из рубки не правятся.
+// Поля пяти ролей (bg, bgdim, dim, fg, signal) — токмо для «своей»
+// темы и показываются всегда, независимо от того, какая тема
+// действует: править свою можно, стоя в любой другой. День и ночь
+// не правятся, полей не имеют.
+//
+// Подблок с коэффициентами размеров из рубки упразднён:
+// коэффициенты остаются в файле борта и в умолчаниях, но не
+// правятся отсюда.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -60,14 +63,13 @@ class RubkaAppearance extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _themeRow(context, fg, dim, bg, signal, side),
-          if (bort.themeName == 'custom') ...[
-            _sectionTitle(i18n.t('theme.custom'), dim, side),
-            _colorRow(context, 'custom', 'bg', fg, dim, bg, signal, side),
-            _colorRow(context, 'custom', 'bgdim', fg, dim, bg, signal, side),
-            _colorRow(context, 'custom', 'dim', fg, dim, bg, signal, side),
-            _colorRow(context, 'custom', 'fg', fg, dim, bg, signal, side),
-            _colorRow(context, 'custom', 'signal', fg, dim, bg, signal, side),
-          ],
+          // Поля «своей» темы — всегда, вне зависимости от действующей.
+          _sectionTitle(i18n.t('theme.custom'), dim, side),
+          _colorRow(context, 'custom', 'bg', fg, dim, bg, signal, side),
+          _colorRow(context, 'custom', 'bgdim', fg, dim, bg, signal, side),
+          _colorRow(context, 'custom', 'dim', fg, dim, bg, signal, side),
+          _colorRow(context, 'custom', 'fg', fg, dim, bg, signal, side),
+          _colorRow(context, 'custom', 'signal', fg, dim, bg, signal, side),
         ],
       ),
     );
@@ -95,7 +97,7 @@ class RubkaAppearance extends StatelessWidget {
     final app = AppScope.of(context);
     final bort = app.bort;
     final i18n = app.i18n;
-    final showLabels = bort.labelsSystem;
+    final showLabels = bort.labelsButtons;
 
     final names = ['system', 'day', 'night', 'custom'];
     final icons = [

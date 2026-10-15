@@ -4,18 +4,21 @@
 // Порядок пуска: журнал (init без подписки), борт, слои, словарь.
 // Затем — journal.start().
 //
-// Вкладка по умолчанию. При каждом запуске открывается вкладка
-// «рутины». Пометка о вкладке в файле борта не читается; поле
-// bort.tab в сем приложении более не употребительно.
-//
-// Вкладки: поле, рутины, дни, артель, рубка. Вкладка журнала
-// упразднена; слой JournalLayer жив внутри и кормит прочие слои.
+// Вкладка по умолчанию — «рутины». Пометки о вкладке в файле борта
+// нет: поле tab упразднено. Вкладки «поле» и «артель» по умолчанию
+// скрыты; их показ включается в рубке (блок «артель»).
 //
 // Действие пользователя. Listener вокруг дерева ловит касание —
 // борт получает сигнал (pulseBort).
 //
 // Время борта. Подписка на тикер: борт тикает, раз в тридцать
 // секунд сверяет полночь.
+//
+// Жизненный цикл. Уход (paused, detached, inactive): остановка
+// таймера борта, немедленная запись слоёв. Возврат (resumed):
+// перечитать системную гамму и переразрешить тему — в фоне система
+// могла сменить светлую на тёмную. Смена системной гаммы (без ухода
+// в фон) — тем же путём, didChangePlatformBrightness.
 //
 // Системная строка. Стиль overlay-полосы — от темы борта.
 //
@@ -67,14 +70,18 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   I18n? _i18n;
 
-  // Вкладка по умолчанию — рутины.
+  // Вкладка по умолчанию — рутины (индекс 1 в полном списке).
   int _tab = 1;
 
   int? _openedRoutineId;
 
   VoidCallback? _onTickerTick;
 
-  static const List<RootTabItem> _tabs = [
+  // ─── Перечень вкладок ───
+  // Порядок: поле, рутины, дни, артель, рубка. Индекс сей же
+  // соответствует _tab. Показ полевой вкладки и вкладки артели
+  // управляется флагами борта (рубка → артель).
+  static const List<RootTabItem> _allTabs = [
     RootTabItem(icon: Icons.map, labelKey: 'tab.field'),
     RootTabItem(icon: Icons.checklist, labelKey: 'tab.routines'),
     RootTabItem(icon: Icons.calendar_month, labelKey: 'tab.days'),
@@ -82,9 +89,15 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     RootTabItem(icon: Icons.dashboard, labelKey: 'tab.rubka'),
   ];
 
+  // Видима ли вкладка с сим номером при текущих флагах.
+  bool _tabVisible(int i) {
+    if (i == 0) return _bort.showFieldTab;
+    if (i == 3) return _bort.showArtelTab;
+    return true;
+  }
+
   static const double _pultBase = 32.0;
   static const double _pultMax = 64.0;
-
   static const double _rootPad = 6.0;
 
   @override
@@ -127,6 +140,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     // «перечитать» становится активной, лишь ежели после сего
     // в журнал что-то добавилось.
     _bort.setLastRereadId(await _journal.lastEntryId());
+    // Вкладка по умолчанию — «рутины»; коли «поле» и «артель»
+    // скрыты, индекс 1 всё равно ведёт к рутинам.
+    _tab = 1;
     if (mounted) setState(() {});
   }
 
@@ -160,11 +176,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   }
 
   // ─── Жизненный цикл приложения ───
-  // Уход (paused, detached, inactive): остановка таймера борта,
-  // немедленная запись слоёв.
-  // Возврат (resumed): перечитать системную гамму и переразрешить
-  // тему — в фоне система могла сменить светлую на тёмную или
-  // обратно, и без сего фон и элементы остались бы в прежней схеме.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
@@ -181,24 +192,14 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     }
   }
 
-  // ─── Смена системной гаммы ───
-  // Зовётся при смене светлой/тёмной темы системы. Слой борта
-  // переразрешает действующую тему («система»), прочие темы
-  // остаются как были.
   @override
   void didChangePlatformBrightness() {
     _refreshSystemBrightness();
   }
 
   void _refreshSystemBrightness() {
-    final b = WidgetsBinding
-        .instance
-        .platformDispatcher
-        .platformBrightness;
+    final b = WidgetsBinding.instance.platformDispatcher.platformBrightness;
     _bort.setSystemBrightness(b);
-    // setSystemBrightness уведомляет слушателей токмо ежели гамма
-    // впрямь изменилась; но при возврате из фона фон мог отстать
-    // и без смены значения — принудительная перерисовка не лишня.
     if (mounted) setState(() {});
   }
 
@@ -230,18 +231,19 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     final ctx = _navigatorKey.currentContext;
     if (ctx == null) return;
     final side = _pultState.smallSide;
-    final labels = _bort.labelsSystem;
+    final labels = _bort.labelsButtons;
     showPultSheet(
       context: ctx,
       subs: [
-        for (var i = 0; i < _tabs.length; i++)
-          PultSpec(
-            id: 'tab_$i',
-            icon: _tabs[i].icon,
-            label: labels ? _i18n!.t(_tabs[i].labelKey) : null,
-            selected: _tab == i,
-            onTap: () => _switchTab(i),
-          ),
+        for (var i = 0; i < _allTabs.length; i++)
+          if (_tabVisible(i))
+            PultSpec(
+              id: 'tab_$i',
+              icon: _allTabs[i].icon,
+              label: labels ? _i18n!.t(_allTabs[i].labelKey) : null,
+              selected: _tab == i,
+              onTap: () => _switchTab(i),
+            ),
       ],
       fg: _bort.fg,
       bg: _bort.bg,
@@ -276,9 +278,38 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     return Brightness.light;
   }
 
+  // ─── Сборка тела вкладки по номеру ───
+  // Индексы: 0 — поле, 1 — рутины, 2 — дни, 3 — артель, 4 — рубка.
+  // Скрытые вкладки на своих местах остаются заглушками: индекс
+  // не смещается, оттого _tab всегда один и тот же смысл имеет.
+  Widget _tabBody() {
+    switch (_tab) {
+      case 0:
+        return const StubTab(); // поле
+      case 1:
+        return const RoutinesTab();
+      case 2:
+        return const DaysTab();
+      case 3:
+        return const StubTab(); // артель
+      case 4:
+      default:
+        return const RubkaTab();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_i18n == null) return const SizedBox.shrink();
+
+    // Коли текущая вкладка скрыта — принудительно переводим на рутины.
+    if (!_tabVisible(_tab)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_tabVisible(_tab)) {
+          setState(() => _tab = 1);
+        }
+      });
+    }
 
     final side = _pultSide(context);
     _pultState.baseSide = side;
@@ -379,18 +410,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           ),
         );
       },
-      home: Scaffold(
-        body: IndexedStack(
-          index: _tab,
-          children: const [
-            StubTab(), // поле
-            RoutinesTab(), // рутины
-            DaysTab(), // дни
-            StubTab(), // артель
-            RubkaTab(), // рубка
-          ],
-        ),
-      ),
+      home: Scaffold(body: _tabBody()),
     );
   }
 }

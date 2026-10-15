@@ -5,10 +5,19 @@
 // активной работы), DraftsStore (черновики), InstallStore (первый
 // запуск, устройство), BortFile (файл борта).
 //
-// Здесь — поля состояния вида: коэффициенты, вкладка, смена, метка
+// Здесь — поля состояния вида: коэффициенты, смена, метка
 // экспорта, метка перечитывания, свёрнутость блоков, счётчики
-// экспорта, слоты по умолчанию. Установочные данные и работа
-// с файлом — в модулях.
+// экспорта, слоты по умолчанию, показ вкладок «поле» и «артель».
+// Установочные данные и работа с файлом — в модулях.
+//
+// Поле tab упразднено: вкладка по умолчанию — «рутины» (задана
+// в main.dart), из файла борта не читается.
+//
+// labelsField упразднено: подписи кнопок едины. labelsButtons —
+// прежние «системные подписи».
+//
+// showFieldTab и showArtelTab — показ вкладок «поле» и «артель».
+// По умолчанию скрыты; отметка — в рубке, блок «артель».
 //
 // В журнал сей слой НЕ пишет и НЕ читает из журнала.
 //
@@ -70,14 +79,17 @@ class OperationalLayer extends ChangeNotifier {
   // ─── Поля вида ───
   double scale = 1.4;
   String lang = 'ru';
-  int tab = 4;
   String anchor = 'tl';
-  bool labelsSystem = true;
-  bool labelsField = true;
+  bool labelsButtons = true;
   bool blockArtel = false;
   bool blockAppearance = false;
   bool blockInterface = false;
   bool blockData = false;
+
+  // Показ вкладок «поле» и «артель». По умолчанию скрыты.
+  bool showFieldTab = false;
+  bool showArtelTab = false;
+
   int selectedType = 4;
   int selectedFlags = 0;
   int lastExportId = 0;
@@ -150,14 +162,14 @@ class OperationalLayer extends ChangeNotifier {
 
       scale = (data['scale'] as num?)?.toDouble() ?? scale;
       lang = data['lang'] as String? ?? lang;
-      tab = (data['tab'] as num?)?.toInt() ?? tab;
       anchor = data['anchor'] as String? ?? anchor;
-      labelsSystem = data['labels_system'] as bool? ?? labelsSystem;
-      labelsField = data['labels_field'] as bool? ?? labelsField;
+      labelsButtons = data['labels_buttons'] as bool? ?? labelsButtons;
       blockArtel = data['block_artel'] as bool? ?? blockArtel;
       blockAppearance = data['block_appearance'] as bool? ?? blockAppearance;
       blockInterface = data['block_interface'] as bool? ?? blockInterface;
       blockData = data['block_data'] as bool? ?? blockData;
+      showFieldTab = data['show_field_tab'] as bool? ?? showFieldTab;
+      showArtelTab = data['show_artel_tab'] as bool? ?? showArtelTab;
       selectedType = (data['selected_type'] as num?)?.toInt() ?? selectedType;
       selectedFlags =
           (data['selected_flags'] as num?)?.toInt() ?? selectedFlags;
@@ -194,14 +206,14 @@ class OperationalLayer extends ChangeNotifier {
 
     scale = (data['scale'] as num?)?.toDouble() ?? scale;
     lang = data['lang'] as String? ?? lang;
-    tab = (data['tab'] as num?)?.toInt() ?? tab;
     anchor = data['anchor'] as String? ?? anchor;
-    labelsSystem = data['labels_system'] as bool? ?? labelsSystem;
-    labelsField = data['labels_field'] as bool? ?? labelsField;
+    labelsButtons = data['labels_buttons'] as bool? ?? labelsButtons;
     blockArtel = data['block_artel'] as bool? ?? blockArtel;
     blockAppearance = data['block_appearance'] as bool? ?? blockAppearance;
     blockInterface = data['block_interface'] as bool? ?? blockInterface;
     blockData = data['block_data'] as bool? ?? blockData;
+    showFieldTab = data['show_field_tab'] as bool? ?? showFieldTab;
+    showArtelTab = data['show_artel_tab'] as bool? ?? showArtelTab;
     selectedType = (data['selected_type'] as num?)?.toInt() ?? selectedType;
     selectedFlags = (data['selected_flags'] as num?)?.toInt() ?? selectedFlags;
     _bortTime.midnight = data['midnight'] as String? ?? _bortTime.midnight;
@@ -405,6 +417,8 @@ class OperationalLayer extends ChangeNotifier {
     collapsedBlocks = {};
     exportCounters = {};
     defaultSlots = {'work'};
+    showFieldTab = false;
+    showArtelTab = false;
     lastExportId = 0;
     lastRereadId = 0;
     await _loadDefaults();
@@ -507,17 +521,17 @@ class OperationalLayer extends ChangeNotifier {
       case 'lang':
         lang = value;
         break;
-      case 'tab':
-        tab = int.tryParse(value) ?? tab;
-        break;
       case 'anchor':
         anchor = value;
         break;
-      case 'labels_system':
-        labelsSystem = _parseBool(value) ?? labelsSystem;
+      case 'labels_buttons':
+        labelsButtons = _parseBool(value) ?? labelsButtons;
         break;
-      case 'labels_field':
-        labelsField = _parseBool(value) ?? labelsField;
+      case 'show_field_tab':
+        showFieldTab = _parseBool(value) ?? showFieldTab;
+        break;
+      case 'show_artel_tab':
+        showArtelTab = _parseBool(value) ?? showArtelTab;
         break;
       case 'block_artel':
         blockArtel = _parseBool(value) ?? blockArtel;
@@ -603,14 +617,14 @@ class OperationalLayer extends ChangeNotifier {
       'theme': _themes.themeName,
       'scale': scale,
       'lang': lang,
-      'tab': tab,
       'anchor': anchor,
-      'labels_system': labelsSystem,
-      'labels_field': labelsField,
+      'labels_buttons': labelsButtons,
       'block_artel': blockArtel,
       'block_appearance': blockAppearance,
       'block_interface': blockInterface,
       'block_data': blockData,
+      'show_field_tab': showFieldTab,
+      'show_artel_tab': showArtelTab,
       'selected_type': selectedType,
       'selected_flags': selectedFlags,
       'midnight': _bortTime.midnight,
@@ -654,8 +668,7 @@ class OperationalLayer extends ChangeNotifier {
     out['theme'] = _themes.themeName;
     out['scale'] = scale.toStringAsFixed(2);
     out['lang'] = lang;
-    out['labels_system'] = labelsSystem.toString();
-    out['labels_field'] = labelsField.toString();
+    out['labels_buttons'] = labelsButtons.toString();
     out['midnight'] = _bortTime.midnight;
     out['k_pult'] = kPult.toStringAsFixed(4);
     out['k_pult_small'] = kPultSmall.toStringAsFixed(4);
@@ -674,8 +687,7 @@ class OperationalLayer extends ChangeNotifier {
     'theme': 'theme',
     'scale': 'string',
     'lang': 'string',
-    'labels_system': 'bool',
-    'labels_field': 'bool',
+    'labels_buttons': 'bool',
     'midnight': 'string',
     'k_pult': 'string',
     'k_pult_small': 'string',
