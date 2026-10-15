@@ -337,7 +337,13 @@ class _MediaViewerState extends State<MediaViewer> {
                   Pult(
                     spec: PultSpec(
                       id: 'media_close',
+                      // При более двух вложений средний пульт показывает
+                      // порядковый номер открытого кадра («3/7»).
+                      // При одном либо двух — обычная стрелка ухода.
                       icon: Icons.keyboard_arrow_down,
+                      centerText: _files.length > 2
+                          ? '${_pos + 1}/${_files.length}'
+                          : null,
                       onTap: _close,
                       longSubs: f == null
                           ? null

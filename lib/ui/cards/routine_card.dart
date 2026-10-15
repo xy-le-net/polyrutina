@@ -420,6 +420,9 @@ class _RoutineCardState extends State<RoutineCard> {
         backgroundColor: bort.bg,
         foregroundColor: bort.fg,
         elevation: 0,
+        // Кнопки «назад» нет: уход — системными средствами (жест,
+        // кнопка навигации).
+        automaticallyImplyLeading: false,
         titleSpacing: rootReserve,
         actions: [SizedBox(width: side * 0.4)],
         title: BortField(

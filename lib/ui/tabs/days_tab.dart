@@ -3,14 +3,16 @@
 //
 // День рутины определяется так: completedAt, иначе lastPulseAt,
 // иначе scheduledAt, иначе createdAt. Старшинство именно такое:
-// завершённость > пульс > наметка.
+// завершённость > пульс > наметка. Сие старшинство — для одной
+// рутины: каждая рутина приносит в клетку ровно одну помету.
 //
-// Пометы в клетке — сочетаются:
+// Пометы в клетке:
 //   — завершённая (completedAt на сей день) — подчёркнутое число;
 //   — с пульсом (lastPulseAt на сей день) — круглая рамка;
 //   — намеченная (scheduledAt на сей день) — квадратная рамка.
-// Ежели на день приходятся рутины разных родов, пометы выводятся
-// разом: подчёркивание, круг и квадрат совмещаются.
+// Разные рутины дня могут приносить разные пометы: тогда пометы
+// совмещаются (подчёркивание, круг и квадрат выводятся разом).
+// Одна и та же рутина двух помет не даёт: у неё одно состояние.
 //
 // Верхний ряд управления месяцем резервирует место корневого
 // пульта: левый край отступает на его ширину, дабы переключатели
@@ -69,9 +71,27 @@ class _DaysTabState extends State<DaysTab> {
     return d.day;
   }
 
+  // ─── Род пометы для одной рутины ───
+  // Старшинство: завершённость > пульс > наметка. Одна рутина
+  // приносит ровно одну помету.
+  _Mark _markOfRoutine(Routine r, int day) {
+    if (r.completed &&
+        r.completedAt != null &&
+        _sameMonth(r.completedAt!) == day) {
+      return _Mark.completed;
+    }
+    if (r.lastPulseAt != null && _sameMonth(r.lastPulseAt!) == day) {
+      return _Mark.pulse;
+    }
+    if (r.scheduledAt != null && _sameMonth(r.scheduledAt!) == day) {
+      return _Mark.scheduled;
+    }
+    return _Mark.none;
+  }
+
   // ─── Совокупность помет для клетки ───
-  // Каждая помета ставится независимо: рутина одного рода не
-  // отменяет помету другого.
+  // Каждая рутина дня приносит свою помету; сочетание разных
+  // сохраняется, ежели пометы разных рутин.
   ({bool completed, bool pulse, bool scheduled}) _marksOf(
     int day,
     List<Routine> routines,
@@ -80,16 +100,18 @@ class _DaysTabState extends State<DaysTab> {
     var pulse = false;
     var scheduled = false;
     for (final r in routines) {
-      if (r.completed &&
-          r.completedAt != null &&
-          _sameMonth(r.completedAt!) == day) {
-        completed = true;
-      }
-      if (r.lastPulseAt != null && _sameMonth(r.lastPulseAt!) == day) {
-        pulse = true;
-      }
-      if (r.scheduledAt != null && _sameMonth(r.scheduledAt!) == day) {
-        scheduled = true;
+      switch (_markOfRoutine(r, day)) {
+        case _Mark.completed:
+          completed = true;
+          break;
+        case _Mark.pulse:
+          pulse = true;
+          break;
+        case _Mark.scheduled:
+          scheduled = true;
+          break;
+        case _Mark.none:
+          break;
       }
     }
     return (completed: completed, pulse: pulse, scheduled: scheduled);
@@ -125,7 +147,7 @@ class _DaysTabState extends State<DaysTab> {
 
     // Резерв под корневой пульт: компас висит в левом верхнем углу
     // поверх экрана; переключатели месяца не должны под него заезжать.
-    final rootReserve = side * 2 / 3 + side * 0.4;
+    final rootReserve = side * 2 / 3 + 6.0 * 2;
 
     return Column(
       children: [
@@ -198,7 +220,6 @@ class _DaysTabState extends State<DaysTab> {
 
     // Совмещение помет: квадрат (наметка) — внешняя рамка,
     // круг (пульс) — вписанный, подчёркивание — на самом числе.
-    // Все три выводятся разом, коли присутствуют.
     Widget content = Text('$day', style: style);
 
     if (marks.pulse) {
@@ -225,7 +246,10 @@ class _DaysTabState extends State<DaysTab> {
 
     return GestureDetector(
       onTap: routines.isEmpty ? null : () => _openDay(routines),
-      child: Padding(padding: EdgeInsets.all(side * 0.1), child: content),
+      child: Padding(
+        padding: EdgeInsets.all(side * 0.1),
+        child: content,
+      ),
     );
   }
 
@@ -249,3 +273,5 @@ class _DaysTabState extends State<DaysTab> {
     );
   }
 }
+
+enum _Mark { none, scheduled, pulse, completed }

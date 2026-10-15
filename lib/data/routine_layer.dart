@@ -242,57 +242,71 @@ class RoutineLayer extends ChangeNotifier {
   }
 
   // ─── Дублирование ───
+  // Копируются: имя, флаги, намеченная дата, плановые человекочасы,
+  // следы блоков описания, подготовки, завершения (текст и чек-лист).
+  // Следы перехода, выполнения, простоя не переносятся — они
+  // о конкретной работе.
+  //
+  // Всё копирование — одною транзакциею: рождается несколько
+  // записей в журнале (создание рутины, имя, флаги, дата, план,
+  // по следу на слот). При сбое посреди — ни рутины, ни следов.
   Future<Routine?> duplicateRoutine(JournalLayer journal, int sourceId) async {
     final src = findRoutine(sourceId);
     if (src == null) return null;
-    final r = await createRoutine(journal);
-    if (src.name.isNotEmpty) {
-      await renameRoutine(journal, r.id, src.name);
-    }
-    if (src.flags != 0) {
-      await setFlags(journal, r.id, src.flags);
-    }
-    if (src.scheduledAt != null) {
-      await setSchedule(journal, r.id, src.scheduledAt);
-    }
-    if (src.plannedSeconds > 0) {
-      await setPlanned(journal, r.id, src.plannedSeconds);
-    }
 
-    final traces = _traces;
-    if (traces != null) {
-      const copySlots = ['note', 'prep', 'closeout'];
-      for (final slot in copySlots) {
-        final t = traces.findFirstBySlot(src.id, slot);
-        if (t == null) continue;
+    int? newId;
+    await journal.transaction(() async {
+      final r = await createRoutine(journal);
+      newId = r.id;
+      if (src.name.isNotEmpty) {
+        await renameRoutine(journal, r.id, src.name);
+      }
+      if (src.flags != 0) {
+        await setFlags(journal, r.id, src.flags);
+      }
+      if (src.scheduledAt != null) {
+        await setSchedule(journal, r.id, src.scheduledAt);
+      }
+      if (src.plannedSeconds > 0) {
+        await setPlanned(journal, r.id, src.plannedSeconds);
+      }
 
-        if (t.kind == TraceKind.text && t.text.isNotEmpty) {
-          await traces.createText(
-            journal,
-            slot: slot,
-            text: t.text,
-            parents: [r.id],
-          );
-        }
+      final traces = _traces;
+      if (traces != null) {
+        const copySlots = ['note', 'prep', 'closeout'];
+        for (final slot in copySlots) {
+          final t = traces.findFirstBySlot(src.id, slot);
+          if (t == null) continue;
 
-        if (t.kind == TraceKind.checklist) {
-          final items = t.items
-              .where((e) => e.text.trim().isNotEmpty)
-              .map((e) => e.text)
-              .toList();
-          if (items.isNotEmpty) {
-            await traces.createChecklist(
+          if (t.kind == TraceKind.text && t.text.isNotEmpty) {
+            await traces.createText(
               journal,
               slot: slot,
-              items: items,
+              text: t.text,
               parents: [r.id],
             );
           }
+
+          if (t.kind == TraceKind.checklist) {
+            final items = t.items
+                .where((e) => e.text.trim().isNotEmpty)
+                .map((e) => e.text)
+                .toList();
+            if (items.isNotEmpty) {
+              await traces.createChecklist(
+                journal,
+                slot: slot,
+                items: items,
+                parents: [r.id],
+              );
+            }
+          }
         }
       }
-    }
+    });
 
-    return findRoutine(r.id);
+    if (newId == null) return null;
+    return findRoutine(newId!);
   }
 
   // ─── Мутации ───

@@ -90,6 +90,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   @override
   void initState() {
     super.initState();
+    // Наблюдатель жизненного цикла: уход — запись слоёв, возврат —
+    // переразрешение темы (в фоне система могла сменить гамму).
     WidgetsBinding.instance.addObserver(this);
     _db = AppDb();
     _journal = JournalLayer(_db);
@@ -157,6 +159,12 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     super.dispose();
   }
 
+  // ─── Жизненный цикл приложения ───
+  // Уход (paused, detached, inactive): остановка таймера борта,
+  // немедленная запись слоёв.
+  // Возврат (resumed): перечитать системную гамму и переразрешить
+  // тему — в фоне система могла сменить светлую на тёмную или
+  // обратно, и без сего фон и элементы остались бы в прежней схеме.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
@@ -166,7 +174,32 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       _bort.saveNow();
       _routineLayer.saveNow();
       _traceLayer.saveNow();
+      return;
     }
+    if (state == AppLifecycleState.resumed) {
+      _refreshSystemBrightness();
+    }
+  }
+
+  // ─── Смена системной гаммы ───
+  // Зовётся при смене светлой/тёмной темы системы. Слой борта
+  // переразрешает действующую тему («система»), прочие темы
+  // остаются как были.
+  @override
+  void didChangePlatformBrightness() {
+    _refreshSystemBrightness();
+  }
+
+  void _refreshSystemBrightness() {
+    final b = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .platformBrightness;
+    _bort.setSystemBrightness(b);
+    // setSystemBrightness уведомляет слушателей токмо ежели гамма
+    // впрямь изменилась; но при возврате из фона фон мог отстать
+    // и без смены значения — принудительная перерисовка не лишня.
+    if (mounted) setState(() {});
   }
 
   Future<void> _switchTab(int i) async {

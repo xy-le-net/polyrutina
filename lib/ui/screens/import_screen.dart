@@ -119,11 +119,20 @@ class _ImportScreenState extends State<ImportScreen> {
         _log.add('${p.basename(path)}: формат не распознан');
         continue;
       }
-      await _applyParsed(app, parsed, extracted);
-      _log.add(
-        '${p.basename(path)}: '
-        '${parsed.name.isEmpty ? "noname" : parsed.name}',
-      );
+      // Привнесение рутины — одною транзакциею: либо вся рутина
+      // с блоками и следами, либо ничего. При частичном сбое
+      // половинчатой рутины в журнале не остаётся.
+      try {
+        await app.journal.transaction(() async {
+          await _applyParsed(app, parsed, extracted);
+        });
+        _log.add(
+          '${p.basename(path)}: '
+          '${parsed.name.isEmpty ? "noname" : parsed.name}',
+        );
+      } catch (e) {
+        _log.add('${p.basename(path)}: сбой — $e');
+      }
     }
   }
 
@@ -226,6 +235,10 @@ class _ImportScreenState extends State<ImportScreen> {
         backgroundColor: bort.bg,
         foregroundColor: bort.fg,
         elevation: 0,
+        // Кнопки «назад» нет: уход — системными средствами (жест,
+        // кнопка навигации).
+        automaticallyImplyLeading: false,
+        titleSpacing: side * 1.4,
         title: Text(i18n.t('bort.import')),
       ),
       body: SafeArea(

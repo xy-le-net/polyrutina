@@ -3,8 +3,16 @@
 //
 // Полноэкранный, открывается из TraceField.
 //
-// Заголовок сдвинут вправо на ширину корневого пульта: слева сверху
-// висит компас, коий не должен перекрывать надпись.
+// Строка управления. Слева вверху — корневой пульт (компас), справа
+// вверху — пульт ухода. Заголовок сдвинут вправо на ширину корневого
+// пульта: компас не должен перекрывать надпись. Кнопки «назад»
+// не выводится: уход — системными средствами (жест, кнопка) либо
+// сим пультом ухода.
+//
+// Пульт ухода. Показывает число неотмеченных (коих осталось
+// отметить), когда таковые есть; иначе — стрелку вниз. Долгое
+// нажатие открывает подпульт: отметить все, снять, очистить.
+// Иных счётчиков на экране нет: «отмечено / всего» упразднено.
 //
 // След различается парой (objectId, slot) и родом (kind=checklist).
 //
@@ -16,9 +24,6 @@
 // (пустому) пункту.
 //
 // Сохранение — телом целиком, записью в журнал с флагом «правка».
-//
-// Закрытие — висящая галка вниз. Долгое нажатие на галке открывает
-// подпульт: отметить все, снять, очистить.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -271,7 +276,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     final radiusW = side * bort.kRadius;
 
     final counts = _counts();
-    final allDone = counts.total > 0 && counts.done == counts.total;
+    final unchecked = counts.total - counts.done;
 
     return Scaffold(
       backgroundColor: bort.bg,
@@ -279,6 +284,8 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
         backgroundColor: bort.bg,
         foregroundColor: bort.fg,
         elevation: 0,
+        // Кнопки «назад» нет: уход — системными средствами либо
+        // пультом ухода в правой части сей строки.
         automaticallyImplyLeading: false,
         // Уступ под корневой пульт: компас висит в левом верхнем
         // углу поверх экрана, заголовок не должен под него заезжать.
@@ -293,131 +300,112 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
             ),
           ],
         ),
+        actions: [
+          // Пульт ухода — правая часть строки управления. Число
+          // неотмеченных — на нём самом, коли таковые есть.
+          Pult(
+            spec: PultSpec(
+              id: 'close_checklist',
+              icon: Icons.keyboard_arrow_down,
+              centerText: unchecked > 0 ? '$unchecked' : null,
+              selected: unchecked > 0,
+              onTap: _close,
+              longSubs: () => [
+                PultSpec(
+                  id: 'chk_all',
+                  icon: Icons.done_all,
+                  label: i18n.t('checklist.mark_all'),
+                  confirm: true,
+                  onTap: _markAll,
+                ),
+                PultSpec(
+                  id: 'chk_none',
+                  icon: Icons.check_box_outline_blank,
+                  label: i18n.t('checklist.unmark_all'),
+                  confirm: true,
+                  onTap: _unmarkAll,
+                ),
+                PultSpec(
+                  id: 'chk_clear',
+                  icon: Icons.clear_all,
+                  label: i18n.t('checklist.clear_all'),
+                  confirm: true,
+                  onTap: _clearAll,
+                ),
+              ],
+            ),
+            fg: bort.fg,
+            bg: bort.bg,
+            signal: bort.signal,
+            overrideSize: pultSide,
+          ),
+          SizedBox(width: side * 0.4),
+        ],
       ),
       body: SafeArea(
-        child: Stack(
-          children: [
-            ListView.builder(
-              padding: EdgeInsets.fromLTRB(12, 8, 12, side * 2.4),
-              itemCount: _items.length,
-              itemBuilder: (context, i) {
-                final it = _items[i];
-                final canToggle = it.text.trim().isNotEmpty;
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    children: [
-                      PultTick(
-                        id: 'chk_$i',
-                        value: it.done,
-                        binary: true,
-                        fg: bort.fg,
-                        bg: bort.bg,
-                        signal: bort.signal,
-                        overrideSize: pultSide,
-                        onTap: canToggle ? () => _toggleDone(i) : null,
-                      ),
-                      SizedBox(width: side * 0.15),
-                      Expanded(
-                        child: Focus(
-                          onFocusChange: (hasFocus) {
-                            if (!hasFocus) _onBlur(i);
-                          },
-                          child: TextField(
-                            controller: _controllers[i],
-                            focusNode: _focusNodes[i],
-                            style: TextStyle(
-                              color: bort.fg,
-                              fontSize: itemSize,
-                            ),
-                            decoration: InputDecoration(
-                              isDense: true,
-                              hintText: i18n.t('routine.block.note'),
-                              hintStyle: TextStyle(color: bort.dim),
-                              border: OutlineInputBorder(
-                                borderSide: BorderSide(color: bort.dim),
-                                borderRadius: BorderRadius.circular(radiusW),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderSide: BorderSide(color: bort.dim),
-                                borderRadius: BorderRadius.circular(radiusW),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderSide: BorderSide(color: bort.fg),
-                                borderRadius: BorderRadius.circular(radiusW),
-                              ),
-                              contentPadding: EdgeInsets.all(side * 0.15),
-                            ),
-                            onChanged: (v) {
-                              _items[i] = (text: v, done: _items[i].done);
-                              if (i == _items.length - 1 && v.isNotEmpty) {
-                                _ensureTrailingEmpty();
-                              }
-                              setState(() {});
-                            },
-                            onSubmitted: (_) => _submitAndAdvance(i),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 12,
+        child: ListView.builder(
+          padding: EdgeInsets.fromLTRB(12, 8, 12, side * 1.4),
+          itemCount: _items.length,
+          itemBuilder: (context, i) {
+            final it = _items[i];
+            final canToggle = it.text.trim().isNotEmpty;
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Pult(
-                    spec: PultSpec(
-                      id: 'close_checklist',
-                      icon: Icons.keyboard_arrow_down,
-                      onTap: _close,
-                      longSubs: () => [
-                        PultSpec(
-                          id: 'chk_all',
-                          icon: Icons.done_all,
-                          label: i18n.t('checklist.mark_all'),
-                          confirm: true,
-                          onTap: _markAll,
-                        ),
-                        PultSpec(
-                          id: 'chk_none',
-                          icon: Icons.check_box_outline_blank,
-                          label: i18n.t('checklist.unmark_all'),
-                          confirm: true,
-                          onTap: _unmarkAll,
-                        ),
-                        PultSpec(
-                          id: 'chk_clear',
-                          icon: Icons.clear_all,
-                          label: i18n.t('checklist.clear_all'),
-                          confirm: true,
-                          onTap: _clearAll,
-                        ),
-                      ],
-                    ),
+                  PultTick(
+                    id: 'chk_$i',
+                    value: it.done,
+                    binary: true,
                     fg: bort.fg,
                     bg: bort.bg,
                     signal: bort.signal,
-                    overrideSize: side,
+                    overrideSize: pultSide,
+                    onTap: canToggle ? () => _toggleDone(i) : null,
                   ),
-                  SizedBox(width: side * 0.2),
-                  Text(
-                    '${counts.done}/${counts.total}',
-                    style: TextStyle(
-                      color: allDone ? bort.dim : bort.signal,
-                      fontFamily: 'monospace',
-                      fontSize: side * 0.5,
+                  SizedBox(width: side * 0.15),
+                  Expanded(
+                    child: Focus(
+                      onFocusChange: (hasFocus) {
+                        if (!hasFocus) _onBlur(i);
+                      },
+                      child: TextField(
+                        controller: _controllers[i],
+                        focusNode: _focusNodes[i],
+                        style: TextStyle(color: bort.fg, fontSize: itemSize),
+                        decoration: InputDecoration(
+                          isDense: true,
+                          hintText: i18n.t('routine.block.note'),
+                          hintStyle: TextStyle(color: bort.dim),
+                          border: OutlineInputBorder(
+                            borderSide: BorderSide(color: bort.dim),
+                            borderRadius: BorderRadius.circular(radiusW),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderSide: BorderSide(color: bort.dim),
+                            borderRadius: BorderRadius.circular(radiusW),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderSide: BorderSide(color: bort.fg),
+                            borderRadius: BorderRadius.circular(radiusW),
+                          ),
+                          contentPadding: EdgeInsets.all(side * 0.15),
+                        ),
+                        onChanged: (v) {
+                          _items[i] = (text: v, done: _items[i].done);
+                          if (i == _items.length - 1 && v.isNotEmpty) {
+                            _ensureTrailingEmpty();
+                          }
+                          setState(() {});
+                        },
+                        onSubmitted: (_) => _submitAndAdvance(i),
+                      ),
                     ),
                   ),
                 ],
               ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );

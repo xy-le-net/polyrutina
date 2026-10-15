@@ -168,24 +168,42 @@ class _RoutinesTabState extends State<RoutinesTab> {
     return false;
   }
 
+  // ─── Групповое удаление ───
+  // Все удаления — одною транзакциею: либо вся пачка, либо ничего.
+  // Иначе при сбое посреди списка часть рутин осталась бы.
   Future<void> _deleteSelected() async {
     final app = AppScope.of(context);
     final ids = _selected.toList();
-    for (final id in ids) {
-      await app.routineLayer.deleteRoutine(app.journal, id);
+    if (ids.isEmpty) {
+      _exitSelectMode();
+      return;
     }
+    await app.journal.transaction(() async {
+      for (final id in ids) {
+        await app.routineLayer.deleteRoutine(app.journal, id);
+      }
+    });
     _exitSelectMode();
   }
 
+  // ─── Групповое завершение ───
+  // Завершение рутины само гасит идущие блоки и пишет несколько
+  // записей; вся пачка — внутри одной внешней транзакции.
   Future<void> _completeSelected() async {
     final app = AppScope.of(context);
     final ids = _selected.toList();
-    for (final id in ids) {
-      final r = app.routineLayer.findRoutine(id);
-      if (r == null) continue;
-      if (r.completed) continue;
-      await app.routineLayer.setCompleted(app.journal, id, true);
+    if (ids.isEmpty) {
+      _exitSelectMode();
+      return;
     }
+    await app.journal.transaction(() async {
+      for (final id in ids) {
+        final r = app.routineLayer.findRoutine(id);
+        if (r == null) continue;
+        if (r.completed) continue;
+        await app.routineLayer.setCompleted(app.journal, id, true);
+      }
+    });
     _exitSelectMode();
   }
 

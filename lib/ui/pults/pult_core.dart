@@ -122,6 +122,14 @@ class _PultState extends State<Pult> {
 
     final iconSize = selected ? side * 0.60 : side * 0.45;
     final hasCenter = widget.spec.centerText != null;
+    // Кегль надписи в ядре уменьшается с ростом длины: одна цифра —
+    // как значок, две и боле — пропорционально теснее, дабы не
+    // выезжать за контур пульта. Применяется к счётчикам медиа,
+    // числу неотмеченных в чек-листе, порядку кадра в просмотре.
+    final centerLen = widget.spec.centerText?.length ?? 0;
+    final centerSize = centerLen <= 1
+        ? iconSize
+        : iconSize * (1.6 / centerLen);
 
     Widget core = Container(
       key: _coreKey,
@@ -140,7 +148,7 @@ class _PultState extends State<Pult> {
                   style: TextStyle(
                     color: iconColor,
                     fontFamily: 'monospace',
-                    fontSize: iconSize,
+                    fontSize: centerSize,
                     height: 1.0,
                     decoration: TextDecoration.none,
                   ),
