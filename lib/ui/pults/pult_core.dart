@@ -127,9 +127,7 @@ class _PultState extends State<Pult> {
     // выезжать за контур пульта. Применяется к счётчикам медиа,
     // числу неотмеченных в чек-листе, порядку кадра в просмотре.
     final centerLen = widget.spec.centerText?.length ?? 0;
-    final centerSize = centerLen <= 1
-        ? iconSize
-        : iconSize * (1.6 / centerLen);
+    final centerSize = centerLen <= 1 ? iconSize : iconSize * (1.6 / centerLen);
 
     Widget core = Container(
       key: _coreKey,
@@ -185,11 +183,15 @@ class _PultState extends State<Pult> {
     if (!hasLabel || maxLabelW < side * 1.5) {
       content = core;
     } else {
+      // Стиль подписи — от системной темы (те же семейство, вес,
+      // начертание, что и у прочего текста). Свой стиль здесь делал
+      // надпись жирнее и «чужее».
+      final labelStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
+        fontSize: side * 0.4,
+        fontWeight: FontWeight.normal,
+      );
       final painter = TextPainter(
-        text: TextSpan(
-          text: widget.spec.label!,
-          style: TextStyle(fontSize: side * 0.4),
-        ),
+        text: TextSpan(text: widget.spec.label!, style: labelStyle),
         textDirection: TextDirection.ltr,
         maxLines: 1,
       )..layout();
@@ -217,11 +219,17 @@ class _PultState extends State<Pult> {
             alignment: Alignment.centerLeft,
             child: Text(
               widget.spec.label!,
-              style: TextStyle(
-                color: iconColor,
-                fontSize: side * 0.4,
-                decoration: TextDecoration.none,
-              ),
+              style:
+                  labelStyle?.copyWith(
+                    color: iconColor,
+                    decoration: TextDecoration.none,
+                  ) ??
+                  TextStyle(
+                    color: iconColor,
+                    fontSize: side * 0.4,
+                    fontWeight: FontWeight.normal,
+                    decoration: TextDecoration.none,
+                  ),
               softWrap: false,
               overflow: TextOverflow.ellipsis,
               maxLines: 1,

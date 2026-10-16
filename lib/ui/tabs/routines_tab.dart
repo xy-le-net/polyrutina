@@ -123,9 +123,10 @@ class _RoutinesTabState extends State<RoutinesTab> {
         app,
         app.i18n,
         _selected.toList(),
+        uiContext: context,
       );
     } else {
-      path = await ReportBuilder.build(app, app.i18n);
+      path = await ReportBuilder.build(app, app.i18n, uiContext: context);
     }
     if (!mounted) return;
     if (path == null) return;

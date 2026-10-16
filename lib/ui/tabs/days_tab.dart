@@ -3,24 +3,25 @@
 //
 // День рутины определяется так: completedAt, иначе lastPulseAt,
 // иначе scheduledAt, иначе createdAt. Старшинство именно такое:
-// завершённость > пульс > наметка. Сие старшинство — для одной
-// рутины: каждая рутина приносит в клетку ровно одну помету.
+// завершённость > пульс > наметка. Одна рутина — ровно одна помета.
 //
 // Пометы в клетке:
 //   — завершённая (completedAt на сей день) — подчёркнутое число;
 //   — с пульсом (lastPulseAt на сей день) — круглая рамка;
 //   — намеченная (scheduledAt на сей день) — квадратная рамка.
-// Разные рутины дня могут приносить разные пометы: тогда пометы
-// совмещаются (подчёркивание, круг и квадрат выводятся разом).
-// Одна и та же рутина двух помет не даёт: у неё одно состояние.
+// Разные рутины дня приносят разные пометы; они совмещаются.
 //
-// Верхний ряд управления месяцем резервирует место корневого
-// пульта: левый край отступает на его ширину, дабы переключатели
-// не заезжали под компас.
+// Согласование цветов.
+//   — подчёркивание (завершённая) — приглушённое (dim);
+//   — круг и квадрат — обычные (fg), ежели рутина без флагов
+//     либо завершена;
+//   — сигнальным (signal) выделяются токмо круг и квадрат
+//     незавершённой рутины с флагами;
+//   — число месяца сигнальное тогда и только тогда, когда в сей
+//     день есть незавершённая рутина с флагами.
 //
-// Касание клетки с рутинами открывает единый левосторонний лист
-// (pult_sheet.dart) со списком рутин того дня; касание рутины
-// в листе открывает карточку.
+// Строка управления. Переключатели месяца выводятся чрез ControlRow:
+// корневой пульт слева, содержимое строки центрируется в остатке.
 //
 // Прозрачность не применяется.
 // ═══════════════════════════════════════════════════════════════════
@@ -29,6 +30,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/routine.dart';
 import '../core/app_scope.dart';
+import '../core/control_row.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_sheet.dart';
 
@@ -55,7 +57,6 @@ class _DaysTabState extends State<DaysTab> {
     });
   }
 
-  // ─── День месяца для рутины (нульозначие — вне месяца) ───
   int? _dayOf(Routine r) {
     if (r.completed && r.completedAt != null) {
       return _sameMonth(r.completedAt!);
@@ -71,9 +72,6 @@ class _DaysTabState extends State<DaysTab> {
     return d.day;
   }
 
-  // ─── Род пометы для одной рутины ───
-  // Старшинство: завершённость > пульс > наметка. Одна рутина
-  // приносит ровно одну помету.
   _Mark _markOfRoutine(Routine r, int day) {
     if (r.completed &&
         r.completedAt != null &&
@@ -90,31 +88,55 @@ class _DaysTabState extends State<DaysTab> {
   }
 
   // ─── Совокупность помет для клетки ───
-  // Каждая рутина дня приносит свою помету; сочетание разных
-  // сохраняется, ежели пометы разных рутин.
-  ({bool completed, bool pulse, bool scheduled}) _marksOf(
-    int day,
-    List<Routine> routines,
-  ) {
+  // Собирает признаки:
+  //   completed, pulse, scheduled — какие пометы есть;
+  //   signalPulse, signalScheduled — есть незавершённая рутина
+  //     с флагами и с пульсом/наметкою соответственно;
+  //   hasSignalIncomplete — есть хоть одна незавершённая с флагами
+  //     (число месяца сигнальное).
+  ({
+    bool completed,
+    bool pulse,
+    bool scheduled,
+    bool signalPulse,
+    bool signalScheduled,
+    bool hasSignalIncomplete,
+  })
+  _marksOf(int day, List<Routine> routines) {
     var completed = false;
     var pulse = false;
     var scheduled = false;
+    var signalPulse = false;
+    var signalScheduled = false;
+    var hasSignalIncomplete = false;
     for (final r in routines) {
-      switch (_markOfRoutine(r, day)) {
+      final mark = _markOfRoutine(r, day);
+      final hasFlags = r.flags != 0;
+      if (!r.completed && hasFlags) hasSignalIncomplete = true;
+      switch (mark) {
         case _Mark.completed:
           completed = true;
           break;
         case _Mark.pulse:
           pulse = true;
+          if (!r.completed && hasFlags) signalPulse = true;
           break;
         case _Mark.scheduled:
           scheduled = true;
+          if (!r.completed && hasFlags) signalScheduled = true;
           break;
         case _Mark.none:
           break;
       }
     }
-    return (completed: completed, pulse: pulse, scheduled: scheduled);
+    return (
+      completed: completed,
+      pulse: pulse,
+      scheduled: scheduled,
+      signalPulse: signalPulse,
+      signalScheduled: signalScheduled,
+      hasSignalIncomplete: hasSignalIncomplete,
+    );
   }
 
   @override
@@ -130,7 +152,7 @@ class _DaysTabState extends State<DaysTab> {
       cells.putIfAbsent(day, () => []).add(r);
     }
 
-    final firstWeekday = _month.weekday; // 1 = понедельник
+    final firstWeekday = _month.weekday;
     final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
     final totalCells = (((firstWeekday - 1) + daysInMonth + 6) ~/ 7) * 7;
 
@@ -145,53 +167,49 @@ class _DaysTabState extends State<DaysTab> {
       grid.add(_cell(dayNum, list, side, bort));
     }
 
-    // Резерв под корневой пульт: компас висит в левом верхнем углу
-    // поверх экрана; переключатели месяца не должны под него заезжать.
-    final rootReserve = side * 2 / 3 + 6.0 * 2;
+    // Строка управления: ширина корневого пульта + отступ + зазор.
+    final rootSide = side * 2 / 3;
 
     return Column(
       children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(
-            rootReserve,
-            side * 0.3,
-            side * 0.4,
-            side * 0.3,
-          ),
-          child: Row(
-            children: [
-              Pult(
-                spec: PultSpec(
-                  id: 'prev_month',
-                  icon: Icons.chevron_left,
-                  onTap: () => _shift(-1),
-                ),
-                fg: bort.fg,
-                bg: bort.bg,
-                signal: bort.signal,
-                overrideSize: side,
-              ),
-              Expanded(
-                child: Center(
-                  child: Text(
-                    '${_month.year}.'
-                    '${_month.month.toString().padLeft(2, '0')}',
-                    style: TextStyle(color: bort.fg, fontSize: side * 0.5),
+          padding: EdgeInsets.symmetric(vertical: side * 0.3),
+          child: ControlRow(
+            rootSide: rootSide,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Pult(
+                  spec: PultSpec(
+                    id: 'prev_month',
+                    icon: Icons.chevron_left,
+                    onTap: () => _shift(-1),
                   ),
+                  fg: bort.fg,
+                  bg: bort.bg,
+                  signal: bort.signal,
+                  overrideSize: side,
                 ),
-              ),
-              Pult(
-                spec: PultSpec(
-                  id: 'next_month',
-                  icon: Icons.chevron_right,
-                  onTap: () => _shift(1),
+                SizedBox(width: side * 0.6),
+                Text(
+                  '${_month.year}.'
+                  '${_month.month.toString().padLeft(2, '0')}',
+                  style: TextStyle(color: bort.fg, fontSize: side * 0.5),
                 ),
-                fg: bort.fg,
-                bg: bort.bg,
-                signal: bort.signal,
-                overrideSize: side,
-              ),
-            ],
+                SizedBox(width: side * 0.6),
+                Pult(
+                  spec: PultSpec(
+                    id: 'next_month',
+                    icon: Icons.chevron_right,
+                    onTap: () => _shift(1),
+                  ),
+                  fg: bort.fg,
+                  bg: bort.bg,
+                  signal: bort.signal,
+                  overrideSize: side,
+                ),
+              ],
+            ),
           ),
         ),
         Expanded(
@@ -207,36 +225,43 @@ class _DaysTabState extends State<DaysTab> {
   }
 
   Widget _cell(int day, List<Routine> routines, double side, dynamic bort) {
-    final marks = _marksOf(day, routines);
+    final m = _marksOf(day, routines);
 
+    // Число — сигнальное, ежели есть незавершённая рутина с флагами.
+    final dayColor = m.hasSignalIncomplete ? bort.signal : bort.fg;
+    // Подчёркивание — приглушённое, для завершённой.
     final TextStyle style = TextStyle(
-      color: bort.fg,
+      color: dayColor,
       fontSize: side * 0.4,
-      decoration: marks.completed
-          ? TextDecoration.underline
-          : TextDecoration.none,
-      decorationColor: bort.fg,
+      decoration: m.completed ? TextDecoration.underline : TextDecoration.none,
+      decorationColor: bort.dim,
     );
 
-    // Совмещение помет: квадрат (наметка) — внешняя рамка,
-    // круг (пульс) — вписанный, подчёркивание — на самом числе.
     Widget content = Text('$day', style: style);
 
-    if (marks.pulse) {
+    // Круг — сигнальный у незавершённых с флагами; у прочих обычный.
+    if (m.pulse) {
       content = Container(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: bort.signal, width: side * 0.04),
+          border: Border.all(
+            color: m.signalPulse ? bort.signal : bort.fg,
+            width: side * 0.04,
+          ),
         ),
         alignment: Alignment.center,
         child: content,
       );
     }
 
-    if (marks.scheduled) {
+    // Квадрат — тем же правилом.
+    if (m.scheduled) {
       content = Container(
         decoration: BoxDecoration(
-          border: Border.all(color: bort.dim, width: side * 0.04),
+          border: Border.all(
+            color: m.signalScheduled ? bort.signal : bort.fg,
+            width: side * 0.04,
+          ),
           borderRadius: BorderRadius.circular(side * 0.05),
         ),
         alignment: Alignment.center,
@@ -246,10 +271,7 @@ class _DaysTabState extends State<DaysTab> {
 
     return GestureDetector(
       onTap: routines.isEmpty ? null : () => _openDay(routines),
-      child: Padding(
-        padding: EdgeInsets.all(side * 0.1),
-        child: content,
-      ),
+      child: Padding(padding: EdgeInsets.all(side * 0.1), child: content),
     );
   }
 

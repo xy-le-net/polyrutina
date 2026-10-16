@@ -669,6 +669,14 @@ class OperationalLayer extends ChangeNotifier {
     out['scale'] = scale.toStringAsFixed(2);
     out['lang'] = lang;
     out['labels_buttons'] = labelsButtons.toString();
+    // Флаги блоков рубки и показа вкладок — чрез всеAsStrings,
+    // ими пользуются чекбоксы (rubka_tab, rubka_interface).
+    out['block_artel'] = blockArtel.toString();
+    out['block_appearance'] = blockAppearance.toString();
+    out['block_interface'] = blockInterface.toString();
+    out['block_data'] = blockData.toString();
+    out['show_field_tab'] = showFieldTab.toString();
+    out['show_artel_tab'] = showArtelTab.toString();
     out['midnight'] = _bortTime.midnight;
     out['k_pult'] = kPult.toStringAsFixed(4);
     out['k_pult_small'] = kPultSmall.toStringAsFixed(4);

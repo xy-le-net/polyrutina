@@ -34,6 +34,7 @@ import '../../data/ticker.dart';
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
 import '../core/bort_field.dart';
+import '../core/control_row.dart';
 import '../core/format.dart';
 import '../pults/pult_core.dart';
 import '../services/report.dart';
@@ -265,7 +266,8 @@ class _RoutineCardState extends State<RoutineCard> {
 
   Future<void> _exportOne(Routine r) async {
     final app = AppScope.of(context);
-    await ReportBuilder.buildSingle(app, app.i18n, r.id);
+    // uiContext нужен для показа всплывающей рамки прогресса.
+    await ReportBuilder.buildSingle(app, app.i18n, r.id, uiContext: context);
   }
 
   // ─── Намеченная дата: выбор ───
@@ -291,12 +293,14 @@ class _RoutineCardState extends State<RoutineCard> {
 
   // ─── Плановая длительность: барабан ───
   // Три колеса: дни, часы, минуты. Часы — до 23, минуты — до 59.
-  // Возвращает секунды; null — отмена.
+  // Магнит к значениям — FixedExtentScrollPhysics, без него барабан
+  // встаёт между делениями. Подписи кнопок — системные (отмена, ок).
   Future<void> _pickPlanned(Routine r) async {
     final app = AppScope.of(context);
     final i18n = app.i18n;
     final bort = app.bort;
     final side = PultScope.of(context).smallSide;
+    final loc = MaterialLocalizations.of(context);
 
     final sec = r.plannedSeconds;
     final curD = sec ~/ 86400;
@@ -322,6 +326,8 @@ class _RoutineCardState extends State<RoutineCard> {
               itemExtent: side * 0.8,
               diameterRatio: 1.6,
               perspective: 0.003,
+              // Магнит к ближайшему делению.
+              physics: const FixedExtentScrollPhysics(),
               controller: FixedExtentScrollController(initialItem: initial),
               onSelectedItemChanged: onChanged,
               childDelegate: ListWheelChildBuilderDelegate(
@@ -341,34 +347,32 @@ class _RoutineCardState extends State<RoutineCard> {
           );
         }
 
-        return StatefulBuilder(
-          builder: (_, setDlg) => AlertDialog(
-            backgroundColor: bort.bg,
-            title: Text(
-              i18n.t('routine.planned_hint'),
-              style: TextStyle(color: bort.fg),
-            ),
-            content: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                wheel(max: 999, initial: d, onChanged: (v) => d = v),
-                Text(':', style: TextStyle(color: bort.dim)),
-                wheel(max: 23, initial: h, onChanged: (v) => h = v),
-                Text(':', style: TextStyle(color: bort.dim)),
-                wheel(max: 59, initial: m, onChanged: (v) => m = v),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: Text(i18n.t('bort.deselect')),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop((d: d, h: h, m: m)),
-                child: Text(i18n.t('bort.select')),
-              ),
+        return AlertDialog(
+          backgroundColor: bort.bg,
+          title: Text(
+            i18n.t('routine.planned_title'),
+            style: TextStyle(color: bort.fg),
+          ),
+          content: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              wheel(max: 999, initial: d, onChanged: (v) => d = v),
+              Text(':', style: TextStyle(color: bort.dim)),
+              wheel(max: 23, initial: h, onChanged: (v) => h = v),
+              Text(':', style: TextStyle(color: bort.dim)),
+              wheel(max: 59, initial: m, onChanged: (v) => m = v),
             ],
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text(loc.cancelButtonLabel),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop((d: d, h: h, m: m)),
+              child: Text(loc.okButtonLabel),
+            ),
+          ],
         );
       },
     );
@@ -471,10 +475,10 @@ class _RoutineCardState extends State<RoutineCard> {
       blocks.add(blockOf('summary', i18n.t('routine.summary')));
     }
 
-    // Уступ заголовка: компас (корневой пульт) висит в левом
-    // верхнем углу поверх экрана; ширина его — сторона side * 2/3
-    // плюс отступ от края.
-    final rootReserve = side * 2 / 3 + 6.0 * 2;
+    // Строка управления: корневой пульт слева, поле имени — в остатке.
+    // Резерв считает ControlRow; здесь лишь тот же расчёт для AppBar.
+    final rootSide = side * 2 / 3;
+    final rootReserve = ControlRow.reserve(rootSide);
 
     return Scaffold(
       backgroundColor: bort.bg,

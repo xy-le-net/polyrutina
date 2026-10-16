@@ -38,10 +38,13 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import 'package:flutter/material.dart';
+
 import '../../data/routine.dart';
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
 import '../core/format.dart';
+import '../core/progress_dialog.dart';
 import 'report_json.dart';
 
 class ReportBuilder {
@@ -61,21 +64,32 @@ class ReportBuilder {
   }
 
   // ─── Общий отчёт (все рутины) ───
-  static Future<String?> build(AppContext app, dynamic i18n) async {
+  static Future<String?> build(
+    AppContext app,
+    dynamic i18n, {
+    BuildContext? uiContext,
+  }) async {
     final routines = <Routine>[];
     for (final r in app.routineLayer.routines) {
       routines.add(r);
     }
     if (routines.isEmpty) return null;
-    return _buildAndShare(app, i18n, routines, objectKey: 'all');
+    return _buildAndShare(
+      app,
+      i18n,
+      routines,
+      objectKey: 'all',
+      uiContext: uiContext,
+    );
   }
 
   // ─── Частный отчёт (одна рутина) ───
   static Future<String?> buildSingle(
     AppContext app,
     dynamic i18n,
-    int routineId,
-  ) async {
+    int routineId, {
+    BuildContext? uiContext,
+  }) async {
     final r = app.routineLayer.findRoutine(routineId);
     if (r == null) return null;
     final name = r.name.isEmpty ? 'noname' : _safe(r.name);
@@ -85,6 +99,7 @@ class ReportBuilder {
       [r],
       objectKey: 'routine_$routineId',
       routineLabel: name,
+      uiContext: uiContext,
     );
   }
 
@@ -92,24 +107,37 @@ class ReportBuilder {
   static Future<String?> buildSelected(
     AppContext app,
     dynamic i18n,
-    List<int> ids,
-  ) async {
+    List<int> ids, {
+    BuildContext? uiContext,
+  }) async {
     final routines = <Routine>[];
     for (final id in ids) {
       final r = app.routineLayer.findRoutine(id);
       if (r != null) routines.add(r);
     }
     if (routines.isEmpty) return null;
-    return _buildAndShare(app, i18n, routines, objectKey: 'selected');
+    return _buildAndShare(
+      app,
+      i18n,
+      routines,
+      objectKey: 'selected',
+      uiContext: uiContext,
+    );
   }
 
   // ─── Сборка, упаковка, отправка ───
+  // Прогресс. Во время долгих стадий (сбор вложений, упаковка,
+  // запись) выводится всплывающая рамка с круговым индикатором
+  // и словом-ссылкою «отмена». Значение token обновляется по мере
+  // продвижения; ежели token.cancelled — работа прерывается,
+  // файл не отдаётся.
   static Future<String?> _buildAndShare(
     AppContext app,
     dynamic i18n,
     List<Routine> routines, {
     required String objectKey,
     String? routineLabel,
+    BuildContext? uiContext,
   }) async {
     routines.sort((a, b) {
       if (a.completed != b.completed) {
@@ -118,7 +146,23 @@ class ReportBuilder {
       return b.lastActionAt.compareTo(a.lastActionAt);
     });
 
+    // Прогресс. Токен, диалог, показ — коли есть контекст UI.
+    final token = ProgressToken();
+    if (uiContext != null && uiContext.mounted) {
+      showDialog<void>(
+        context: uiContext,
+        barrierDismissible: false,
+        barrierColor: Colors.black.withValues(alpha: 0.2),
+        builder: (_) => ProgressDialog(
+          token: token,
+          title: i18n.t('export.prep') as String,
+        ),
+      );
+    }
+    void report(double v) => token.report(v);
+
     // ─── Текст отчёта ───
+    report(0.02);
     final buf = StringBuffer();
     bool first = true;
     for (final r in routines) {
@@ -130,8 +174,10 @@ class ReportBuilder {
       first = false;
       _writeRoutine(buf, app, i18n, r);
     }
+    if (token.cancelled) return null;
 
-    // ─── Архив ───
+    // ─── Архив: тексты ───
+    report(0.05);
     final archive = Archive();
     final reportBytes = utf8.encode(buf.toString());
     archive.addFile(ArchiveFile('report.txt', reportBytes.length, reportBytes));
@@ -146,8 +192,11 @@ class ReportBuilder {
           };
     final jsonBytes = utf8.encode(jsonEncode(jsonObj));
     archive.addFile(ArchiveFile('data.json', jsonBytes.length, jsonBytes));
+    if (token.cancelled) return null;
 
-    // ─── Медиа ───
+    // ─── Медиа: собираем перечень ───
+    // Сбор занимает основную долю прогресса (0.1 → 0.8).
+    final mediaFiles = <({String name, File file})>[];
     final seenNames = <String>{};
     for (final r in routines) {
       for (final t in app.traceLayer.traces.values) {
@@ -168,13 +217,26 @@ class ReportBuilder {
             name = '${base}_$i$ext';
           }
           seenNames.add(name);
-          final bytes = await file.readAsBytes();
-          archive.addFile(ArchiveFile('media/$name', bytes.length, bytes));
+          mediaFiles.add((name: name, file: file));
         }
       }
     }
+    if (token.cancelled) return null;
+
+    // Вкладываем файлы с ростом прогресса.
+    if (mediaFiles.isNotEmpty) {
+      for (var i = 0; i < mediaFiles.length; i++) {
+        if (token.cancelled) return null;
+        final m = mediaFiles[i];
+        final bytes = await m.file.readAsBytes();
+        archive.addFile(ArchiveFile('media/${m.name}', bytes.length, bytes));
+        report(0.1 + 0.7 * ((i + 1) / mediaFiles.length));
+      }
+    }
+    if (token.cancelled) return null;
 
     // ─── Запись zip ───
+    report(0.85);
     final dir = await getApplicationDocumentsDirectory();
     final idx = app.bort.nextExportIndex(objectKey);
     final stamp = _stamp();
@@ -184,11 +246,20 @@ class ReportBuilder {
 
     final zipFile = File(p.join(dir.path, name));
     final zipBytes = ZipEncoder().encode(archive);
+    if (token.cancelled) return null;
     if (zipBytes == null) return null;
     await zipFile.writeAsBytes(zipBytes, flush: true);
 
+    report(0.98);
     final lastId = await app.journal.lastEntryId();
     app.bort.setLastExportId(lastId);
+
+    report(1.0);
+    if (uiContext != null && uiContext.mounted) {
+      Navigator.of(uiContext).pop();
+    }
+
+    if (token.cancelled) return null;
 
     try {
       await Share.shareXFiles([XFile(zipFile.path)], subject: name);

@@ -192,10 +192,10 @@ class ThemeStore {
       // усиливает различие при красно-зелёных типах.
       'custom': {
         'bg': const Color(0xFF1B2630),
-        'bgdim': const Color(0xFF2A353E),
+        'bgdim': const Color(0xFF2F3D4A),
         'dim': const Color(0xFF7A868F),
-        'fg': const Color(0xFFDCD6C8),
-        'signal': const Color(0xFFE8A838),
+        'fg': const Color(0xFFB9B3A6),
+        'signal': const Color(0xFFFFCB4F),
       },
     };
     for (final e in defaults.entries) {

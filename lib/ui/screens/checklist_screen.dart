@@ -32,6 +32,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
+import '../core/control_row.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_tick.dart';
 
@@ -278,6 +279,10 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     final counts = _counts();
     final unchecked = counts.total - counts.done;
 
+    // Строка управления: компас слева, заголовок — в остатке.
+    final rootSide = side * 2 / 3;
+    final rootReserve = ControlRow.reserve(rootSide);
+
     return Scaffold(
       backgroundColor: bort.bg,
       appBar: AppBar(
@@ -287,9 +292,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
         // Кнопки «назад» нет: уход — системными средствами либо
         // пультом ухода в правой части сей строки.
         automaticallyImplyLeading: false,
-        // Уступ под корневой пульт: компас висит в левом верхнем
-        // углу поверх экрана, заголовок не должен под него заезжать.
-        titleSpacing: side * 1.4,
+        titleSpacing: rootReserve,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

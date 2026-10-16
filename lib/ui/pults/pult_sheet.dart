@@ -185,15 +185,25 @@ class _SheetBodyState extends State<_SheetBody> {
     }
 
     // Общая подложка листа — во всю ширину пунктов, включая подписи.
-    // IntrinsicWidth подгоняет Material под самую широкую строку;
-    // сигнальная рамка обводит подложку по контуру.
+    // IntrinsicWidth подгоняет подложку под самую широкую строку.
+    // Левая сторона — без рамки (лист выезжает от левого края,
+    // рамка там была бы лишней линией у края экрана); правая сторона
+    // скруглена и обведена сигнальною рамкою.
     final strokeW = widget.side / 16;
+    final radiusR = widget.side * 0.3;
 
-    return Material(
-      color: widget.bg,
-      shape: RoundedRectangleBorder(
-        side: BorderSide(color: widget.signal, width: strokeW),
-        borderRadius: BorderRadius.zero,
+    return Container(
+      decoration: BoxDecoration(
+        color: widget.bg,
+        borderRadius: BorderRadius.only(
+          topRight: Radius.circular(radiusR),
+          bottomRight: Radius.circular(radiusR),
+        ),
+        border: Border(
+          top: BorderSide(color: widget.signal, width: strokeW),
+          bottom: BorderSide(color: widget.signal, width: strokeW),
+          right: BorderSide(color: widget.signal, width: strokeW),
+        ),
       ),
       child: SafeArea(
         child: IntrinsicWidth(

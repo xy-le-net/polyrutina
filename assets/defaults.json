@@ -18,10 +18,10 @@
     },
     "custom": {
       "bg": "#1B2630",
-      "bgdim": "#2A353E",
+      "bgdim": "#2F3D4A",
       "dim": "#7A868F",
-      "fg": "#DCD6C8",
-      "signal": "#E8A838"
+      "fg": "#B9B3A6",
+      "signal": "#FFCB4F"
     }
   },
 
