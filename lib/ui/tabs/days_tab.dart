@@ -167,7 +167,6 @@ class _DaysTabState extends State<DaysTab> {
       grid.add(_cell(dayNum, list, side, bort));
     }
 
-    // Строка управления: ширина корневого пульта + отступ + зазор.
     final rootSide = side * 2 / 3;
 
     return Column(
@@ -227,9 +226,7 @@ class _DaysTabState extends State<DaysTab> {
   Widget _cell(int day, List<Routine> routines, double side, dynamic bort) {
     final m = _marksOf(day, routines);
 
-    // Число — сигнальное, ежели есть незавершённая рутина с флагами.
     final dayColor = m.hasSignalIncomplete ? bort.signal : bort.fg;
-    // Подчёркивание — приглушённое, для завершённой.
     final TextStyle style = TextStyle(
       color: dayColor,
       fontSize: side * 0.4,
@@ -239,7 +236,6 @@ class _DaysTabState extends State<DaysTab> {
 
     Widget content = Text('$day', style: style);
 
-    // Круг — сигнальный у незавершённых с флагами; у прочих обычный.
     if (m.pulse) {
       content = Container(
         decoration: BoxDecoration(
@@ -254,7 +250,6 @@ class _DaysTabState extends State<DaysTab> {
       );
     }
 
-    // Квадрат — тем же правилом.
     if (m.scheduled) {
       content = Container(
         decoration: BoxDecoration(
