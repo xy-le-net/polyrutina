@@ -1,40 +1,57 @@
 // ═══════════════════════════════════════════════════════════════════
-// media_viewer.dart — просмотр медиа во весь экран.
+// media_viewer.dart — full-screen media viewer.
 //
-// Открывается из TraceField касанием значка рода. Показывает медиа
-// одного рода (того, что открыт), листается в обратной хронологии:
-// старт — последнее добавленное, «назад» — более старое,
-// «вперёд» — более новое. Кнопок нет, коли листать некуда.
+// Opened from TraceField by tapping the kind icon. Shows media of a
+// single kind (the one opened), paged in reverse chronology: start
+// at the latest added, «back» — older, «forward» — newer. Buttons
+// are absent when there is nowhere to page.
 //
-// Средняя кнопка внизу — закрыть. Долгое нажатие на ней — подпульт:
-// «поделиться» (системное меню), «открыть» (внешним приложением,
-// для гео и файла), «удалить» (с подтверждением).
+// Exit lives in the top-right corner of the app bar, as the down
+// chevron (same as checklist_screen), — the single pattern of exit
+// for full-screen sheets.
 //
-// Воспроизведение. Фото — InteractiveViewer. Видео — video_player
-// с кнопкою играть/пауза. Аудио — just_audio с кнопкою играть/пауза
-// и подписью времени. Геоточка открывается чрез url_launcher по
-// схеме geo:, с запасным вариантом — веб-картою. Файл открывается
-// чрез open_filex системным приложением.
+// The bottom center pult varies by kind. Audio and video: play/pause.
+// Photo: share. File and geo: open (externally). A long press on it
+// opens the subpult with «share» and «delete» (for file and geo the
+// open action is not duplicated in the subpult: it lives on the
+// short tap). Delete carries confirm — a double tap in the sheet.
 //
-// Жизненный цикл. Проигрыватели создаются при появлении текущего
-// кадра и утилизируются при смене кадра, смене рода либо уходе
-// с экрана; незавершённая инициализация отменяется флагом mounted.
+// Subpult dot. Since the center pult carries a subpult, the pult
+// core draws a small signal-colored dot in its bottom-right corner,
+// — per the global rule (see pult_core.dart).
 //
-// Удаление. Удалённый кадр исключается из локального перечня;
-// просмотр переходит к предыдущему актуальному (либо к следующему,
-// коли предыдущего нет). Коли после удаления не осталось ничего
-// в данном роде — экран закрывается, происходит возврат к карточке.
+// Playback. Photo — InteractiveViewer. Video — video_player with
+// the play/pause moved to the bottom center pult; a position slider
+// sits above the pult row, with the position and the total duration
+// at its ends (small). Audio — just_audio likewise; the total
+// duration sits at the screen center, always (video shows it at the
+// center only while paused, so as not to cover the picture). Geo
+// opens via url_launcher with the geo: scheme, falling back to the
+// web map. File opens via open_filex in a system application.
 //
-// Удаление — запись правки с вычищенным файлом; сам файл на диске
-// остаётся вещдоком истории.
+// Geo coordinates. The line «lat, lon» is a tap target: tapping
+// copies it to the clipboard; feedback — a short SnackBar.
 //
-// Прозрачность не применяется.
+// Lifecycle. Players are created when the current frame appears
+// and are disposed on frame change, kind change, or screen exit;
+// unfinished initialization is cancelled via the mounted flag.
+//
+// Deletion. The removed frame is dropped from the local list; the
+// viewer moves to the previous valid frame (or the next, if there
+// is no previous). If nothing remains in this kind — the screen
+// closes, returning to the card.
+//
+// Deletion is an edit entry with the file stripped; the file on
+// disk stays as evidence of history.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:share_plus/share_plus.dart';
@@ -70,15 +87,16 @@ class MediaViewer extends StatefulWidget {
 }
 
 class _MediaViewerState extends State<MediaViewer> {
-  // Локальный перечень — только актуальные файлы. При удалении
-  // он укорачивается: удалённый кадр исчезает, прочие остаются.
+  // Local list — only the actual files. On deletion it shortens:
+  // the removed frame disappears, the rest stay.
   late List<TraceFile> _files;
   late int _pos;
 
-  // Проигрыватели. Живут до смены кадра либо ухода с экрана.
+  // Players. Live until frame change or screen exit.
   VideoPlayerController? _video;
   AudioPlayer? _audio;
   StreamSubscription<PlayerState>? _audioStateSub;
+  StreamSubscription<Duration>? _audioPosSub;
   bool _audioPlaying = false;
 
   @override
@@ -92,18 +110,21 @@ class _MediaViewerState extends State<MediaViewer> {
   @override
   void dispose() {
     _audioStateSub?.cancel();
+    _audioPosSub?.cancel();
     _video?.dispose();
     _audio?.dispose();
     super.dispose();
   }
 
-  // ─── Приведение проигрывателей в согласие с текущим кадром ───
-  // Утилизируются прежние, заводится нужный. Инициализация
-  // асинхронна; коли кадр сменился до её конца — контроллер
-  // утилизируется и в setState не пускается.
+  // ─── Bring players in accord with the current frame ───
+  // Old ones are disposed, the needed one is created. Initialization
+  // is asynchronous; if the frame changes before it finishes, the
+  // controller is disposed and does not enter setState.
   void _syncPlayers() {
     _audioStateSub?.cancel();
     _audioStateSub = null;
+    _audioPosSub?.cancel();
+    _audioPosSub = null;
     _video?.dispose();
     _video = null;
     _audio?.dispose();
@@ -130,13 +151,18 @@ class _MediaViewerState extends State<MediaViewer> {
     } else if (f.kind == MediaKind.audio) {
       final player = AudioPlayer();
       _audio = player;
-      // catchError должен вернуть Duration? — иначе ошибка типов.
+      // catchError must return Duration? — otherwise a type error.
       player.setFilePath(f.path).catchError((_) => null);
       _audioStateSub = player.playerStateStream.listen((s) {
         if (!mounted || _audio != player) return;
         final playing =
             s.playing && s.processingState != ProcessingState.completed;
         if (_audioPlaying != playing) setState(() => _audioPlaying = playing);
+      });
+      // Position ticks drive the slider and the small position label.
+      _audioPosSub = player.positionStream.listen((_) {
+        if (!mounted || _audio != player) return;
+        setState(() {});
       });
     }
   }
@@ -189,9 +215,9 @@ class _MediaViewerState extends State<MediaViewer> {
     } catch (_) {}
   }
 
-  // ─── Открытие вовне ───
-  // Геоточка — чрез схему geo: с запасным вариантом веб-карты.
-  // Файл — системным приложением по типу.
+  // ─── Open externally ───
+  // Geo — via the geo: scheme with the web map as a fallback.
+  // File — by the system application, by type.
   Future<void> _openExternal(TraceFile f) async {
     try {
       if (f.kind == MediaKind.geo) {
@@ -214,12 +240,27 @@ class _MediaViewerState extends State<MediaViewer> {
     } catch (_) {}
   }
 
-  // ─── Удаление ───
-  // Файл вычищается из тела следа (слой ведёт запись правки).
-  // Локальный перечень пересчитывается: удалённый кадр исчезает.
-  // Коли перечень опустел — экран закрывается (возврат к карточке).
-  // Иначе — переход к предыдущему; коли предыдущего нет —
-  // остаётся текущая позиция (что даёт следующий из оставшихся).
+  // ─── Copy geo coordinates ───
+  // Tapping the «lat, lon» line copies it. Feedback — a short
+  // SnackBar (dialog would be too heavy for this).
+  Future<void> _copyCoords(String lat, String lon) async {
+    await Clipboard.setData(ClipboardData(text: '$lat, $lon'));
+    if (!mounted) return;
+    final i18n = AppScope.of(context).i18n;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(i18n.t('media.copied')),
+        duration: const Duration(milliseconds: 1200),
+      ),
+    );
+  }
+
+  // ─── Deletion ───
+  // The file is stripped from the trace body (the layer writes an
+  // edit). The local list is recounted: the removed frame goes.
+  // If the list empties — the screen closes (back to the card).
+  // Otherwise — move to the previous; if there is none — the
+  // current position stays (which yields the next of those left).
   Future<void> _remove(TraceFile f) async {
     final app = AppScope.of(context);
     final idx = _files.indexOf(f);
@@ -271,6 +312,17 @@ class _MediaViewerState extends State<MediaViewer> {
     if (mounted) setState(() {});
   }
 
+  // ─── Duration/position as mm:ss (h:mm:ss above an hour) ───
+  // A player-side format, outside i18n: unlike work durations, the
+  // units are not labelled.
+  String _fmtDur(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    final s = d.inSeconds.remainder(60);
+    String two(int n) => n.toString().padLeft(2, '0');
+    return h > 0 ? '$h:${two(m)}:${two(s)}' : '${two(m)}:${two(s)}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
@@ -279,10 +331,13 @@ class _MediaViewerState extends State<MediaViewer> {
     final side = PultScope.of(context).smallSide;
 
     final f = _current;
-    final canOpen =
-        f != null &&
-        (f.kind == MediaKind.geo ||
-            (f.kind == MediaKind.file && f.path.isNotEmpty));
+
+    // Second title line: routine title, and the frame order when
+    // there is somewhere to page.
+    final subtitle = _files.length > 2
+        ? '${widget.routineTitle.isEmpty ? '—' : widget.routineTitle}'
+              ' · ${_pos + 1}/${_files.length}'
+        : (widget.routineTitle.isEmpty ? '—' : widget.routineTitle);
 
     return Scaffold(
       backgroundColor: bort.bg,
@@ -300,7 +355,7 @@ class _MediaViewerState extends State<MediaViewer> {
               style: TextStyle(color: bort.fg),
             ),
             Text(
-              widget.routineTitle,
+              subtitle,
               style: TextStyle(
                 color: bort.dim,
                 fontSize: side * bort.kTitle * 0.7,
@@ -308,91 +363,39 @@ class _MediaViewerState extends State<MediaViewer> {
             ),
           ],
         ),
+        actions: [
+          // Exit — down chevron, the same as in checklist_screen.
+          Pult(
+            spec: PultSpec(
+              id: 'media_close',
+              icon: Icons.keyboard_arrow_down,
+              onTap: _close,
+            ),
+            fg: bort.fg,
+            bg: bort.bg,
+            signal: bort.signal,
+            overrideSize: side * bort.kPultSmall,
+          ),
+          SizedBox(width: side * 0.4),
+        ],
       ),
       body: SafeArea(
         child: Stack(
           children: [
             Positioned.fill(child: _body(f, bort, i18n, side)),
+            if (f != null &&
+                (f.kind == MediaKind.audio || f.kind == MediaKind.video))
+              Positioned(
+                left: side * 0.5,
+                right: side * 0.5,
+                bottom: side * 1.6,
+                child: _sliderFor(f, bort, side),
+              ),
             Positioned(
               left: 0,
               right: 0,
               bottom: 12,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (_hasPrev)
-                    Pult(
-                      spec: PultSpec(
-                        id: 'media_prev',
-                        icon: Icons.chevron_left,
-                        onTap: _prev,
-                      ),
-                      fg: bort.fg,
-                      bg: bort.bg,
-                      signal: bort.signal,
-                      overrideSize: side,
-                    )
-                  else
-                    SizedBox(width: side),
-                  SizedBox(width: side * 0.3),
-                  Pult(
-                    spec: PultSpec(
-                      id: 'media_close',
-                      // При более двух вложений средний пульт показывает
-                      // порядковый номер открытого кадра («3/7»).
-                      // При одном либо двух — обычная стрелка ухода.
-                      icon: Icons.keyboard_arrow_down,
-                      centerText: _files.length > 2
-                          ? '${_pos + 1}/${_files.length}'
-                          : null,
-                      onTap: _close,
-                      longSubs: f == null
-                          ? null
-                          : () => [
-                              PultSpec(
-                                id: 'media_share',
-                                icon: Icons.share,
-                                label: i18n.t('media.share'),
-                                onTap: () => _share(f),
-                              ),
-                              if (canOpen)
-                                PultSpec(
-                                  id: 'media_open',
-                                  icon: Icons.open_in_new,
-                                  label: i18n.t('media.open'),
-                                  onTap: () => _openExternal(f),
-                                ),
-                              PultSpec(
-                                id: 'media_del',
-                                icon: Icons.delete_outline,
-                                label: i18n.t('bort.delete'),
-                                confirm: true,
-                                onTap: () => _remove(f),
-                              ),
-                            ],
-                    ),
-                    fg: bort.fg,
-                    bg: bort.bg,
-                    signal: bort.signal,
-                    overrideSize: side,
-                  ),
-                  SizedBox(width: side * 0.3),
-                  if (_hasNext)
-                    Pult(
-                      spec: PultSpec(
-                        id: 'media_next',
-                        icon: Icons.chevron_right,
-                        onTap: _next,
-                      ),
-                      fg: bort.fg,
-                      bg: bort.bg,
-                      signal: bort.signal,
-                      overrideSize: side,
-                    )
-                  else
-                    SizedBox(width: side),
-                ],
-              ),
+              child: _bottomRow(f, bort, i18n, side),
             ),
           ],
         ),
@@ -400,6 +403,188 @@ class _MediaViewerState extends State<MediaViewer> {
     );
   }
 
+  // ─── Bottom row: prev · center · next ───
+  // The center pult's icon depends on the kind and on the playback
+  // state; for video the whole row is rebuilt from the controller.
+  Widget _bottomRow(TraceFile? f, dynamic bort, dynamic i18n, double side) {
+    Widget centerPult(bool playing) {
+      if (f == null) {
+        return SizedBox(width: side);
+      }
+      late final PultSpec spec;
+      if (f.kind == MediaKind.audio || f.kind == MediaKind.video) {
+        spec = PultSpec(
+          id: 'media_center',
+          icon: playing ? Icons.pause : Icons.play_arrow,
+          selected: playing,
+          onTap: f.kind == MediaKind.audio ? _toggleAudio : _toggleVideo,
+          longSubs: () => _subsFor(f, i18n),
+        );
+      } else if (f.kind == MediaKind.photo) {
+        spec = PultSpec(
+          id: 'media_center',
+          icon: Icons.share,
+          onTap: () => _share(f),
+          longSubs: () => _subsFor(f, i18n),
+        );
+      } else {
+        // file, geo
+        spec = PultSpec(
+          id: 'media_center',
+          icon: Icons.open_in_new,
+          onTap: () => _openExternal(f),
+          longSubs: () => _subsFor(f, i18n),
+        );
+      }
+      return Pult(
+        spec: spec,
+        fg: bort.fg,
+        bg: bort.bg,
+        signal: bort.signal,
+        overrideSize: side,
+      );
+    }
+
+    final row = (bool playing) => Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        if (_hasPrev)
+          Pult(
+            spec: PultSpec(
+              id: 'media_prev',
+              icon: Icons.chevron_left,
+              onTap: _prev,
+            ),
+            fg: bort.fg,
+            bg: bort.bg,
+            signal: bort.signal,
+            overrideSize: side,
+          )
+        else
+          SizedBox(width: side),
+        SizedBox(width: side * 0.3),
+        centerPult(playing),
+        SizedBox(width: side * 0.3),
+        if (_hasNext)
+          Pult(
+            spec: PultSpec(
+              id: 'media_next',
+              icon: Icons.chevron_right,
+              onTap: _next,
+            ),
+            fg: bort.fg,
+            bg: bort.bg,
+            signal: bort.signal,
+            overrideSize: side,
+          )
+        else
+          SizedBox(width: side),
+      ],
+    );
+
+    if (f != null && f.kind == MediaKind.video && _video != null) {
+      return ValueListenableBuilder<VideoPlayerValue>(
+        valueListenable: _video!,
+        builder: (_, v, __) => row(v.isPlaying),
+      );
+    }
+    return row(_audioPlaying);
+  }
+
+  // ─── Subpult for the center pult ───
+  // Share + delete. Delete carries confirm (a double tap in the
+  // sheet). For file and geo the «open» is not duplicated: it
+  // lives on the short tap of the center pult.
+  List<PultSpec> _subsFor(TraceFile f, dynamic i18n) => [
+    PultSpec(
+      id: 'media_share',
+      icon: Icons.share,
+      label: i18n.t('media.share'),
+      onTap: () => _share(f),
+    ),
+    PultSpec(
+      id: 'media_del',
+      icon: Icons.delete_outline,
+      label: i18n.t('bort.delete'),
+      confirm: true,
+      onTap: () => _remove(f),
+    ),
+  ];
+
+  // ─── Slider for audio/video ───
+  // Position at the left end, duration at the right; the thumb is
+  // signal-colored. For video it is rebuilt from the controller.
+  Widget _sliderFor(TraceFile f, dynamic bort, double side) {
+    Widget slider(Duration pos, Duration dur, void Function(Duration) onSeek) {
+      final maxMs = dur.inMilliseconds > 0
+          ? dur.inMilliseconds.toDouble()
+          : 1.0;
+      final v = pos.inMilliseconds.clamp(0, maxMs.toInt()).toDouble();
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: bort.signal,
+              inactiveTrackColor: bort.dim,
+              thumbColor: bort.signal,
+              overlayColor: bort.signal.withValues(alpha: 0.2),
+              trackHeight: 2,
+            ),
+            child: Slider(
+              value: v,
+              max: maxMs,
+              onChanged: (x) => onSeek(Duration(milliseconds: x.round())),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: side * 0.4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _fmtDur(pos),
+                  style: TextStyle(
+                    color: bort.dim,
+                    fontSize: side * 0.3,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+                Text(
+                  _fmtDur(dur),
+                  style: TextStyle(
+                    color: bort.dim,
+                    fontSize: side * 0.3,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (f.kind == MediaKind.video) {
+      final ctrl = _video;
+      if (ctrl == null || !ctrl.value.isInitialized) {
+        return const SizedBox.shrink();
+      }
+      return ValueListenableBuilder<VideoPlayerValue>(
+        valueListenable: ctrl,
+        builder: (_, v, __) =>
+            slider(v.position, v.duration, (d) => ctrl.seekTo(d)),
+      );
+    }
+
+    // audio
+    final player = _audio;
+    final dur = player?.duration;
+    if (player == null || dur == null) return const SizedBox.shrink();
+    return slider(player.position, dur, (d) => player.seek(d));
+  }
+
+  // ─── Body of the current frame ───
   Widget _body(TraceFile? f, dynamic bort, dynamic i18n, double side) {
     if (f == null) {
       return Center(
@@ -429,20 +614,42 @@ class _MediaViewerState extends State<MediaViewer> {
       final lat = f.lat?.toStringAsFixed(6) ?? '?';
       final lon = f.lon?.toStringAsFixed(6) ?? '?';
       final acc = f.acc?.toStringAsFixed(1) ?? '?';
-      final text = '$lat, $lon\n(±$acc ${i18n.t('time.m')})\n${f.name}';
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(_icon(f.kind), color: bort.dim, size: side * 1.5),
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Text(
-                text,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: bort.fg, fontSize: side * 0.4),
+            // Coordinates line: a tap target for copying.
+            GestureDetector(
+              onTap: () => _copyCoords(lat, lon),
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: side * 0.4,
+                  vertical: side * 0.2,
+                ),
+                decoration: BoxDecoration(
+                  border: Border.all(color: bort.dim),
+                  borderRadius: BorderRadius.circular(side * bort.kRadius),
+                ),
+                child: Text(
+                  '$lat, $lon',
+                  style: TextStyle(
+                    color: bort.fg,
+                    fontSize: side * 0.5,
+                    fontFamily: 'monospace',
+                  ),
+                ),
               ),
+            ),
+            SizedBox(height: side * 0.3),
+            Text(
+              '±$acc ${i18n.t('time.m')}',
+              style: TextStyle(color: bort.dim, fontSize: side * 0.3),
+            ),
+            SizedBox(height: side * 0.1),
+            Text(
+              f.name,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: bort.dim, fontSize: side * 0.3),
             ),
           ],
         ),
@@ -473,6 +680,7 @@ class _MediaViewerState extends State<MediaViewer> {
     );
   }
 
+  // ─── Video body: player + duration at the center while paused ───
   Widget _videoBody(TraceFile f, dynamic bort, dynamic i18n, double side) {
     final ctrl = _video;
     if (ctrl == null || !ctrl.value.isInitialized) {
@@ -490,64 +698,60 @@ class _MediaViewerState extends State<MediaViewer> {
         ),
       );
     }
-    return Stack(
-      children: [
-        Center(
-          child: AspectRatio(
-            aspectRatio: ctrl.value.aspectRatio == 0
-                ? 16 / 9
-                : ctrl.value.aspectRatio,
-            child: VideoPlayer(ctrl),
-          ),
-        ),
-        Positioned(
-          left: 0,
-          right: 0,
-          top: 12,
-          child: Center(
-            child: Pult(
-              spec: PultSpec(
-                id: 'video_toggle',
-                icon: ctrl.value.isPlaying ? Icons.pause : Icons.play_arrow,
-                selected: ctrl.value.isPlaying,
-                onTap: _toggleVideo,
-              ),
-              fg: bort.fg,
-              bg: bort.bg,
-              signal: bort.signal,
-              overrideSize: side,
+    return ValueListenableBuilder<VideoPlayerValue>(
+      valueListenable: ctrl,
+      builder: (_, v, __) => Stack(
+        children: [
+          Center(
+            child: AspectRatio(
+              aspectRatio: v.aspectRatio == 0 ? 16 / 9 : v.aspectRatio,
+              child: VideoPlayer(ctrl),
             ),
           ),
-        ),
-      ],
+          // Total duration at the center, while paused only.
+          if (!v.isPlaying)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Center(
+                  child: Text(
+                    _fmtDur(v.duration),
+                    style: TextStyle(
+                      color: bort.fg,
+                      fontSize: side * 1.2,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
+  // ─── Audio body: total duration at the center, always ───
   Widget _audioBody(TraceFile f, dynamic bort, dynamic i18n, double side) {
+    final player = _audio;
+    final dur = player?.duration;
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.mic_none, color: bort.dim, size: side * 1.5),
-          const SizedBox(height: 12),
-          Text(
-            f.name,
-            textAlign: TextAlign.center,
-            style: TextStyle(color: bort.fg, fontSize: side * 0.4),
-          ),
-          const SizedBox(height: 16),
-          Pult(
-            spec: PultSpec(
-              id: 'audio_toggle',
-              icon: _audioPlaying ? Icons.stop : Icons.play_arrow,
-              selected: _audioPlaying,
-              onTap: _toggleAudio,
+          if (dur != null)
+            Text(
+              _fmtDur(dur),
+              style: TextStyle(
+                color: bort.fg,
+                fontSize: side * 1.2,
+                fontFamily: 'monospace',
+              ),
+            )
+          else
+            Text(
+              f.name,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: bort.fg, fontSize: side * 0.4),
             ),
-            fg: bort.fg,
-            bg: bort.bg,
-            signal: bort.signal,
-            overrideSize: side * 1.2,
-          ),
         ],
       ),
     );

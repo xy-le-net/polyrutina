@@ -1,25 +1,30 @@
 // ═══════════════════════════════════════════════════════════════════
-// geo_picker.dart — выбор геоточки на своей карте.
+// geo_picker.dart — geo point picking on a self-hosted map.
 //
-// Открывается из листа выбора медиа. Устройство:
-//   — карта (flutter_map, тайлы OpenStreetMap) на весь экран;
-//   — начальный центр — текущая позиция (ежели доступна),
-//     иначе — Москва;
-//   — тап по карте ставит пин; пин перетаскивается касанием;
-//   — кнопка «сохранить» фиксирует координаты и снимок виджета
-//     карты (RepaintBoundary → PNG) в media/ родом geo;
-//   — кнопка ухода закрывает без сохранения.
+// Opened from the media picker sheet. Structure:
+//   — map (flutter_map, OpenStreetMap tiles) full-screen;
+//   — initial center — current position (if available),
+//     otherwise — Moscow;
+//   — tap on the map places a pin; the pin is dragged by touch;
+//   — «save» pult fixes the coordinates and a snapshot of the map
+//     widget (RepaintBoundary → PNG) into media/ under the geo kind;
+//   — exit pult closes without saving.
 //
-// Без сети. Тайлы не подгружаются — карта серая; поверх выводится
-// надпись «нет сети». Точка ставится и сохраняется как есть: снимок
-// серый, координаты настоящие.
+// Offline. Tiles are not loaded — the map is grey; the caption
+// «no network» is drawn over it. A point is still placed and saved
+// as is: the snapshot is grey, the coordinates real.
 //
-// Ключей API не требуется: тайлы OSM доступны напрямую.
+// API keys are not required: OSM tiles are directly available.
 //
-// Снимок кладётся в ту же папку media/, что и прочие вложения;
-// имя — по общему образцу (<устройство>_<рутина>_<слот>_geo_<индекс>).
+// The snapshot is put into the same media/ folder as other
+// attachments; the name follows the common template
+// (<device>_<routine>_<slot>_geo_<index>).
 //
-// Прозрачность не применяется.
+// Exit lives in the top-right corner of the app bar, as the down
+// chevron (same as checklist_screen and media_viewer) — the single
+// pattern of exit for full-screen sheets.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:async';
@@ -60,14 +65,14 @@ class _GeoPickerScreen extends StatefulWidget {
 }
 
 class _GeoPickerScreenState extends State<_GeoPickerScreen> {
-  // Ключ для захвата снимка виджета карты.
+  // Key for capturing the map widget snapshot.
   final _boundaryKey = GlobalKey();
 
-  // Снимок карты в байтах — по «сохранить».
+  // Busy flag: while saving, exits are disabled.
   bool _busy = false;
 
-  // Начальный центр и текущая выбранная точка.
-  LatLng _center = const LatLng(55.753994, 37.620060); // Москва
+  // Initial center and current picked point.
+  LatLng _center = const LatLng(55.753994, 37.620060); // Moscow
   LatLng? _picked;
   double _accuracy = 0;
 
@@ -82,7 +87,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
     _locate();
   }
 
-  // ─── Первоначальное центрирование по текущей позиции ───
+  // ─── Initial centering on the current position ───
   Future<void> _locate() async {
     setState(() => _locating = true);
     try {
@@ -102,7 +107,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
         _accuracy = pos.accuracy;
         _locating = false;
       });
-      // Карта центрируется при следующем кадре.
+      // The map is centered on the next frame.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         try {
           _mapController.move(_center, 16);
@@ -113,9 +118,9 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
     }
   }
 
-  // ─── Снимок виджета карты ───
-  // Берётся PNG-байтами из RepaintBoundary. Ошибки тихо гасятся:
-  // без снимка сохранится только координата.
+  // ─── Map widget snapshot ───
+  // Taken as PNG bytes from RepaintBoundary. Errors are silently
+  // swallowed: without a snapshot only the coordinates are saved.
   Future<ui.Image?> _captureImage() async {
     try {
       final boundary =
@@ -128,9 +133,10 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
     }
   }
 
-  // ─── Сохранение ───
-  // Снимок кладётся в media/ рядом с прочими вложениями; имя —
-  // по общему образцу. Координаты и путь кладутся в TraceFile.
+  // ─── Save ───
+  // The snapshot is put into media/ alongside other attachments;
+  // the name follows the common template. Coordinates and path
+  // go into TraceFile.
   Future<void> _save() async {
     if (_busy) return;
     final latLng = _picked;
@@ -202,7 +208,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
           Pult(
             spec: PultSpec(
               id: 'geo_cancel',
-              icon: Icons.close,
+              icon: Icons.keyboard_arrow_down,
               onTap: _busy ? null : _close,
             ),
             fg: bort.fg,
@@ -216,7 +222,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            // ─── Карта ───
+            // ─── Map ───
             RepaintBoundary(
               key: _boundaryKey,
               child: FlutterMap(
@@ -258,7 +264,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
               ),
             ),
 
-            // ─── Надпись «нет сети» ───
+            // ─── «No network» caption ───
             if (_noNetwork)
               Positioned(
                 left: 0,
@@ -279,7 +285,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                 ),
               ),
 
-            // ─── Индикатор поиска позиции ───
+            // ─── Position search indicator ───
             if (_locating)
               Positioned(
                 left: 0,
@@ -293,7 +299,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                 ),
               ),
 
-            // ─── Пульт сохранения ───
+            // ─── Save pult ───
             Positioned(
               left: 0,
               right: 0,

@@ -1,30 +1,30 @@
 // ═══════════════════════════════════════════════════════════════════
-// routine_card.dart — карточка рутины.
+// routine_card.dart — routine card.
 //
-// Слоты строятся виджетом RoutineBlockView (routine_block_view.dart).
-// Здесь — состояние карточки: правка имени, правка времени блока,
-// показ/скрытие слотов, свёртка, автопрокрутка к активному слоту,
-// завершение, экспорт, выбор даты, выбор плановой длительности.
+// Slots are built by RoutineBlockView (routine_block_view.dart).
+// Here — card state: name editing, block time editing, show/hide
+// slots, collapse, auto-scroll to the active slot, completion,
+// export, date picking, planned duration picking.
 //
-// Шапка. Только поле имени. Пульт назначенной даты и барабан
-// плановой длительности переехали в блок «описание»: прежний ряд
-// «дата + поле плана» упразднён, поле ручного ввода плана убрано.
+// Header. Name field only. The assigned date pult and the planned
+// duration drum moved to the «note» block: the former row
+// «date + plan field» is gone, the manual plan input is removed.
 //
-// Барабан плановой длительности. Тройное колесо «дд : чч : мм» —
-// единый системный диалог showDialog с тремя барабанами.
-// Подтверждение — «ок»; отмена — «отмена». Результат кладётся
-// чрез routineLayer.setPlanned.
+// Planned duration drum. A three-wheel «dd : hh : mm» — a single
+// system dialog with three wheels. Button labels come from i18n
+// (locale dictionary), lowercase as designed: «ок» and «отмена».
+// Result is put via routineLayer.setPlanned.
 //
-// Чередование фона. Показываемые блоки (кроме итога, который всегда
-// в обычном фоне) чередуются по порядку: первый — приглушённый
-// (bgdim), второй — обычный, третий — приглушённый, и так далее.
-// Идущий блок берёт цвета противоположной темы, сие чередование
-// его не касается.
+// Background alternation. Shown blocks (the summary excepted, it
+// always sits on the normal background) alternate by order: first
+// — dimmed (bgdim), second — normal, third — dimmed, and so on.
+// The running block takes the opposite theme colors; this
+// alternation does not apply to it.
 //
-// Уступ заголовка. Корневой пульт висит в левом верхнем углу
-// поверх экрана; заголовок отступает на его ширину.
+// Header inset. The root pult hangs in the top-left corner above
+// the screen; the title recedes by its width.
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -266,11 +266,11 @@ class _RoutineCardState extends State<RoutineCard> {
 
   Future<void> _exportOne(Routine r) async {
     final app = AppScope.of(context);
-    // uiContext нужен для показа всплывающей рамки прогресса.
+    // uiContext is needed to show the progress overlay.
     await ReportBuilder.buildSingle(app, app.i18n, r.id, uiContext: context);
   }
 
-  // ─── Намеченная дата: выбор ───
+  // ─── Assigned date: pick ───
   Future<void> _pickSchedule(Routine r) async {
     final app = AppScope.of(context);
     final now = DateTime.now();
@@ -291,16 +291,17 @@ class _RoutineCardState extends State<RoutineCard> {
     );
   }
 
-  // ─── Плановая длительность: барабан ───
-  // Три колеса: дни, часы, минуты. Часы — до 23, минуты — до 59.
-  // Магнит к значениям — FixedExtentScrollPhysics, без него барабан
-  // встаёт между делениями. Подписи кнопок — системные (отмена, ок).
+  // ─── Planned duration: drum ───
+  // Three wheels: days, hours, minutes. Hours — up to 23, minutes
+  // — up to 59. Magnet to values — FixedExtentScrollPhysics,
+  // without it the drum stops between notches. Button labels come
+  // from i18n (locale dictionary), lowercase as designed: «ок»
+  // and «отмена».
   Future<void> _pickPlanned(Routine r) async {
     final app = AppScope.of(context);
     final i18n = app.i18n;
     final bort = app.bort;
     final side = PultScope.of(context).smallSide;
-    final loc = MaterialLocalizations.of(context);
 
     final sec = r.plannedSeconds;
     final curD = sec ~/ 86400;
@@ -326,7 +327,7 @@ class _RoutineCardState extends State<RoutineCard> {
               itemExtent: side * 0.8,
               diameterRatio: 1.6,
               perspective: 0.003,
-              // Магнит к ближайшему делению.
+              // Magnet to the nearest notch.
               physics: const FixedExtentScrollPhysics(),
               controller: FixedExtentScrollController(initialItem: initial),
               onSelectedItemChanged: onChanged,
@@ -366,11 +367,11 @@ class _RoutineCardState extends State<RoutineCard> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: Text(loc.cancelButtonLabel),
+              child: Text(i18n.t('common.cancel')),
             ),
             TextButton(
               onPressed: () => Navigator.of(ctx).pop((d: d, h: h, m: m)),
-              child: Text(loc.okButtonLabel),
+              child: Text(i18n.t('common.ok')),
             ),
           ],
         );
@@ -408,8 +409,9 @@ class _RoutineCardState extends State<RoutineCard> {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final anyEdited = r.blocks.any((b) => b.timeEdited);
 
-    // ─── Порядок показанных блоков ───
-    // Собираем список показываемых (кроме итога) для чередования.
+    // ─── Order of shown blocks ───
+    // Build the list of shown blocks (the summary excluded) for
+    // the alternation.
     final shown = <String>[];
     if (_shouldShowSlot(r, 'note')) shown.add('note');
     for (final k in RoutineBlock.kinds) {
@@ -420,8 +422,8 @@ class _RoutineCardState extends State<RoutineCard> {
 
     Widget blockOf(String kind, String title, {bool isNote = false}) {
       final b = isNote ? null : r.blockOf(kind);
-      // Чередование: индекс в списке показанных; нечётный — обычный,
-      // чётный — приглушённый. Итог — вне чередования.
+      // Alternation: index in the shown list; odd — normal, even —
+      // dimmed. The summary is outside the alternation.
       final idx = shown.indexOf(kind);
       final dimmed = kind != 'summary' && idx >= 0 && idx % 2 == 0;
       return RoutineBlockView(
@@ -475,8 +477,9 @@ class _RoutineCardState extends State<RoutineCard> {
       blocks.add(blockOf('summary', i18n.t('routine.summary')));
     }
 
-    // Строка управления: корневой пульт слева, поле имени — в остатке.
-    // Резерв считает ControlRow; здесь лишь тот же расчёт для AppBar.
+    // Control row: root pult on the left, the name field — in the
+    // remainder. ControlRow computes the reserve; here — the same
+    // computation for AppBar.
     final rootSide = side * 2 / 3;
     final rootReserve = ControlRow.reserve(rootSide);
 

@@ -1,5 +1,6 @@
 {
   "ru": {
+    "media.copied": "скопировано",
     "app.title": "Бортовой журнал",
 
     "tab.field": "поле",
@@ -139,6 +140,7 @@
   },
 
   "en": {
+    "media.copied": "copied",
     "app.title": "Logbook",
 
     "tab.field": "field",

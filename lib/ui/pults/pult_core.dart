@@ -1,21 +1,29 @@
 // ═══════════════════════════════════════════════════════════════════
-// pult_core.dart — ядро пультов: спецификация, состояние, провайдер,
-// виджет Pult.
+// pult_core.dart — pult core: specification, state, provider,
+// and the Pult widget.
 //
-// compactLabel — подпись вплотную к тексту (для счётчиков медиа).
+// compactLabel — label flush against the text (for media counters).
 //
-// Подтверждение (confirm). Подтверждаемый пульт при касании не
-// исполняет действие тотчас, а вырастает на четверть на своём месте.
-// Повторное касание по увеличенному — исполнить. Касание по иному
-// пульту либо мимо — отмена роста. Состояние подтверждения живёт
-// в вызывающем виджете либо в листе подпультов (pult_sheet.dart);
-// здесь — лишь запрос.
+// Confirmation (confirm). A confirmable pult does not act on tap
+// at once; instead it grows a quarter in place. A second tap on
+// the grown pult executes. A tap on another pult or elsewhere
+// cancels the growth. Confirmation state lives in the calling
+// widget or in the subpult sheet (pult_sheet.dart); here — only
+// the request.
 //
-// Подпульты. Пульт с subsBuilder либо longSubs не открывает панель
-// сам: он просит о том чрез showPultSheet — единый левосторонний
-// лист (pult_sheet.dart). Прежний PultLayer упразднён.
+// Subpults. A pult with subsBuilder or longSubs does not open a
+// panel itself: it asks via showPultSheet — the single left-side
+// sheet (pult_sheet.dart). The former PultLayer is gone.
 //
-// Прозрачность не применяется.
+// Subpult dot. A pult carrying a subpult (either via subsBuilder
+// or via longSubs) shows a small signal-colored dot in its
+// bottom-right corner. Diameter — one twelfth of the pult side,
+// with a floor below which it does not shrink. When the pult is
+// selected, the dot takes the icon color so that it remains
+// visible against the signal-colored core. The root compass and
+// the PultTick carry no dot: neither has subpults.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -26,7 +34,7 @@ import 'pult_sheet.dart';
 class PultSpec {
   final String id;
   final IconData icon;
-  // Значок подмены, предъявляемый при подтверждении (коли задан).
+  // Substitute icon shown during confirmation (if given).
   final IconData? confirmIcon;
   final String? label;
   final Color? labelBg;
@@ -98,6 +106,9 @@ class Pult extends StatefulWidget {
 }
 
 class _PultState extends State<Pult> {
+  // Floor for the subpult dot: below this it does not shrink.
+  static const double _minDot = 3.0;
+
   final _coreKey = GlobalKey();
 
   void _pulseBort() {
@@ -122,10 +133,11 @@ class _PultState extends State<Pult> {
 
     final iconSize = selected ? side * 0.60 : side * 0.45;
     final hasCenter = widget.spec.centerText != null;
-    // Кегль надписи в ядре уменьшается с ростом длины: одна цифра —
-    // как значок, две и боле — пропорционально теснее, дабы не
-    // выезжать за контур пульта. Применяется к счётчикам медиа,
-    // числу неотмеченных в чек-листе, порядку кадра в просмотре.
+    // Font size of the core label shrinks with length: one digit
+    // reads as an icon; two or more shrink proportionally so as
+    // not to spill beyond the pult outline. Applies to media
+    // counters, the unchecked count in a checklist, and frame
+    // order in the viewer.
     final centerLen = widget.spec.centerText?.length ?? 0;
     final centerSize = centerLen <= 1 ? iconSize : iconSize * (1.6 / centerLen);
 
@@ -175,6 +187,34 @@ class _PultState extends State<Pult> {
       child: core,
     );
 
+    // Subpult dot: signal-colored circle, bottom-right corner.
+    // Taken in the icon color when the pult is selected, so that
+    // it stays visible against the signal-colored core.
+    final hasSubs =
+        widget.spec.subsBuilder != null || widget.spec.longSubs != null;
+    if (hasSubs) {
+      final dotD = side / 12 < _minDot ? _minDot : side / 12;
+      final dotColor = selected ? iconColor : widget.signal;
+      core = Stack(
+        clipBehavior: Clip.none,
+        children: [
+          core,
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Container(
+              width: dotD,
+              height: dotD,
+              decoration: BoxDecoration(
+                color: dotColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     Widget content;
     final screenW = MediaQuery.of(context).size.width;
     final maxLabelW = screenW - side - 32;
@@ -183,9 +223,9 @@ class _PultState extends State<Pult> {
     if (!hasLabel || maxLabelW < side * 1.5) {
       content = core;
     } else {
-      // Стиль подписи — от системной темы (те же семейство, вес,
-      // начертание, что и у прочего текста). Свой стиль здесь делал
-      // надпись жирнее и «чужее».
+      // Label style follows the system theme (same family, weight,
+      // style as the rest of the text). A custom style here made
+      // the label bolder and more foreign.
       final labelStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
         fontSize: side * 0.4,
         fontWeight: FontWeight.normal,
@@ -212,7 +252,7 @@ class _PultState extends State<Pult> {
         ),
         padding: const EdgeInsets.symmetric(horizontal: 6),
         child: MediaQuery(
-          data: MediaQuery.of(
+          data: MediaQuery(
             context,
           ).copyWith(textScaler: TextScaler.noScaling),
           child: Align(
