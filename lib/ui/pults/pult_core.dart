@@ -252,7 +252,7 @@ class _PultState extends State<Pult> {
         ),
         padding: const EdgeInsets.symmetric(horizontal: 6),
         child: MediaQuery(
-          data: MediaQuery(
+          data: MediaQuery.of(
             context,
           ).copyWith(textScaler: TextScaler.noScaling),
           child: Align(

@@ -445,7 +445,7 @@ class _MediaViewerState extends State<MediaViewer> {
       );
     }
 
-    final row = (bool playing) => Row(
+    Widget row(bool playing) => Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         if (_hasPrev)
