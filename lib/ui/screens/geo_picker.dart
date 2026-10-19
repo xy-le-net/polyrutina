@@ -20,6 +20,10 @@
 // attachments; the name follows the common template
 // (<device>_<routine>_<slot>_geo_<index>).
 //
+// The AppBar title spacing is unified via ControlRow to prevent
+// overlap with the root pult. The centerTitle is explicitly set
+// to false, and the title text truncates with ellipsis if too long.
+//
 // Exit lives in the top-right corner of the app bar, as the down
 // chevron (same as checklist_screen and media_viewer) — the single
 // pattern of exit for full-screen sheets.
@@ -41,6 +45,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
+import '../core/control_row.dart'; // Added for unified title spacing
 import '../pults/pult_core.dart';
 
 Future<void> showGeoPicker({
@@ -195,6 +200,10 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
     final i18n = app.i18n;
     final side = PultScope.of(context).smallSide;
 
+    // Unified control row calculation.
+    final rootSide = side * 2 / 3;
+    final rootReserve = ControlRow.reserve(rootSide);
+
     return Scaffold(
       backgroundColor: bort.bg,
       appBar: AppBar(
@@ -202,8 +211,14 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
         foregroundColor: bort.fg,
         elevation: 0,
         automaticallyImplyLeading: false,
-        titleSpacing: side * 1.4,
-        title: Text(i18n.t('media.geo'), style: TextStyle(color: bort.fg)),
+        centerTitle: false, // Enforce left alignment.
+        titleSpacing: rootReserve,
+        title: Text(
+          i18n.t('media.geo'),
+          style: TextStyle(color: bort.fg),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis, // Prevent overflow.
+        ),
         actions: [
           Pult(
             spec: PultSpec(

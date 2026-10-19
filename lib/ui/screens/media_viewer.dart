@@ -8,7 +8,9 @@
 //
 // Exit lives in the top-right corner of the app bar, as the down
 // chevron (same as checklist_screen), — the single pattern of exit
-// for full-screen sheets.
+// for full-screen sheets. The title is explicitly left-aligned
+// (centerTitle: false) to prevent it from slipping under the root
+// pult, and text is truncated with ellipsis to avoid overflow.
 //
 // The bottom center pult varies by kind. Audio and video: play/pause.
 // Photo: share. File and geo: open (externally). A long press on it
@@ -346,6 +348,7 @@ class _MediaViewerState extends State<MediaViewer> {
         foregroundColor: bort.fg,
         elevation: 0,
         automaticallyImplyLeading: false,
+        centerTitle: false, // Enforce left alignment.
         titleSpacing: side * 1.4,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -353,6 +356,8 @@ class _MediaViewerState extends State<MediaViewer> {
             Text(
               widget.blockTitle.isEmpty ? '—' : widget.blockTitle,
               style: TextStyle(color: bort.fg),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis, // Prevent overflow.
             ),
             Text(
               subtitle,
@@ -360,6 +365,8 @@ class _MediaViewerState extends State<MediaViewer> {
                 color: bort.dim,
                 fontSize: side * bort.kTitle * 0.7,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis, // Prevent overflow.
             ),
           ],
         ),

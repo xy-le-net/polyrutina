@@ -22,7 +22,9 @@
 // alternation does not apply to it.
 //
 // Header inset. The root pult hangs in the top-left corner above
-// the screen; the title recedes by its width.
+// the screen; the title recedes by its width. The centerTitle
+// property is explicitly set to false to prevent platform-specific
+// centering, and the text field truncates with ellipsis.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -479,7 +481,8 @@ class _RoutineCardState extends State<RoutineCard> {
 
     // Control row: root pult on the left, the name field — in the
     // remainder. ControlRow computes the reserve; here — the same
-    // computation for AppBar.
+    // computation for AppBar. centerTitle is false to prevent
+    // platform-specific centering.
     final rootSide = side * 2 / 3;
     final rootReserve = ControlRow.reserve(rootSide);
 
@@ -490,6 +493,7 @@ class _RoutineCardState extends State<RoutineCard> {
         foregroundColor: bort.fg,
         elevation: 0,
         automaticallyImplyLeading: false,
+        centerTitle: false, // Enforce left alignment.
         titleSpacing: rootReserve,
         actions: [SizedBox(width: side * 0.4)],
         title: BortField(

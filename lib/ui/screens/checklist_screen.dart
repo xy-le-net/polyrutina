@@ -1,31 +1,34 @@
 // ═══════════════════════════════════════════════════════════════════
-// checklist_screen.dart — экран чек-листа блока.
+// checklist_screen.dart — block checklist screen.
 //
-// Полноэкранный, открывается из TraceField.
+// Full-screen, opened from TraceField.
 //
-// Строка управления. Слева вверху — корневой пульт (компас), справа
-// вверху — пульт ухода. Заголовок сдвинут вправо на ширину корневого
-// пульта: компас не должен перекрывать надпись. Кнопки «назад»
-// не выводится: уход — системными средствами (жест, кнопка) либо
-// сим пультом ухода.
+// Control row. Top-left — root pult (compass), top-right — exit
+// pult. The title is shifted to the right by the root pult's width:
+// the compass must not overlap the text. centerTitle is false to
+// prevent platform-specific centering. Text is truncated with
+// ellipsis if too long. No «back» button is rendered: exit is via
+// system means (gesture, button) or this exit pult.
 //
-// Пульт ухода. Показывает число неотмеченных (коих осталось
-// отметить), когда таковые есть; иначе — стрелку вниз. Долгое
-// нажатие открывает подпульт: отметить все, снять, очистить.
-// Иных счётчиков на экране нет: «отмечено / всего» упразднено.
+// Exit pult. Shows the number of unchecked items when there are
+// any; otherwise — a down arrow. Long press opens the subpult:
+// mark all, unmark, clear. There are no other counters on the
+// screen: «done / total» is removed.
 //
-// След различается парой (objectId, slot) и родом (kind=checklist).
+// Trace is distinguished by the pair (objectId, slot) and kind
+// (kind=checklist).
 //
-// Список пунктов: слева PultTick, справа поле текста. В конце —
-// пустое поле, из коего список растёт. Пустой не последний —
-// исчезает при уходе фокуса.
+// Item list: PultTick on the left, text field on the right. At the
+// end — an empty field, from which the list grows. An empty non-last
+// one disappears on focus loss.
 //
-// Enter на клавиатуре — коммит пункта и переход к последнему
-// (пустому) пункту.
+// Enter on the keyboard — commits the item and moves to the last
+// (empty) item.
 //
-// Сохранение — телом целиком, записью в журнал с флагом «правка».
+// Saving — the whole body, an entry in the journal with the
+// «correction» flag.
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -279,7 +282,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     final counts = _counts();
     final unchecked = counts.total - counts.done;
 
-    // Строка управления: компас слева, заголовок — в остатке.
+    // Control row: compass on the left, title — in the remainder.
     final rootSide = side * 2 / 3;
     final rootReserve = ControlRow.reserve(rootSide);
 
@@ -289,23 +292,31 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
         backgroundColor: bort.bg,
         foregroundColor: bort.fg,
         elevation: 0,
-        // Кнопки «назад» нет: уход — системными средствами либо
-        // пультом ухода в правой части сей строки.
+        // No «back» button: exit is via system means or the exit pult
+        // in the right part of this row.
         automaticallyImplyLeading: false,
+        centerTitle: false, // Enforce left alignment.
         titleSpacing: rootReserve,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(widget.blockTitle, style: TextStyle(color: bort.fg)),
+            Text(
+              widget.blockTitle,
+              style: TextStyle(color: bort.fg),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis, // Prevent overflow.
+            ),
             Text(
               widget.routineTitle,
               style: TextStyle(color: bort.dim, fontSize: titleSize * 0.7),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis, // Prevent overflow.
             ),
           ],
         ),
         actions: [
-          // Пульт ухода — правая часть строки управления. Число
-          // неотмеченных — на нём самом, коли таковые есть.
+          // Exit pult — right part of the control row. The unchecked
+          // count sits on it, if there are any.
           Pult(
             spec: PultSpec(
               id: 'close_checklist',

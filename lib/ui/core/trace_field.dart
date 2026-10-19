@@ -1,26 +1,25 @@
 // ═══════════════════════════════════════════════════════════════════
-// trace_field.dart — поле следа. Универсальный встраиваемый виджет.
+// trace_field.dart — trace field. Universal embeddable widget.
 //
-// Слева — поле текста. Справа — столбец: пульт чек-листа, пульт
-// отправки/медиа.
+// Left — text field. Right — column: checklist pult, send/media pult.
 //
-// Разворот. При получении фокуса поле растёт в высоту — внутри
-// блока, без отдельного слоя; прочие элементы остаются видимыми,
-// разметка прокручивается. Предел — двадцать четыре строки либо
-// до начала клавиатуры, смотря что меньше. По утрате фокуса —
-// возврат к трём строкам.
+// Expansion. On focus, the field grows in height — inside the block,
+// without a separate layer; other elements remain visible, the layout
+// scrolls. Limit — twenty-four lines or up to the keyboard start,
+// whichever is less. On focus loss — return to three lines.
 //
-// Под полем — строка медиа-пультов (TraceMediaRow), ежели в слоте
-// есть медиа.
+// Below the field — a row of media pults (TraceMediaRow), if there
+// is media in the slot.
 //
-// След различается парой (objectId, slot). Поиск чек-листа — по
-// kind=checklist + slot.
+// Trace is distinguished by the pair (objectId, slot). Checklist
+// search — by kind=checklist + slot.
 //
-// Очистка поля: текст был и стал пуст — запись правки с пустым телом.
+// Field clearing: text was and became empty — an edit entry with an
+// empty body.
 //
-// Enter на клавиатуре — то же, что касание пульта отправки.
+// Enter on the keyboard — the same as tapping the send pult.
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -41,9 +40,9 @@ class TraceField extends StatefulWidget {
   final Color dim;
   final Color bg;
   final Color signal;
-  // Фон поля ввода. Отличается от bg блока: блок может быть
-  // приглушён (bgdim), а поле ввода — обычное (bg). Сие разделение
-  // избавляет поле от лишнего затемнения.
+  // Input field background. Differs from block bg: the block might be
+  // dimmed (bgdim), while the input field is normal (bg). This separation
+  // saves the field from extra darkening.
   final Color fieldBg;
   final double side;
   final String blockTitle;
@@ -68,7 +67,7 @@ class TraceField extends StatefulWidget {
 }
 
 class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
-  // Предел разворота: двадцать четыре строки.
+  // Expansion limit: twenty-four lines.
   static const int _maxExpandedLines = 24;
   static const int _collapsedLines = 3;
 
@@ -202,9 +201,9 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
         });
   }
 
-  // ─── Счёт по чек-листу ───
-  // Возвращает число отмеченных и общее число заполненных пунктов.
-  // Пустые пункты не считаются ни в одном из чисел.
+  // ─── Checklist count ───
+  // Returns the number of checked and total filled items.
+  // Empty items are not counted in either number.
   ({int done, int total}) _checklistCounts() {
     final app = AppScope.of(context);
     final t = app.traceLayer.findFirstByKindSlot(
@@ -278,8 +277,9 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     final canSend = _canSend();
     final pultSide = widget.side * bort.kPultSmall;
 
-    // Пульт чек-листа показывает число неотмеченных. Когда отмечены
-    // все (и есть хоть один пункт) — пульт сигнальный, задача закрыта.
+    // The checklist pult shows the number of unchecked items. When all
+    // are checked (and there is at least one item) — the pult is
+    // signal-colored, the task is closed.
     final counts = _checklistCounts();
     final int unchecked = counts.total - counts.done;
     final String? chkCenter = unchecked > 0 ? '$unchecked' : null;
@@ -287,8 +287,8 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
 
     final files = _files();
 
-    // Разворот: в фокусе — до предела либо до клавиатуры;
-    // иначе — три строки.
+    // Expansion: in focus — up to the limit or up to the keyboard;
+    // otherwise — three lines.
     final int maxLines;
     final int? minLines;
     if (_focused) {
@@ -324,8 +324,8 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
                 ),
                 decoration: InputDecoration(
                   isDense: true,
-                  // Поле ввода — на обычном фоне, вне зависимости от
-                  // приглушённости блока.
+                  // Input field — on the normal background, regardless
+                  // of block dimming.
                   filled: true,
                   fillColor: widget.fieldBg,
                   hintText: i18n.t('routine.block.note'),

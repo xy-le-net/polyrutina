@@ -1,41 +1,43 @@
 // ═══════════════════════════════════════════════════════════════════
-// rubka_data.dart — блок «данные» в рубке.
+// rubka_data.dart — «data» block in the rubka.
 //
-// Порядок — по касательству к журналу:
+// Order — by relation to the journal:
 //
-//   Группа 1 (не касается журнала):
-//     — смена: длительность от последней прошедшей полуночи;
-//     — борт: сегодняшнее активное время от технической полуночи.
+//   Group 1 (no journal relation):
+//     — shift: duration from the last passed midnight;
+//     — bort: today's active time from the technical midnight.
 //
-//   Группа 2 (журнал):
-//     — журнал: объём файлов борта;
-//     — перечитать: сброс памяти слоёв и прогон всех записей;
-//     — удалить: стереть все записи журнала;
-//     — медиа: объём папки вложений;
-//     — встряхнуть: удалить файлы, ни к чему не привязанные.
+//   Group 2 (journal):
+//     — journal: volume of the bort files;
+//     — reread: reset layer memory and run through all entries;
+//     — delete: erase all journal entries;
+//     — media: volume of the attachments folder;
+//     — shake: delete files not attached to anything.
 //
-//   Группа 3 (прочее):
-//     — сброс: кэши и умолчания к первоначальному виду,
-//       с автоматическим перечитыванием журнала;
-//     — импорт: приём zip-архивов полирутин.
+//   Group 3 (other):
+//     — reset: caches and defaults to the initial state,
+//       with automatic journal rereading;
+//     — import: receive polyrutina zip archives.
 //
-// Разделители. Между группами — горизонтальные полосы цветом рамки
-// (dim), толщиною в толщину обводки. Внутри группы разделителей нет.
+// Separators. Between groups — horizontal bars in the frame color
+// (dim), thickness equal to the stroke width. There are no
+// separators inside a group.
 //
-// Размеры — целые, без десятых: до килобайта — байты, до мегабайта —
-// килобайты, до гигабайта — мегабайты, далее — гигабайты. Значение
-// округляется до ближайшего целого; ноль не показывается — при
-// величине менее половины единицы выводится «1».
+// Sizes — integers, no decimals: up to a kilobyte — bytes, up to a
+// megabyte — kilobytes, up to a gigabyte — megabytes, further —
+// gigabytes. The value is rounded to the nearest integer; zero is
+// not shown — if less than half a unit, «1» is displayed.
 //
-// Встряхнуть. Необратимо: удаляет файлы с диска. Подтверждение —
-// тот же механизм двойного касания, что у прочих необратимых.
-// По завершении — уведомление (notice_dialog) с числом удалённых
-// и освобождённым объёмом; коли сирот не нашлось — сказать и о сём.
+// Shake. Irreversible: deletes files from the disk. Confirmation —
+// the same double-tap mechanism as for other irreversible actions.
+// Upon completion — a notice (notice_dialog) with the number of
+// deleted items and the freed volume; if no orphans were found —
+// say so.
 //
-// Метки. Пульт перечитывания активен, лишь покуда верховный номер
-// журнала превосходит lastRereadId.
+// Marks. The reread pult is active only as long as the supreme
+// journal number exceeds lastRereadId.
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:io';
@@ -63,9 +65,9 @@ class _RubkaDataState extends State<RubkaData> {
   bool _sizeLoaded = false;
   bool _canReread = false;
 
-  // ─── Человекопонятное представление объёма ───
-  // Целые, без десятых. Единица по величине. Ноль не показываем:
-  // при величине ниже половины единицы выдаём единицу.
+  // ─── Human-readable volume representation ───
+  // Integers, no decimals. One unit per magnitude. Zero is not
+  // shown: if below half a unit, output one.
   String _fmtSize(int bytes) {
     if (bytes <= 0) return '0';
     if (bytes < 1024) return '$bytes';
@@ -84,7 +86,7 @@ class _RubkaDataState extends State<RubkaData> {
     return '${v < 1 ? 1 : v} ГБ';
   }
 
-  // ─── Объёмы: журнал и медиа ───
+  // ─── Volumes: journal and media ───
   Future<void> _refreshSize() async {
     try {
       final app = AppScope.of(context);
@@ -155,14 +157,15 @@ class _RubkaDataState extends State<RubkaData> {
     if (mounted) setState(() {});
   }
 
-  // ─── Встряхнуть: удалить сиротские медиа ───
-  // Файл папки media/ считается сиротою, ежели имя его не встречается
-  // ни в одном действующем следе. Такие файлы удаляются с диска.
-  // По завершении — уведомление с числом удалённых и объёмом.
+  // ─── Shake: remove orphan media ───
+  // A file in the media/ folder is considered an orphan if its name
+  // is not found in any active trace. Such files are deleted from
+  // the disk. Upon completion — a notice with the number of deleted
+  // items and the volume.
   Future<void> _shakeOrphans() async {
     final app = AppScope.of(context);
     final i18n = app.i18n;
-    // Контексты и messenger — до await.
+    // Contexts and messenger — before await.
     final messenger = ScaffoldMessenger.of(context);
     final dir = await getApplicationDocumentsDirectory();
     final mediaDir = Directory(p.join(dir.path, 'media'));
@@ -173,7 +176,7 @@ class _RubkaDataState extends State<RubkaData> {
       return;
     }
 
-    // Множество имён, на которые кто-то ссылается.
+    // A set of names referenced by someone.
     final used = <String>{};
     for (final t in app.traceLayer.traces.values) {
       if (t.deleted) continue;
@@ -243,7 +246,7 @@ class _RubkaDataState extends State<RubkaData> {
       child: Container(height: strokeW, color: dim),
     );
 
-    // ─── Группа 1: не касается журнала ───
+    // ─── Group 1: no journal relation ───
     final group1 = <Widget>[
       _valueRow(
         i18n.t('bort.shift'),
@@ -261,7 +264,7 @@ class _RubkaDataState extends State<RubkaData> {
       ),
     ];
 
-    // ─── Группа 2: журнал ───
+    // ─── Group 2: journal ───
     final group2 = <Widget>[
       _valueRow(i18n.t('bort.journal'), _fmtSize(_journalBytes), fg),
       _pultRow(
@@ -315,7 +318,7 @@ class _RubkaDataState extends State<RubkaData> {
       ),
     ];
 
-    // ─── Группа 3: прочее ───
+    // ─── Group 3: other ───
     final group3 = <Widget>[
       _pultRow(
         label: i18n.t('bort.reset'),

@@ -1,16 +1,19 @@
 // ═══════════════════════════════════════════════════════════════════
-// import_screen.dart — приём рутин из zip-архивов.
+// import_screen.dart — receiving routines from zip archives.
 //
-// Файлы выбираются чрез системный лист (FileType.custom, *.zip).
-// Каждый архив читается:
-//   data.json — рутина целиком;
-//   media/<имя> — файлы медиа, извлекаются в media/ приложения.
+// Files are selected via the system sheet (FileType.custom, *.zip).
+// Each archive is read:
+//   data.json — the routine as a whole;
+//   media/<name> — media files, extracted into the app's media/.
 //
-// Дубли. По ключу source_device/source_first_run/source_routine_id:
-//   — коли рутина с сим ключом есть, обновляется;
-//   — коли нет, добавляется.
+// Duplicates. By the key source_device/source_first_run/source_routine_id:
+//   — if a routine with this key exists, it is updated;
+//   — if not, it is added.
 //
-// Прозрачность не применяется.
+// The AppBar title spacing is unified via ControlRow to prevent
+// overlap with the root pult.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:convert';
@@ -25,6 +28,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../data/routine_layer.dart';
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
+import '../core/control_row.dart'; // Added for unified title spacing
 import '../pults/pult_core.dart';
 import '../services/report_json.dart';
 
@@ -119,9 +123,9 @@ class _ImportScreenState extends State<ImportScreen> {
         _log.add('${p.basename(path)}: формат не распознан');
         continue;
       }
-      // Привнесение рутины — одною транзакциею: либо вся рутина
-      // с блоками и следами, либо ничего. При частичном сбое
-      // половинчатой рутины в журнале не остаётся.
+      // Routine adoption — in a single transaction: either the whole
+      // routine with blocks and traces, or nothing. On partial
+      // failure, no half-formed routine remains in the journal.
       try {
         await app.journal.transaction(() async {
           await _applyParsed(app, parsed, extracted);
@@ -198,7 +202,7 @@ class _ImportScreenState extends State<ImportScreen> {
       for (final f in t.files) {
         String path = '';
         if (f.kind == MediaKind.geo) {
-          // Гео: файла нет, только координаты.
+          // Geo: no file, only coordinates.
         } else {
           path = extracted[f.name] ?? '';
           if (path.isEmpty) continue;
@@ -229,17 +233,26 @@ class _ImportScreenState extends State<ImportScreen> {
     final dim = bort.dim;
     final fg = bort.fg;
 
+    // Unified control row calculation.
+    final rootSide = side * 2 / 3;
+    final rootReserve = ControlRow.reserve(rootSide);
+
     return Scaffold(
       backgroundColor: bort.bg,
       appBar: AppBar(
         backgroundColor: bort.bg,
         foregroundColor: bort.fg,
         elevation: 0,
-        // Кнопки «назад» нет: уход — системными средствами (жест,
-        // кнопка навигации).
+        // No «back» button: exit is via system means (gesture,
+        // navigation button).
         automaticallyImplyLeading: false,
-        titleSpacing: side * 1.4,
-        title: Text(i18n.t('bort.import')),
+        centerTitle: false, // Enforce left alignment.
+        titleSpacing: rootReserve,
+        title: Text(
+          i18n.t('bort.import'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis, // Prevent overflow.
+        ),
       ),
       body: SafeArea(
         child: Column(

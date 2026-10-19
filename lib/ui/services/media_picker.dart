@@ -1,24 +1,28 @@
 // ═══════════════════════════════════════════════════════════════════
-// media_picker.dart — лист выбора и добавления медиа.
+// media_picker.dart — media selection and addition sheet.
 //
-// Пять родов: аудио, фото, видео, место, файл. Аудио — отдельным
-// диалогом (audio_dialog.dart). Прочие — здесь.
+// Five kinds: audio, photo, video, geo, file. Audio — via a
+// separate dialog (audio_dialog.dart). The rest — here.
 //
-// Открывается единым левосторонним листом (pult_sheet.dart) —
-// тем же, что и все прочие подпульты. Прежний showModalBottomSheet
-// упразднён.
+// Opened via the single left-side sheet (pult_sheet.dart) —
+// the same as all other subpults. The former
+// showModalBottomSheet is removed.
 //
-// Файл копируется в media/ с именем по образцу:
-//   <устройство>_<номер рутины>_<слот>_<род>_<индекс>.<расш>
+// The file is copied to media/ with a template name:
+//   <device>_<routine id>_<slot>_<kind>_<index>.<ext>
 //
-// Серия фото/видео: после возврата из системной съёмки лист
-// не закрывается — открывается снова. Выход — «назад».
+// Photo/video series: after returning from the system camera
+// the sheet does not close — it opens again. Exit — «back».
 //
-// Место. Отдельный json-файл не пишется: координаты в TraceFile.
+// Geo. No separate json file is written: coordinates are in
+// the trace file structure (TraceFile). The geo point is picked
+// on a custom map (geo_picker.dart): a tap on the map,
+// confirmation — a widget snapshot and coordinates are put into
+// media/ as the geo kind.
 //
-// AppContext берётся ДО awaits.
+// Application context (AppContext) is taken BEFORE awaits.
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:io';
@@ -71,11 +75,11 @@ Future<void> showMediaPicker({
         id: 'pick_${MediaKind.geo}',
         icon: Icons.place_outlined,
         label: i18n.t('media.geo'),
-        // Геоточка выбирается на своей карте (geo_picker.dart):
-        // тап по карте, подтверждение — снимок виджета и координаты
-        // кладутся в media/ как род geo. Прежний прямой вызов
-        // геолокатора упразднён: пользователь не видел, куда
-        // ставится точка.
+        // The geo point is picked on a custom map (geo_picker.dart):
+        // a tap on the map, confirmation — a widget snapshot and
+        // coordinates are put into media/ as the geo kind. The former
+        // direct geolocator call is removed: the user did not see
+        // where the point was placed.
         onTap: () =>
             showGeoPicker(context: context, objectId: objectId, slot: slot),
       ),
@@ -93,7 +97,7 @@ Future<void> showMediaPicker({
   );
 }
 
-// ─── Копирование и прикрепление ───
+// ─── Copying and attaching ───
 Future<void> _attach(
   AppContext app, {
   required int objectId,
@@ -127,12 +131,13 @@ Future<void> _attach(
   );
 }
 
+// Replacing forbidden characters with an uppercase «X».
 String _safe(String s) {
   final bad = RegExp(r'[\\/:*?"<>|]');
   return s.replaceAllMapped(bad, (_) => 'X');
 }
 
-// ─── Фото: серия ───
+// ─── Photo: series ───
 Future<void> _addPhotoLoop(AppContext app, int objectId, String slot) async {
   while (true) {
     final took = await _pickOncePhoto(app, objectId, slot);
@@ -160,7 +165,7 @@ Future<bool> _pickOncePhoto(AppContext app, int objectId, String slot) async {
   }
 }
 
-// ─── Видео: серия ───
+// ─── Video: series ───
 Future<void> _addVideoLoop(AppContext app, int objectId, String slot) async {
   while (true) {
     final took = await _pickOnceVideo(app, objectId, slot);
@@ -188,7 +193,7 @@ Future<bool> _pickOnceVideo(AppContext app, int objectId, String slot) async {
   }
 }
 
-// ─── Файл ───
+// ─── File ───
 Future<void> _addFile(AppContext app, int objectId, String slot) async {
   try {
     final r = await FilePicker.platform.pickFiles();
@@ -207,7 +212,7 @@ Future<void> _addFile(AppContext app, int objectId, String slot) async {
   } catch (_) {}
 }
 
-// Прежний прямой вызов геолокатора упразднён: пользователь не видел,
-// куда ставится точка. Ныне — своя карта (geo_picker.dart), где
-// точка подтверждается визуально, а вместе с координатами
-// сохраняется снимок виджета карты.
+// The former direct geolocator call is removed: the user did not see
+// where the point was placed. Now — a custom map (geo_picker.dart),
+// where the point is confirmed visually, and a snapshot of the map
+// widget is saved along with the coordinates.

@@ -1,29 +1,31 @@
 // ═══════════════════════════════════════════════════════════════════
-// days_tab.dart — вкладка «дни». Календарь месяца.
+// days_tab.dart — «days» tab. Month calendar.
 //
-// День рутины определяется так: completedAt, иначе lastPulseAt,
-// иначе scheduledAt, иначе createdAt. Старшинство именно такое:
-// завершённость > пульс > наметка. Одна рутина — ровно одна помета.
+// The routine's day is determined as follows: completedAt, otherwise
+// lastPulseAt, otherwise scheduledAt, otherwise createdAt. The priority
+// is exactly this: completion > pulse > schedule. One routine — exactly
+// one mark.
 //
-// Пометы в клетке:
-//   — завершённая (completedAt на сей день) — подчёркнутое число;
-//   — с пульсом (lastPulseAt на сей день) — круглая рамка;
-//   — намеченная (scheduledAt на сей день) — квадратная рамка.
-// Разные рутины дня приносят разные пометы; они совмещаются.
+// Marks in the cell:
+//   — completed (completedAt on this day) — underlined number;
+//   — with pulse (lastPulseAt on this day) — round border;
+//   — scheduled (scheduledAt on this day) — square border.
+// Different routines of the day bring different marks; they combine.
 //
-// Согласование цветов.
-//   — подчёркивание (завершённая) — приглушённое (dim);
-//   — круг и квадрат — обычные (fg), ежели рутина без флагов
-//     либо завершена;
-//   — сигнальным (signal) выделяются токмо круг и квадрат
-//     незавершённой рутины с флагами;
-//   — число месяца сигнальное тогда и только тогда, когда в сей
-//     день есть незавершённая рутина с флагами.
+// Color coordination.
+//   — underline (completed) — dimmed (dim);
+//   — circle and square — normal (fg), if the routine has no flags
+//     or is completed;
+//   — signal (signal) highlights only the circle and square
+//     of an uncompleted routine with flags;
+//   — the day number is signal-colored if and only if there is
+//     an uncompleted routine with flags on this day.
 //
-// Строка управления. Переключатели месяца выводятся чрез ControlRow:
-// корневой пульт слева, содержимое строки центрируется в остатке.
+// Control row. Month switchers are rendered via ControlRow:
+// the root pult on the left, the row's content is centered in
+// the remainder (and scaled down if too wide).
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -87,13 +89,13 @@ class _DaysTabState extends State<DaysTab> {
     return _Mark.none;
   }
 
-  // ─── Совокупность помет для клетки ───
-  // Собирает признаки:
-  //   completed, pulse, scheduled — какие пометы есть;
-  //   signalPulse, signalScheduled — есть незавершённая рутина
-  //     с флагами и с пульсом/наметкою соответственно;
-  //   hasSignalIncomplete — есть хоть одна незавершённая с флагами
-  //     (число месяца сигнальное).
+  // ─── Mark set for the cell ───
+  // Collects flags:
+  //   completed, pulse, scheduled — which marks exist;
+  //   signalPulse, signalScheduled — there is an uncompleted routine
+  //     with flags and with pulse/schedule respectively;
+  //   hasSignalIncomplete — there is at least one uncompleted with flags
+  //     (the month number is signal-colored).
   ({
     bool completed,
     bool pulse,

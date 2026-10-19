@@ -1,24 +1,25 @@
 // ═══════════════════════════════════════════════════════════════════
-// routine_block_view.dart — виджет одного слота рутины.
+// routine_block_view.dart — widget of one routine slot.
 //
-// Вынесен из routine_card: рамка, заголовок, пульс времени,
-// содержимое (TraceField либо сводка в «итоге»), угловые пульты.
+// Extracted from routine_card: frame, title, time pulse, content
+// (TraceField or summary in «total»), corner pults.
 //
-// Фон. Приглушённость (dimmed) задаётся снаружи: чередование
-// фона по порядку показанных блоков, начиная с приглушённого.
-// Поле ввода текста приглушению не поддаётся: оно кладётся
-// на обычный фон (bg), независимо от того, приглушён ли блок.
+// Background. The dimming (dimmed) is set from outside: background
+// alternation by the order of shown blocks, starting from dimmed.
+// The text input field is not subject to dimming: it is placed on
+// the normal background (bg), regardless of whether the block is
+// dimmed.
 //
-// Блок «описание». В правом верхнем ряду — четыре пульта слева
-// направо: дата назначения, плановая длительность, показ всех
-// слотов, флаги. Пульт даты и пульт длительности перемещены сюда
-// из начала страницы (поля ручного ввода плана более нет).
+// Block «note». In the top right row — four pults left to right:
+// assigned date, planned duration, show all slots, flags. Date pult
+// and duration pult moved here from the page start (the manual plan
+// input field is gone).
 //
-// Углы. Правый верхний и правый нижний — по одному правому краю,
-// один размер (pultSide). Кнопка экспорта в «итоге» не слипается
-// с пультом завершения.
+// Corners. Top right and bottom right — one right edge, one size
+// (pultSide). The export button in «total» does not stick to the
+// completion pult.
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -49,14 +50,14 @@ class RoutineBlockView extends StatelessWidget {
   final TextEditingController? editCtrl;
   final FocusNode? editFocus;
 
-  // ─── Внешние признаки и обработчики ───
-  // Приглушён ли блок — задаётся снаружи, от порядка показа.
+  // ─── External signs and handlers ───
+  // Is the block dimmed — set from outside, from the display order.
   final bool dimmed;
-  // Есть ли назначенная дата (для отмеченного пульта).
+  // Is there an assigned date (for the marked pult).
   final bool scheduledActive;
-  // Открыть выбор даты; ежели null — блок даты не выводится.
+  // Open date picker; if null — date block is not rendered.
   final VoidCallback? onPickDate;
-  // Открыть барабан плановой длительности; null — не выводится.
+  // Open planned duration drum; null — not rendered.
   final VoidCallback? onPickPlanned;
 
   final VoidCallback onToggleCollapsed;
@@ -118,9 +119,9 @@ class RoutineBlockView extends StatelessWidget {
     final side = PultScope.of(context).smallSide;
     final colonVisible = app.ticker.colonVisible;
 
-    // ─── Цвета ───
-    // Идущий блок берёт цвета противоположной темы. Покойный —
-    // обычный фон либо приглушённый, по порядку показа.
+    // ─── Colors ───
+    // Running block takes the opposite theme colors. Resting — normal
+    // background or dimmed, by display order.
     final Color bg;
     final Color dim;
     final Color fg;
@@ -306,8 +307,8 @@ class RoutineBlockView extends StatelessWidget {
               children: rows,
             );
     } else {
-      // Поле ввода — на обычном фоне (bg), даже ежели блок приглушён
-      // (bgdim): поле само по себе не затемняется.
+      // Input field — on the normal background (bg), even if the
+      // block is dimmed (bgdim): the field itself is not darkened.
       body = TraceField(
         objectId: routine.id,
         slot: kind,
@@ -331,8 +332,8 @@ class RoutineBlockView extends StatelessWidget {
     Widget? topRight = cornerTop;
 
     if (showFlags) {
-      // Порядок слева направо: дата, план, показать все, флаги,
-      // затем таймер блока (ежели есть).
+      // Order left to right: date, plan, show all, flags, then block
+      // timer (if any).
       final datePult = onPickDate == null
           ? null
           : Pult(
@@ -439,7 +440,7 @@ class RoutineBlockView extends StatelessWidget {
     );
   }
 
-  // ─── Пять старших битов, что правятся из карточки ───
+  // ─── Five senior bits that are edited from the card ───
   static const List<int> _flagBits = [
     JournalFlag.urgent,
     JournalFlag.emergency,

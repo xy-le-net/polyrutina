@@ -1,35 +1,37 @@
 // ═══════════════════════════════════════════════════════════════════
-// control_row.dart — строка управления экрана.
+// control_row.dart — screen control row.
 //
-// Сквозной механизм для всех экранов. Корневой пульт (компас)
-// висит в левом верхнем углу — он начало строки. Правое от него
-// пространство отдаётся элементам, что не должны улистываться
-// (название карточки, заголовок чек-листа, переключатели месяца).
+// A cross-cutting mechanism for all screens. The root pult (compass)
+// hangs in the top-left corner — it is the start of the row. The space
+// to its right is given to elements that must not slip under it
+// (card title, checklist title, month switchers).
 //
-// Содержимое строки сохраняет собственный размер (не растягивается,
-// не сжимается), центрируется по горизонтали и вертикали в оставшейся
-// от пульта области.
+// The row's content preserves its own size, is centered horizontally
+// and vertically in the area remaining from the pult. To prevent
+// overflow and overlap with the root pult, the content is wrapped in
+// an Expanded widget, and FittedBox scales it down if the width
+// exceeds the available space.
 //
-// Высота строки равна стороне корневого пульта. Элементы внутри
-// выравниваются по центру по вертикали.
+// The row's height equals the root pult's side. Elements inside are
+// vertically centered.
 //
-// Употребление. Обернуть надобный ряд как ControlRow. Сам корневой
-// пульт остаётся в дереве главного экрана (main.dart) и здесь
-// не рисуется — сие лишь резерв и раскладка. Для AppBar'ов, где
-// отдельный виджет неуместен, статический метод reserve() даёт
-// ту же величину левого отступа.
+// Usage. Wrap the desired row as a ControlRow. The root pult itself
+// remains in the main screen's tree (main.dart) and is not drawn here
+// — this is merely a reservation and layout. For AppBars, where a
+// separate widget is inappropriate, the static method reserve() gives
+// the same left padding value.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 
 class ControlRow extends StatelessWidget {
-  // Ширина корневого пульта. У резерва — та же.
+  // Width of the root pult. Same for the reserve.
   final double rootSide;
-  // Отступ пульта от края экрана (в main.dart — 6).
+  // Pult's offset from the screen edge (in main.dart — 6).
   final double rootPad;
-  // Содержимое правой части строки.
+  // Content of the row's right part.
   final Widget? child;
-  // Дополнительный зазор между пультом и содержимым.
+  // Additional gap between the pult and the content.
   final double gap;
 
   const ControlRow({
@@ -40,7 +42,7 @@ class ControlRow extends StatelessWidget {
     this.child,
   });
 
-  // Полная ширина резервируемой зоны слева: отступ + пульт + зазор.
+  // Full width of the reserved zone on the left: offset + pult + gap.
   static double reserve(
     double rootSide, {
     double rootPad = 6.0,
@@ -52,9 +54,20 @@ class ControlRow extends StatelessWidget {
     final left = reserve(rootSide, rootPad: rootPad, gap: gap);
     return SizedBox(
       height: rootSide,
-      child: Padding(
-        padding: EdgeInsets.only(left: left),
-        child: child == null ? const SizedBox.shrink() : Center(child: child),
+      child: Row(
+        children: [
+          // Reserve space for the root pult.
+          SizedBox(width: left),
+          // Allocate the remaining space and prevent overlap.
+          Expanded(
+            child: child == null
+                ? const SizedBox.shrink()
+                : Center(
+                    // Scale down content if it exceeds the width.
+                    child: FittedBox(fit: BoxFit.scaleDown, child: child),
+                  ),
+          ),
+        ],
       ),
     );
   }

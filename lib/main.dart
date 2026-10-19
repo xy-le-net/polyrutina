@@ -1,32 +1,32 @@
 // ═══════════════════════════════════════════════════════════════════
-// main.dart — точка входа и управитель.
+// main.dart — entry point and governor.
 //
-// Порядок пуска: журнал (init без подписки), борт, слои, словарь.
-// Затем — journal.start().
+// Startup order: journal (init without subscription), bort, layers,
+// dictionary. Then — journal.start().
 //
-// Вкладка по умолчанию — «рутины». Пометки о вкладке в файле борта
-// нет: поле tab упразднено. Вкладки «поле» и «артель» по умолчанию
-// скрыты; их показ включается в рубке (блок «артель»).
+// Default tab — «routines». There is no tab note in the bort file:
+// the tab field is removed. The «field» and «artel» tabs are hidden
+// by default; their display is toggled in the rubka («artel» block).
 //
-// Действие пользователя. Listener вокруг дерева ловит касание —
-// борт получает сигнал (pulseBort).
+// User action. A Listener around the tree catches touches — the
+// bort receives a signal (pulseBort).
 //
-// Время борта. Подписка на тикер: борт тикает, раз в тридцать
-// секунд сверяет полночь.
+// Bort time. Subscription to the ticker: the bort ticks and checks
+// midnight every thirty seconds.
 //
-// Жизненный цикл. Уход (paused, detached, inactive): остановка
-// таймера борта, немедленная запись слоёв. Возврат (resumed):
-// перечитать системную гамму и переразрешить тему — в фоне система
-// могла сменить светлую на тёмную. Смена системной гаммы (без ухода
-// в фон) — тем же путём, didChangePlatformBrightness.
+// Lifecycle. Departure (paused, detached, inactive): stop the bort
+// timer, immediately save layers. Return (resumed): re-read the
+// system brightness and re-resolve the theme — in the background
+// the system could have switched light to dark. System brightness
+// change (without backgrounding) — via didChangePlatformBrightness.
 //
-// Системная строка. Стиль overlay-полосы — от темы борта.
+// System bar. Overlay strip style — from the bort theme.
 //
-// Корневой пульт — жёстко в левом верхнем углу. Касание открывает
-// единый левосторонний лист подпультов (pult_sheet.dart) с родами
-// вкладок. PultLayer упразднён.
+// Root pult — hardcoded in the top-left corner. Touch opens the
+// single left-side sheet of subpults (pult_sheet.dart) with tab
+// kinds. PultLayer is removed.
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -41,6 +41,7 @@ import 'data/ticker.dart';
 import 'data/trace_layer.dart';
 import 'ui/cards/routine_card.dart';
 import 'ui/core/app_scope.dart';
+import 'ui/core/control_row.dart'; // Added for unified title spacing
 import 'ui/pults/pult_core.dart';
 import 'ui/pults/pult_sheet.dart';
 import 'ui/pults/root_pult.dart';
@@ -70,17 +71,17 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   I18n? _i18n;
 
-  // Вкладка по умолчанию — рутины (индекс 1 в полном списке).
+  // Default tab — routines (index 1 in the full list).
   int _tab = 1;
 
   int? _openedRoutineId;
 
   VoidCallback? _onTickerTick;
 
-  // ─── Перечень вкладок ───
-  // Порядок: поле, рутины, дни, артель, рубка. Индекс сей же
-  // соответствует _tab. Показ полевой вкладки и вкладки артели
-  // управляется флагами борта (рубка → артель).
+  // ─── Tab list ───
+  // Order: field, routines, days, artel, rubka. This same index
+  // corresponds to _tab. The display of the field and artel tabs is
+  // controlled by bort flags (rubka → artel).
   static const List<RootTabItem> _allTabs = [
     RootTabItem(icon: Icons.map, labelKey: 'tab.field'),
     RootTabItem(icon: Icons.checklist, labelKey: 'tab.routines'),
@@ -89,7 +90,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     RootTabItem(icon: Icons.dashboard, labelKey: 'tab.rubka'),
   ];
 
-  // Видима ли вкладка с сим номером при текущих флагах.
+  // Is the tab with this number visible under the current flags.
   bool _tabVisible(int i) {
     if (i == 0) return _bort.showFieldTab;
     if (i == 3) return _bort.showArtelTab;
@@ -103,8 +104,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   @override
   void initState() {
     super.initState();
-    // Наблюдатель жизненного цикла: уход — запись слоёв, возврат —
-    // переразрешение темы (в фоне система могла сменить гамму).
+    // Lifecycle observer: departure — save layers, return —
+    // re-resolve the theme (in the background the system could
+    // have changed the scheme).
     WidgetsBinding.instance.addObserver(this);
     _db = AppDb();
     _journal = JournalLayer(_db);
@@ -136,12 +138,12 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     await _traceLayer.init(_journal);
     _i18n = await I18n.load(_bort.lang);
     _journal.start();
-    // Метка перечитывания — на текущий конец журнала: кнопка
-    // «перечитать» становится активной, лишь ежели после сего
-    // в журнал что-то добавилось.
+    // Reread mark — at the current end of the journal: the
+    // «reread» button becomes active only if something was added
+    // to the journal afterwards.
     _bort.setLastRereadId(await _journal.lastEntryId());
-    // Вкладка по умолчанию — «рутины»; коли «поле» и «артель»
-    // скрыты, индекс 1 всё равно ведёт к рутинам.
+    // Default tab — «routines»; if «field» and «artel» are
+    // hidden, index 1 still leads to routines.
     _tab = 1;
     if (mounted) setState(() {});
   }
@@ -175,7 +177,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     super.dispose();
   }
 
-  // ─── Жизненный цикл приложения ───
+  // ─── Application lifecycle ───
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
@@ -278,20 +280,20 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     return Brightness.light;
   }
 
-  // ─── Сборка тела вкладки по номеру ───
-  // Индексы: 0 — поле, 1 — рутины, 2 — дни, 3 — артель, 4 — рубка.
-  // Скрытые вкладки на своих местах остаются заглушками: индекс
-  // не смещается, оттого _tab всегда один и тот же смысл имеет.
+  // ─── Tab body assembly by number ───
+  // Indices: 0 — field, 1 — routines, 2 — days, 3 — artel, 4 — rubka.
+  // Hidden tabs remain as stubs in their places: the index does not
+  // shift, hence _tab always has the same meaning.
   Widget _tabBody() {
     switch (_tab) {
       case 0:
-        return const StubTab(); // поле
+        return const StubTab(); // field
       case 1:
         return const RoutinesTab();
       case 2:
         return const DaysTab();
       case 3:
-        return const StubTab(); // артель
+        return const StubTab(); // artel
       case 4:
       default:
         return const RubkaTab();
@@ -302,7 +304,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   Widget build(BuildContext context) {
     if (_i18n == null) return const SizedBox.shrink();
 
-    // Коли текущая вкладка скрыта — принудительно переводим на рутины.
+    // If the current tab is hidden — force a switch to routines.
     if (!_tabVisible(_tab)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !_tabVisible(_tab)) {
@@ -316,6 +318,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _pultState.maxSide = _pultMax;
 
     final rootSide = side * 2 / 3;
+    // Use the unified reserve calculation for the AppBar title.
+    final rootReserve = ControlRow.reserve(rootSide, rootPad: _rootPad);
 
     final appContext = AppContext(
       bort: _bort,
@@ -345,7 +349,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           backgroundColor: _bort.bg,
           foregroundColor: _bort.fg,
           elevation: 0,
-          titleSpacing: rootSide + _rootPad + 4,
+          centerTitle: false, // Force left alignment for titles
+          titleSpacing: rootReserve, // Unified spacing
           systemOverlayStyle: _overlayStyle(
             _effectiveBrightness(_bort.systemBrightness),
           ),
@@ -390,7 +395,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                   child: Stack(
                     children: [
                       child ?? const SizedBox.shrink(),
-                      // Корневой пульт — жёстко в левом верхнем углу.
+                      // Root pult — hardcoded in the top-left corner.
                       Positioned(
                         left: _rootPad,
                         top: _rootPad,
