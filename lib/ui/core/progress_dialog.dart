@@ -1,26 +1,27 @@
 // ═══════════════════════════════════════════════════════════════════
-// progress_dialog.dart — всплывающая рамка с круговым прогрессом.
+// progress_dialog.dart — pop-up frame with a circular progress.
 //
-// Устройство. Рамка той же формы, что блоки и уведомления: фон bg,
-// обводка dim, скругление радиуса kRadius, отбивка kFramePad.
-// Внутри — надпись, круговой индикатор заполнения и надпись-ссылка
-// «отмена» сигнального цвета.
+// Structure. A frame of the same shape as blocks and notices:
+// background bg, border dim, corner radius kRadius, padding
+// kFramePad. Inside — a caption, a circular fill indicator, and
+// the link-word «cancel» in signal color.
 //
-// Прогресс. Значение от 0.0 до 1.0. Внутри круга — проценты
-// целыми (без десятых). Круг рисуется штатным CircularProgressIndicator
-// с value; цвет — сигнальный, подложка — dim.
+// Progress. Value from 0.0 to 1.0. Inside the circle — percentages
+// as whole numbers (no decimals). The circle is drawn by the
+// standard CircularProgressIndicator with value; color — signal,
+// background — dim.
 //
-// Отмена. Касание слова «отмена» — сигнал отмены; диалог закрывается,
-// вызывающий код должен утилизировать незавершённую работу.
+// Cancel. Tapping the word «cancel» — cancel signal; the dialog
+// closes, and the calling code must dispose of the unfinished work.
 //
-// Употребление:
+// Usage:
 //   final token = ProgressToken();
 //   showDialog(..., builder: (_) => ProgressDialog(token: token));
-//   // в работе периодически: token.report(0.3);
-//   // по завершении: Navigator.pop(context);
-//   // если token.cancelled — прервать работу.
+//   // during work, periodically: token.report(0.3);
+//   // upon completion: Navigator.pop(context);
+//   // if token.cancelled — abort the work.
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -35,6 +36,8 @@ class ProgressToken extends ChangeNotifier {
   double get value => _value;
   bool get cancelled => _cancelled;
 
+  // Reports a new progress value, clamped to [0.0, 1.0].
+  // Notifies only when the value actually changes.
   void report(double v) {
     if (_cancelled) return;
     if (v < 0) v = 0;
@@ -44,6 +47,7 @@ class ProgressToken extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Marks the work as cancelled.
   void cancel() {
     if (_cancelled) return;
     _cancelled = true;
@@ -86,7 +90,7 @@ class ProgressDialog extends StatelessWidget {
               style: TextStyle(color: bort.fg, fontSize: side * bort.kTitle),
             ),
             SizedBox(height: pad),
-            // Круговой прогресс с процентами внутри.
+            // Circular progress with percentages inside.
             AnimatedBuilder(
               animation: token,
               builder: (_, __) {
@@ -121,7 +125,7 @@ class ProgressDialog extends StatelessWidget {
               },
             ),
             SizedBox(height: pad),
-            // Слово-ссылка «отмена» сигнальным цветом.
+            // The link-word «cancel» in signal color.
             GestureDetector(
               onTap: () {
                 token.cancel();

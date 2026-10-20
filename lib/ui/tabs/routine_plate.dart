@@ -1,12 +1,15 @@
 // ═══════════════════════════════════════════════════════════════════
-// routine_plate.dart — плитка одной рутины в списке.
+// routine_plate.dart — tile of one routine in the list.
 //
-// Вынесена из routines_tab. Содержит: рамку, имя, дату, таймер,
-// пульс рутины (пуск/пауза/открыть) с подпультом действий
-// (дублировать, отметить завершённой, удалить), чекбокс режима
-// выбора.
+// Extracted from routines_tab. Contains: frame, name, date, timer,
+// routine pulse (play/pause/open) with an action subpult
+// (duplicate, mark completed, delete), and the selection mode
+// checkbox.
 //
-// Прозрачность не применяется.
+// The subpult list construction is extracted into _buildSubs to
+// keep the build method concise.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -38,6 +41,56 @@ class RoutinePlate extends StatelessWidget {
     required this.onChanged,
   });
 
+  // ─── Build the action subpult list ───
+  // Extracted from the build method for readability. The closures
+  // capture the routine and the onChanged callback, preserving the
+  // original context.
+  List<PultSpec> _buildSubs(AppContext app) {
+    final i18n = app.i18n;
+    final running = routine.runningBlock != null;
+    final subs = <PultSpec>[];
+
+    subs.add(
+      PultSpec(
+        id: 'dup_${routine.id}',
+        icon: Icons.copy,
+        label: i18n.t('bort.duplicate'),
+        onTap: () async {
+          await app.routineLayer.duplicateRoutine(app.journal, routine.id);
+          onChanged();
+        },
+      ),
+    );
+
+    if (!routine.completed && !running) {
+      subs.add(
+        PultSpec(
+          id: 'complete_${routine.id}',
+          icon: Icons.check_circle_outline,
+          label: i18n.t('routine.mark_completed'),
+          confirm: true,
+          onTap: () {
+            app.routineLayer.setCompleted(app.journal, routine.id, true);
+          },
+        ),
+      );
+    }
+
+    subs.add(
+      PultSpec(
+        id: 'del_${routine.id}',
+        icon: Icons.delete_outline,
+        label: i18n.t('bort.delete'),
+        confirm: true,
+        onTap: () {
+          app.routineLayer.deleteRoutine(app.journal, routine.id);
+        },
+      ),
+    );
+
+    return subs;
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
@@ -51,6 +104,7 @@ class RoutinePlate extends StatelessWidget {
     final Color textSoft;
     final Color accent;
     if (running) {
+      // Running routine takes the opposite theme colors.
       final opposite = bort.colorsForOpposite();
       if (opposite != null) {
         plateBg = opposite['bg']!;
@@ -78,6 +132,7 @@ class RoutinePlate extends StatelessWidget {
     final radiusW = side * bort.kRadius;
     final framePad = side * bort.kFramePad * 0.6;
 
+    // ─── Pulse pult icon and action ───
     final IconData pulseIcon;
     final VoidCallback? pulseTap;
     if (routine.completed) {
@@ -101,42 +156,7 @@ class RoutinePlate extends StatelessWidget {
       };
     }
 
-    final subs = <PultSpec>[];
-    subs.add(
-      PultSpec(
-        id: 'dup_${routine.id}',
-        icon: Icons.copy,
-        label: i18n.t('bort.duplicate'),
-        onTap: () async {
-          await app.routineLayer.duplicateRoutine(app.journal, routine.id);
-          onChanged();
-        },
-      ),
-    );
-    if (!routine.completed && !running) {
-      subs.add(
-        PultSpec(
-          id: 'complete_${routine.id}',
-          icon: Icons.check_circle_outline,
-          label: i18n.t('routine.mark_completed'),
-          confirm: true,
-          onTap: () {
-            app.routineLayer.setCompleted(app.journal, routine.id, true);
-          },
-        ),
-      );
-    }
-    subs.add(
-      PultSpec(
-        id: 'del_${routine.id}',
-        icon: Icons.delete_outline,
-        label: i18n.t('bort.delete'),
-        confirm: true,
-        onTap: () {
-          app.routineLayer.deleteRoutine(app.journal, routine.id);
-        },
-      ),
-    );
+    final subs = _buildSubs(app);
 
     final rightControl = Pult(
       spec: PultSpec(
@@ -181,8 +201,9 @@ class RoutinePlate extends StatelessWidget {
                 ),
               const SizedBox(height: 10),
               if (routine.scheduledAt != null)
-                // Намеченная дата — прямоугольною рамкою, единообразно
-                // с календарём вкладки «дни» (там наметка — квадрат).
+                // Scheduled date — rectangular frame, uniform with
+                // the calendar of the «days» tab (there the mark is
+                // a square).
                 Container(
                   padding: EdgeInsets.symmetric(
                     horizontal: dateSize * 0.3,

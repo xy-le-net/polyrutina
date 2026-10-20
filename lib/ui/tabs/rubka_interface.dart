@@ -1,15 +1,19 @@
 // ═══════════════════════════════════════════════════════════════════
-// rubka_interface.dart — блок «интерфейс» в рубке.
+// rubka_interface.dart — «interface» block in the rubka.
 //
-// Вынесен из rubka_tab.
+// Extracted from rubka_tab.
 //
-// Масштаб, язык, подписи — по строке. Язык — выпадающий список
-// человекочитаемый (русский / english). Подписи — прежние
-// «системные подписи»; «полевые подписи» упразднены: подписи кнопок
-// едины. Слоты — чек-лист из пяти родов: какие слоты показывать
-// в карточке рутины постоянно.
+// Scale, language, labels — one per row. Language — a human-readable
+// dropdown (русский / english). Labels — the former «system labels»;
+// «field labels» are abolished: button labels are unified. Slots —
+// a checklist of five kinds: which slots to show permanently in the
+// routine card.
 //
-// Прозрачность не применяется.
+// Simplifications: the unused `dim` parameter has been removed from
+// all private methods (_langRow, _slotTicks, _settingRow,
+// _settingField), since it was never used in their bodies.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -47,11 +51,11 @@ class RubkaInterface extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _settingRow(context, 'scale', fg, dim, bg, signal, side),
-        _langRow(context, fg, dim, bg, signal, side),
-        _settingRow(context, 'labels_buttons', fg, dim, bg, signal, side),
+        _settingRow(context, 'scale', fg, bg, signal, side),
+        _langRow(context, fg, bg, signal, side),
+        _settingRow(context, 'labels_buttons', fg, bg, signal, side),
         _sectionTitle(i18n.t('bort.default_slots'), dim, side),
-        ..._slotTicks(context, fg, dim, bg, signal, side),
+        ..._slotTicks(context, fg, bg, signal, side),
       ],
     );
   }
@@ -66,11 +70,10 @@ class RubkaInterface extends StatelessWidget {
     );
   }
 
-  // ─── Язык: выпадающий список ───
+  // ─── Language: dropdown ───
   Widget _langRow(
     BuildContext context,
     Color fg,
-    Color dim,
     Color bg,
     Color signal,
     double side,
@@ -122,11 +125,10 @@ class RubkaInterface extends StatelessWidget {
     );
   }
 
-  // ─── Слоты по умолчанию ───
+  // ─── Default slots ───
   List<Widget> _slotTicks(
     BuildContext context,
     Color fg,
-    Color dim,
     Color bg,
     Color signal,
     double side,
@@ -171,7 +173,6 @@ class RubkaInterface extends StatelessWidget {
     BuildContext context,
     String key,
     Color fg,
-    Color dim,
     Color bg,
     Color signal,
     double side,

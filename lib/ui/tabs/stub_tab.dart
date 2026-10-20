@@ -1,10 +1,10 @@
 // ═══════════════════════════════════════════════════════════════════
-// stub_tab.dart — заглушка для неготовых вкладок.
+// stub_tab.dart — placeholder for unfinished tabs.
 //
-// Показывает две строки: название раздела и обещание. Ничего более.
-// Используется для вкладок Поле (карта) и Артель, кои впереди.
+// Shows two lines: the section name and a promise. Nothing more.
+// Used for the Field (map) and Artel tabs, which lie ahead.
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';

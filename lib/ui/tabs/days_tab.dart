@@ -23,13 +23,21 @@
 //
 // Control row. Month switchers are rendered via ControlRow:
 // the root pult on the left, the row's content is centered in
-// the remainder (and scaled down if too wide).
+// the remainder. To prevent excessive compression, the row is
+// given a generous width, letting FittedBox scale down only
+// when absolutely necessary.
+//
+// Grid. Strictly seven columns (GridView.builder) with equal
+// cell proportions. The cell content (number with optional
+// borders) is centered within a fixed-size container to prevent
+// visual jitter.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 
+import '../../data/operational_layer.dart';
 import '../../data/routine.dart';
 import '../core/app_scope.dart';
 import '../core/control_row.dart';
@@ -156,18 +164,8 @@ class _DaysTabState extends State<DaysTab> {
 
     final firstWeekday = _month.weekday;
     final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
+    // Total cells to render: complete weeks covering the month.
     final totalCells = (((firstWeekday - 1) + daysInMonth + 6) ~/ 7) * 7;
-
-    final grid = <Widget>[];
-    for (var i = 0; i < totalCells; i++) {
-      final dayNum = i - (firstWeekday - 1) + 1;
-      if (dayNum < 1 || dayNum > daysInMonth) {
-        grid.add(const SizedBox.shrink());
-        continue;
-      }
-      final list = cells[dayNum] ?? const <Routine>[];
-      grid.add(_cell(dayNum, list, side, bort));
-    }
 
     final rootSide = side * 2 / 3;
 
@@ -177,55 +175,75 @@ class _DaysTabState extends State<DaysTab> {
           padding: EdgeInsets.symmetric(vertical: side * 0.3),
           child: ControlRow(
             rootSide: rootSide,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Pult(
-                  spec: PultSpec(
-                    id: 'prev_month',
-                    icon: Icons.chevron_left,
-                    onTap: () => _shift(-1),
+            // Generous width to give the month switchers breathing
+            // room. FittedBox in ControlRow will scale it down if
+            // the screen is too narrow.
+            child: SizedBox(
+              width: side * 6,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  Pult(
+                    spec: PultSpec(
+                      id: 'prev_month',
+                      icon: Icons.chevron_left,
+                      onTap: () => _shift(-1),
+                    ),
+                    fg: bort.fg,
+                    bg: bort.bg,
+                    signal: bort.signal,
+                    overrideSize: side,
                   ),
-                  fg: bort.fg,
-                  bg: bort.bg,
-                  signal: bort.signal,
-                  overrideSize: side,
-                ),
-                SizedBox(width: side * 0.6),
-                Text(
-                  '${_month.year}.'
-                  '${_month.month.toString().padLeft(2, '0')}',
-                  style: TextStyle(color: bort.fg, fontSize: side * 0.5),
-                ),
-                SizedBox(width: side * 0.6),
-                Pult(
-                  spec: PultSpec(
-                    id: 'next_month',
-                    icon: Icons.chevron_right,
-                    onTap: () => _shift(1),
+                  Text(
+                    '${_month.year}.'
+                    '${_month.month.toString().padLeft(2, '0')}',
+                    style: TextStyle(color: bort.fg, fontSize: side * 0.5),
                   ),
-                  fg: bort.fg,
-                  bg: bort.bg,
-                  signal: bort.signal,
-                  overrideSize: side,
-                ),
-              ],
+                  Pult(
+                    spec: PultSpec(
+                      id: 'next_month',
+                      icon: Icons.chevron_right,
+                      onTap: () => _shift(1),
+                    ),
+                    fg: bort.fg,
+                    bg: bort.bg,
+                    signal: bort.signal,
+                    overrideSize: side,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
         Expanded(
-          child: GridView.count(
+          // Strict seven-column grid with uniform cell proportions.
+          child: GridView.builder(
             padding: EdgeInsets.all(side * 0.3),
-            crossAxisCount: 7,
-            childAspectRatio: 1,
-            children: grid,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7,
+              childAspectRatio: 1,
+            ),
+            itemCount: totalCells,
+            itemBuilder: (context, i) {
+              final dayNum = i - (firstWeekday - 1) + 1;
+              if (dayNum < 1 || dayNum > daysInMonth) {
+                return const SizedBox.shrink();
+              }
+              final list = cells[dayNum] ?? const <Routine>[];
+              return _cell(dayNum, list, side, bort);
+            },
           ),
         ),
       ],
     );
   }
 
-  Widget _cell(int day, List<Routine> routines, double side, dynamic bort) {
+  Widget _cell(
+    int day,
+    List<Routine> routines,
+    double side,
+    OperationalLayer bort,
+  ) {
     final m = _marksOf(day, routines);
 
     final dayColor = m.hasSignalIncomplete ? bort.signal : bort.fg;
@@ -236,39 +254,32 @@ class _DaysTabState extends State<DaysTab> {
       decorationColor: bort.dim,
     );
 
-    Widget content = Text('$day', style: style);
-
-    if (m.pulse) {
-      content = Container(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: m.signalPulse ? bort.signal : bort.fg,
-            width: side * 0.04,
-          ),
-        ),
-        alignment: Alignment.center,
-        child: content,
-      );
-    }
-
-    if (m.scheduled) {
-      content = Container(
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: m.signalScheduled ? bort.signal : bort.fg,
-            width: side * 0.04,
-          ),
-          borderRadius: BorderRadius.circular(side * 0.05),
-        ),
-        alignment: Alignment.center,
-        child: content,
-      );
-    }
+    // Fixed-size container ensures perfect centering and uniform
+    // border sizes across all cells, eliminating visual jitter.
+    Widget content = Container(
+      width: side * 0.8,
+      height: side * 0.8,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: m.pulse ? BoxShape.circle : BoxShape.rectangle,
+        border: (m.pulse || m.scheduled)
+            ? Border.all(
+                color: m.signalPulse || m.signalScheduled
+                    ? bort.signal
+                    : bort.fg,
+                width: side * 0.04,
+              )
+            : null,
+        borderRadius: (m.scheduled && !m.pulse)
+            ? BorderRadius.circular(side * 0.05)
+            : null,
+      ),
+      child: Text('$day', style: style),
+    );
 
     return GestureDetector(
       onTap: routines.isEmpty ? null : () => _openDay(routines),
-      child: Padding(padding: EdgeInsets.all(side * 0.1), child: content),
+      child: Center(child: content),
     );
   }
 

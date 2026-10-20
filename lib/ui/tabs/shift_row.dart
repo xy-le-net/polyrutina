@@ -1,13 +1,16 @@
 // ═══════════════════════════════════════════════════════════════════
-// shift_row.dart — строка смены над списком рутин.
+// shift_row.dart — shift row above the routine list.
 //
-// Вынесена из routines_tab. Содержит: пульс смены (пуск/пауза),
-// подпись времени, правку времени по долгому нажатию.
+// Extracted from routines_tab. Contains: shift pulse (start/pause),
+// time label, time editing on long press.
 //
-// Правка времени: «дд:чч:мм:сс», Enter либо пульт подтверждения —
-// сохранить. Долгое нажатие на пульс смены — открыть поле.
+// Time editing: «dd:hh:mm:ss», Enter or the confirm pult — save.
+// Long press on the shift pulse — open the field.
 //
-// Прозрачность не применяется.
+// Simplifications: the repeated resource cleanup logic in _cancel
+// and _confirm has been extracted into _disposeEditResources.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -34,14 +37,21 @@ class _ShiftRowState extends State<ShiftRow> {
 
   @override
   void dispose() {
-    _ctrl?.dispose();
-    _focus?.dispose();
+    _disposeEditResources();
     super.dispose();
   }
 
-  void _startEdit(int seconds) {
+  // ─── Dispose the edit controller and focus node ───
+  // Extracted to eliminate duplication between _cancel and _confirm.
+  void _disposeEditResources() {
     _ctrl?.dispose();
     _focus?.dispose();
+    _ctrl = null;
+    _focus = null;
+  }
+
+  void _startEdit(int seconds) {
+    _disposeEditResources();
     _ctrl = TextEditingController(text: fmtEditable(seconds));
     _focus = FocusNode();
     _focus!.addListener(() {
@@ -53,10 +63,7 @@ class _ShiftRowState extends State<ShiftRow> {
   void _cancel() {
     if (!_editing) return;
     if (mounted) setState(() => _editing = false);
-    _ctrl?.dispose();
-    _focus?.dispose();
-    _ctrl = null;
-    _focus = null;
+    _disposeEditResources();
   }
 
   Future<void> _confirm() async {
@@ -76,10 +83,7 @@ class _ShiftRowState extends State<ShiftRow> {
     );
     app.bort.setShiftTime(sec);
     if (mounted) setState(() => _editing = false);
-    _ctrl?.dispose();
-    _focus?.dispose();
-    _ctrl = null;
-    _focus = null;
+    _disposeEditResources();
     widget.onChanged();
   }
 
@@ -134,10 +138,9 @@ class _ShiftRowState extends State<ShiftRow> {
       );
     }
 
-    // «Идёт отсчёт» — не одно только onShift: после ручной правки
-    // времени (setShiftTime) shiftStartedAt обнуляется, отсчёт
-    // стоит, а двоеточие мигать не должно. Смена сама по себе
-    // остаётся открытою.
+    // «Ticking» — not merely onShift: after a manual time edit
+    // (setShiftTime) shiftStartedAt is nulled, the count stands,
+    // and the colon must not blink. The shift itself remains open.
     final bool ticking = bort.onShift && bort.shiftStartedAt != null;
 
     Widget pulse = Pulse(
@@ -164,6 +167,7 @@ class _ShiftRowState extends State<ShiftRow> {
       ticker: app.ticker,
     );
     if (bort.shiftEdited) {
+      // Underline indicates manually edited time.
       pulse = Container(
         decoration: BoxDecoration(
           border: Border(

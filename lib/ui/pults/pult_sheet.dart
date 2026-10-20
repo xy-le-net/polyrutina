@@ -1,37 +1,43 @@
 // ═══════════════════════════════════════════════════════════════════
-// pult_sheet.dart — единый левосторонний лист подпультов.
+// pult_sheet.dart — single left-side subpult sheet.
 //
-// Заменяет собою PultLayer и showModalBottomSheet. Всякая панель
-// подпультов (роды записей, флаги, действия над рутиною, выбор
-// рода медиа, меню вкладок, действия над выделенными) выезжает
-// слева единым способом.
+// Replaces PultLayer and showModalBottomSheet. Every subpult panel
+// (record types, flags, routine actions, media kind selection, tab
+// menu, actions on selected items) slides out from the left in a
+// unified manner.
 //
-// Устройство. showGeneralDialog с прозрачной подложкою; тело —
-// колонка пультов у левого края. Выезд — SlideTransition от левого
-// края. Общая подложка — во всю ширину пунктов, включая подписи:
-// IntrinsicWidth подгоняет Material под самую широкую строку
-// (ширины подписей вычислены в Pult'е и зажаты пределом экрана);
-// сигнальная рамка обводит подложку по контуру.
+// Structure. showGeneralDialog with a transparent barrier; the body
+// is a column of pults at the left edge. Slide-in — SlideTransition
+// from the left edge. The common backing spans the entire width of
+// the items, including labels: IntrinsicWidth fits the Material to
+// the widest row (label widths are computed in Pult and clamped by
+// the screen limit); the signal-colored border traces the backing
+// contour.
 //
-// Закрытие. Лист уходит при любом явном действии:
-//   — касание по пункту (действие исполняется, лист уходит);
-//   — подтверждение (первый тап — рост пульта, второй — исполнение);
-//   — касание мимо подложки (barrierDismissible);
-//   — системный back (жест, кнопка навигации).
-// Иных путей ухода нет: крестиков и стрелок в листе не выводится.
+// Closing. The sheet leaves on any explicit action:
+//   — tapping an item (action executes, sheet leaves);
+//   — confirmation (first tap — pult grows, second — executes);
+//   — tapping outside the backing (barrierDismissible);
+//   — system back (gesture, navigation button).
+// No other exit paths exist: no crosses or arrows are rendered.
 //
-// Подтверждение (confirm). Подтверждаемый пульт при касании
-// вырастает на четверть на своём месте. Повторное касание по
-// увеличенному — исполнить и закрыть лист. Касание по иному пульту
-// — снять рост и продолжить работу в листе. Тап мимо подложки —
-// закрыть лист без исполнения.
+// Confirmation (confirm). A confirmable pult grows by a quarter in
+// place upon tap. A second tap on the enlarged pult — execute and
+// close the sheet. Tapping another pult — cancel the growth and
+// continue working within the sheet. Tapping outside the backing —
+// close the sheet without execution.
 //
-// Обработка касания. Внутренний Pult имеет свой GestureDetector
-// с opaque-поведением и перехватывал бы жест у внешнего; посему
-// Pult обёрнут в IgnorePointer, а тап ловится внешним
-// GestureDetector. Сей приём единообразен для всех пунктов листа.
+// Touch handling. The inner Pult has its own GestureDetector with
+// opaque behavior and would intercept the gesture from the outer
+// one; therefore Pult is wrapped in IgnorePointer, and the tap is
+// caught by the outer GestureDetector. This technique is uniform
+// for all sheet items.
 //
-// Прозрачность не применяется.
+// The _onTap method is refactored: the repeated sequence of closing
+// the sheet and calling the callback is extracted into a separate
+// _executeAndClose method, eliminating code duplication.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -99,32 +105,36 @@ class _SheetBody extends StatefulWidget {
 class _SheetBodyState extends State<_SheetBody> {
   String? _confirmingId;
 
-  // ─── Касание по пульту ───
-  // Старшинство: подтверждение того же пульта → исполнить и закрыть;
-  // наличие чужого подтверждения → снять рост; запрос подтверждения
-  // → поставить рост; иначе — исполнить и закрыть.
+  // ─── Tap on a pult ───
+  // Priority: confirming the same pult → execute and close;
+  // another confirmation is active → drop the growth; confirmation
+  // requested → set the growth; otherwise — execute and close.
   void _onTap(PultSpec s) {
+    // 1. Tapping the currently confirming pult — execute and close.
     if (_confirmingId == s.id) {
-      final cb = s.onTap;
-      Navigator.of(context).pop();
-      cb?.call();
+      _executeAndClose(s);
       return;
     }
+
+    // 2. If another pult was confirming, reset its state.
     if (_confirmingId != null) {
       setState(() => _confirmingId = null);
-      if (s.confirm && s.onTap != null) {
-        setState(() => _confirmingId = s.id);
-        return;
-      }
-      final cb = s.onTap;
-      Navigator.of(context).pop();
-      cb?.call();
-      return;
     }
+
+    // 3. If this pult requires confirmation — set it as confirming.
     if (s.confirm && s.onTap != null) {
       setState(() => _confirmingId = s.id);
       return;
     }
+
+    // 4. Otherwise — execute and close immediately.
+    _executeAndClose(s);
+  }
+
+  // Helper method: closes the sheet and executes the callback.
+  // Extraction prevents code duplication and preserves the
+  // critical order: pop first, then execute.
+  void _executeAndClose(PultSpec s) {
     final cb = s.onTap;
     Navigator.of(context).pop();
     cb?.call();
@@ -142,7 +152,8 @@ class _SheetBodyState extends State<_SheetBody> {
     for (final s in widget.subs) {
       final confirming = _confirmingId == s.id;
       final sSide = confirming ? widget.side * 1.25 : widget.side;
-      // При подтверждении значок подменяется, коли задан confirmIcon.
+      // During confirmation, the icon is substituted if confirmIcon
+      // is provided.
       final spec = confirming && s.confirmIcon != null
           ? PultSpec(
               id: s.id,
@@ -168,8 +179,8 @@ class _SheetBodyState extends State<_SheetBody> {
               _pulse();
               _onTap(s);
             },
-            // Внутренний Pult обёрнут: его собственный GestureDetector
-            // не должен перехватывать жест у сего внешнего.
+            // The inner Pult is wrapped: its own GestureDetector
+            // must not intercept the gesture from this outer one.
             child: IgnorePointer(
               child: Pult(
                 spec: spec,
@@ -184,11 +195,12 @@ class _SheetBodyState extends State<_SheetBody> {
       );
     }
 
-    // Общая подложка листа — во всю ширину пунктов, включая подписи.
-    // IntrinsicWidth подгоняет подложку под самую широкую строку.
-    // Левая сторона — без рамки (лист выезжает от левого края,
-    // рамка там была бы лишней линией у края экрана); правая сторона
-    // скруглена и обведена сигнальною рамкою.
+    // The common backing spans the entire width of the items,
+    // including labels. IntrinsicWidth fits the backing to the
+    // widest row. The left side has no border (the sheet slides in
+    // from the left edge, a border there would be an extra line at
+    // the screen edge); the right side is rounded and traced by a
+    // signal-colored border.
     final strokeW = widget.side / 16;
     final radiusR = widget.side * 0.3;
 

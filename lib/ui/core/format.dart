@@ -1,65 +1,67 @@
 // ═══════════════════════════════════════════════════════════════════
-// format.dart — единые форматтеры дат и длительностей.
+// format.dart — unified date and duration formatters.
 //
-// Всё, что зависит от языка (подписи единиц времени, дни недели),
-// берётся чрез переводчик Translate (сие String Function(String)).
+// Everything language-dependent (unit labels, weekdays) is taken via
+// the Translate function (String Function(String)).
 //
-// Подписи единиц: time.d, time.h, time.m, time.s.
-// Дни недели: time.mon, time.tue, time.wed, time.thu, time.fri,
-//             time.sat, time.sun.
+// Unit labels: time.d, time.h, time.m, time.s.
+// Weekdays: time.mon, time.tue, time.wed, time.thu, time.fri,
+//           time.sat, time.sun.
 //
-// Ведущий ноль — только у второго числа в паре («3ч 07м», «3д 05ч»).
-// Одиночное число — без нуля («7м», «5с»).
+// Leading zero — only on the second number in a pair («3h 07m»,
+// «3d 05h»). A standalone number — without a zero («7m», «5s»).
 //
-// Прозрачность не применяется.
+// The repeated local two() closures have been extracted into the
+// top-level _two() helper to eliminate duplication.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 typedef Translate = String Function(String key);
 
-// ─── Дата «пн 06.10 10:31» ───
+// ─── Pads a single-digit number with a leading zero ───
+String _two(int n) => n.toString().padLeft(2, '0');
+
+// ─── Date «Mon 06.10 10:31» ───
 String fmtDate(int unixSec, Translate t) {
   final d = DateTime.fromMillisecondsSinceEpoch(unixSec * 1000);
   final wd = _weekdayKey(d.weekday);
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '${t(wd)} ${two(d.day)}.${two(d.month)} '
-      '${two(d.hour)}:${two(d.minute)}';
+  return '${t(wd)} ${_two(d.day)}.${_two(d.month)} '
+      '${_two(d.hour)}:${_two(d.minute)}';
 }
 
-// ─── Дата полная, с годом — для отчёта ───
+// ─── Full date, with year — for the report ───
 String fmtDateFull(int unixSec, Translate t) {
   final d = DateTime.fromMillisecondsSinceEpoch(unixSec * 1000);
   final wd = _weekdayKey(d.weekday);
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '${t(wd)} ${two(d.day)}.${two(d.month)}.${d.year} '
-      '${two(d.hour)}:${two(d.minute)}';
+  return '${t(wd)} ${_two(d.day)}.${_two(d.month)}.${d.year} '
+      '${_two(d.hour)}:${_two(d.minute)}';
 }
 
-// ─── Короткое время «9ч 03м», «3д 5ч», «7м» ───
+// ─── Short time «9h 03m», «3d 5h», «7m» ───
 String fmtTime(int sec, Translate t) {
   if (sec < 0) sec = 0;
   final days = sec ~/ 86400;
   final hours = (sec % 86400) ~/ 3600;
   final minutes = (sec % 3600) ~/ 60;
-  String two(int n) => n.toString().padLeft(2, '0');
   if (days > 0) return '$days${t('time.d')} $hours${t('time.h')}';
-  if (hours > 0) return '$hours${t('time.h')} ${two(minutes)}${t('time.m')}';
+  if (hours > 0) return '$hours${t('time.h')} ${_two(minutes)}${t('time.m')}';
   return '$minutes${t('time.m')}';
 }
 
-// ─── Формат правки времени: «дд:чч:мм:сс» ───
+// ─── Editable time format: «dd:hh:mm:ss» ───
 String fmtEditable(int sec) {
   if (sec < 0) sec = 0;
   final d = sec ~/ 86400;
   final h = (sec % 86400) ~/ 3600;
   final m = (sec % 3600) ~/ 60;
   final s = sec % 60;
-  String two(int n) => n.toString().padLeft(2, '0');
-  if (d > 0) return '${two(d)}:${two(h)}:${two(m)}:${two(s)}';
-  if (h > 0) return '${two(h)}:${two(m)}:${two(s)}';
-  return '${two(m)}:${two(s)}';
+  if (d > 0) return '${_two(d)}:${_two(h)}:${_two(m)}:${_two(s)}';
+  if (h > 0) return '${_two(h)}:${_two(m)}:${_two(s)}';
+  return '${_two(m)}:${_two(s)}';
 }
 
-// ─── Разбор правки времени ───
+// ─── Parse editable time ───
 int? parseEditable(String s) {
   final t = s.trim();
   if (t.isEmpty) return 0;
@@ -94,9 +96,9 @@ int? parseEditable(String s) {
   return null;
 }
 
-// ─── Плановое время: «дни:часы:минуты» ───
-// Дни — до трёх знаков, часы и минуты — всегда по два знака.
-// Предел — 999 суток без малого.
+// ─── Planned time: «days:hours:minutes» ───
+// Days — up to three digits; hours and minutes — always two digits.
+// Limit — 999 days less a fraction.
 const int kPlannedMaxSec = 999 * 86400 + 23 * 3600 + 59 * 60;
 
 String fmtPlannedTime(int sec) {
@@ -105,16 +107,15 @@ String fmtPlannedTime(int sec) {
   final d = sec ~/ 86400;
   final h = (sec % 86400) ~/ 3600;
   final m = (sec % 3600) ~/ 60;
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '$d:${two(h)}:${two(m)}';
+  return '$d:${_two(h)}:${_two(m)}';
 }
 
-// ─── Разбор планового времени ───
-// Одно число — минуты. Два чрез двоеточие — часы и минуты.
-// Три — дни, часы, минуты. Любая часть — неотрицательное целое
-// без ограничения по разрядности; приведение к канону — в
-// fmtPlannedTime. Возвращает секунды; null — ежели знаки
-// не числовые, отрицательные либо итог превосходит предел.
+// ─── Parse planned time ───
+// One number — minutes. Two through a colon — hours and minutes.
+// Three — days, hours, minutes. Any part — a non-negative integer
+// without a digit limit; canonization — in fmtPlannedTime.
+// Returns seconds; null — if characters are non-numeric, negative,
+// or the total exceeds the limit.
 int? parsePlannedTime(String s) {
   final t = s.trim();
   if (t.isEmpty) return 0;
@@ -148,7 +149,7 @@ int? parsePlannedTime(String s) {
   return total;
 }
 
-// ─── Ключ дня недели ───
+// ─── Weekday key ───
 String _weekdayKey(int weekday) {
   switch (weekday) {
     case DateTime.monday:

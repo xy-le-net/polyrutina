@@ -37,6 +37,9 @@
 // Marks. The reread pult is active only as long as the supreme
 // journal number exceeds lastRereadId.
 //
+// ScaffoldMessenger and context are captured before the first await
+// in asynchronous methods to prevent errors on unmounted widgets.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -165,7 +168,7 @@ class _RubkaDataState extends State<RubkaData> {
   Future<void> _shakeOrphans() async {
     final app = AppScope.of(context);
     final i18n = app.i18n;
-    // Contexts and messenger — before await.
+    // Contexts and messenger — before the first await.
     final messenger = ScaffoldMessenger.of(context);
     final dir = await getApplicationDocumentsDirectory();
     final mediaDir = Directory(p.join(dir.path, 'media'));

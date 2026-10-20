@@ -1,16 +1,19 @@
 // ═══════════════════════════════════════════════════════════════════
-// root_pult.dart — корневой пульт (компас).
+// root_pult.dart — root pult (compass).
 //
-// Свёрнутый — компас в левом верхнем углу. Касание просит открыть
-// единый левосторонний лист подпультов с родами вкладок: сам лист
-// рисуется чрез showPultSheet (pult_sheet.dart), а сей виджет лишь
-// подаёт сигнал onOpen.
+// Collapsed — a compass in the top-left corner. A tap requests
+// opening the single left-side subpult sheet with tab kinds: the
+// sheet itself is drawn via showPultSheet (pult_sheet.dart), while
+// this widget merely sends the onOpen signal.
 //
-// Панель вкладок (RootTabsPanel) упразднена: подпульты всех родов
-// выезжают слева единым способом. RootTabItem сохранён — им
-// пользуется main для перечня вкладок.
+// The tab panel (RootTabsPanel) is abolished: subpults of all kinds
+// slide out from the left in a unified manner. RootTabItem is
+// preserved — it is used by main for the tab list.
 //
-// Прозрачность не применяется.
+// The unused `selected` parameter of _core has been removed: the
+// root pult is never selected.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -42,13 +45,13 @@ class RootPult extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapUp: (_) => onOpen(),
-      child: _core(Icons.explore, false, side),
+      child: _core(Icons.explore, side),
     );
   }
 
-  // Ядро пульта: тройная вложенная обводка.
-  Widget _core(IconData icon, bool selected, double s) {
-    final coreColor = selected ? signal : fg;
+  // Pult core: triple nested border.
+  Widget _core(IconData icon, double s) {
+    final coreColor = fg; // The root pult is never selected.
     final iconColor = bg;
     final borderW = s / 16;
     final rOuter = s * 0.18;
@@ -70,10 +73,7 @@ class RootPult extends StatelessWidget {
     core = Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(rInner),
-        border: Border.all(
-          color: selected ? iconColor : coreColor,
-          width: borderW,
-        ),
+        border: Border.all(color: coreColor, width: borderW),
       ),
       child: core,
     );

@@ -1,18 +1,18 @@
 // ═══════════════════════════════════════════════════════════════════
-// notice_dialog.dart — всплывающее уведомление в стиле блоков.
+// notice_dialog.dart — pop-up notification in the style of blocks.
 //
-// Устройство. Рамка той же формы, что блоки: фон bg, обводка dim,
-// скругление радиуса kRadius, отбивка kFramePad. Внутри — текст
-// и кнопка подтверждения словом (сигнального цвета), как «сброс»
-// в иных местах. Снимается касанием кнопки либо касанием вне
-// рамки. Иных кнопок нет.
+// Structure. A frame of the same shape as the blocks: background bg,
+// border dim, corner radius kRadius, padding kFramePad. Inside — text
+// and a confirmation button by word (signal-colored), as «reset»
+// elsewhere. Dismissed by tapping the button or tapping outside the
+// frame. No other buttons exist.
 //
-// Употребление.
-//   await showNotice(context, title: 'сирот не нашлось');
-//   await showNotice(context, title: 'удалено: 3',
-//                    subtitle: 'освобождено: 12 МБ');
+// Usage.
+//   await showNotice(context, title: 'no orphans found');
+//   await showNotice(context, title: 'removed: 3',
+//                    subtitle: 'freed: 12 MB');
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -40,11 +40,11 @@ Future<void> showNotice(
     builder: (ctx) {
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
-        // Касание вне рамки — снять.
+        // Tapping outside the frame — dismiss.
         onTap: () => Navigator.of(ctx).pop(),
         child: Center(
           child: GestureDetector(
-            // Касание внутри рамки — поглотить, не снимать.
+            // Tapping inside the frame — absorb, do not dismiss.
             onTap: () {},
             child: Container(
               margin: EdgeInsets.symmetric(horizontal: side * 1.2),

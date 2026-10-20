@@ -22,6 +22,9 @@
 //
 // Application context (AppContext) is taken BEFORE awaits.
 //
+// The unused geolocator import has been removed (geo picking is
+// now handled entirely by geo_picker.dart).
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 

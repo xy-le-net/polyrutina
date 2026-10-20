@@ -28,6 +28,9 @@
 // chevron (same as checklist_screen and media_viewer) — the single
 // pattern of exit for full-screen sheets.
 //
+// The snapshot writing logic has been extracted into the private
+// method _writeSnapshot to keep _save concise and linear.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -45,7 +48,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
-import '../core/control_row.dart'; // Added for unified title spacing
+import '../core/control_row.dart';
 import '../pults/pult_core.dart';
 
 Future<void> showGeoPicker({
@@ -138,6 +141,32 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
     }
   }
 
+  // ─── Write the snapshot to media/ ───
+  // Returns the file path and name, or empty strings on failure.
+  // The name follows the common template.
+  Future<({String path, String name})> _writeSnapshot(
+    ui.Image img,
+    int objectId,
+    String slot,
+  ) async {
+    final app = AppScope.of(context);
+    try {
+      final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) return (path: '', name: '');
+
+      final idx = app.bort.nextExportIndex('media_${objectId}_${slot}_geo');
+      final name = '${app.bort.deviceId}_${objectId}_${slot}_geo_$idx.png';
+      final dir = await getApplicationDocumentsDirectory();
+      final media = Directory(p.join(dir.path, 'media'));
+      if (!await media.exists()) await media.create(recursive: true);
+      final file = File(p.join(media.path, name));
+      await file.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
+      return (path: file.path, name: name);
+    } catch (_) {
+      return (path: '', name: '');
+    }
+  }
+
   // ─── Save ───
   // The snapshot is put into media/ alongside other attachments;
   // the name follows the common template. Coordinates and path
@@ -156,21 +185,9 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
       String name = '';
 
       if (img != null) {
-        final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
-        if (byteData != null) {
-          final idx = app.bort.nextExportIndex(
-            'media_${widget.objectId}_${widget.slot}_geo',
-          );
-          name =
-              '${app.bort.deviceId}_${widget.objectId}_${widget.slot}'
-              '_geo_$idx.png';
-          final dir = await getApplicationDocumentsDirectory();
-          final media = Directory(p.join(dir.path, 'media'));
-          if (!await media.exists()) await media.create(recursive: true);
-          final file = File(p.join(media.path, name));
-          await file.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
-          path = file.path;
-        }
+        final res = await _writeSnapshot(img, widget.objectId, widget.slot);
+        path = res.path;
+        name = res.name;
       }
 
       await app.traceLayer.attachFile(

@@ -46,6 +46,10 @@
 // Deletion is an edit entry with the file stripped; the file on
 // disk stays as evidence of history.
 //
+// The _isPlayable getter is introduced to unify the check for
+// audio/video kinds, eliminating duplicated conditions and
+// simplifying the bottom row and slider logic.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -100,6 +104,13 @@ class _MediaViewerState extends State<MediaViewer> {
   StreamSubscription<PlayerState>? _audioStateSub;
   StreamSubscription<Duration>? _audioPosSub;
   bool _audioPlaying = false;
+
+  // Unified check for playable media kinds (audio or video).
+  bool get _isPlayable {
+    final f = _current;
+    return f != null &&
+        (f.kind == MediaKind.audio || f.kind == MediaKind.video);
+  }
 
   @override
   void initState() {
@@ -390,13 +401,13 @@ class _MediaViewerState extends State<MediaViewer> {
         child: Stack(
           children: [
             Positioned.fill(child: _body(f, bort, i18n, side)),
-            if (f != null &&
-                (f.kind == MediaKind.audio || f.kind == MediaKind.video))
+            // Slider is shown only for playable media kinds.
+            if (_isPlayable)
               Positioned(
                 left: side * 0.5,
                 right: side * 0.5,
                 bottom: side * 1.6,
-                child: _sliderFor(f, bort, side),
+                child: _sliderFor(f!, bort, side),
               ),
             Positioned(
               left: 0,
@@ -419,6 +430,7 @@ class _MediaViewerState extends State<MediaViewer> {
         return SizedBox(width: side);
       }
       late final PultSpec spec;
+      // Unified play/pause logic for audio and video.
       if (f.kind == MediaKind.audio || f.kind == MediaKind.video) {
         spec = PultSpec(
           id: 'media_center',

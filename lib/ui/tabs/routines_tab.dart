@@ -1,24 +1,31 @@
 // ═══════════════════════════════════════════════════════════════════
-// routines_tab.dart — вкладка рутин.
+// routines_tab.dart — routines tab.
 //
-// Сверху — строка смены (ShiftRow). Под ней — список рутин
-// (RoutinePlate). Низу — три пульта: создать/отмена, отчёт,
-// действия для выбранных (в режиме выбора).
+// At the top — the shift row (ShiftRow). Below it — the routine list
+// (RoutinePlate). At the bottom — three pults: create/cancel, report,
+// actions for the selected (in selection mode).
 //
-// Режим выбора: долгое нажатие на рутине включает. Слева за блоком
-// появляются чекбоксы.
+// Selection mode: triggered by a long press on a routine. Checkboxes
+// appear to the left of the block.
 //
-// Широкий экран (мозаика). Активные — сеткою. Полоса «завершено»
-// на всю ширину с волосяными линиями. Затем — завершённые сеткою.
+// Wide screen (mosaic). Active — in a grid. The «completed» band
+// spans the full width with hairline dividers. Then — completed in
+// a grid.
 //
-// Таймер перерисовывается по смене видимой единицы.
+// The timer redraws on the change of the visible unit.
 //
-// Прозрачность не применяется.
+// Refactorings: the body construction logic is extracted into
+// _buildBody to keep the main build method concise. The dynamic
+// parameter in _sortedGroups is replaced with the strict RoutineLayer
+// type.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 
 import '../../data/routine.dart';
+import '../../data/routine_layer.dart';
 import '../../data/ticker.dart';
 import '../core/app_scope.dart';
 import '../pults/pult_core.dart';
@@ -67,6 +74,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final sec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final min = sec ~/ 60;
 
+    // Check if any running block or shift is under a minute.
     var subMinute = false;
     for (final r in app.routineLayer.routines) {
       final b = r.runningBlock;
@@ -169,9 +177,10 @@ class _RoutinesTabState extends State<RoutinesTab> {
     return false;
   }
 
-  // ─── Групповое удаление ───
-  // Все удаления — одною транзакциею: либо вся пачка, либо ничего.
-  // Иначе при сбое посреди списка часть рутин осталась бы.
+  // ─── Group deletion ───
+  // All deletions — within a single transaction: either the whole
+  // batch or nothing. Otherwise, on a failure in the middle of the
+  // list, some routines would remain.
   Future<void> _deleteSelected() async {
     final app = AppScope.of(context);
     final ids = _selected.toList();
@@ -187,9 +196,10 @@ class _RoutinesTabState extends State<RoutinesTab> {
     _exitSelectMode();
   }
 
-  // ─── Групповое завершение ───
-  // Завершение рутины само гасит идущие блоки и пишет несколько
-  // записей; вся пачка — внутри одной внешней транзакции.
+  // ─── Group completion ───
+  // Completing a routine itself pauses running blocks and writes
+  // several entries; the whole batch — inside a single outer
+  // transaction.
   Future<void> _completeSelected() async {
     final app = AppScope.of(context);
     final ids = _selected.toList();
@@ -208,7 +218,10 @@ class _RoutinesTabState extends State<RoutinesTab> {
     _exitSelectMode();
   }
 
-  ({List<Routine> active, List<Routine> done}) _sortedGroups(dynamic layer) {
+  // Strict type RoutineLayer instead of dynamic.
+  ({List<Routine> active, List<Routine> done}) _sortedGroups(
+    RoutineLayer layer,
+  ) {
     final all = List<Routine>.from(layer.routines);
     final active = <Routine>[];
     final done = <Routine>[];
@@ -233,6 +246,102 @@ class _RoutinesTabState extends State<RoutinesTab> {
     });
     done.sort((a, b) => b.lastActionAt.compareTo(a.lastActionAt));
     return (active: active, done: done);
+  }
+
+  // ─── Build the body (list or mosaic) ───
+  // Extracted from build to keep it concise. Chooses between the
+  // single-column list and the mosaic grid based on screen width.
+  Widget _buildBody(
+    bool mosaic,
+    int cols,
+    List<Routine> active,
+    List<Routine> done,
+    Widget Function(Routine) plateOf,
+    String noRoutinesText,
+    String completedText,
+    Color dim,
+    double side,
+  ) {
+    if (active.isEmpty && done.isEmpty) {
+      return Center(
+        child: Text(noRoutinesText, style: TextStyle(color: dim)),
+      );
+    }
+
+    if (!mosaic) {
+      final items = <Widget>[];
+      for (final r in active) {
+        items.add(plateOf(r));
+      }
+      if (done.isNotEmpty) {
+        items.add(
+          Padding(
+            padding: EdgeInsets.fromLTRB(8, side * 0.6, 8, side * 0.15),
+            child: Text(
+              completedText,
+              style: TextStyle(color: dim, fontSize: side * 0.4),
+            ),
+          ),
+        );
+        for (final r in done) {
+          items.add(plateOf(r));
+        }
+      }
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(8, 4, 8, 80),
+        children: items,
+      );
+    }
+
+    // Mosaic (wide screen).
+    final children = <Widget>[];
+    if (active.isNotEmpty) {
+      children.add(
+        GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: cols,
+          childAspectRatio: 2.5,
+          children: active.map(plateOf).toList(),
+        ),
+      );
+    }
+    if (done.isNotEmpty) {
+      children.add(
+        Padding(
+          padding: EdgeInsets.fromLTRB(4, side * 0.6, 4, side * 0.15),
+          child: Row(
+            children: [
+              Expanded(child: Divider(color: dim, thickness: 1)),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: side * 0.3),
+                child: Text(
+                  completedText,
+                  style: TextStyle(color: dim, fontSize: side * 0.4),
+                ),
+              ),
+              Expanded(child: Divider(color: dim, thickness: 1)),
+            ],
+          ),
+        ),
+      );
+      children.add(
+        GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: cols,
+          childAspectRatio: 2.5,
+          children: done.map(plateOf).toList(),
+        ),
+      );
+    }
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 80),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      ),
+    );
   }
 
   @override
@@ -280,85 +389,18 @@ class _RoutinesTabState extends State<RoutinesTab> {
           ),
         );
 
-        Widget body;
-
-        if (groups.active.isEmpty && groups.done.isEmpty) {
-          body = Center(
-            child: Text(i18n.t('routine.none'), style: TextStyle(color: dim)),
-          );
-        } else if (!mosaic) {
-          final items = <Widget>[];
-          for (final r in groups.active) {
-            items.add(plateOf(r));
-          }
-          if (groups.done.isNotEmpty) {
-            items.add(
-              Padding(
-                padding: EdgeInsets.fromLTRB(8, side * 0.6, 8, side * 0.15),
-                child: Text(
-                  i18n.t('routine.completed'),
-                  style: TextStyle(color: dim, fontSize: side * 0.4),
-                ),
-              ),
-            );
-            for (final r in groups.done) {
-              items.add(plateOf(r));
-            }
-          }
-          body = ListView(
-            padding: const EdgeInsets.fromLTRB(8, 4, 8, 80),
-            children: items,
-          );
-        } else {
-          final children = <Widget>[];
-          if (groups.active.isNotEmpty) {
-            children.add(
-              GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: cols,
-                childAspectRatio: 2.5,
-                children: groups.active.map(plateOf).toList(),
-              ),
-            );
-          }
-          if (groups.done.isNotEmpty) {
-            children.add(
-              Padding(
-                padding: EdgeInsets.fromLTRB(4, side * 0.6, 4, side * 0.15),
-                child: Row(
-                  children: [
-                    Expanded(child: Divider(color: dim, thickness: 1)),
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: side * 0.3),
-                      child: Text(
-                        i18n.t('routine.completed'),
-                        style: TextStyle(color: dim, fontSize: side * 0.4),
-                      ),
-                    ),
-                    Expanded(child: Divider(color: dim, thickness: 1)),
-                  ],
-                ),
-              ),
-            );
-            children.add(
-              GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: cols,
-                childAspectRatio: 2.5,
-                children: groups.done.map(plateOf).toList(),
-              ),
-            );
-          }
-          body = SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(8, 4, 8, 80),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: children,
-            ),
-          );
-        }
+        // Body is built by the extracted method.
+        final body = _buildBody(
+          mosaic,
+          cols,
+          groups.active,
+          groups.done,
+          plateOf,
+          i18n.t('routine.none'),
+          i18n.t('routine.completed'),
+          dim,
+          side,
+        );
 
         return Stack(
           children: [
@@ -372,6 +414,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
                 Expanded(child: body),
               ],
             ),
+            // Bottom-left pult: create or cancel selection.
             Positioned(
               left: 12,
               bottom: 12,
@@ -387,6 +430,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
                 overrideSize: side,
               ),
             ),
+            // Bottom-right pult: export report.
             Positioned(
               right: 12,
               bottom: 12,
@@ -403,6 +447,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
                 overrideSize: side,
               ),
             ),
+            // Bottom-center pult: actions for the selected.
             if (_selectMode)
               Positioned(
                 left: 0,

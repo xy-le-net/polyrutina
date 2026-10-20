@@ -1,33 +1,39 @@
 // ═══════════════════════════════════════════════════════════════════
-// report.dart — отчёт по рутинам и упаковка в zip.
+// report.dart — routine report and zip packaging.
 //
-// Отчёт — текстовый, человекочитаемый. Рутина отдельным разделом:
-//   — знак завершённости перед именем: ✓ либо ○;
-//   — имя рутины;
-//   — под ним: «(завершено)» либо «(в процессе)»;
-//   — время создания (день недели и подписи единиц — из словаря);
-//   — блоки по порядку: имя, время (ежели ненулевое);
-//   — под блоком — текстовый след (комментарий), ежели есть;
-//   — чек-лист: пункты, у каждого ✓ (отмечено) либо ○ (нет);
-//   — строка «прикреплено:» — счётчики по родам медиа, приглушённо.
+// The report is textual, human-readable. Each routine is a separate
+// section:
+//   — a completion mark before the name: ✓ or ○;
+//   — the routine name;
+//   — below it: «(completed)» or «(in progress)»;
+//   — creation time (weekday and unit labels — from the dictionary);
+//   — blocks in order: name, time (if non-zero);
+//   — below the block — a text trace (comment), if any;
+//   — checklist: items, each with ✓ (checked) or ○ (not);
+//   — the line «attached:» — counters by media kind, dimmed.
 //
-// Для рода «место» координаты (широта, долгота, точность) выводятся
-// построчно — отдельного json-файла нет.
+// For the «geo» kind, coordinates (latitude, longitude, accuracy) are
+// output line by line — there is no separate json file.
 //
-// Упаковка. Каждый отчёт кладётся в zip-архив:
-//   report.txt — человекочитаемый отчёт;
-//   data.json — рутина целиком (универсальный формат);
-//   media/ — файлы медиа с исходными именами.
+// Packaging. Each report is put into a zip archive:
+//   report.txt — human-readable report;
+//   data.json — the routine as a whole (universal format);
+//   media/ — media files with original names.
 //
-// Имя архива:
-//   общий  — polyrutina_ГГ_ММ_ДД_индекс.zip
-//   частный — polyrutina_<имярутины>_ГГ_ММ_ДД_индекс.zip
-// где индекс — итерация экспорта данного объекта в этот день;
-// запретные знаки заменены заглавным «X»; рутина без имени — noname.
+// Archive name:
+//   general  — polyrutina_YY_MM_DD_index.zip
+//   specific — polyrutina_<routinename>_YY_MM_DD_index.zip
+// where index is the export iteration of this object on this day;
+// forbidden characters are replaced with an uppercase «X»; an unnamed
+// routine is «noname».
 //
-// По завершении — системный лист «поделиться» (share_plus).
+// Upon completion — the system «share» sheet (share_plus).
 //
-// Прозрачность не применяется.
+// Strict typing: dynamic i18n parameters are replaced with the
+// explicit I18n type, eliminating runtime type errors and clarifying
+// method contracts.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:convert';
@@ -40,6 +46,7 @@ import 'package:share_plus/share_plus.dart';
 
 import 'package:flutter/material.dart';
 
+import '../../data/i18n.dart';
 import '../../data/routine.dart';
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
@@ -48,14 +55,14 @@ import '../core/progress_dialog.dart';
 import 'report_json.dart';
 
 class ReportBuilder {
-  // ─── Замена запретных знаков в имени файла ───
+  // ─── Replacement of forbidden characters in a file name ───
   static String _safe(String s) {
     final bad = RegExp(r'[\\/:*?"<>|]');
     final out = s.replaceAllMapped(bad, (_) => 'X');
     return out.trim().isEmpty ? 'noname' : out;
   }
 
-  // ─── Метка даты для имени файла ───
+  // ─── Date stamp for the file name ───
   static String _stamp() {
     final n = DateTime.now();
     String two(int v) => v.toString().padLeft(2, '0');
@@ -63,10 +70,10 @@ class ReportBuilder {
         '${two(n.month)}_${two(n.day)}';
   }
 
-  // ─── Общий отчёт (все рутины) ───
+  // ─── General report (all routines) ───
   static Future<String?> build(
     AppContext app,
-    dynamic i18n, {
+    I18n i18n, {
     BuildContext? uiContext,
   }) async {
     final routines = <Routine>[];
@@ -83,10 +90,10 @@ class ReportBuilder {
     );
   }
 
-  // ─── Частный отчёт (одна рутина) ───
+  // ─── Specific report (one routine) ───
   static Future<String?> buildSingle(
     AppContext app,
-    dynamic i18n,
+    I18n i18n,
     int routineId, {
     BuildContext? uiContext,
   }) async {
@@ -103,10 +110,10 @@ class ReportBuilder {
     );
   }
 
-  // ─── Выборочный отчёт по списку id ───
+  // ─── Selective report by a list of ids ───
   static Future<String?> buildSelected(
     AppContext app,
-    dynamic i18n,
+    I18n i18n,
     List<int> ids, {
     BuildContext? uiContext,
   }) async {
@@ -125,15 +132,15 @@ class ReportBuilder {
     );
   }
 
-  // ─── Сборка, упаковка, отправка ───
-  // Прогресс. Во время долгих стадий (сбор вложений, упаковка,
-  // запись) выводится всплывающая рамка с круговым индикатором
-  // и словом-ссылкою «отмена». Значение token обновляется по мере
-  // продвижения; ежели token.cancelled — работа прерывается,
-  // файл не отдаётся.
+  // ─── Assembly, packaging, sending ───
+  // Progress. During long stages (attachment collection, packaging,
+  // writing) a pop-up frame with a circular indicator and the «cancel»
+  // link-word is displayed. The token value is updated as progress is
+  // made; if token.cancelled — the work is interrupted, the file is
+  // not given away.
   static Future<String?> _buildAndShare(
     AppContext app,
-    dynamic i18n,
+    I18n i18n,
     List<Routine> routines, {
     required String objectKey,
     String? routineLabel,
@@ -146,22 +153,20 @@ class ReportBuilder {
       return b.lastActionAt.compareTo(a.lastActionAt);
     });
 
-    // Прогресс. Токен, диалог, показ — коли есть контекст UI.
+    // Progress. Token, dialog, display — if a UI context exists.
     final token = ProgressToken();
     if (uiContext != null && uiContext.mounted) {
       showDialog<void>(
         context: uiContext,
         barrierDismissible: false,
         barrierColor: Colors.black.withValues(alpha: 0.2),
-        builder: (_) => ProgressDialog(
-          token: token,
-          title: i18n.t('export.prep') as String,
-        ),
+        builder: (_) =>
+            ProgressDialog(token: token, title: i18n.t('export.prep')),
       );
     }
     void report(double v) => token.report(v);
 
-    // ─── Текст отчёта ───
+    // ─── Report text ───
     report(0.02);
     final buf = StringBuffer();
     bool first = true;
@@ -176,7 +181,7 @@ class ReportBuilder {
     }
     if (token.cancelled) return null;
 
-    // ─── Архив: тексты ───
+    // ─── Archive: texts ───
     report(0.05);
     final archive = Archive();
     final reportBytes = utf8.encode(buf.toString());
@@ -194,8 +199,8 @@ class ReportBuilder {
     archive.addFile(ArchiveFile('data.json', jsonBytes.length, jsonBytes));
     if (token.cancelled) return null;
 
-    // ─── Медиа: собираем перечень ───
-    // Сбор занимает основную долю прогресса (0.1 → 0.8).
+    // ─── Media: collect the list ───
+    // Collection takes the main share of progress (0.1 → 0.8).
     final mediaFiles = <({String name, File file})>[];
     final seenNames = <String>{};
     for (final r in routines) {
@@ -223,7 +228,7 @@ class ReportBuilder {
     }
     if (token.cancelled) return null;
 
-    // Вкладываем файлы с ростом прогресса.
+    // Include files with progress growth.
     if (mediaFiles.isNotEmpty) {
       for (var i = 0; i < mediaFiles.length; i++) {
         if (token.cancelled) return null;
@@ -235,7 +240,7 @@ class ReportBuilder {
     }
     if (token.cancelled) return null;
 
-    // ─── Запись zip ───
+    // ─── Writing the zip ───
     report(0.85);
     final dir = await getApplicationDocumentsDirectory();
     final idx = app.bort.nextExportIndex(objectKey);
@@ -268,29 +273,29 @@ class ReportBuilder {
     return zipFile.path;
   }
 
-  // ─── Одна рутина (текст) ───
+  // ─── One routine (text) ───
   static void _writeRoutine(
     StringBuffer buf,
     AppContext app,
-    dynamic i18n,
+    I18n i18n,
     Routine r,
   ) {
     final mark = r.completed ? '✓' : '○';
-    final name = r.name.isEmpty ? i18n.t('routine.no_name') as String : r.name;
+    final name = r.name.isEmpty ? i18n.t('routine.no_name') : r.name;
     final stateText = r.completed
-        ? i18n.t('report.completed') as String
-        : i18n.t('report.in_progress') as String;
+        ? i18n.t('report.completed')
+        : i18n.t('report.in_progress');
 
     buf.writeln('$mark $name');
     buf.writeln('   ($stateText)');
-    buf.writeln('   ${fmtDateFull(r.createdAt, i18n.t as Translate)}');
+    buf.writeln('   ${fmtDateFull(r.createdAt, i18n.t)}');
     buf.writeln();
 
     for (final kind in RoutineBlock.kinds) {
       final b = r.blockOf(kind);
       if (b == null) continue;
       final sec = b.accumulatorSeconds;
-      final title = i18n.t('routine.block.$kind') as String;
+      final title = i18n.t('routine.block.$kind');
 
       final text = _textOf(app, r.id, kind);
       final attached = _attachedLine(app, r.id, kind, i18n);
@@ -310,7 +315,7 @@ class ReportBuilder {
       if (empty) continue;
 
       if (sec > 0) {
-        buf.writeln('   $title: ${fmtTime(sec, i18n.t as Translate)}');
+        buf.writeln('   $title: ${fmtTime(sec, i18n.t)}');
       } else {
         buf.writeln('   $title');
       }
@@ -323,7 +328,7 @@ class ReportBuilder {
 
       if (attached != null) buf.writeln('      $attached');
 
-      // ─── Гео-координаты — построчно ───
+      // ─── Geo coordinates — line by line ───
       final geoFiles = _geoFilesOf(app, r.id, kind);
       for (final g in geoFiles) {
         final lat = g.lat?.toStringAsFixed(6) ?? '?';
@@ -370,12 +375,12 @@ class ReportBuilder {
     return t.files.where((f) => f.kind == MediaKind.geo).toList();
   }
 
-  // ─── «прикреплено: N аудио, M фото.» ───
+  // ─── «attached: N audio, M photo.» ───
   static String? _attachedLine(
     AppContext app,
     int routineId,
     String slot,
-    dynamic i18n,
+    I18n i18n,
   ) {
     final t = app.traceLayer.findFirstByKindSlot(
       routineId,

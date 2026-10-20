@@ -26,6 +26,10 @@
 // property is explicitly set to false to prevent platform-specific
 // centering, and the text field truncates with ellipsis.
 //
+// Block list construction is extracted into a separate method
+// (_buildBlocksList) to keep the main build method clean and
+// readable.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -385,41 +389,19 @@ class _RoutineCardState extends State<RoutineCard> {
     await app.routineLayer.setPlanned(app.journal, r.id, total);
   }
 
-  @override
-  Widget build(BuildContext context) {
+  // ─── Blocks list construction ───
+  // Extracted from the build method to keep it concise. Builds the
+  // list of visible blocks (note, slots, summary) based on the
+  // current state and alternates their background colors.
+  List<Widget> _buildBlocksList(
+    BuildContext context,
+    Routine r,
+    List<String> shown,
+    int now,
+    bool anyEdited,
+  ) {
     final app = AppScope.of(context);
-    final bort = app.bort;
     final i18n = app.i18n;
-    final side = PultScope.of(context).smallSide;
-
-    final r = app.routineLayer.findRoutine(widget.routineId);
-    if (r == null) {
-      return Scaffold(
-        backgroundColor: bort.bg,
-        appBar: AppBar(backgroundColor: bort.bg, foregroundColor: bort.fg),
-        body: Center(
-          child: Text(
-            i18n.t('routine.not_found'),
-            style: TextStyle(color: bort.dim),
-          ),
-        ),
-      );
-    }
-
-    _autoScroll();
-
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final anyEdited = r.blocks.any((b) => b.timeEdited);
-
-    // ─── Order of shown blocks ───
-    // Build the list of shown blocks (the summary excluded) for
-    // the alternation.
-    final shown = <String>[];
-    if (_shouldShowSlot(r, 'note')) shown.add('note');
-    for (final k in RoutineBlock.kinds) {
-      if (_shouldShowSlot(r, k)) shown.add(k);
-    }
-
     final blocks = <Widget>[];
 
     Widget blockOf(String kind, String title, {bool isNote = false}) {
@@ -478,6 +460,47 @@ class _RoutineCardState extends State<RoutineCard> {
     if (_shouldShowSlot(r, 'summary')) {
       blocks.add(blockOf('summary', i18n.t('routine.summary')));
     }
+
+    return blocks;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final bort = app.bort;
+    final i18n = app.i18n;
+    final side = PultScope.of(context).smallSide;
+
+    final r = app.routineLayer.findRoutine(widget.routineId);
+    if (r == null) {
+      return Scaffold(
+        backgroundColor: bort.bg,
+        appBar: AppBar(backgroundColor: bort.bg, foregroundColor: bort.fg),
+        body: Center(
+          child: Text(
+            i18n.t('routine.not_found'),
+            style: TextStyle(color: bort.dim),
+          ),
+        ),
+      );
+    }
+
+    _autoScroll();
+
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final anyEdited = r.blocks.any((b) => b.timeEdited);
+
+    // ─── Order of shown blocks ───
+    // Build the list of shown blocks (the summary excluded) for
+    // the alternation.
+    final shown = <String>[];
+    if (_shouldShowSlot(r, 'note')) shown.add('note');
+    for (final k in RoutineBlock.kinds) {
+      if (_shouldShowSlot(r, k)) shown.add(k);
+    }
+
+    // Blocks are constructed in a dedicated method for clarity.
+    final blocks = _buildBlocksList(context, r, shown, now, anyEdited);
 
     // Control row: root pult on the left, the name field — in the
     // remainder. ControlRow computes the reserve; here — the same

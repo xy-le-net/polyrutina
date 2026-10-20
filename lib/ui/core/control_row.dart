@@ -20,6 +20,8 @@
 // — this is merely a reservation and layout. For AppBars, where a
 // separate widget is inappropriate, the static method reserve() gives
 // the same left padding value.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';

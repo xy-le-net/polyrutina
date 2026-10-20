@@ -26,6 +26,9 @@
 // single left-side sheet of subpults (pult_sheet.dart) with tab
 // kinds. PultLayer is removed.
 //
+// The pult side calculation uses clamp for brevity. A temporary
+// marker comment on the control_row import has been removed.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -41,7 +44,7 @@ import 'data/ticker.dart';
 import 'data/trace_layer.dart';
 import 'ui/cards/routine_card.dart';
 import 'ui/core/app_scope.dart';
-import 'ui/core/control_row.dart'; // Added for unified title spacing
+import 'ui/core/control_row.dart';
 import 'ui/pults/pult_core.dart';
 import 'ui/pults/pult_sheet.dart';
 import 'ui/pults/root_pult.dart';
@@ -254,10 +257,12 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     );
   }
 
+  // ─── Pult side calculation ───
+  // Clamped to the maximum allowed size to prevent overflow.
   double _pultSide(BuildContext context) {
     final systemScale = MediaQuery.textScalerOf(context).scale(1.0);
     final raw = _pultBase * systemScale * _bort.scale;
-    return raw > _pultMax ? _pultMax : raw;
+    return raw.clamp(0.0, _pultMax);
   }
 
   SystemUiOverlayStyle _overlayStyle(Brightness brightness) {
@@ -349,8 +354,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           backgroundColor: _bort.bg,
           foregroundColor: _bort.fg,
           elevation: 0,
-          centerTitle: false, // Force left alignment for titles
-          titleSpacing: rootReserve, // Unified spacing
+          centerTitle: false, // Force left alignment for titles.
+          titleSpacing: rootReserve, // Unified spacing.
           systemOverlayStyle: _overlayStyle(
             _effectiveBrightness(_bort.systemBrightness),
           ),

@@ -1,11 +1,11 @@
 // ═══════════════════════════════════════════════════════════════════
-// trace_media_row.dart — строка медиа-пультов следа.
+// trace_media_row.dart — row of trace media pults.
 //
-// Вынесена из trace_field. Показывает по одному пульту на каждый
-// род медиа, что уже есть в слоте, справа от пульта — число.
-// Касание открывает просмотр последнего добавленного файла сего рода.
+// Extracted from trace_field. Shows one pult per media kind already
+// present in the slot, with the count to the right of the pult.
+// Tapping opens the viewer at the last added file of that kind.
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -51,6 +51,7 @@ class TraceMediaRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Count files by kind.
     final counts = <String, int>{};
     for (final f in files) {
       counts[f.kind] = (counts[f.kind] ?? 0) + 1;
@@ -71,6 +72,7 @@ class TraceMediaRow extends StatelessWidget {
                 label: '${counts[kind]}',
                 compactLabel: true,
                 onTap: () {
+                  // Open the last added file of this kind.
                   final idx = files.lastIndexWhere((f) => f.kind == kind);
                   if (idx >= 0) onOpen(files, idx);
                 },

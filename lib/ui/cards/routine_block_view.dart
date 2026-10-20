@@ -19,11 +19,15 @@
 // (pultSide). The export button in «total» does not stick to the
 // completion pult.
 //
+// Strict typing is enforced for the AppContext and I18n parameters
+// in subpult builders to prevent runtime type errors.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 
+import '../../data/i18n.dart';
 import '../../data/journal_types.dart';
 import '../../data/routine.dart';
 import '../core/app_scope.dart';
@@ -158,6 +162,7 @@ class RoutineBlockView extends StatelessWidget {
 
     if (showPulse) {
       if (editingKind == kind) {
+        // Time editing mode: text field with a confirmation pult.
         cornerTop = Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -196,6 +201,7 @@ class RoutineBlockView extends StatelessWidget {
           ],
         );
       } else {
+        // Normal mode: running timer with start/pause pult.
         Widget pulse = Pulse(
           spec: PultSpec(
             id: 'block_$kind',
@@ -216,6 +222,7 @@ class RoutineBlockView extends StatelessWidget {
           t: i18n.t,
           ticker: app.ticker,
         );
+        // Underline indicates manually edited time.
         if (timeEdited) {
           pulse = Container(
             decoration: BoxDecoration(
@@ -229,6 +236,7 @@ class RoutineBlockView extends StatelessWidget {
         cornerTop = pulse;
       }
     } else if (showCompletion) {
+      // Summary mode: total time and completion tick.
       cornerTop = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -256,6 +264,7 @@ class RoutineBlockView extends StatelessWidget {
         ],
       );
     } else if (seconds > 0) {
+      // Static time display for non-running blocks.
       cornerTop = TimerText(
         seconds: seconds,
         running: false,
@@ -280,6 +289,7 @@ class RoutineBlockView extends StatelessWidget {
 
     Widget? body;
     if (kind == 'summary') {
+      // Summary block: breakdown of time by slots.
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       final rows = <Widget>[];
       for (final b in routine.blocks) {
@@ -332,8 +342,7 @@ class RoutineBlockView extends StatelessWidget {
     Widget? topRight = cornerTop;
 
     if (showFlags) {
-      // Order left to right: date, plan, show all, flags, then block
-      // timer (if any).
+      // Note block: top right row with date, plan, show all, and flags.
       final datePult = onPickDate == null
           ? null
           : Pult(
@@ -465,7 +474,9 @@ class RoutineBlockView extends StatelessWidget {
     Icons.fitness_center,
   ];
 
-  List<PultSpec> _flagSubs(dynamic app, Routine routine, dynamic i18n) {
+  // Generates subpults for flag selection. Strictly typed parameters
+  // (AppContext, I18n) replace the former dynamic types.
+  List<PultSpec> _flagSubs(AppContext app, Routine routine, I18n i18n) {
     final out = <PultSpec>[];
     final cur = routine.flags;
     for (var i = 0; i < _flagBits.length; i++) {

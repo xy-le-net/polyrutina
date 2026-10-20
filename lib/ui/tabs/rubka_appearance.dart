@@ -1,18 +1,23 @@
 // ═══════════════════════════════════════════════════════════════════
-// rubka_appearance.dart — блок «оформление» в рубке.
+// rubka_appearance.dart — «appearance» block in the rubka.
 //
-// Четыре пульта темы: система, день, ночь, своя. Текущая — отмечена.
+// Four theme pults: system, day, night, custom. The current one is
+// marked.
 //
-// Поля пяти ролей (bg, bgdim, dim, fg, signal) — токмо для «своей»
-// темы и показываются всегда, независимо от того, какая тема
-// действует: править свою можно, стоя в любой другой. День и ночь
-// не правятся, полей не имеют.
+// Fields for the five roles (bg, bgdim, dim, fg, signal) — only for
+// the «custom» theme, always shown regardless of the active theme:
+// the custom theme can be edited while standing in any other. Day
+// and night are not editable and have no fields.
 //
-// Подблок с коэффициентами размеров из рубки упразднён:
-// коэффициенты остаются в файле борта и в умолчаниях, но не
-// правятся отсюда.
+// The sub-block with size coefficients from the rubka is abolished:
+// coefficients remain in the bort file and defaults, but are not
+// edited from here.
 //
-// Прозрачность не применяется.
+// Simplifications: unused parameters (dim in _themeRow; dim, bg,
+// signal in _colorRow) are removed. The five repeated calls to
+// _colorRow are replaced by a loop over the role names.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -62,14 +67,14 @@ class RubkaAppearance extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _themeRow(context, fg, dim, bg, signal, side),
-          // Поля «своей» темы — всегда, вне зависимости от действующей.
+          _themeRow(context, fg, bg, signal, side),
+          // Fields for the «custom» theme — always shown, regardless
+          // of the active theme.
           _sectionTitle(i18n.t('theme.custom'), dim, side),
-          _colorRow(context, 'custom', 'bg', fg, dim, bg, signal, side),
-          _colorRow(context, 'custom', 'bgdim', fg, dim, bg, signal, side),
-          _colorRow(context, 'custom', 'dim', fg, dim, bg, signal, side),
-          _colorRow(context, 'custom', 'fg', fg, dim, bg, signal, side),
-          _colorRow(context, 'custom', 'signal', fg, dim, bg, signal, side),
+          // The five color roles are generated via a loop to avoid
+          // repetition.
+          for (final role in const ['bg', 'bgdim', 'dim', 'fg', 'signal'])
+            _colorRow(context, 'custom', role, fg, side),
         ],
       ),
     );
@@ -85,11 +90,10 @@ class RubkaAppearance extends StatelessWidget {
     );
   }
 
-  // ─── Четыре пульта темы рядом ───
+  // ─── Four theme pults in a row ───
   Widget _themeRow(
     BuildContext context,
     Color fg,
-    Color dim,
     Color bg,
     Color signal,
     double side,
@@ -143,14 +147,13 @@ class RubkaAppearance extends StatelessWidget {
     );
   }
 
+  // ─── Color role row (hex input + preview) ───
+  // Only fg and side are used by the row's UI.
   Widget _colorRow(
     BuildContext context,
     String themeName,
     String role,
     Color fg,
-    Color dim,
-    Color bg,
-    Color signal,
     double side,
   ) {
     final app = AppScope.of(context);
@@ -180,6 +183,7 @@ class RubkaAppearance extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
+                // Color preview square.
                 Container(
                   width: 28,
                   height: 28,

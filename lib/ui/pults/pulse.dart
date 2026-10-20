@@ -1,12 +1,13 @@
 // ═══════════════════════════════════════════════════════════════════
-// pulse.dart — пульс: пульт с таймером.
+// pulse.dart — pulse: a pult with a timer.
 //
-// Пульс — ряд: слева таймер (TimerText), справа пульт (Pult).
+// A pulse is a row: on the left a timer (TimerText), on the right
+// a pult (Pult).
 //
-// Цвета берутся из переданной четвёрки (bg, dim, fg, signal).
-// Переводчик t нужен для подписей единиц времени.
+// Colors are taken from the passed quadruple (bg, dim, fg, signal).
+// The translator t is needed for unit labels.
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';

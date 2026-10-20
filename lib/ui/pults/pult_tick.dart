@@ -1,16 +1,16 @@
 // ═══════════════════════════════════════════════════════════════════
-// pult_tick.dart — чекбокс на базе Pult.
+// pult_tick.dart — checkbox based on Pult.
 //
-// Два режима:
-//   binary — кружок приглушённый (не отмечено) / галочка (отмечено);
-//   небинарный — кружок приглушённый (отмечать нечего) / галочка
-//                приглушённая (всё отмечено) / сигнальное число
-//                (сколько осталось отметить).
+// Two modes:
+//   binary — dimmed circle (unchecked) / checkmark (checked);
+//   non-binary — dimmed circle (nothing to check) / dimmed checkmark
+//                (all checked) / signal-colored number
+//                (how many remain to be checked).
 //
-// Число в небинарном режиме выводится в ядре пульта чрез centerText —
-// на месте иконы, без подписи сбоку.
+// The number in non-binary mode is rendered in the pult core via
+// centerText — in place of the icon, without a side label.
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -46,13 +46,14 @@ class PultTick extends StatelessWidget {
     final IconData icon;
     final bool selected;
     final String? centerText;
+
     if (binary) {
       icon = value ? Icons.check : Icons.circle_outlined;
       selected = value;
       centerText = null;
     } else {
       if (badge > 0) {
-        // Сигнальное число на месте иконы.
+        // Signal-colored number in place of the icon.
         icon = Icons.circle_outlined;
         selected = true;
         centerText = '$badge';

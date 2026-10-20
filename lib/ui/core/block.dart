@@ -1,22 +1,23 @@
 // ═══════════════════════════════════════════════════════════════════
-// block.dart — единый блок для карточки рутины и рубки.
+// block.dart — unified block for the routine card and the rubka.
 //
-// Устройство:
-//   — рамка со сглаженными углами;
-//   — заголовок слева вверху;
-//   — значок свёртки в левом верхнем углу, сигнального цвета,
-//     слегка выступает за контур (на четверть) — как ярлык;
-//   — содержимое под заголовком (скрывается при свёртке);
-//   — необязательные виджеты в углах: правый верхний (таймер)
-//     и правый нижний (пульс).
+// Structure:
+//   — frame with smoothed corners;
+//   — title at the top left;
+//   — collapse icon in the top-left corner, signal-colored, slightly
+//     protruding beyond the contour (by a quarter) — like a tag;
+//   — content under the title (hidden when collapsed);
+//   — optional widgets in the corners: top-right (timer)
+//     and bottom-right (pulse).
 //
-// Касание заголовка либо значка — свернуть/развернуть, ежели
-// canCollapse. Итог карточки сворачивать нельзя — значок не выводится.
+// Tapping the title or the icon — collapses/expands, if canCollapse.
+// The summary of the card cannot be collapsed — the icon is not
+// rendered.
 //
-// Обслуживает блоки рубки: те же рамки, заголовок, сворачивание;
-// углы не используются.
+// Serves rubka blocks: the same frames, title, collapsing;
+// corners are not used.
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -28,25 +29,25 @@ class Block extends StatelessWidget {
   final bool canCollapse;
   final VoidCallback? onToggleCollapsed;
 
-  // Правые углы: необязательные виджеты.
+  // Right corners: optional widgets.
   final Widget? cornerRightTop;
   final Widget? cornerRightBottom;
 
-  // Цвета.
+  // Colors.
   final Color bg;
   final Color dim;
   final Color fg;
   final Color signal;
 
-  // Размеры.
+  // Sizes.
   final double titleSize;
   final double pad;
   final double gap;
   final double strokeW;
   final double radiusW;
-  // Активный блок (идущий) — сигнальная рамка.
+  // Active block (running) — signal-colored frame.
   final bool active;
-  // Резерв снизу под пульс в углу.
+  // Bottom reserve for the corner pulse.
   final double reserveBottom;
 
   const Block({
@@ -74,7 +75,8 @@ class Block extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isCollapsed = canCollapse && collapsed;
-    // Значок свёртки: сигнального цвета, чуть выступает за контур.
+    // Collapse icon: signal-colored, slightly protruding beyond
+    // the contour.
     final markSize = titleSize * 1.2;
 
     return Container(
@@ -97,7 +99,7 @@ class Block extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Заголовок — кликабелен для сворачивания.
+                // Title — clickable for collapsing.
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: canCollapse ? onToggleCollapsed : null,
@@ -124,7 +126,7 @@ class Block extends StatelessWidget {
               ],
             ),
           ),
-          // Значок свёртки — левый верхний угол.
+          // Collapse icon — top-left corner.
           if (canCollapse)
             Positioned(
               left: -markSize * 0.25,
@@ -147,9 +149,9 @@ class Block extends StatelessWidget {
                 ),
               ),
             ),
-          // Пульс — правый нижний угол. По тому же краю, что и
-          // верхний: right = pad (совпадает с концом паддинга,
-          // где выстроен cornerRightTop), bottom = pad.
+          // Pulse — bottom-right corner. Along the same edge as the
+          // top one: right = pad (coinciding with the end of the
+          // padding where cornerRightTop is laid out), bottom = pad.
           if (cornerRightBottom != null)
             Positioned(right: pad, bottom: pad, child: cornerRightBottom!),
         ],

@@ -1,12 +1,14 @@
 // ═══════════════════════════════════════════════════════════════════
-// timer_text.dart — вид таймера по единому образцу.
+// timer_text.dart — timer view according to a unified pattern.
 //
-// Мигание двоеточия — от тикера, независимо от частоты перерисовки
-// родителя. Родитель может перерисовываться редко (по смене минуты),
-// а мерцание идёт дважды в секунду.
+// Colon blinking — from the ticker, regardless of the parent's
+// redraw frequency. The parent may redraw rarely (on minute change),
+// while the blinking goes twice a second.
 //
-// Ведущий ноль — только у второго числа в паре: «1ч 05м», «3д 07ч».
-// Одиночное число — без нуля: «7м», «5с».
+// Leading zero — only on the second number in a pair: «1h 05m»,
+// «3d 07h». A standalone number — without a zero: «7m», «5s».
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -36,7 +38,10 @@ class TimerText extends StatelessWidget {
     this.ticker,
   });
 
-  static List<(String, String)> _parts(int sec, {required bool running}) {
+  // Pads a single-digit number with a leading zero.
+  String _two(int n) => n.toString().padLeft(2, '0');
+
+  List<(String, String)> _parts(int sec, {required bool running}) {
     if (sec < 0) sec = 0;
     const daySec = 86400;
     const hourSec = 3600;
@@ -46,8 +51,6 @@ class TimerText extends StatelessWidget {
     final minutes = (sec % hourSec) ~/ 60;
     final secs = sec % 60;
 
-    String two(int n) => n.toString().padLeft(2, '0');
-
     if (running && days == 0 && hours == 0 && minutes == 0) {
       return [('$secs', 's')];
     }
@@ -55,10 +58,10 @@ class TimerText extends StatelessWidget {
     final out = <(String, String)>[];
     if (days > 0) {
       out.add(('$days', 'd'));
-      if (hours > 0) out.add((two(hours), 'h'));
+      if (hours > 0) out.add((_two(hours), 'h'));
     } else if (hours > 0) {
       out.add(('$hours', 'h'));
-      out.add((two(minutes), 'm'));
+      out.add((_two(minutes), 'm'));
     } else if (minutes > 0) {
       out.add(('$minutes', 'm'));
     }
@@ -81,7 +84,8 @@ class TimerText extends StatelessWidget {
 
       final isLast = i == partsList.length - 1;
       if (isLast && running) {
-        // Мигание — от тикера, ежели дан; иначе от переданного флага.
+        // Blinking — from the ticker, if given; otherwise from the
+        // passed flag.
         if (ticker != null) {
           children.add(
             AnimatedBuilder(

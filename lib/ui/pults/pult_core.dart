@@ -23,6 +23,10 @@
 // visible against the signal-colored core. The root compass and
 // the PultTick carry no dot: neither has subpults.
 //
+// The core drawing logic (triple nested border) is extracted into
+// the _buildCore private method to improve readability of the
+// main build method.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -80,7 +84,7 @@ class PultScope extends InheritedNotifier<PultState> {
 
   static PultState of(BuildContext context) {
     final s = context.dependOnInheritedWidgetOfExactType<PultScope>();
-    assert(s != null, 'PultScope не найден');
+    assert(s != null, 'PultScope not found');
     return s!.notifier!;
   }
 }
@@ -117,12 +121,8 @@ class _PultState extends State<Pult> {
     } catch (_) {}
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final state = PultScope.of(context);
-    final side = widget.overrideSize ?? state.side;
-
-    final selected = widget.spec.selected;
+  // ─── Build the triple nested border core ───
+  Widget _buildCore(double side, bool selected) {
     final coreColor = selected ? widget.signal : widget.fg;
     final iconColor = widget.bg;
 
@@ -187,6 +187,19 @@ class _PultState extends State<Pult> {
       child: core,
     );
 
+    return core;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = PultScope.of(context);
+    final side = widget.overrideSize ?? state.side;
+
+    final selected = widget.spec.selected;
+    final iconColor = widget.bg;
+
+    Widget core = _buildCore(side, selected);
+
     // Subpult dot: signal-colored circle, bottom-right corner.
     // Taken in the icon color when the pult is selected, so that
     // it stays visible against the signal-colored core.
@@ -245,7 +258,7 @@ class _PultState extends State<Pult> {
         height: side * 0.75,
         width: labelWidth,
         decoration: BoxDecoration(
-          color: widget.spec.labelBg ?? coreColor,
+          color: widget.spec.labelBg ?? (selected ? widget.signal : widget.fg),
           borderRadius: const BorderRadius.horizontal(
             right: Radius.circular(6),
           ),

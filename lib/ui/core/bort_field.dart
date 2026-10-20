@@ -1,15 +1,15 @@
 // ═══════════════════════════════════════════════════════════════════
-// bort_field.dart — поле ввода значения борта.
+// bort_field.dart — input field for a bort value.
 //
-// Своё состояние, свой контроллер, свой фокус.
+// Its own state, its own controller, its own focus.
 //
-// Коммит: при потере фокуса либо по Enter (галочка на клавиатуре).
-// Enter дополнительно снимает фокус, дабы курсор гас, а клавиатура
-// убиралась.
+// Commit: on focus loss or on Enter (the checkmark on the keyboard).
+// Enter additionally removes focus so that the cursor goes out and
+// the keyboard is dismissed.
 //
-// Необязательная подсказка (hint) показывается, покуда поле пусто.
+// An optional hint is shown while the field is empty.
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -85,7 +85,7 @@ class _BortFieldState extends State<BortField> {
       ),
       onChanged: widget.onChanged,
       onSubmitted: (_) {
-        // Enter — коммит и снять фокус.
+        // Enter — commit and remove focus.
         _commit();
         _focus.unfocus();
       },

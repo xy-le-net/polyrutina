@@ -28,6 +28,12 @@
 // Saving — the whole body, an entry in the journal with the
 // «correction» flag.
 //
+// Resource disposal logic has been extracted into _disposeAllItems
+// to eliminate duplication between _loadTrace and _clearAll. In
+// _onBlur, controller and focus node references are captured
+// before removal from the lists to avoid fragile index-based
+// disposal.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -84,13 +90,21 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
 
   @override
   void dispose() {
+    _disposeAllItems();
+    super.dispose();
+  }
+
+  // ─── Dispose all controllers and focus nodes ───
+  // Extracted to eliminate duplication and ensure safe cleanup.
+  void _disposeAllItems() {
     for (final c in _controllers) {
       c.dispose();
     }
     for (final f in _focusNodes) {
       f.dispose();
     }
-    super.dispose();
+    _controllers.clear();
+    _focusNodes.clear();
   }
 
   void _loadTrace() {
@@ -106,14 +120,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
       for (final e in t.items) (text: e.text, done: e.done),
     ];
     _items = [...loaded, (text: '', done: false)];
-    for (final c in _controllers) {
-      c.dispose();
-    }
-    for (final f in _focusNodes) {
-      f.dispose();
-    }
-    _controllers.clear();
-    _focusNodes.clear();
+    _disposeAllItems();
     for (final it in _items) {
       _controllers.add(TextEditingController(text: it.text));
       _focusNodes.add(FocusNode());
@@ -157,17 +164,22 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     await _save();
   }
 
+  // ─── On focus loss: remove empty non-last items ───
+  // References to the controller and focus node are captured
+  // before removal to avoid fragile index-based disposal.
   Future<void> _onBlur(int i) async {
     if (i < 0 || i >= _items.length) return;
     final text = _controllers[i].text;
     if (text.trim().isEmpty && i < _items.length - 1) {
+      final ctrl = _controllers[i];
+      final focus = _focusNodes[i];
       setState(() {
         _items.removeAt(i);
-        _controllers[i].dispose();
-        _focusNodes[i].dispose();
         _controllers.removeAt(i);
         _focusNodes.removeAt(i);
       });
+      ctrl.dispose();
+      focus.dispose();
     } else {
       setState(() {
         _items[i] = (text: text, done: _items[i].done);
@@ -234,14 +246,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
   Future<void> _clearAll() async {
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
-      for (final c in _controllers) {
-        c.dispose();
-      }
-      for (final f in _focusNodes) {
-        f.dispose();
-      }
-      _controllers.clear();
-      _focusNodes.clear();
+      _disposeAllItems();
       _items = [(text: '', done: false)];
       _controllers.add(TextEditingController());
       _focusNodes.add(FocusNode());

@@ -13,6 +13,9 @@
 // The AppBar title spacing is unified via ControlRow to prevent
 // overlap with the root pult.
 //
+// Strict typing: the _applyParsed method now takes an explicit
+// AppContext instead of dynamic, eliminating unsafe type casts.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -25,7 +28,6 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import '../../data/routine_layer.dart';
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
 import '../core/control_row.dart'; // Added for unified title spacing
@@ -64,7 +66,7 @@ class _ImportScreenState extends State<ImportScreen> {
         await _importZip(f.path!);
       }
     } catch (e) {
-      _log.add('ошибка: $e');
+      _log.add('error: $e');
     }
     if (mounted) setState(() => _busy = false);
   }
@@ -76,7 +78,7 @@ class _ImportScreenState extends State<ImportScreen> {
 
     final dataFile = archive.findFile('data.json');
     if (dataFile == null) {
-      _log.add('${p.basename(path)}: нет data.json');
+      _log.add('${p.basename(path)}: no data.json');
       return;
     }
     final dataStr = utf8.decode(dataFile.content as List<int>);
@@ -98,7 +100,7 @@ class _ImportScreenState extends State<ImportScreen> {
     }
 
     if (list.isEmpty) {
-      _log.add('${p.basename(path)}: рутин нет');
+      _log.add('${p.basename(path)}: no routines');
       return;
     }
 
@@ -120,7 +122,7 @@ class _ImportScreenState extends State<ImportScreen> {
     for (final raw in list) {
       final parsed = ReportJson.parseRoutine(raw);
       if (parsed == null) {
-        _log.add('${p.basename(path)}: формат не распознан');
+        _log.add('${p.basename(path)}: format not recognized');
         continue;
       }
       // Routine adoption — in a single transaction: either the whole
@@ -135,18 +137,20 @@ class _ImportScreenState extends State<ImportScreen> {
           '${parsed.name.isEmpty ? "noname" : parsed.name}',
         );
       } catch (e) {
-        _log.add('${p.basename(path)}: сбой — $e');
+        _log.add('${p.basename(path)}: failure — $e');
       }
     }
   }
 
+  // Strictly typed: AppContext is passed instead of dynamic.
+  // All unsafe type casts are removed.
   Future<void> _applyParsed(
-    dynamic app,
+    AppContext app,
     ParsedRoutine p,
     Map<String, String> extracted,
   ) async {
-    final routineLayer = app.routineLayer as RoutineLayer;
-    final traceLayer = app.traceLayer as TraceLayer;
+    final routineLayer = app.routineLayer;
+    final traceLayer = app.traceLayer;
     final journal = app.journal;
 
     final r = await routineLayer.createRoutine(journal);

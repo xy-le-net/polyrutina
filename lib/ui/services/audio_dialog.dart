@@ -1,14 +1,14 @@
 // ═══════════════════════════════════════════════════════════════════
-// audio_dialog.dart — диалог записи аудио.
+// audio_dialog.dart — audio recording dialog.
 //
-// Вынесен из media_picker. Открывается кнопкою «аудио» в подпульте
-// медиа. Запись чрез record, результат — файл в media/ и привязка
-// к следу слота.
+// Extracted from media_picker. Opened by the «audio» button in the
+// media subpult. Recording via record; the result — a file in media/
+// attached to the slot trace.
 //
-// Индекс файла берётся ОДИН раз при старте записи — оттого имя
-// на диске и регистрация в теле следа совпадают.
+// The file index is taken ONCE at recording start — hence the name
+// on disk and the registration in the trace body coincide.
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:io';
@@ -57,6 +57,8 @@ class _AudioDialogState extends State<_AudioDialog> {
       if (!await media.exists()) await media.create(recursive: true);
       if (!mounted) return;
       final app = AppScope.of(context);
+      // Index is taken once — the name on disk and the trace
+      // registration will coincide.
       final idx = app.bort.nextExportIndex(
         'media_${widget.objectId}_${widget.slot}_audio',
       );
@@ -158,7 +160,7 @@ class _AudioDialogState extends State<_AudioDialog> {
   }
 }
 
-// ─── Замена запретных знаков заглавною «X» ───
+// ─── Replacing forbidden characters with an uppercase «X» ───
 String _safe(String s) {
   final bad = RegExp(r'[\\/:*?"<>|]');
   return s.replaceAllMapped(bad, (_) => 'X');
