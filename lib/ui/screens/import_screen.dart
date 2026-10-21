@@ -10,6 +10,9 @@
 //   — if a routine with this key exists, it is updated;
 //   — if not, it is added.
 //
+// All types are strict: AppContext, ParsedRoutine, RoutineLayer,
+// TraceLayer, JournalLayer are named explicitly; no dynamic remains.
+//
 // The AppBar title spacing is unified via ControlRow to prevent
 // overlap with the root pult.
 //
@@ -25,10 +28,11 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../../data/journal_layer.dart';
 import '../../data/routine_layer.dart';
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
-import '../core/control_row.dart'; // Added for unified title spacing
+import '../core/control_row.dart';
 import '../pults/pult_core.dart';
 import '../services/report_json.dart';
 
@@ -80,20 +84,21 @@ class _ImportScreenState extends State<ImportScreen> {
       return;
     }
     final dataStr = utf8.decode(dataFile.content as List<int>);
-    final data = jsonDecode(dataStr);
+    final Object? decoded = jsonDecode(dataStr);
 
     final list = <Map<String, dynamic>>[];
-    if (data is List) {
-      for (final e in data) {
+    if (decoded is List) {
+      for (final Object? e in decoded) {
         if (e is Map) list.add(Map<String, dynamic>.from(e));
       }
-    } else if (data is Map) {
-      if (data['routines'] is List) {
-        for (final e in (data['routines'] as List)) {
+    } else if (decoded is Map) {
+      final routines = decoded['routines'];
+      if (routines is List) {
+        for (final Object? e in routines) {
           if (e is Map) list.add(Map<String, dynamic>.from(e));
         }
       } else {
-        list.add(Map<String, dynamic>.from(data));
+        list.add(Map<String, dynamic>.from(decoded));
       }
     }
 
@@ -123,9 +128,6 @@ class _ImportScreenState extends State<ImportScreen> {
         _log.add('${p.basename(path)}: формат не распознан');
         continue;
       }
-      // Routine adoption — in a single transaction: either the whole
-      // routine with blocks and traces, or nothing. On partial
-      // failure, no half-formed routine remains in the journal.
       try {
         await app.journal.transaction(() async {
           await _applyParsed(app, parsed, extracted);
@@ -141,13 +143,13 @@ class _ImportScreenState extends State<ImportScreen> {
   }
 
   Future<void> _applyParsed(
-    dynamic app,
+    AppContext app,
     ParsedRoutine p,
     Map<String, String> extracted,
   ) async {
-    final routineLayer = app.routineLayer as RoutineLayer;
-    final traceLayer = app.traceLayer as TraceLayer;
-    final journal = app.journal;
+    final RoutineLayer routineLayer = app.routineLayer;
+    final TraceLayer traceLayer = app.traceLayer;
+    final JournalLayer journal = app.journal;
 
     final r = await routineLayer.createRoutine(journal);
     if (p.name.isNotEmpty) {
@@ -233,7 +235,6 @@ class _ImportScreenState extends State<ImportScreen> {
     final dim = bort.dim;
     final fg = bort.fg;
 
-    // Unified control row calculation.
     final rootSide = side * 2 / 3;
     final rootReserve = ControlRow.reserve(rootSide);
 
@@ -243,15 +244,13 @@ class _ImportScreenState extends State<ImportScreen> {
         backgroundColor: bort.bg,
         foregroundColor: bort.fg,
         elevation: 0,
-        // No «back» button: exit is via system means (gesture,
-        // navigation button).
         automaticallyImplyLeading: false,
-        centerTitle: false, // Enforce left alignment.
+        centerTitle: false,
         titleSpacing: rootReserve,
         title: Text(
           i18n.t('bort.import'),
           maxLines: 1,
-          overflow: TextOverflow.ellipsis, // Prevent overflow.
+          overflow: TextOverflow.ellipsis,
         ),
       ),
       body: SafeArea(

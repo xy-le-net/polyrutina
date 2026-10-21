@@ -12,23 +12,24 @@
 //
 // Block «note». In the top right row — four pults left to right:
 // assigned date, planned duration, show all slots, flags. Date pult
-// and duration pult moved here from the page start (the manual plan
-// input field is gone).
+// and duration pult moved here from the page start. The date pult
+// is dim when the routine has no flags, signal when it has; a long
+// press opens the «clear date» subpult.
 //
-// Corners. Top right and bottom right — one right edge, one size
-// (pultSide). The export button in «total» does not stick to the
-// completion pult.
+// Flags. Bit lists, keys, icons, and the subpult builder live in
+// routine_flags.dart; this widget only calls buildFlagSubs with a
+// toggle closure.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 
-import '../../data/journal_types.dart';
 import '../../data/routine.dart';
 import '../core/app_scope.dart';
 import '../core/block.dart';
 import '../core/format.dart';
+import '../core/routine_flags.dart';
 import '../core/timer_text.dart';
 import '../core/trace_field.dart';
 import '../pults/pulse.dart';
@@ -50,15 +51,11 @@ class RoutineBlockView extends StatelessWidget {
   final TextEditingController? editCtrl;
   final FocusNode? editFocus;
 
-  // ─── External signs and handlers ───
-  // Is the block dimmed — set from outside, from the display order.
   final bool dimmed;
-  // Is there an assigned date (for the marked pult).
   final bool scheduledActive;
-  // Open date picker; if null — date block is not rendered.
   final VoidCallback? onPickDate;
-  // Open planned duration drum; null — not rendered.
   final VoidCallback? onPickPlanned;
+  final VoidCallback? onClearDate;
 
   final VoidCallback onToggleCollapsed;
   final VoidCallback? onStartEdit;
@@ -92,6 +89,7 @@ class RoutineBlockView extends StatelessWidget {
     this.scheduledActive = false,
     this.onPickDate,
     this.onPickPlanned,
+    this.onClearDate,
   });
 
   static IconData _blockIcon(String kind) {
@@ -119,9 +117,6 @@ class RoutineBlockView extends StatelessWidget {
     final side = PultScope.of(context).smallSide;
     final colonVisible = app.ticker.colonVisible;
 
-    // ─── Colors ───
-    // Running block takes the opposite theme colors. Resting — normal
-    // background or dimmed, by display order.
     final Color bg;
     final Color dim;
     final Color fg;
@@ -307,8 +302,6 @@ class RoutineBlockView extends StatelessWidget {
               children: rows,
             );
     } else {
-      // Input field — on the normal background (bg), even if the
-      // block is dimmed (bgdim): the field itself is not darkened.
       body = TraceField(
         objectId: routine.id,
         slot: kind,
@@ -332,8 +325,7 @@ class RoutineBlockView extends StatelessWidget {
     Widget? topRight = cornerTop;
 
     if (showFlags) {
-      // Order left to right: date, plan, show all, flags, then block
-      // timer (if any).
+      final hasFlags = routine.flags != 0;
       final datePult = onPickDate == null
           ? null
           : Pult(
@@ -342,8 +334,19 @@ class RoutineBlockView extends StatelessWidget {
                 icon: Icons.event,
                 selected: scheduledActive,
                 onTap: onPickDate,
+                longSubs: (scheduledActive && onClearDate != null)
+                    ? () => [
+                        PultSpec(
+                          id: 'clear_date_${routine.id}',
+                          icon: Icons.event_busy,
+                          label: i18n.t('routine.clear_date'),
+                          confirm: true,
+                          onTap: onClearDate,
+                        ),
+                      ]
+                    : null,
               ),
-              fg: fg,
+              fg: hasFlags ? signal : dim,
               bg: bg,
               signal: signal,
               overrideSize: pultSide,
@@ -378,8 +381,13 @@ class RoutineBlockView extends StatelessWidget {
         spec: PultSpec(
           id: 'flags_${routine.id}',
           icon: Icons.flag,
-          selected: routine.flags != 0,
-          subsBuilder: () => _flagSubs(app, routine, i18n),
+          selected: hasFlags,
+          subsBuilder: () => buildFlagSubs(
+            flags: routine.flags,
+            i18n: i18n,
+            onToggle: (newVal) =>
+                app.routineLayer.setFlags(app.journal, routine.id, newVal),
+          ),
         ),
         fg: fg,
         bg: bg,
@@ -438,52 +446,5 @@ class RoutineBlockView extends StatelessWidget {
       reserveBottom: showExport ? pultSide + side * 0.15 : 0,
       child: body,
     );
-  }
-
-  // ─── Five senior bits that are edited from the card ───
-  static const List<int> _flagBits = [
-    JournalFlag.urgent,
-    JournalFlag.emergency,
-    JournalFlag.important,
-    JournalFlag.disputable,
-    JournalFlag.complexOp,
-  ];
-
-  static const List<String> _flagKeys = [
-    'flag.urgent',
-    'flag.emergency',
-    'flag.important',
-    'flag.disputable',
-    'flag.complexOp',
-  ];
-
-  static const List<IconData> _flagIcons = [
-    Icons.access_time,
-    Icons.warning_amber,
-    Icons.star_border,
-    Icons.help_outline,
-    Icons.fitness_center,
-  ];
-
-  List<PultSpec> _flagSubs(dynamic app, Routine routine, dynamic i18n) {
-    final out = <PultSpec>[];
-    final cur = routine.flags;
-    for (var i = 0; i < _flagBits.length; i++) {
-      final f = _flagBits[i];
-      out.add(
-        PultSpec(
-          id: 'flag_$i',
-          icon: _flagIcons[i],
-          label: i18n.t(_flagKeys[i]),
-          selected: (cur & f) != 0,
-          stayOpen: true,
-          onTap: () {
-            final newVal = cur ^ f;
-            app.routineLayer.setFlags(app.journal, routine.id, newVal);
-          },
-        ),
-      );
-    }
-    return out;
   }
 }

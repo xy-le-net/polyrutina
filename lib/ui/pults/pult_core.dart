@@ -1,27 +1,25 @@
 // ═══════════════════════════════════════════════════════════════════
-// pult_core.dart — pult core: specification, state, provider,
-// and the Pult widget.
+// pult_core.dart — pult core: specification, state, provider, and
+// the Pult widget.
 //
-// compactLabel — label flush against the text (for media counters).
+// Confirmation. A confirmable pult (confirm && onTap) does not act
+// on tap at once: the first tap grows it a quarter via AnimatedScale
+// (150 ms) without changing layout; the second tap executes. A tap
+// on another pult clears the confirming state and proceeds with that
+// pult's own logic. A tap elsewhere clears it (handled by the sheet
+// body).
 //
-// Confirmation (confirm). A confirmable pult does not act on tap
-// at once; instead it grows a quarter in place. A second tap on
-// the grown pult executes. A tap on another pult or elsewhere
-// cancels the growth. Confirmation state lives in the calling
-// widget or in the subpult sheet (pult_sheet.dart); here — only
-// the request.
+// Confirming state lives in PultState (shared): only one pult can
+// be confirming at a time across the whole tree.
 //
-// Subpults. A pult with subsBuilder or longSubs does not open a
-// panel itself: it asks via showPultSheet — the single left-side
-// sheet (pult_sheet.dart). The former PultLayer is gone.
+// Sheet closing. When a pult executes onTap inside a pult sheet, it
+// asks the surrounding PultSheetScope to close the sheet, unless the
+// spec stays open. Outside a sheet there is no PultSheetScope and
+// nothing happens.
 //
-// Subpult dot. A pult carrying a subpult (either via subsBuilder
-// or via longSubs) shows a small signal-colored dot in its
-// bottom-right corner. Diameter — one twelfth of the pult side,
-// with a floor below which it does not shrink. When the pult is
-// selected, the dot takes the icon color so that it remains
-// visible against the signal-colored core. The root compass and
-// the PultTick carry no dot: neither has subpults.
+// Subpult dot. Shown only when the spec has longSubs (a long-press
+// subpult), not when it has only subsBuilder. Diameter — one fifth
+// of the pult side, with a floor of six units.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -34,7 +32,6 @@ import 'pult_sheet.dart';
 class PultSpec {
   final String id;
   final IconData icon;
-  // Substitute icon shown during confirmation (if given).
   final IconData? confirmIcon;
   final String? label;
   final Color? labelBg;
@@ -70,6 +67,15 @@ class PultState extends ChangeNotifier {
   double baseSide = 32;
   double maxSide = 64;
 
+  String? _confirmingId;
+  String? get confirmingId => _confirmingId;
+
+  void setConfirming(String? id) {
+    if (_confirmingId == id) return;
+    _confirmingId = id;
+    notifyListeners();
+  }
+
   double get side => baseSide > maxSide ? maxSide : baseSide;
   double get smallSide => side * 2 / 3;
 }
@@ -80,12 +86,31 @@ class PultScope extends InheritedNotifier<PultState> {
 
   static PultState of(BuildContext context) {
     final s = context.dependOnInheritedWidgetOfExactType<PultScope>();
-    assert(s != null, 'PultScope не найден');
+    assert(s != null, 'PultScope is not found');
     return s!.notifier!;
   }
 }
 
-class Pult extends StatefulWidget {
+// ─── PultSheetScope ───
+// Provided by pult_sheet.dart around the sheet body. Pult uses it to
+// close the sheet after executing an action.
+class PultSheetScope extends InheritedWidget {
+  final VoidCallback closeSheet;
+
+  const PultSheetScope({
+    super.key,
+    required this.closeSheet,
+    required super.child,
+  });
+
+  static PultSheetScope? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<PultSheetScope>();
+
+  @override
+  bool updateShouldNotify(PultSheetScope old) => closeSheet != old.closeSheet;
+}
+
+class Pult extends StatelessWidget {
   final PultSpec spec;
   final double? overrideSize;
   final Color fg;
@@ -101,30 +126,85 @@ class Pult extends StatefulWidget {
     this.overrideSize,
   });
 
-  @override
-  State<Pult> createState() => _PultState();
-}
+  static const double _minDot = 6.0;
+  static const Duration _confirmDuration = Duration(milliseconds: 150);
 
-class _PultState extends State<Pult> {
-  // Floor for the subpult dot: below this it does not shrink.
-  static const double _minDot = 3.0;
-
-  final _coreKey = GlobalKey();
-
-  void _pulseBort() {
+  void _pulseBort(BuildContext context) {
     try {
       AppScope.of(context).pulseBort();
     } catch (_) {}
   }
 
+  void _execute(BuildContext context, PultState state) {
+    state.setConfirming(null);
+    final scope = PultSheetScope.maybeOf(context);
+    if (scope != null && !spec.stayOpen) {
+      scope.closeSheet();
+    }
+    spec.onTap?.call();
+  }
+
+  void _handleTap(BuildContext context, PultState state) {
+    _pulseBort(context);
+
+    if (state.confirmingId == spec.id) {
+      _execute(context, state);
+      return;
+    }
+
+    if (state.confirmingId != null) {
+      state.setConfirming(null);
+    }
+
+    if (spec.subsBuilder != null) {
+      showPultSheet(
+        context: context,
+        subs: spec.subsBuilder!(),
+        fg: fg,
+        bg: bg,
+        signal: signal,
+        side: state.smallSide,
+      );
+      return;
+    }
+
+    if (spec.confirm && spec.onTap != null) {
+      state.setConfirming(spec.id);
+      return;
+    }
+
+    _execute(context, state);
+  }
+
+  void _handleLongPress(BuildContext context, PultState state) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    _pulseBort(context);
+    if (state.confirmingId != null) {
+      state.setConfirming(null);
+    }
+    if (spec.longSubs != null) {
+      showPultSheet(
+        context: context,
+        subs: spec.longSubs!(),
+        fg: fg,
+        bg: bg,
+        signal: signal,
+        side: state.smallSide,
+      );
+      return;
+    }
+    spec.onLongPress?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = PultScope.of(context);
-    final side = widget.overrideSize ?? state.side;
+    final side = overrideSize ?? state.side;
+    final confirming = state.confirmingId == spec.id;
 
-    final selected = widget.spec.selected;
-    final coreColor = selected ? widget.signal : widget.fg;
-    final iconColor = widget.bg;
+    final selected = spec.selected;
+    final coreColor = selected ? signal : fg;
+    final iconColor = bg;
 
     final borderW = side / 16;
     final rOuter = side * 0.18;
@@ -132,17 +212,15 @@ class _PultState extends State<Pult> {
     final rCore = side * 0.10;
 
     final iconSize = selected ? side * 0.60 : side * 0.45;
-    final hasCenter = widget.spec.centerText != null;
-    // Font size of the core label shrinks with length: one digit
-    // reads as an icon; two or more shrink proportionally so as
-    // not to spill beyond the pult outline. Applies to media
-    // counters, the unchecked count in a checklist, and frame
-    // order in the viewer.
-    final centerLen = widget.spec.centerText?.length ?? 0;
+    final hasCenter = spec.centerText != null;
+    final centerLen = spec.centerText?.length ?? 0;
     final centerSize = centerLen <= 1 ? iconSize : iconSize * (1.6 / centerLen);
 
+    final effectiveIcon = (confirming && spec.confirmIcon != null)
+        ? spec.confirmIcon!
+        : spec.icon;
+
     Widget core = Container(
-      key: _coreKey,
       width: side,
       height: side,
       decoration: BoxDecoration(
@@ -154,7 +232,7 @@ class _PultState extends State<Pult> {
             ? Padding(
                 padding: EdgeInsets.only(bottom: side * 0.04),
                 child: Text(
-                  widget.spec.centerText!,
+                  spec.centerText!,
                   style: TextStyle(
                     color: iconColor,
                     fontFamily: 'monospace',
@@ -164,7 +242,7 @@ class _PultState extends State<Pult> {
                   ),
                 ),
               )
-            : Icon(widget.spec.icon, color: iconColor, size: iconSize),
+            : Icon(effectiveIcon, color: iconColor, size: iconSize),
       ),
     );
 
@@ -187,14 +265,10 @@ class _PultState extends State<Pult> {
       child: core,
     );
 
-    // Subpult dot: signal-colored circle, bottom-right corner.
-    // Taken in the icon color when the pult is selected, so that
-    // it stays visible against the signal-colored core.
-    final hasSubs =
-        widget.spec.subsBuilder != null || widget.spec.longSubs != null;
-    if (hasSubs) {
-      final dotD = side / 12 < _minDot ? _minDot : side / 12;
-      final dotColor = selected ? iconColor : widget.signal;
+    // Subpult dot: only when longSubs present.
+    if (spec.longSubs != null) {
+      final dotD = side / 5 < _minDot ? _minDot : side / 5;
+      final dotColor = selected ? iconColor : signal;
       core = Stack(
         clipBehavior: Clip.none,
         children: [
@@ -218,26 +292,23 @@ class _PultState extends State<Pult> {
     Widget content;
     final screenW = MediaQuery.of(context).size.width;
     final maxLabelW = screenW - side - 32;
-    final hasLabel = widget.spec.label != null;
+    final hasLabel = spec.label != null;
 
     if (!hasLabel || maxLabelW < side * 1.5) {
       content = core;
     } else {
-      // Label style follows the system theme (same family, weight,
-      // style as the rest of the text). A custom style here made
-      // the label bolder and more foreign.
       final labelStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
         fontSize: side * 0.4,
         fontWeight: FontWeight.normal,
       );
       final painter = TextPainter(
-        text: TextSpan(text: widget.spec.label!, style: labelStyle),
+        text: TextSpan(text: spec.label!, style: labelStyle),
         textDirection: TextDirection.ltr,
         maxLines: 1,
       )..layout();
       final textW = painter.width * 1.2;
       final desired = textW + 12;
-      final labelWidth = widget.spec.compactLabel
+      final labelWidth = spec.compactLabel
           ? desired.clamp(side * 0.8, maxLabelW)
           : desired.clamp(side * 1.5, maxLabelW);
 
@@ -245,7 +316,7 @@ class _PultState extends State<Pult> {
         height: side * 0.75,
         width: labelWidth,
         decoration: BoxDecoration(
-          color: widget.spec.labelBg ?? coreColor,
+          color: spec.labelBg ?? coreColor,
           borderRadius: const BorderRadius.horizontal(
             right: Radius.circular(6),
           ),
@@ -258,7 +329,7 @@ class _PultState extends State<Pult> {
           child: Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              widget.spec.label!,
+              spec.label!,
               style:
                   labelStyle?.copyWith(
                     color: iconColor,
@@ -286,38 +357,14 @@ class _PultState extends State<Pult> {
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () {
-        _pulseBort();
-        if (widget.spec.subsBuilder != null) {
-          showPultSheet(
-            context: context,
-            subs: widget.spec.subsBuilder!(),
-            fg: widget.fg,
-            bg: widget.bg,
-            signal: widget.signal,
-            side: state.smallSide,
-          );
-          return;
-        }
-        widget.spec.onTap?.call();
-      },
-      onLongPress: () {
-        FocusManager.instance.primaryFocus?.unfocus();
-        _pulseBort();
-        if (widget.spec.longSubs != null) {
-          showPultSheet(
-            context: context,
-            subs: widget.spec.longSubs!(),
-            fg: widget.fg,
-            bg: widget.bg,
-            signal: widget.signal,
-            side: state.smallSide,
-          );
-          return;
-        }
-        widget.spec.onLongPress?.call();
-      },
-      child: content,
+      onTap: () => _handleTap(context, state),
+      onLongPress: () => _handleLongPress(context, state),
+      child: AnimatedScale(
+        scale: confirming ? 1.25 : 1.0,
+        duration: _confirmDuration,
+        curve: Curves.easeOut,
+        child: content,
+      ),
     );
   }
 }

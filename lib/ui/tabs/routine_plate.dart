@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import '../../data/routine.dart';
 import '../core/app_scope.dart';
 import '../core/format.dart';
+import '../core/routine_flags.dart';
 import '../core/timer_text.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_tick.dart';
@@ -172,13 +173,37 @@ class RoutinePlate extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (routine.name.isNotEmpty)
-                Text(
-                  routine.name,
-                  style: TextStyle(color: textMain, fontSize: nameSize),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  if (routine.flags != 0) ...[
+                    for (var i = 0; i < kFlagBits.length; i++)
+                      if ((routine.flags & kFlagBits[i]) != 0)
+                        Padding(
+                          padding: EdgeInsets.only(right: side * 0.05),
+                          child: Icon(
+                            kFlagIcons[i],
+                            color: accent,
+                            size: nameSize * 0.9,
+                          ),
+                        ),
+                    SizedBox(width: side * 0.05),
+                  ],
+                  Expanded(
+                    child: Text(
+                      routine.name.isEmpty
+                          ? i18n.t('routine.no_name')
+                          : routine.name,
+                      style: TextStyle(
+                        color: routine.flags != 0 ? accent : textMain,
+                        fontSize: nameSize,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 10),
               if (routine.scheduledAt != null)
                 // Намеченная дата — прямоугольною рамкою, единообразно

@@ -158,12 +158,11 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
       if (img != null) {
         final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
         if (byteData != null) {
-          final idx = app.bort.nextExportIndex(
-            'media_${widget.objectId}_${widget.slot}_geo',
-          );
+          final idx = app.bort.nextMediaIndex();
           name =
-              '${app.bort.deviceId}_${widget.objectId}_${widget.slot}'
-              '_geo_$idx.png';
+              'geo_$idx'
+              '_${app.bort.deviceId}'
+              '_${app.bort.firstRunUnixSec}.png';
           final dir = await getApplicationDocumentsDirectory();
           final media = Directory(p.join(dir.path, 'media'));
           if (!await media.exists()) await media.create(recursive: true);

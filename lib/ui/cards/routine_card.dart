@@ -4,27 +4,18 @@
 // Slots are built by RoutineBlockView (routine_block_view.dart).
 // Here — card state: name editing, block time editing, show/hide
 // slots, collapse, auto-scroll to the active slot, completion,
-// export, date picking, planned duration picking.
+// export, date picking and clearing, planned duration picking.
 //
-// Header. Name field only. The assigned date pult and the planned
-// duration drum moved to the «note» block: the former row
-// «date + plan field» is gone, the manual plan input is removed.
+// Header. Name field only; the name is not highlighted (plain fg).
 //
-// Planned duration drum. A three-wheel «dd : hh : mm» — a single
-// system dialog with three wheels. Button labels come from i18n
-// (locale dictionary), lowercase as designed: «ок» and «отмена».
-// Result is put via routineLayer.setPlanned.
-//
-// Background alternation. Shown blocks (the summary excepted, it
-// always sits on the normal background) alternate by order: first
-// — dimmed (bgdim), second — normal, third — dimmed, and so on.
-// The running block takes the opposite theme colors; this
-// alternation does not apply to it.
+// Background alternation. Shown blocks (including the summary)
+// alternate by order: first — dimmed (bgdim), second — normal,
+// third — dimmed, and so on. The running block takes the opposite
+// theme colors; this alternation does not apply to it.
 //
 // Header inset. The root pult hangs in the top-left corner above
-// the screen; the title recedes by its width. The centerTitle
-// property is explicitly set to false to prevent platform-specific
-// centering, and the text field truncates with ellipsis.
+// the screen; the title recedes by its width. centerTitle is false
+// to prevent platform-specific centering.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -268,8 +259,13 @@ class _RoutineCardState extends State<RoutineCard> {
 
   Future<void> _exportOne(Routine r) async {
     final app = AppScope.of(context);
-    // uiContext is needed to show the progress overlay.
     await ReportBuilder.buildSingle(app, app.i18n, r.id, uiContext: context);
+  }
+
+  // ─── Assigned date: clear ───
+  Future<void> _clearSchedule(Routine r) async {
+    final app = AppScope.of(context);
+    await app.routineLayer.setSchedule(app.journal, r.id, null);
   }
 
   // ─── Assigned date: pick ───
@@ -294,11 +290,6 @@ class _RoutineCardState extends State<RoutineCard> {
   }
 
   // ─── Planned duration: drum ───
-  // Three wheels: days, hours, minutes. Hours — up to 23, minutes
-  // — up to 59. Magnet to values — FixedExtentScrollPhysics,
-  // without it the drum stops between notches. Button labels come
-  // from i18n (locale dictionary), lowercase as designed: «ок»
-  // and «отмена».
   Future<void> _pickPlanned(Routine r) async {
     final app = AppScope.of(context);
     final i18n = app.i18n;
@@ -329,7 +320,6 @@ class _RoutineCardState extends State<RoutineCard> {
               itemExtent: side * 0.8,
               diameterRatio: 1.6,
               perspective: 0.003,
-              // Magnet to the nearest notch.
               physics: const FixedExtentScrollPhysics(),
               controller: FixedExtentScrollController(initialItem: initial),
               onSelectedItemChanged: onChanged,
@@ -411,23 +401,19 @@ class _RoutineCardState extends State<RoutineCard> {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final anyEdited = r.blocks.any((b) => b.timeEdited);
 
-    // ─── Order of shown blocks ───
-    // Build the list of shown blocks (the summary excluded) for
-    // the alternation.
     final shown = <String>[];
     if (_shouldShowSlot(r, 'note')) shown.add('note');
     for (final k in RoutineBlock.kinds) {
       if (_shouldShowSlot(r, k)) shown.add(k);
     }
+    if (_shouldShowSlot(r, 'summary')) shown.add('summary');
 
     final blocks = <Widget>[];
 
     Widget blockOf(String kind, String title, {bool isNote = false}) {
       final b = isNote ? null : r.blockOf(kind);
-      // Alternation: index in the shown list; odd — normal, even —
-      // dimmed. The summary is outside the alternation.
       final idx = shown.indexOf(kind);
-      final dimmed = kind != 'summary' && idx >= 0 && idx % 2 == 0;
+      final dimmed = idx >= 0 && idx % 2 == 0;
       return RoutineBlockView(
         key: _blockKeys[kind],
         routine: r,
@@ -463,6 +449,7 @@ class _RoutineCardState extends State<RoutineCard> {
         scheduledActive: r.scheduledAt != null,
         onPickDate: kind == 'note' ? () => _pickSchedule(r) : null,
         onPickPlanned: kind == 'note' ? () => _pickPlanned(r) : null,
+        onClearDate: kind == 'note' ? () => _clearSchedule(r) : null,
       );
     }
 
@@ -479,10 +466,6 @@ class _RoutineCardState extends State<RoutineCard> {
       blocks.add(blockOf('summary', i18n.t('routine.summary')));
     }
 
-    // Control row: root pult on the left, the name field — in the
-    // remainder. ControlRow computes the reserve; here — the same
-    // computation for AppBar. centerTitle is false to prevent
-    // platform-specific centering.
     final rootSide = side * 2 / 3;
     final rootReserve = ControlRow.reserve(rootSide);
 
@@ -493,7 +476,7 @@ class _RoutineCardState extends State<RoutineCard> {
         foregroundColor: bort.fg,
         elevation: 0,
         automaticallyImplyLeading: false,
-        centerTitle: false, // Enforce left alignment.
+        centerTitle: false,
         titleSpacing: rootReserve,
         actions: [SizedBox(width: side * 0.4)],
         title: BortField(

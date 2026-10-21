@@ -57,12 +57,11 @@ class _AudioDialogState extends State<_AudioDialog> {
       if (!await media.exists()) await media.create(recursive: true);
       if (!mounted) return;
       final app = AppScope.of(context);
-      final idx = app.bort.nextExportIndex(
-        'media_${widget.objectId}_${widget.slot}_audio',
-      );
+      final idx = app.bort.nextMediaIndex();
       final name = _safe(
-        '${app.bort.deviceId}_${widget.objectId}_${widget.slot}'
-        '_audio_$idx.m4a',
+        'audio_$idx'
+        '_${app.bort.deviceId}'
+        '_${app.bort.firstRunUnixSec}.m4a',
       );
       final path = p.join(media.path, name);
       await _rec.start(const RecordConfig(), path: path);

@@ -283,7 +283,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     final counts = _checklistCounts();
     final int unchecked = counts.total - counts.done;
     final String? chkCenter = unchecked > 0 ? '$unchecked' : null;
-    final bool chkSelected = counts.total > 0 && unchecked == 0;
+    final bool chkSelected = counts.total > 0;
 
     final files = _files();
 

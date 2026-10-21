@@ -9,7 +9,10 @@
 // showModalBottomSheet is removed.
 //
 // The file is copied to media/ with a template name:
-//   <device>_<routine id>_<slot>_<kind>_<index>.<ext>
+//   <kind>_<index>_<deviceId>_<firstRun>.<ext>
+// The index is a monotone per-device counter (InstallStore),
+// independent of routine ids, so compaction does not invalidate
+// names.
 //
 // Photo/video series: after returning from the system camera
 // the sheet does not close — it opens again. Exit — «back».
@@ -108,8 +111,8 @@ Future<void> _attach(
 }) async {
   final bort = app.bort;
 
-  final idx = bort.nextExportIndex('media_${objectId}_${slot}_$kind');
-  final base = '${bort.deviceId}_${objectId}_${slot}_${kind}_$idx$ext';
+  final idx = bort.nextMediaIndex();
+  final base = '${kind}_${idx}_${bort.deviceId}_${bort.firstRunUnixSec}$ext';
   final name = _safe(base);
 
   final dir = await getApplicationDocumentsDirectory();

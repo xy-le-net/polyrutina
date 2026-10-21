@@ -4,8 +4,7 @@
 // Startup order: journal (init without subscription), bort, layers,
 // dictionary. Then — journal.start().
 //
-// Default tab — «routines». There is no tab note in the bort file:
-// the tab field is removed. The «field» and «artel» tabs are hidden
+// Default tab — «routines». The «field» and «artel» tabs are hidden
 // by default; their display is toggled in the rubka («artel» block).
 //
 // User action. A Listener around the tree catches touches — the
@@ -16,11 +15,18 @@
 //
 // Lifecycle. Departure (paused, detached, inactive): stop the bort
 // timer, immediately save layers. Return (resumed): re-read the
-// system brightness and re-resolve the theme — in the background
-// the system could have switched light to dark. System brightness
-// change (without backgrounding) — via didChangePlatformBrightness.
+// system brightness and re-resolve the theme.
 //
-// System bar. Overlay strip style — from the bort theme.
+// Tabs. Touching the «routines» tab always leads to the routine
+// list: if the card is open, popUntil the first route. The field
+// and artel tabs are stubs while hidden.
+//
+// Sheet guard. _sheetOpen prevents subpults from stacking: while a
+// sheet is open, further sheet requests are ignored.
+//
+// System back. PopScope intercepts back: if a card is open, close
+// it; otherwise if not on the routines tab, switch to routines;
+// otherwise let the system pop (normal app close).
 //
 // Root pult — hardcoded in the top-left corner. Touch opens the
 // single left-side sheet of subpults (pult_sheet.dart) with tab
@@ -41,7 +47,7 @@ import 'data/ticker.dart';
 import 'data/trace_layer.dart';
 import 'ui/cards/routine_card.dart';
 import 'ui/core/app_scope.dart';
-import 'ui/core/control_row.dart'; // Added for unified title spacing
+import 'ui/core/control_row.dart';
 import 'ui/pults/pult_core.dart';
 import 'ui/pults/pult_sheet.dart';
 import 'ui/pults/root_pult.dart';
@@ -71,17 +77,12 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   I18n? _i18n;
 
-  // Default tab — routines (index 1 in the full list).
   int _tab = 1;
-
   int? _openedRoutineId;
+  bool _sheetOpen = false;
 
   VoidCallback? _onTickerTick;
 
-  // ─── Tab list ───
-  // Order: field, routines, days, artel, rubka. This same index
-  // corresponds to _tab. The display of the field and artel tabs is
-  // controlled by bort flags (rubka → artel).
   static const List<RootTabItem> _allTabs = [
     RootTabItem(icon: Icons.map, labelKey: 'tab.field'),
     RootTabItem(icon: Icons.checklist, labelKey: 'tab.routines'),
@@ -90,7 +91,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     RootTabItem(icon: Icons.dashboard, labelKey: 'tab.rubka'),
   ];
 
-  // Is the tab with this number visible under the current flags.
   bool _tabVisible(int i) {
     if (i == 0) return _bort.showFieldTab;
     if (i == 3) return _bort.showArtelTab;
@@ -104,9 +104,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   @override
   void initState() {
     super.initState();
-    // Lifecycle observer: departure — save layers, return —
-    // re-resolve the theme (in the background the system could
-    // have changed the scheme).
     WidgetsBinding.instance.addObserver(this);
     _db = AppDb();
     _journal = JournalLayer(_db);
@@ -138,12 +135,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     await _traceLayer.init(_journal);
     _i18n = await I18n.load(_bort.lang);
     _journal.start();
-    // Reread mark — at the current end of the journal: the
-    // «reread» button becomes active only if something was added
-    // to the journal afterwards.
     _bort.setLastRereadId(await _journal.lastEntryId());
-    // Default tab — «routines»; if «field» and «artel» are
-    // hidden, index 1 still leads to routines.
     _tab = 1;
     if (mounted) setState(() {});
   }
@@ -177,7 +169,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     super.dispose();
   }
 
-  // ─── Application lifecycle ───
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
@@ -209,14 +200,18 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _bort.pulseBort();
 
     final cardOpen = _openedRoutineId != null;
-    final sameRoutines = i == 1 && cardOpen;
 
-    if (sameRoutines) return;
-
-    if (cardOpen && i != 1) {
-      _navigatorKey.currentState?.popUntil((r) => r.isFirst);
+    if (i == 1) {
+      if (cardOpen) {
+        _navigatorKey.currentState?.popUntil((r) => r.isFirst);
+      }
+      if (_tab != 1) setState(() => _tab = 1);
+      return;
     }
 
+    if (cardOpen) {
+      _navigatorKey.currentState?.popUntil((r) => r.isFirst);
+    }
     setState(() => _tab = i);
   }
 
@@ -230,10 +225,12 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   }
 
   void _openTabsSheet() {
+    if (_sheetOpen) return;
     final ctx = _navigatorKey.currentContext;
     if (ctx == null) return;
     final side = _pultState.smallSide;
     final labels = _bort.labelsButtons;
+    _sheetOpen = true;
     showPultSheet(
       context: ctx,
       subs: [
@@ -251,7 +248,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       bg: _bort.bg,
       signal: _bort.signal,
       side: side,
-    );
+    ).whenComplete(() {
+      _sheetOpen = false;
+    });
   }
 
   double _pultSide(BuildContext context) {
@@ -280,23 +279,29 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     return Brightness.light;
   }
 
-  // ─── Tab body assembly by number ───
-  // Indices: 0 — field, 1 — routines, 2 — days, 3 — artel, 4 — rubka.
-  // Hidden tabs remain as stubs in their places: the index does not
-  // shift, hence _tab always has the same meaning.
   Widget _tabBody() {
     switch (_tab) {
       case 0:
-        return const StubTab(); // field
+        return const StubTab();
       case 1:
         return const RoutinesTab();
       case 2:
         return const DaysTab();
       case 3:
-        return const StubTab(); // artel
+        return const StubTab();
       case 4:
       default:
         return const RubkaTab();
+    }
+  }
+
+  void _handleBack() {
+    if (_openedRoutineId != null) {
+      _navigatorKey.currentState?.popUntil((r) => r.isFirst);
+      return;
+    }
+    if (_tab != 1) {
+      setState(() => _tab = 1);
     }
   }
 
@@ -304,7 +309,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   Widget build(BuildContext context) {
     if (_i18n == null) return const SizedBox.shrink();
 
-    // If the current tab is hidden — force a switch to routines.
     if (!_tabVisible(_tab)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !_tabVisible(_tab)) {
@@ -318,7 +322,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _pultState.maxSide = _pultMax;
 
     final rootSide = side * 2 / 3;
-    // Use the unified reserve calculation for the AppBar title.
     final rootReserve = ControlRow.reserve(rootSide, rootPad: _rootPad);
 
     final appContext = AppContext(
@@ -349,8 +352,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           backgroundColor: _bort.bg,
           foregroundColor: _bort.fg,
           elevation: 0,
-          centerTitle: false, // Force left alignment for titles
-          titleSpacing: rootReserve, // Unified spacing
+          centerTitle: false,
+          titleSpacing: rootReserve,
           systemOverlayStyle: _overlayStyle(
             _effectiveBrightness(_bort.systemBrightness),
           ),
@@ -395,7 +398,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                   child: Stack(
                     children: [
                       child ?? const SizedBox.shrink(),
-                      // Root pult — hardcoded in the top-left corner.
                       Positioned(
                         left: _rootPad,
                         top: _rootPad,
@@ -415,7 +417,14 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           ),
         );
       },
-      home: Scaffold(body: _tabBody()),
+      home: PopScope(
+        canPop: _tab == 1 && _openedRoutineId == null,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) return;
+          _handleBack();
+        },
+        child: Scaffold(body: _tabBody()),
+      ),
     );
   }
 }

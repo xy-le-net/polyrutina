@@ -137,6 +137,20 @@ class RoutineLayer extends ChangeNotifier {
           currentRoutineId = null;
           lastActiveBlockKind = null;
           break;
+        case 'snapshot':
+          final raw = data['routine'];
+          if (raw is Map<String, dynamic>) {
+            try {
+              final r = Routine.fromJson(raw);
+              final idx = routines.indexWhere((x) => x.id == r.id);
+              if (idx >= 0) {
+                routines[idx] = r;
+              } else {
+                routines.add(r);
+              }
+            } catch (_) {}
+          }
+          break;
         case 'create':
           final bodyId = (data['routine'] as num?)?.toInt();
           final id = bodyId ?? e.id;

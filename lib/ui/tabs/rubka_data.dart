@@ -4,38 +4,23 @@
 // Order — by relation to the journal:
 //
 //   Group 1 (no journal relation):
-//     — shift: duration from the last passed midnight;
+//     — shift: tap opens shift history (action_dialog.dart);
 //     — bort: today's active time from the technical midnight.
 //
 //   Group 2 (journal):
 //     — journal: volume of the bort files;
-//     — reread: reset layer memory and run through all entries;
-//     — delete: erase all journal entries;
+//     — reread: reset layer memory and run through all entries
+//       (no confirmation: the action is harmless);
+//     — delete: erase all journal entries (confirm via
+//       confirm_dialog.dart);
+//     — compress: JournalCompactor over a progress dialog;
+//     — separator;
 //     — media: volume of the attachments folder;
 //     — shake: delete files not attached to anything.
 //
 //   Group 3 (other):
-//     — reset: caches and defaults to the initial state,
-//       with automatic journal rereading;
+//     — reset: caches and defaults to the initial state;
 //     — import: receive polyrutina zip archives.
-//
-// Separators. Between groups — horizontal bars in the frame color
-// (dim), thickness equal to the stroke width. There are no
-// separators inside a group.
-//
-// Sizes — integers, no decimals: up to a kilobyte — bytes, up to a
-// megabyte — kilobytes, up to a gigabyte — megabytes, further —
-// gigabytes. The value is rounded to the nearest integer; zero is
-// not shown — if less than half a unit, «1» is displayed.
-//
-// Shake. Irreversible: deletes files from the disk. Confirmation —
-// the same double-tap mechanism as for other irreversible actions.
-// Upon completion — a notice (notice_dialog) with the number of
-// deleted items and the freed volume; if no orphans were found —
-// say so.
-//
-// Marks. The reread pult is active only as long as the supreme
-// journal number exceeds lastRereadId.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -47,10 +32,14 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../core/app_scope.dart';
+import '../core/confirm_dialog.dart';
 import '../core/format.dart';
 import '../core/notice_dialog.dart';
+import '../core/progress_dialog.dart';
 import '../pults/pult_core.dart';
 import '../screens/import_screen.dart';
+import '../services/action_dialog.dart';
+import '../services/journal_compactor.dart';
 
 class RubkaData extends StatefulWidget {
   const RubkaData({super.key});
@@ -64,10 +53,8 @@ class _RubkaDataState extends State<RubkaData> {
   int _mediaBytes = 0;
   bool _sizeLoaded = false;
   bool _canReread = false;
+  bool _compacting = false;
 
-  // ─── Human-readable volume representation ───
-  // Integers, no decimals. One unit per magnitude. Zero is not
-  // shown: if below half a unit, output one.
   String _fmtSize(int bytes) {
     if (bytes <= 0) return '0';
     if (bytes < 1024) return '$bytes';
@@ -86,7 +73,6 @@ class _RubkaDataState extends State<RubkaData> {
     return '${v < 1 ? 1 : v} ГБ';
   }
 
-  // ─── Volumes: journal and media ───
   Future<void> _refreshSize() async {
     try {
       final app = AppScope.of(context);
@@ -139,8 +125,48 @@ class _RubkaDataState extends State<RubkaData> {
 
   Future<void> _deleteAll() async {
     final app = AppScope.of(context);
+    final i18n = app.i18n;
+    final ok = await showConfirm(
+      context,
+      title: i18n.t('bort.delete_all_confirm'),
+      confirmLabel: i18n.t('bort.delete'),
+      cancelLabel: i18n.t('common.cancel'),
+    );
+    if (!ok || !mounted) return;
     await app.journal.clearAll();
     app.bort.setLastRereadId(await app.journal.lastEntryId());
+    await _refreshSize();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _compress() async {
+    if (_compacting) return;
+    final app = AppScope.of(context);
+    final i18n = app.i18n;
+    final token = ProgressToken();
+    setState(() => _compacting = true);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withValues(alpha: 0.2),
+      builder: (_) =>
+          ProgressDialog(token: token, title: i18n.t('bort.compress')),
+    );
+    try {
+      await JournalCompactor.compact(
+        journal: app.journal,
+        routineLayer: app.routineLayer,
+        traceLayer: app.traceLayer,
+        bort: app.bort,
+        onProgress: (v) {
+          if (!token.cancelled) token.report(v);
+        },
+      );
+    } catch (_) {}
+    if (mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+      setState(() => _compacting = false);
+    }
     await _refreshSize();
     if (mounted) setState(() {});
   }
@@ -157,15 +183,9 @@ class _RubkaDataState extends State<RubkaData> {
     if (mounted) setState(() {});
   }
 
-  // ─── Shake: remove orphan media ───
-  // A file in the media/ folder is considered an orphan if its name
-  // is not found in any active trace. Such files are deleted from
-  // the disk. Upon completion — a notice with the number of deleted
-  // items and the volume.
   Future<void> _shakeOrphans() async {
     final app = AppScope.of(context);
     final i18n = app.i18n;
-    // Contexts and messenger — before await.
     final messenger = ScaffoldMessenger.of(context);
     final dir = await getApplicationDocumentsDirectory();
     final mediaDir = Directory(p.join(dir.path, 'media'));
@@ -176,7 +196,6 @@ class _RubkaDataState extends State<RubkaData> {
       return;
     }
 
-    // A set of names referenced by someone.
     final used = <String>{};
     for (final t in app.traceLayer.traces.values) {
       if (t.deleted) continue;
@@ -223,6 +242,10 @@ class _RubkaDataState extends State<RubkaData> {
     if (mounted) setState(() {});
   }
 
+  void _openShiftHistory() {
+    showShiftHistory(context);
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -246,7 +269,6 @@ class _RubkaDataState extends State<RubkaData> {
       child: Container(height: strokeW, color: dim),
     );
 
-    // ─── Group 1: no journal relation ───
     final group1 = <Widget>[
       _valueRow(
         i18n.t('bort.shift'),
@@ -254,6 +276,7 @@ class _RubkaDataState extends State<RubkaData> {
             ? '0${i18n.t('time.m')}'
             : fmtTime(bort.shiftSecondsNow, i18n.t),
         fg,
+        onTap: _openShiftHistory,
       ),
       _valueRow(
         i18n.t('bort.bort'),
@@ -264,7 +287,6 @@ class _RubkaDataState extends State<RubkaData> {
       ),
     ];
 
-    // ─── Group 2: journal ───
     final group2 = <Widget>[
       _valueRow(i18n.t('bort.journal'), _fmtSize(_journalBytes), fg),
       _pultRow(
@@ -274,7 +296,6 @@ class _RubkaDataState extends State<RubkaData> {
           spec: PultSpec(
             id: 'reload',
             icon: Icons.refresh,
-            confirm: true,
             onTap: _canReread ? _reload : null,
           ),
           fg: _canReread ? fg : dim,
@@ -290,7 +311,6 @@ class _RubkaDataState extends State<RubkaData> {
           spec: PultSpec(
             id: 'delete',
             icon: Icons.delete_outline,
-            confirm: true,
             onTap: _deleteAll,
           ),
           fg: fg,
@@ -299,6 +319,23 @@ class _RubkaDataState extends State<RubkaData> {
           overrideSize: side,
         ),
       ),
+      _pultRow(
+        label: i18n.t('bort.compress'),
+        fg: fg,
+        pult: Pult(
+          spec: PultSpec(
+            id: 'compress',
+            icon: Icons.compress,
+            confirm: true,
+            onTap: _compacting ? null : _compress,
+          ),
+          fg: _compacting ? dim : fg,
+          bg: bg,
+          signal: signal,
+          overrideSize: side,
+        ),
+      ),
+      divider(),
       _valueRow(i18n.t('bort.media'), _fmtSize(_mediaBytes), fg),
       _pultRow(
         label: i18n.t('bort.shake'),
@@ -318,7 +355,6 @@ class _RubkaDataState extends State<RubkaData> {
       ),
     ];
 
-    // ─── Group 3: other ───
     final group3 = <Widget>[
       _pultRow(
         label: i18n.t('bort.reset'),
@@ -359,8 +395,13 @@ class _RubkaDataState extends State<RubkaData> {
     );
   }
 
-  Widget _valueRow(String label, String value, Color fg) {
-    return Padding(
+  Widget _valueRow(
+    String label,
+    String value,
+    Color fg, {
+    VoidCallback? onTap,
+  }) {
+    final row = Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
@@ -376,6 +417,12 @@ class _RubkaDataState extends State<RubkaData> {
           ),
         ],
       ),
+    );
+    if (onTap == null) return row;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: row,
     );
   }
 

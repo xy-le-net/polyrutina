@@ -1,41 +1,27 @@
 // ═══════════════════════════════════════════════════════════════════
-// operational_layer.dart — оперативный слой («борт»).
+// operational_layer.dart — operational layer ("bort").
 //
-// Фасад над модулями: ThemeStore (цвета и темы), BortTime (время
-// активной работы), DraftsStore (черновики), InstallStore (первый
-// запуск, устройство), BortFile (файл борта).
+// Facade over modules: ThemeStore, BortTime, DraftsStore, InstallStore,
+// BortFile, ShiftHistory.
 //
-// Здесь — поля состояния вида: коэффициенты, смена, метка
-// экспорта, метка перечитывания, свёрнутость блоков, счётчики
-// экспорта, слоты по умолчанию, показ вкладок «поле» и «артель».
-// Установочные данные и работа с файлом — в модулях.
+// ShiftHistory records daily shift totals into shift_history.json;
+// the monthly record (one per month, actor type) is written by the
+// journal compactor.
 //
-// Поле tab упразднено: вкладка по умолчанию — «рутины» (задана
-// в main.dart), из файла борта не читается.
+// nextMediaIndex() proxies InstallStore.nextMediaIndex() so that UI
+// does not depend on InstallStore directly.
 //
-// labelsField упразднено: подписи кнопок едины. labelsButtons —
-// прежние «системные подписи».
-//
-// showFieldTab и showArtelTab — показ вкладок «поле» и «артель».
-// По умолчанию скрыты; отметка — в рубке, блок «артель».
-//
-// В журнал сей слой НЕ пишет и НЕ читает из журнала.
-//
-// Смена — локальная суточная мера от последней прошедшей полуночи.
-//
-// lastExportId и lastRereadId. Номера последней выгруженной
-// и последней перечитанной записей журнала. Кнопки экспорта
-// и перечитывания активны, лишь покуда верховный номер журнала их
-// превосходит; иначе бледнеют и бездействуют.
-//
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import 'bort_file.dart';
 import 'bort_time.dart';
@@ -43,15 +29,128 @@ import 'drafts_store.dart';
 import 'install_store.dart';
 import 'theme_store.dart';
 
+// ─── ShiftHistory ───
+class ShiftHistory {
+  // {year: {month: {day: seconds}}}
+  final Map<int, Map<int, Map<int, int>>> _data = {};
+  File? _file;
+
+  Future<void> init() async {
+    final dir = await getApplicationDocumentsDirectory();
+    _file = File(p.join(dir.path, 'shift_history.json'));
+    await _load();
+  }
+
+  Future<void> _load() async {
+    if (_file == null || !await _file!.exists()) return;
+    try {
+      final raw = await _file!.readAsString();
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+      for (final yKey in data.keys) {
+        final y = int.tryParse(yKey);
+        if (y == null) continue;
+        final months = data[yKey];
+        if (months is! Map) continue;
+        for (final mKey in months.keys) {
+          final m = int.tryParse(mKey.toString());
+          if (m == null) continue;
+          final days = months[mKey];
+          if (days is! Map) continue;
+          final dayMap = <int, int>{};
+          for (final dKey in days.keys) {
+            final d = int.tryParse(dKey.toString());
+            if (d == null) continue;
+            final v = (days[dKey] as num?)?.toInt() ?? 0;
+            if (v > 0) dayMap[d] = v;
+          }
+          if (dayMap.isEmpty) continue;
+          _data.putIfAbsent(y, () => {})[m] = dayMap;
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _save() async {
+    if (_file == null) return;
+    final out = <String, dynamic>{};
+    for (final ye in _data.entries) {
+      final months = <String, dynamic>{};
+      for (final me in ye.value.entries) {
+        final days = <String, int>{};
+        for (final de in me.value.entries) {
+          if (de.value > 0) days[de.key.toString()] = de.value;
+        }
+        if (days.isNotEmpty) months[me.key.toString()] = days;
+      }
+      if (months.isNotEmpty) out[ye.key.toString()] = months;
+    }
+    try {
+      await _file!.writeAsString(jsonEncode(out));
+    } catch (_) {}
+  }
+
+  void addDay(int year, int month, int day, int seconds) {
+    if (seconds <= 0) return;
+    _data.putIfAbsent(year, () => {}).putIfAbsent(month, () => {})[day] =
+        seconds;
+    _save();
+  }
+
+  MonthShift? lastMonth() {
+    int? bestY;
+    int? bestM;
+    for (final ye in _data.entries) {
+      for (final me in ye.value.entries) {
+        if (me.value.isEmpty) continue;
+        if (bestY == null ||
+            ye.key > bestY ||
+            (ye.key == bestY && me.key > bestM!)) {
+          bestY = ye.key;
+          bestM = me.key;
+        }
+      }
+    }
+    if (bestY == null || bestM == null) return null;
+    final dayMap = _data[bestY]![bestM]!;
+    return MonthShift(
+      year: bestY,
+      month: bestM,
+      days: dayMap.map((k, v) => MapEntry(k.toString(), v)),
+    );
+  }
+
+  void pruneBefore(MonthShift keep) {
+    _data.removeWhere((y, months) {
+      if (y < keep.year) return true;
+      if (y > keep.year) return false;
+      months.removeWhere((m, _) => m < keep.month);
+      return months.isEmpty;
+    });
+    _save();
+  }
+
+  void reset() {
+    _data.clear();
+    _save();
+  }
+}
+
+class MonthShift {
+  final int year;
+  final int month;
+  final Map<String, int> days;
+  MonthShift({required this.year, required this.month, required this.days});
+}
+
+// ─── OperationalLayer ───
 class OperationalLayer extends ChangeNotifier {
-  // ─── Подмодули ───
   final ThemeStore _themes = ThemeStore();
   final BortTime _bortTime = BortTime();
   final DraftsStore _draftsStore = DraftsStore();
   final InstallStore _install = InstallStore();
   final BortFile _file = BortFile();
+  final ShiftHistory _shiftHistory = ShiftHistory();
 
-  // ─── Геттеры цветов ───
   Color get bg => _themes.bg;
   Color get bgdim => _themes.bgdim;
   Color get dim => _themes.dim;
@@ -61,22 +160,22 @@ class OperationalLayer extends ChangeNotifier {
   String get themeName => _themes.themeName;
   Brightness get systemBrightness => _themes.systemBrightness;
 
-  // ─── Геттеры времени борта ───
   int get bortTime => _bortTime.bortTime;
   int get bortYesterday => _bortTime.yesterday;
   int get bortLastActionAt => _bortTime.lastActionAt;
   set bortLastActionAt(int v) => _bortTime.lastActionAt = v;
   String get midnight => _bortTime.midnight;
 
-  // ─── Геттеры черновиков ───
   String draft(String key) => _draftsStore.draft(key);
   bool isTraceSent(String key) => _draftsStore.isSent(key);
 
-  // ─── Геттеры установочных данных ───
   int get firstRunUnixSec => _install.firstRunUnixSec;
   String get deviceId => _install.deviceId;
 
-  // ─── Поля вида ───
+  ShiftHistory get shiftHistory => _shiftHistory;
+
+  int nextMediaIndex() => _install.nextMediaIndex();
+
   double scale = 1.4;
   String lang = 'ru';
   String anchor = 'tl';
@@ -86,7 +185,6 @@ class OperationalLayer extends ChangeNotifier {
   bool blockInterface = false;
   bool blockData = false;
 
-  // Показ вкладок «поле» и «артель». По умолчанию скрыты.
   bool showFieldTab = false;
   bool showArtelTab = false;
 
@@ -111,30 +209,29 @@ class OperationalLayer extends ChangeNotifier {
   double kRadius = 0.3;
   double kStroke = 0.015;
 
-  // ─── Смена ───
   bool onShift = false;
   int totalShiftSeconds = 0;
   int? shiftStartedAt;
   bool shiftEdited = false;
 
-  // ─── Служебное ───
   int _lastMidnightCheck = 0;
 
   OperationalLayer();
 
-  // ─── Пуск ───
   Future<void> init(Brightness system) async {
     _themes.setSystemBrightness(system);
     await _file.init();
     await _install.init();
+    await _shiftHistory.init();
     await _loadDefaults();
     await _loadFromFile();
-    // Дополняем недостающие темы (custom из старого файла борта).
     _themes.ensureThemes();
     _themes.resolve();
 
+    final oldPrev = _bortTime.prevMidnight;
     final newMid = _bortTime.checkMidnight();
     if (newMid > 0) {
+      _recordShiftDay(newMid, oldPrev);
       totalShiftSeconds = 0;
       if (onShift && shiftStartedAt != null && shiftStartedAt! < newMid) {
         shiftStartedAt = newMid;
@@ -151,7 +248,25 @@ class OperationalLayer extends ChangeNotifier {
     super.dispose();
   }
 
-  // ─── Умолчания ───
+  // ─── Shift day recording ───
+  void _recordShiftDay(int curMid, int oldPrev) {
+    final prevDayStart = curMid - 86400;
+    int running = 0;
+    if (onShift && shiftStartedAt != null) {
+      final start = shiftStartedAt! > prevDayStart
+          ? shiftStartedAt!
+          : prevDayStart;
+      if (start < curMid) running = curMid - start;
+    }
+    final skipped = oldPrev > 0 && curMid - oldPrev > 86400;
+    if (!skipped) running += totalShiftSeconds;
+    if (running > 86400) running = 86400;
+    if (running > 0) {
+      final dt = DateTime.fromMillisecondsSinceEpoch(prevDayStart * 1000);
+      _shiftHistory.addDay(dt.year, dt.month, dt.day, running);
+    }
+  }
+
   Future<void> _loadDefaults() async {
     try {
       final raw = await rootBundle.loadString('assets/defaults.json');
@@ -195,7 +310,6 @@ class OperationalLayer extends ChangeNotifier {
     _themes.ensureThemes();
   }
 
-  // ─── Файл борта: чтение ───
   Future<void> _loadFromFile() async {
     final data = await _file.read();
     if (data == null) return;
@@ -274,7 +388,6 @@ class OperationalLayer extends ChangeNotifier {
     }
   }
 
-  // ─── Системная гамма ───
   void setSystemBrightness(Brightness b) {
     if (_themes.systemBrightness == b) return;
     _themes.setSystemBrightness(b);
@@ -284,11 +397,9 @@ class OperationalLayer extends ChangeNotifier {
     }
   }
 
-  // ─── Противоположная гамма ───
   String oppositeThemeName() => _themes.oppositeName();
   Map<String, Color>? colorsForOpposite() => _themes.colorsForOpposite();
 
-  // ─── Свёрнутость блоков ───
   bool isBlockCollapsed(int routineId, String kind) {
     final set = collapsedBlocks[routineId];
     if (set == null) {
@@ -315,7 +426,7 @@ class OperationalLayer extends ChangeNotifier {
         if (k == kind) {
           init.add(k);
         } else if (def) {
-          // было развёрнуто — оставляем развёрнутым
+          // keep expanded
         } else {
           init.add(k);
         }
@@ -332,7 +443,6 @@ class OperationalLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ─── Слоты по умолчанию ───
   void setDefaultSlot(String kind, bool on) {
     if (on) {
       defaultSlots.add(kind);
@@ -343,21 +453,18 @@ class OperationalLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ─── Метка экспорта ───
   void setLastExportId(int id) {
     lastExportId = id;
     _scheduleSave();
     notifyListeners();
   }
 
-  // ─── Метка перечитывания ───
   void setLastRereadId(int id) {
     lastRereadId = id;
     _scheduleSave();
     notifyListeners();
   }
 
-  // ─── Счётчик экспорта ───
   int nextExportIndex(String objectKey) {
     final n = DateTime.now();
     final day =
@@ -372,7 +479,6 @@ class OperationalLayer extends ChangeNotifier {
     return idx;
   }
 
-  // ─── Время борта ───
   void pulseBort() {
     _bortTime.pulse();
     _scheduleSave();
@@ -383,8 +489,10 @@ class OperationalLayer extends ChangeNotifier {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     if (now - _lastMidnightCheck >= 30) {
       _lastMidnightCheck = now;
+      final oldPrev = _bortTime.prevMidnight;
       final newMid = _bortTime.checkMidnight();
       if (newMid > 0) {
+        _recordShiftDay(newMid, oldPrev);
         totalShiftSeconds = 0;
         if (onShift && shiftStartedAt != null && shiftStartedAt! < newMid) {
           shiftStartedAt = newMid;
@@ -395,7 +503,6 @@ class OperationalLayer extends ChangeNotifier {
     }
   }
 
-  // ─── Правка смены ───
   void setShiftTime(int seconds) {
     totalShiftSeconds = seconds;
     shiftStartedAt = null;
@@ -414,6 +521,7 @@ class OperationalLayer extends ChangeNotifier {
     shiftEdited = false;
     _draftsStore.reset();
     _bortTime.reset();
+    _shiftHistory.reset();
     collapsedBlocks = {};
     exportCounters = {};
     defaultSlots = {'work'};
@@ -431,7 +539,6 @@ class OperationalLayer extends ChangeNotifier {
     await _file.writeNow(_buildFileMap);
   }
 
-  // ─── Установка значений вида ───
   void set(String key, String value) {
     _apply(key, value);
     _scheduleSave();
@@ -456,7 +563,6 @@ class OperationalLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ─── Черновики ───
   void setDraft(String key, String text) {
     _draftsStore.setDraft(key, text);
   }
@@ -473,7 +579,6 @@ class OperationalLayer extends ChangeNotifier {
   static String traceDraftKey(int objectId, String slot) =>
       DraftsStore.traceKey(objectId, slot);
 
-  // ─── Смена ───
   void startShift() {
     if (onShift) return;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -506,7 +611,6 @@ class OperationalLayer extends ChangeNotifier {
     return base + (now - start);
   }
 
-  // ─── Применение одного ключа ───
   void _apply(String key, String value) {
     if (_themes.applyThemeKey(key, value)) return;
 
@@ -602,7 +706,6 @@ class OperationalLayer extends ChangeNotifier {
     await _file.write(_buildFileMap());
   }
 
-  // ─── Карта для файла борта ───
   Map<String, dynamic> _buildFileMap() {
     final cbOut = <String, dynamic>{};
     for (final e in collapsedBlocks.entries) {
@@ -661,7 +764,6 @@ class OperationalLayer extends ChangeNotifier {
     return '#$r$g$b';
   }
 
-  // ─── Плоское представление ───
   Map<String, String> get allAsStrings {
     final out = <String, String>{};
     out.addAll(_themes.toFlatStrings());
@@ -669,8 +771,6 @@ class OperationalLayer extends ChangeNotifier {
     out['scale'] = scale.toStringAsFixed(2);
     out['lang'] = lang;
     out['labels_buttons'] = labelsButtons.toString();
-    // Флаги блоков рубки и показа вкладок — чрез всеAsStrings,
-    // ими пользуются чекбоксы (rubka_tab, rubka_interface).
     out['block_artel'] = blockArtel.toString();
     out['block_appearance'] = blockAppearance.toString();
     out['block_interface'] = blockInterface.toString();

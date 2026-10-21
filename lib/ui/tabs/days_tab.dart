@@ -13,17 +13,14 @@
 // Different routines of the day bring different marks; they combine.
 //
 // Color coordination.
-//   — underline (completed) — dimmed (dim);
-//   — circle and square — normal (fg), if the routine has no flags
-//     or is completed;
-//   — signal (signal) highlights only the circle and square
-//     of an uncompleted routine with flags;
-//   — the day number is signal-colored if and only if there is
-//     an uncompleted routine with flags on this day.
+//   — all marks default to dim (underline, circle, square);
+//   — any routine with flags (completed or not) makes its own mark
+//     signal-colored; the day number turns signal if and only if at
+//     least one routine of that day carries flags.
 //
-// Control row. Month switchers are rendered via ControlRow:
-// the root pult on the left, the row's content is centered in
-// the remainder (and scaled down if too wide).
+// Control row. Month switchers are laid out via a ConstrainedBox
+// (maxWidth: side * 8) with spaceEvenly inside, so the row stays
+// compact on wide screens and does not slip under the root pult.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -89,43 +86,39 @@ class _DaysTabState extends State<DaysTab> {
     return _Mark.none;
   }
 
-  // ─── Mark set for the cell ───
-  // Collects flags:
-  //   completed, pulse, scheduled — which marks exist;
-  //   signalPulse, signalScheduled — there is an uncompleted routine
-  //     with flags and with pulse/schedule respectively;
-  //   hasSignalIncomplete — there is at least one uncompleted with flags
-  //     (the month number is signal-colored).
   ({
     bool completed,
     bool pulse,
     bool scheduled,
+    bool signalCompleted,
     bool signalPulse,
     bool signalScheduled,
-    bool hasSignalIncomplete,
+    bool hasSignal,
   })
   _marksOf(int day, List<Routine> routines) {
     var completed = false;
     var pulse = false;
     var scheduled = false;
+    var signalCompleted = false;
     var signalPulse = false;
     var signalScheduled = false;
-    var hasSignalIncomplete = false;
+    var hasSignal = false;
     for (final r in routines) {
       final mark = _markOfRoutine(r, day);
       final hasFlags = r.flags != 0;
-      if (!r.completed && hasFlags) hasSignalIncomplete = true;
+      if (hasFlags) hasSignal = true;
       switch (mark) {
         case _Mark.completed:
           completed = true;
+          if (hasFlags) signalCompleted = true;
           break;
         case _Mark.pulse:
           pulse = true;
-          if (!r.completed && hasFlags) signalPulse = true;
+          if (hasFlags) signalPulse = true;
           break;
         case _Mark.scheduled:
           scheduled = true;
-          if (!r.completed && hasFlags) signalScheduled = true;
+          if (hasFlags) signalScheduled = true;
           break;
         case _Mark.none:
           break;
@@ -135,9 +128,10 @@ class _DaysTabState extends State<DaysTab> {
       completed: completed,
       pulse: pulse,
       scheduled: scheduled,
+      signalCompleted: signalCompleted,
       signalPulse: signalPulse,
       signalScheduled: signalScheduled,
-      hasSignalIncomplete: hasSignalIncomplete,
+      hasSignal: hasSignal,
     );
   }
 
@@ -177,39 +171,40 @@ class _DaysTabState extends State<DaysTab> {
           padding: EdgeInsets.symmetric(vertical: side * 0.3),
           child: ControlRow(
             rootSide: rootSide,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Pult(
-                  spec: PultSpec(
-                    id: 'prev_month',
-                    icon: Icons.chevron_left,
-                    onTap: () => _shift(-1),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: side * 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  Pult(
+                    spec: PultSpec(
+                      id: 'prev_month',
+                      icon: Icons.chevron_left,
+                      onTap: () => _shift(-1),
+                    ),
+                    fg: bort.fg,
+                    bg: bort.bg,
+                    signal: bort.signal,
+                    overrideSize: side,
                   ),
-                  fg: bort.fg,
-                  bg: bort.bg,
-                  signal: bort.signal,
-                  overrideSize: side,
-                ),
-                SizedBox(width: side * 0.6),
-                Text(
-                  '${_month.year}.'
-                  '${_month.month.toString().padLeft(2, '0')}',
-                  style: TextStyle(color: bort.fg, fontSize: side * 0.5),
-                ),
-                SizedBox(width: side * 0.6),
-                Pult(
-                  spec: PultSpec(
-                    id: 'next_month',
-                    icon: Icons.chevron_right,
-                    onTap: () => _shift(1),
+                  Text(
+                    '${_month.year}.'
+                    '${_month.month.toString().padLeft(2, '0')}',
+                    style: TextStyle(color: bort.fg, fontSize: side * 0.5),
                   ),
-                  fg: bort.fg,
-                  bg: bort.bg,
-                  signal: bort.signal,
-                  overrideSize: side,
-                ),
-              ],
+                  Pult(
+                    spec: PultSpec(
+                      id: 'next_month',
+                      icon: Icons.chevron_right,
+                      onTap: () => _shift(1),
+                    ),
+                    fg: bort.fg,
+                    bg: bort.bg,
+                    signal: bort.signal,
+                    overrideSize: side,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -228,12 +223,13 @@ class _DaysTabState extends State<DaysTab> {
   Widget _cell(int day, List<Routine> routines, double side, dynamic bort) {
     final m = _marksOf(day, routines);
 
-    final dayColor = m.hasSignalIncomplete ? bort.signal : bort.fg;
+    final dayColor = m.hasSignal ? bort.signal : bort.dim;
+    final underlineColor = m.signalCompleted ? bort.signal : bort.dim;
     final TextStyle style = TextStyle(
       color: dayColor,
       fontSize: side * 0.4,
       decoration: m.completed ? TextDecoration.underline : TextDecoration.none,
-      decorationColor: bort.dim,
+      decorationColor: underlineColor,
     );
 
     Widget content = Text('$day', style: style);
@@ -243,7 +239,7 @@ class _DaysTabState extends State<DaysTab> {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: Border.all(
-            color: m.signalPulse ? bort.signal : bort.fg,
+            color: m.signalPulse ? bort.signal : bort.dim,
             width: side * 0.04,
           ),
         ),
@@ -256,7 +252,7 @@ class _DaysTabState extends State<DaysTab> {
       content = Container(
         decoration: BoxDecoration(
           border: Border.all(
-            color: m.signalScheduled ? bort.signal : bort.fg,
+            color: m.signalScheduled ? bort.signal : bort.dim,
             width: side * 0.04,
           ),
           borderRadius: BorderRadius.circular(side * 0.05),

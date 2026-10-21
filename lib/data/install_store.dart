@@ -1,13 +1,20 @@
 // ═══════════════════════════════════════════════════════════════════
-// install_store.dart — установочные данные борта.
+// install_store.dart — installation data of the bort.
 //
-// Первый запуск (секунды Unix) и идентификатор устройства. Хранятся
-// в install.json рядом с прочими файлами борта.
+// First run (Unix seconds) and device id. Stored in install.json
+// alongside the other bort files.
 //
-// Идентификатор берётся у системы; коли недоступен — случайный,
-// заводится при первом пуске.
+// Device id is taken from the system; if unavailable — a random
+// one, generated on first launch.
 //
-// Прозрачность не применяется.
+// media_counter — a monotone counter for media file names. Every
+// media file written by the application takes the next value:
+//   <kind>_<index>_<deviceId>_<firstRun>.<ext>
+// The counter is per device+first-run, monotone and never reused.
+// Old install.json files lack the field; they load with zero, and
+// the first call to nextMediaIndex() writes one.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:convert';
@@ -21,10 +28,11 @@ import 'package:path_provider/path_provider.dart';
 class InstallStore {
   int firstRunUnixSec = 0;
   String deviceId = '';
+  int mediaCounter = 0;
 
   File? _file;
 
-  // ─── Пуск: прочитать либо завести ───
+  // ─── Startup: read or create ───
   Future<void> init() async {
     final dir = await getApplicationDocumentsDirectory();
     _file = File(p.join(dir.path, 'install.json'));
@@ -36,6 +44,7 @@ class InstallStore {
         data = jsonDecode(raw) as Map<String, dynamic>;
         firstRunUnixSec = (data['first_run_unix_sec'] as num?)?.toInt() ?? 0;
         deviceId = data['device_id'] as String? ?? '';
+        mediaCounter = (data['media_counter'] as num?)?.toInt() ?? 0;
       }
     } catch (_) {}
 
@@ -49,6 +58,16 @@ class InstallStore {
     await _save();
   }
 
+  // ─── Next media index ───
+  // Monotone: every call returns a new value greater than the
+  // previous one. The value is persisted at once, so that a crash
+  // does not cause the same index to be reused after a restart.
+  int nextMediaIndex() {
+    mediaCounter++;
+    _save();
+    return mediaCounter;
+  }
+
   Future<void> _save() async {
     if (_file == null) return;
     try {
@@ -56,6 +75,7 @@ class InstallStore {
         jsonEncode({
           'first_run_unix_sec': firstRunUnixSec,
           'device_id': deviceId,
+          'media_counter': mediaCounter,
         }),
       );
     } catch (_) {}
