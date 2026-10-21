@@ -149,7 +149,7 @@ class RoutinePlate extends StatelessWidget {
       spec: PultSpec(
         id: 'routine_${routine.id}',
         icon: pulseIcon,
-        selected: running,
+        selected: false,
         onTap: pulseTap,
         longSubs: () => subs,
       ),

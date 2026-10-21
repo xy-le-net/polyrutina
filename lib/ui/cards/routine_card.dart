@@ -6,16 +6,16 @@
 // slots, collapse, auto-scroll to the active slot, completion,
 // export, date picking and clearing, planned duration picking.
 //
-// Header. Name field only; the name is not highlighted (plain fg).
+// Header. The AppBar is removed: the header is laid out with
+// ControlRow inside a SafeArea. The root pult (compass) sits on the
+// left; the remaining width holds the name field (BortField).
+// This unifies the header across screens and prevents the name from
+// slipping under the compass.
 //
 // Background alternation. Shown blocks (including the summary)
 // alternate by order: first — dimmed (bgdim), second — normal,
 // third — dimmed, and so on. The running block takes the opposite
 // theme colors; this alternation does not apply to it.
-//
-// Header inset. The root pult hangs in the top-left corner above
-// the screen; the title recedes by its width. centerTitle is false
-// to prevent platform-specific centering.
 //
 // Scopes. Dependencies are read from point scopes: RoutineScope
 // (the routine and its mutations), TraceScope (_hasTrace), BortScope
@@ -397,7 +397,6 @@ class _RoutineCardState extends State<RoutineCard> {
     if (r == null) {
       return Scaffold(
         backgroundColor: bort.bg,
-        appBar: AppBar(backgroundColor: bort.bg, foregroundColor: bort.fg),
         body: Center(
           child: Text(
             i18n.t('routine.not_found'),
@@ -477,40 +476,46 @@ class _RoutineCardState extends State<RoutineCard> {
       blocks.add(blockOf('summary', i18n.t('routine.summary')));
     }
 
-    final rootSide = side;
-    final rootReserve = ControlRow.reserve(rootSide);
-
     return Scaffold(
       backgroundColor: bort.bg,
-      appBar: AppBar(
-        backgroundColor: bort.bg,
-        foregroundColor: bort.fg,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        centerTitle: false,
-        titleSpacing: rootReserve,
-        actions: [SizedBox(width: side * 0.4)],
-        title: BortField(
-          initial: r.name,
-          fg: bort.fg,
-          readOnly: false,
-          hint: i18n.t('routine.no_name'),
-          onCommit: (v) =>
-              routineLayer.renameRoutine(AppScope.of(context).journal, r.id, v),
-        ),
-      ),
       body: SafeArea(
-        child: GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-          child: SingleChildScrollView(
-            controller: _scrollController,
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: blocks,
+        child: Column(
+          children: [
+            // Unified control row: root pult on the left, name field
+            // in the remaining space.
+            Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 8, right: 12),
+              child: ControlRow(
+                rootSide: side,
+                alignment: Alignment.centerLeft,
+                child: BortField(
+                  initial: r.name,
+                  fg: bort.fg,
+                  readOnly: false,
+                  hint: i18n.t('routine.no_name'),
+                  onCommit: (v) => routineLayer.renameRoutine(
+                    AppScope.of(context).journal,
+                    r.id,
+                    v,
+                  ),
+                ),
+              ),
             ),
-          ),
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+                child: SingleChildScrollView(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: blocks,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

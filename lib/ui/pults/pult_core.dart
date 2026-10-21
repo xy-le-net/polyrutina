@@ -19,7 +19,15 @@
 //
 // Subpult dot. Shown only when the spec has longSubs (a long-press
 // subpult), not when it has only subsBuilder. Diameter — one fifth
-// of the pult side, with a floor of six units.
+// of the pult side, doubled in the current revision; a signal-colored
+// outline is drawn around it.
+//
+// Subpult reactivity. The optional rebuildOn field, when supplied
+// on a PultSpec whose subpult is open (subsBuilder or longSubs),
+// is forwarded to showPultSheet. The open sheet then rebuilds its
+// items on every notification of that Listenable, so that a
+// checkbox-style subpult (e.g. flags) reflects its new state
+// immediately.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -44,6 +52,9 @@ class PultSpec {
   final VoidCallback? onLongPress;
   final bool stayOpen;
   final bool compactLabel;
+  // Optional reactive source for open subpults: when non-null, the
+  // sheet rebuilds its items on every notification.
+  final Listenable? rebuildOn;
 
   const PultSpec({
     required this.id,
@@ -60,6 +71,7 @@ class PultSpec {
     this.onLongPress,
     this.stayOpen = false,
     this.compactLabel = false,
+    this.rebuildOn,
   });
 }
 
@@ -160,10 +172,12 @@ class Pult extends StatelessWidget {
       showPultSheet(
         context: context,
         subs: spec.subsBuilder!(),
+        subsBuilder: spec.subsBuilder,
         fg: fg,
         bg: bg,
         signal: signal,
         side: state.smallSide,
+        rebuildOn: spec.rebuildOn,
       );
       return;
     }
@@ -186,10 +200,12 @@ class Pult extends StatelessWidget {
       showPultSheet(
         context: context,
         subs: spec.longSubs!(),
+        subsBuilder: spec.longSubs,
         fg: fg,
         bg: bg,
         signal: signal,
         side: state.smallSide,
+        rebuildOn: spec.rebuildOn,
       );
       return;
     }
@@ -266,8 +282,7 @@ class Pult extends StatelessWidget {
     );
 
     // Subpult dot: only when longSubs present. Doubled in size and
-    // given a signal-colored outline, per the UX review (the dot
-    // was too small to read at arm's length on a bright screen).
+    // given a signal-colored outline, per the UX review.
     if (spec.longSubs != null) {
       final dotD = (side / 5 < _minDot ? _minDot : side / 5) * 2;
       final dotColor = selected ? iconColor : signal;

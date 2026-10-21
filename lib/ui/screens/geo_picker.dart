@@ -2,7 +2,7 @@
 // geo_picker.dart — geo point picking on a self-hosted map.
 //
 // Opened from the media picker sheet. Structure:
-//   — map (flutter_map, OpenStreetMap tiles) full-screen;
+//   — map (flutter_map) full-screen;
 //   — initial center — current position (if available),
 //     otherwise — Moscow;
 //   — tap on the map places a pin; the pin is dragged by touch;
@@ -10,21 +10,30 @@
 //     widget (RepaintBoundary → PNG) into media/ under the geo kind;
 //   — exit pult closes without saving.
 //
+// Tile sources. The default OpenStreetMap tile server is not always
+// reachable (blocked, rate-limited, or behind a slow network). Four
+// alternative raster sources are built in, none requiring an API key:
+//   — OSM standard;
+//   — Esri World Street Map;
+//   — OpenTopoMap;
+//   — Humanitarian HOT (OpenStreetMap France);
+//   — CyclOSM.
+// A «layers» pult in the bottom row opens a subpult with the list;
+// switching recreates the TileLayer via a ValueKey.
+//
 // Offline. Tiles are not loaded — the map is grey; the caption
 // «no network» is drawn over it. A point is still placed and saved
 // as is: the snapshot is grey, the coordinates real.
 //
-// API keys are not required: OSM tiles are directly available.
+// API keys are not required for any of the listed sources.
 //
 // The snapshot is put into the same media/ folder as other
 // attachments; the name follows the common template
 // (<device>_<routine>_<slot>_geo_<index>).
 //
-// The AppBar title spacing is unified via ControlRow to prevent
-// overlap with the root pult. The centerTitle is explicitly set
-// to false, and the title text truncates with ellipsis if too long.
+// The header uses ControlRow for unified spacing with the root pult.
 //
-// Exit lives in the top-right corner of the app bar, as the down
+// Exit lives in the top-right corner of the header, as the down
 // chevron (same as checklist_screen and media_viewer) — the single
 // pattern of exit for full-screen sheets.
 //
@@ -45,7 +54,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
-import '../core/control_row.dart'; // Added for unified title spacing
+import '../core/control_row.dart';
 import '../pults/pult_core.dart';
 
 Future<void> showGeoPicker({
@@ -59,6 +68,47 @@ Future<void> showGeoPicker({
     ),
   );
 }
+
+// One tile source: a URL template, optional subdomains, and a label.
+class _TileSource {
+  final String label;
+  final String urlTemplate;
+  final List<String> subdomains;
+
+  const _TileSource({
+    required this.label,
+    required this.urlTemplate,
+    this.subdomains = const [],
+  });
+}
+
+const List<_TileSource> _tileSources = [
+  _TileSource(
+    label: 'OSM',
+    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  ),
+  _TileSource(
+    label: 'Esri',
+    urlTemplate:
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+  ),
+  _TileSource(
+    label: 'OpenTopo',
+    urlTemplate: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+    subdomains: ['a', 'b', 'c'],
+  ),
+  _TileSource(
+    label: 'HOT',
+    urlTemplate: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+    subdomains: ['a', 'b', 'c'],
+  ),
+  _TileSource(
+    label: 'CyclOSM',
+    urlTemplate:
+        'https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png',
+    subdomains: ['a', 'b', 'c'],
+  ),
+];
 
 class _GeoPickerScreen extends StatefulWidget {
   final int objectId;
@@ -83,6 +133,9 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
 
   bool _locating = false;
   bool _noNetwork = false;
+
+  // Currently selected tile source.
+  int _tileSourceIndex = 0;
 
   final _mapController = MapController();
 
@@ -139,9 +192,6 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
   }
 
   // ─── Save ───
-  // The snapshot is put into media/ alongside other attachments;
-  // the name follows the common template. Coordinates and path
-  // go into TraceFile.
   Future<void> _save() async {
     if (_busy) return;
     final latLng = _picked;
@@ -192,6 +242,15 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
 
   void _close() => Navigator.of(context).pop();
 
+  // ─── Switch tile source ───
+  void _switchTileSource(int index) {
+    if (index == _tileSourceIndex) return;
+    setState(() {
+      _tileSourceIndex = index;
+      _noNetwork = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
@@ -199,139 +258,180 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
     final i18n = app.i18n;
     final side = PultScope.of(context).smallSide;
 
-    // Unified control row calculation.
     final rootSide = side;
-    final rootReserve = ControlRow.reserve(rootSide);
+
+    final source = _tileSources[_tileSourceIndex];
 
     return Scaffold(
       backgroundColor: bort.bg,
-      appBar: AppBar(
-        backgroundColor: bort.bg,
-        foregroundColor: bort.fg,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        centerTitle: false, // Enforce left alignment.
-        titleSpacing: rootReserve,
-        title: Text(
-          i18n.t('media.geo'),
-          style: TextStyle(color: bort.fg),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis, // Prevent overflow.
-        ),
-        actions: [
-          Pult(
-            spec: PultSpec(
-              id: 'geo_cancel',
-              icon: Icons.keyboard_arrow_down,
-              onTap: _busy ? null : _close,
-            ),
-            fg: bort.fg,
-            bg: bort.bg,
-            signal: bort.signal,
-            overrideSize: side * bort.kPultSmall,
-          ),
-          SizedBox(width: side * 0.4),
-        ],
-      ),
       body: SafeArea(
-        child: Stack(
+        child: Column(
           children: [
-            // ─── Map ───
-            RepaintBoundary(
-              key: _boundaryKey,
-              child: FlutterMap(
-                mapController: _mapController,
-                options: MapOptions(
-                  initialCenter: _center,
-                  initialZoom: 16,
-                  onTap: (_, p) {
-                    setState(() => _picked = p);
-                  },
+            Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 8, right: 12),
+              child: ControlRow(
+                rootSide: rootSide,
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        i18n.t('media.geo'),
+                        style: TextStyle(color: bort.fg),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Pult(
+                      spec: PultSpec(
+                        id: 'geo_cancel',
+                        icon: Icons.keyboard_arrow_down,
+                        onTap: _busy ? null : _close,
+                      ),
+                      fg: bort.fg,
+                      bg: bort.bg,
+                      signal: bort.signal,
+                      overrideSize: side * bort.kPultSmall,
+                    ),
+                  ],
                 ),
+              ),
+            ),
+            Expanded(
+              child: Stack(
                 children: [
-                  TileLayer(
-                    urlTemplate:
-                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'polyrutina',
-                    errorTileCallback: (_, __, ___) {
-                      if (mounted && !_noNetwork) {
-                        setState(() => _noNetwork = true);
-                      }
-                    },
-                  ),
-                  if (_picked != null)
-                    MarkerLayer(
-                      markers: [
-                        Marker(
-                          point: _picked!,
-                          width: 40,
-                          height: 40,
-                          child: Icon(
-                            Icons.place,
-                            color: bort.signal,
-                            size: 40,
+                  // ─── Map ───
+                  RepaintBoundary(
+                    key: _boundaryKey,
+                    child: FlutterMap(
+                      mapController: _mapController,
+                      options: MapOptions(
+                        initialCenter: _center,
+                        initialZoom: 16,
+                        onTap: (_, p) {
+                          setState(() => _picked = p);
+                        },
+                      ),
+                      children: [
+                        TileLayer(
+                          key: ValueKey(_tileSourceIndex),
+                          urlTemplate: source.urlTemplate,
+                          subdomains: source.subdomains,
+                          userAgentPackageName: 'polyrutina',
+                          errorTileCallback: (_, __, ___) {
+                            if (mounted && !_noNetwork) {
+                              setState(() => _noNetwork = true);
+                            }
+                          },
+                        ),
+                        if (_picked != null)
+                          MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: _picked!,
+                                width: 40,
+                                height: 40,
+                                child: Icon(
+                                  Icons.place,
+                                  color: bort.signal,
+                                  size: 40,
+                                ),
+                              ),
+                            ],
                           ),
+                      ],
+                    ),
+                  ),
+
+                  // ─── «No network» caption ───
+                  if (_noNetwork)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: side * 0.4,
+                      child: Center(
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: side * 0.3,
+                            vertical: side * 0.1,
+                          ),
+                          color: bort.bg,
+                          child: Text(
+                            i18n.t('media.no_network'),
+                            style: TextStyle(
+                              color: bort.dim,
+                              fontSize: side * 0.35,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  // ─── Position search indicator ───
+                  if (_locating)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: side * 0.4,
+                      child: Center(
+                        child: Text(
+                          '…',
+                          style: TextStyle(
+                            color: bort.dim,
+                            fontSize: side * 0.5,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  // ─── Bottom row: layers · save ───
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 12,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Tile-source pult: opens a subpult with the
+                        // list of sources.
+                        Pult(
+                          spec: PultSpec(
+                            id: 'geo_layers',
+                            icon: Icons.layers,
+                            onTap: null,
+                            longSubs: () => [
+                              for (var i = 0; i < _tileSources.length; i++)
+                                PultSpec(
+                                  id: 'tile_$i',
+                                  icon: Icons.map,
+                                  label: _tileSources[i].label,
+                                  selected: i == _tileSourceIndex,
+                                  stayOpen: true,
+                                  onTap: () => _switchTileSource(i),
+                                ),
+                            ],
+                          ),
+                          fg: bort.fg,
+                          bg: bort.bg,
+                          signal: bort.signal,
+                          overrideSize: side * 1.2,
+                        ),
+                        SizedBox(width: side * 0.5),
+                        // Save pult.
+                        Pult(
+                          spec: PultSpec(
+                            id: 'geo_save',
+                            icon: _busy ? Icons.hourglass_top : Icons.check,
+                            selected: _picked != null,
+                            onTap: (_busy || _picked == null) ? null : _save,
+                          ),
+                          fg: _picked != null ? bort.fg : bort.dim,
+                          bg: bort.bg,
+                          signal: bort.signal,
+                          overrideSize: side * 1.2,
                         ),
                       ],
                     ),
-                ],
-              ),
-            ),
-
-            // ─── «No network» caption ───
-            if (_noNetwork)
-              Positioned(
-                left: 0,
-                right: 0,
-                top: side * 0.4,
-                child: Center(
-                  child: Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: side * 0.3,
-                      vertical: side * 0.1,
-                    ),
-                    color: bort.bg,
-                    child: Text(
-                      i18n.t('media.no_network'),
-                      style: TextStyle(color: bort.dim, fontSize: side * 0.35),
-                    ),
-                  ),
-                ),
-              ),
-
-            // ─── Position search indicator ───
-            if (_locating)
-              Positioned(
-                left: 0,
-                right: 0,
-                top: side * 0.4,
-                child: Center(
-                  child: Text(
-                    '…',
-                    style: TextStyle(color: bort.dim, fontSize: side * 0.5),
-                  ),
-                ),
-              ),
-
-            // ─── Save pult ───
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 12,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Pult(
-                    spec: PultSpec(
-                      id: 'geo_save',
-                      icon: _busy ? Icons.hourglass_top : Icons.check,
-                      selected: _picked != null,
-                      onTap: (_busy || _picked == null) ? null : _save,
-                    ),
-                    fg: _picked != null ? bort.fg : bort.dim,
-                    bg: bort.bg,
-                    signal: bort.signal,
-                    overrideSize: side * 1.2,
                   ),
                 ],
               ),

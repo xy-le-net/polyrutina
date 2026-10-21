@@ -3,17 +3,17 @@
 //
 // Full-screen, opened from TraceField.
 //
-// Control row. Top-left — root pult (compass), top-right — exit
-// pult. The title is shifted to the right by the root pult's width:
-// the compass must not overlap the text. centerTitle is false to
-// prevent platform-specific centering. Text is truncated with
-// ellipsis if too long. No «back» button is rendered: exit is via
-// system means (gesture, button) or this exit pult.
+// Control row. The AppBar is removed: the header is laid out with
+// ControlRow inside a SafeArea. The root pult (compass) sits on the
+// left; the remaining width is taken by the immovable part — the
+// title (block and routine names) and the exit pult on the right.
+// This unifies the header across screens and prevents the title
+// from slipping under the compass.
 //
 // Exit pult. Shows the number of unchecked items when there are
 // any; otherwise — a down arrow. Long press opens the subpult:
 // mark all, unmark, clear. There are no other counters on the
-// screen: «done / total» is removed.
+// screen.
 //
 // Trace is distinguished by the pair (objectId, slot) and kind
 // (kind=checklist).
@@ -286,146 +286,153 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     final counts = _counts();
     final unchecked = counts.total - counts.done;
 
-    // Control row: compass on the left, title — in the remainder.
-    // rootSide equals the small pult side (the compass is drawn at
-    // 2/3 of the base side, which is exactly smallSide).
-    final rootSide = side;
-    final rootReserve = ControlRow.reserve(rootSide);
-
     return Scaffold(
       backgroundColor: bort.bg,
-      appBar: AppBar(
-        backgroundColor: bort.bg,
-        foregroundColor: bort.fg,
-        elevation: 0,
-        // No «back» button: exit is via system means or the exit pult
-        // in the right part of this row.
-        automaticallyImplyLeading: false,
-        centerTitle: false, // Enforce left alignment.
-        titleSpacing: rootReserve,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.blockTitle,
-              style: TextStyle(color: bort.fg),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis, // Prevent overflow.
-            ),
-            Text(
-              widget.routineTitle,
-              style: TextStyle(color: bort.dim, fontSize: titleSize * 0.7),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis, // Prevent overflow.
-            ),
-          ],
-        ),
-        actions: [
-          // Exit pult — right part of the control row. The unchecked
-          // count sits on it, if there are any.
-          Pult(
-            spec: PultSpec(
-              id: 'close_checklist',
-              icon: Icons.keyboard_arrow_down,
-              centerText: unchecked > 0 ? '$unchecked' : null,
-              selected: unchecked > 0,
-              onTap: _close,
-              longSubs: () => [
-                PultSpec(
-                  id: 'chk_all',
-                  icon: Icons.done_all,
-                  label: i18n.t('checklist.mark_all'),
-                  confirm: true,
-                  onTap: _markAll,
-                ),
-                PultSpec(
-                  id: 'chk_none',
-                  icon: Icons.check_box_outline_blank,
-                  label: i18n.t('checklist.unmark_all'),
-                  confirm: true,
-                  onTap: _unmarkAll,
-                ),
-                PultSpec(
-                  id: 'chk_clear',
-                  icon: Icons.clear_all,
-                  label: i18n.t('checklist.clear_all'),
-                  confirm: true,
-                  onTap: _clearAll,
-                ),
-              ],
-            ),
-            fg: bort.fg,
-            bg: bort.bg,
-            signal: bort.signal,
-            overrideSize: pultSide,
-          ),
-          SizedBox(width: side * 0.4),
-        ],
-      ),
       body: SafeArea(
-        child: ListView.builder(
-          padding: EdgeInsets.fromLTRB(12, 8, 12, side * 1.4),
-          itemCount: _items.length,
-          itemBuilder: (context, i) {
-            final it = _items[i];
-            final canToggle = it.text.trim().isNotEmpty;
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  PultTick(
-                    id: 'chk_$i',
-                    value: it.done,
-                    binary: true,
-                    fg: bort.fg,
-                    bg: bort.bg,
-                    signal: bort.signal,
-                    overrideSize: pultSide,
-                    onTap: canToggle ? () => _toggleDone(i) : null,
-                  ),
-                  SizedBox(width: side * 0.15),
-                  Expanded(
-                    child: Focus(
-                      onFocusChange: (hasFocus) {
-                        if (!hasFocus) _onBlur(i);
-                      },
-                      child: TextField(
-                        controller: _controllers[i],
-                        focusNode: _focusNodes[i],
-                        style: TextStyle(color: bort.fg, fontSize: itemSize),
-                        decoration: InputDecoration(
-                          isDense: true,
-                          hintText: i18n.t('routine.block.note'),
-                          hintStyle: TextStyle(color: bort.dim),
-                          border: OutlineInputBorder(
-                            borderSide: BorderSide(color: bort.dim),
-                            borderRadius: BorderRadius.circular(radiusW),
+        child: Column(
+          children: [
+            // Unified control row: root pult on the left, title and
+            // exit pult in the remaining space.
+            Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 8, right: 12),
+              child: ControlRow(
+                rootSide: side,
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            widget.blockTitle,
+                            style: TextStyle(color: bort.fg),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          enabledBorder: OutlineInputBorder(
-                            borderSide: BorderSide(color: bort.dim),
-                            borderRadius: BorderRadius.circular(radiusW),
+                          Text(
+                            widget.routineTitle,
+                            style: TextStyle(
+                              color: bort.dim,
+                              fontSize: titleSize * 0.7,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: BorderSide(color: bort.fg),
-                            borderRadius: BorderRadius.circular(radiusW),
-                          ),
-                          contentPadding: EdgeInsets.all(side * 0.15),
-                        ),
-                        onChanged: (v) {
-                          _items[i] = (text: v, done: _items[i].done);
-                          if (i == _items.length - 1 && v.isNotEmpty) {
-                            _ensureTrailingEmpty();
-                          }
-                          setState(() {});
-                        },
-                        onSubmitted: (_) => _submitAndAdvance(i),
+                        ],
                       ),
                     ),
-                  ),
-                ],
+                    Pult(
+                      spec: PultSpec(
+                        id: 'close_checklist',
+                        icon: Icons.keyboard_arrow_down,
+                        centerText: unchecked > 0 ? '$unchecked' : null,
+                        selected: unchecked > 0,
+                        onTap: _close,
+                        longSubs: () => [
+                          PultSpec(
+                            id: 'chk_all',
+                            icon: Icons.done_all,
+                            label: i18n.t('checklist.mark_all'),
+                            confirm: true,
+                            onTap: _markAll,
+                          ),
+                          PultSpec(
+                            id: 'chk_none',
+                            icon: Icons.check_box_outline_blank,
+                            label: i18n.t('checklist.unmark_all'),
+                            confirm: true,
+                            onTap: _unmarkAll,
+                          ),
+                          PultSpec(
+                            id: 'chk_clear',
+                            icon: Icons.clear_all,
+                            label: i18n.t('checklist.clear_all'),
+                            confirm: true,
+                            onTap: _clearAll,
+                          ),
+                        ],
+                      ),
+                      fg: bort.fg,
+                      bg: bort.bg,
+                      signal: bort.signal,
+                      overrideSize: pultSide,
+                    ),
+                  ],
+                ),
               ),
-            );
-          },
+            ),
+            Expanded(
+              child: ListView.builder(
+                padding: EdgeInsets.fromLTRB(12, 8, 12, side * 1.4),
+                itemCount: _items.length,
+                itemBuilder: (context, i) {
+                  final it = _items[i];
+                  final canToggle = it.text.trim().isNotEmpty;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        PultTick(
+                          id: 'chk_$i',
+                          value: it.done,
+                          binary: true,
+                          fg: bort.fg,
+                          bg: bort.bg,
+                          signal: bort.signal,
+                          overrideSize: pultSide,
+                          onTap: canToggle ? () => _toggleDone(i) : null,
+                        ),
+                        SizedBox(width: side * 0.15),
+                        Expanded(
+                          child: Focus(
+                            onFocusChange: (hasFocus) {
+                              if (!hasFocus) _onBlur(i);
+                            },
+                            child: TextField(
+                              controller: _controllers[i],
+                              focusNode: _focusNodes[i],
+                              style: TextStyle(
+                                color: bort.fg,
+                                fontSize: itemSize,
+                              ),
+                              decoration: InputDecoration(
+                                isDense: true,
+                                hintText: i18n.t('routine.block.note'),
+                                hintStyle: TextStyle(color: bort.dim),
+                                border: OutlineInputBorder(
+                                  borderSide: BorderSide(color: bort.dim),
+                                  borderRadius: BorderRadius.circular(radiusW),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(color: bort.dim),
+                                  borderRadius: BorderRadius.circular(radiusW),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(color: bort.fg),
+                                  borderRadius: BorderRadius.circular(radiusW),
+                                ),
+                                contentPadding: EdgeInsets.all(side * 0.15),
+                              ),
+                              onChanged: (v) {
+                                _items[i] = (text: v, done: _items[i].done);
+                                if (i == _items.length - 1 && v.isNotEmpty) {
+                                  _ensureTrailingEmpty();
+                                }
+                                setState(() {});
+                              },
+                              onSubmitted: (_) => _submitAndAdvance(i),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );

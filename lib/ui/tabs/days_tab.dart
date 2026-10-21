@@ -18,9 +18,10 @@
 //     signal-colored; the day number turns signal if and only if at
 //     least one routine of that day carries flags.
 //
-// Control row. Month switchers are laid out via a ConstrainedBox
-// (maxWidth: side * 8) with spaceEvenly inside, so the row stays
-// compact on wide screens and does not slip under the root pult.
+// Control row. The month switcher occupies the full remaining width
+// after the root pult. The ConstrainedBox limit is removed: the row
+// stretches edge to edge with spaceEvenly, so the prev/next buttons
+// sit closer to the screen edges and the month label is centered.
 //
 // Scopes. Dependencies are read from point scopes: BortScope (theme),
 // RoutineScope (the layer), I18nScope (strings). AppScope is
@@ -177,8 +178,8 @@ class _DaysTabState extends State<DaysTab> {
           padding: EdgeInsets.symmetric(vertical: side * 0.3),
           child: ControlRow(
             rootSide: rootSide,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: side * 8),
+            child: SizedBox(
+              width: double.infinity,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [

@@ -387,6 +387,11 @@ class RoutineBlockView extends StatelessWidget {
           id: 'flags_${routine.id}',
           icon: Icons.flag,
           selected: hasFlags,
+          // The layer itself drives the open subpult: on each flags
+          // mutation, RoutineScope notifies listeners, and the sheet
+          // regenerates its items with the up-to-date «selected»
+          // states. Without this, the checkmark would lag by one tap.
+          rebuildOn: RoutineScope.of(context),
           subsBuilder: () => buildFlagSubs(
             flags: routine.flags,
             i18n: i18n,

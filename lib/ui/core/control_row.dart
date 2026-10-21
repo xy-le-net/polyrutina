@@ -3,17 +3,19 @@
 //
 // A cross-cutting mechanism for all screens. The root pult (compass)
 // hangs in the top-left corner — it is the start of the row. The space
-// to its right is given to elements that must not slip under it
-// (card title, checklist title, month switchers).
+// to its right is given to the immovable part of the page: title,
+// month switcher, card name, etc.
 //
 // The row's content preserves its own size, is aligned horizontally
-// and vertically in the area remaining from the pult, and is scaled
-// down if it exceeds the available width. The alignment defaults to
-// center (appropriate for the month switcher) and can be set to
-// centerLeft for titles that should sit flush with the reserved zone.
+// and vertically in the area remaining from the pult. The alignment
+// defaults to center (appropriate for the month switcher) and can be
+// set to centerLeft for titles that should sit flush with the
+// reserved zone.
 //
-// The row's height equals the root pult's side. Elements inside are
-// vertically centered.
+// The row's height equals the root pult's side, but can grow if the
+// content is taller (minHeight instead of a fixed height). The former
+// FittedBox wrapper has been removed: it broke layouts that rely on
+// Expanded inside the child.
 //
 // Usage. Wrap the desired row as a ControlRow. The root pult itself
 // remains in the main screen's tree (main.dart) and is not drawn here
@@ -55,8 +57,8 @@ class ControlRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final left = reserve(rootSide, rootPad: rootPad, gap: gap);
-    return SizedBox(
-      height: rootSide,
+    return ConstrainedBox(
+      constraints: BoxConstraints(minHeight: rootSide),
       child: Row(
         children: [
           // Reserve space for the root pult.
@@ -65,10 +67,7 @@ class ControlRow extends StatelessWidget {
           Expanded(
             child: child == null
                 ? const SizedBox.shrink()
-                : Align(
-                    alignment: alignment,
-                    child: FittedBox(fit: BoxFit.scaleDown, child: child),
-                  ),
+                : Align(alignment: alignment, child: child),
           ),
         ],
       ),

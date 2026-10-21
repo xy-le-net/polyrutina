@@ -6,30 +6,33 @@
 // at the latest added, «back» — older, «forward» — newer. Buttons
 // are absent when there is nowhere to page.
 //
-// Exit lives in the top-right corner of the app bar, as the down
-// chevron (same as checklist_screen), — the single pattern of exit
-// for full-screen sheets. The title is explicitly left-aligned
-// (centerTitle: false) to prevent it from slipping under the root
-// pult, and text is truncated with ellipsis to avoid overflow.
+// Control row. The AppBar is removed: the header is laid out with
+// ControlRow inside a SafeArea. The root pult (compass) sits on the
+// left; the remaining width holds the titles and the exit pult on
+// the right. This unifies the header across screens.
 //
 // The bottom center pult varies by kind. Audio and video: play/pause.
-// Photo: share. File and geo: open (externally). A long press on it
-// opens the subpult with «share» and «delete» (for file and geo the
-// open action is not duplicated in the subpult: it lives on the
-// short tap). Delete carries confirm — a double tap in the sheet.
+// Photo: share. File: open. Geo: open externally (the same action
+// is also available from the coordinates line, see below).
 //
 // Subpult dot. Since the center pult carries a subpult, the pult
-// core draws a small signal-colored dot in its bottom-right corner,
-// — per the global rule (see pult_core.dart).
+// core draws a small signal-colored dot in its bottom-right corner.
 //
 // Playback. Photo — InteractiveViewer. Video — video_player with
 // the play/pause moved to the bottom center pult; a position slider
 // sits above the pult row, with the position and the total duration
 // at its ends (small). Audio — just_audio likewise; the total
-// duration sits at the screen center, always (video shows it at the
-// center only while paused, so as not to cover the picture). Geo
-// opens via url_launcher with the geo: scheme, falling back to the
-// web map. File opens via open_filex in a system application.
+// duration sits at the screen center, always. Geo opens via
+// url_launcher with the geo: scheme, falling back to the web map.
+// File opens via open_filex in a system application.
+//
+// Geo view. The screenshot (if any) is stretched as the background
+// of the page (BoxFit.cover). The coordinates line is halved in
+// size and doubled as a tap target: tapping copies it to the
+// clipboard; a short SnackBar provides feedback. Next to the
+// coordinates sits a pult that opens the point in the system's
+// default application (geo: or the web map). The screenshot file
+// name is not displayed.
 //
 // Scopes. Dependencies are read from point scopes: BortScope (theme
 // and colors), TraceScope (the layer used for deletion), I18nScope
@@ -39,12 +42,7 @@
 // Position ticks. The audio position stream fires roughly sixty
 // times per second. It is consumed by a StreamBuilder wrapping ONLY
 // the slider and the small position label, so the rest of the tree
-// — the app bar, the play/pause pult, the body — does not rebuild
-// on every tick. Video already rebuilds only the relevant subtrees
-// through ValueListenableBuilder.
-//
-// Geo coordinates. The line «lat, lon» is a tap target: tapping
-// copies it to the clipboard; feedback — a short SnackBar.
+// is not rebuilt on every tick.
 //
 // Lifecycle. Players are created when the current frame appears
 // and are disposed on frame change, kind change, or screen exit;
@@ -264,11 +262,6 @@ class _MediaViewerState extends State<MediaViewer> {
   }
 
   // ─── Deletion ───
-  // The file is stripped from the trace body (the layer writes an
-  // edit). The local list is recounted: the removed frame goes.
-  // If the list empties — the screen closes (back to the card).
-  // Otherwise — move to the previous; if there is none — the
-  // current position stays (which yields the next of those left).
   Future<void> _remove(TraceFile f) async {
     final traceLayer = TraceScope.of(context);
     final journal = AppScope.of(context).journal;
@@ -322,8 +315,6 @@ class _MediaViewerState extends State<MediaViewer> {
   }
 
   // ─── Duration/position as mm:ss (h:mm:ss above an hour) ───
-  // A player-side format, outside i18n: unlike work durations, the
-  // units are not labelled.
   String _fmtDur(Duration d) {
     final h = d.inHours;
     final m = d.inMinutes.remainder(60);
@@ -348,66 +339,76 @@ class _MediaViewerState extends State<MediaViewer> {
 
     return Scaffold(
       backgroundColor: bort.bg,
-      appBar: AppBar(
-        backgroundColor: bort.bg,
-        foregroundColor: bort.fg,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        centerTitle: false, // Enforce left alignment.
-        titleSpacing: ControlRow.reserve(side),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.blockTitle.isEmpty ? '—' : widget.blockTitle,
-              style: TextStyle(color: bort.fg),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis, // Prevent overflow.
-            ),
-            Text(
-              subtitle,
-              style: TextStyle(
-                color: bort.dim,
-                fontSize: side * bort.kTitle * 0.7,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis, // Prevent overflow.
-            ),
-          ],
-        ),
-        actions: [
-          // Exit — down chevron, the same as in checklist_screen.
-          Pult(
-            spec: PultSpec(
-              id: 'media_close',
-              icon: Icons.keyboard_arrow_down,
-              onTap: _close,
-            ),
-            fg: bort.fg,
-            bg: bort.bg,
-            signal: bort.signal,
-            overrideSize: side * bort.kPultSmall,
-          ),
-          SizedBox(width: side * 0.4),
-        ],
-      ),
       body: SafeArea(
-        child: Stack(
+        child: Column(
           children: [
-            Positioned.fill(child: _body(f, bort, side)),
-            if (f != null &&
-                (f.kind == MediaKind.audio || f.kind == MediaKind.video))
-              Positioned(
-                left: side * 0.5,
-                right: side * 0.5,
-                bottom: side * 1.6,
-                child: _sliderFor(f, bort, side),
+            // Unified control row: root pult on the left, titles and
+            // exit pult in the remaining space.
+            Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 8, right: 12),
+              child: ControlRow(
+                rootSide: side,
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            widget.blockTitle.isEmpty ? '—' : widget.blockTitle,
+                            style: TextStyle(color: bort.fg),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            subtitle,
+                            style: TextStyle(
+                              color: bort.dim,
+                              fontSize: side * bort.kTitle * 0.7,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Pult(
+                      spec: PultSpec(
+                        id: 'media_close',
+                        icon: Icons.keyboard_arrow_down,
+                        onTap: _close,
+                      ),
+                      fg: bort.fg,
+                      bg: bort.bg,
+                      signal: bort.signal,
+                      overrideSize: side * bort.kPultSmall,
+                    ),
+                  ],
+                ),
               ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 12,
-              child: _bottomRow(f, bort, side),
+            ),
+            Expanded(
+              child: Stack(
+                children: [
+                  Positioned.fill(child: _body(f, bort, side)),
+                  if (f != null &&
+                      (f.kind == MediaKind.audio || f.kind == MediaKind.video))
+                    Positioned(
+                      left: side * 0.5,
+                      right: side * 0.5,
+                      bottom: side * 1.6,
+                      child: _sliderFor(f, bort, side),
+                    ),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 12,
+                    child: _bottomRow(f, bort, side),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -416,8 +417,6 @@ class _MediaViewerState extends State<MediaViewer> {
   }
 
   // ─── Bottom row: prev · center · next ───
-  // The center pult's icon depends on the kind and on the playback
-  // state; for video the whole row is rebuilt from the controller.
   Widget _bottomRow(TraceFile? f, OperationalLayer bort, double side) {
     final i18n = I18nScope.of(context);
 
@@ -506,9 +505,6 @@ class _MediaViewerState extends State<MediaViewer> {
   }
 
   // ─── Subpult for the center pult ───
-  // Share + delete. Delete carries confirm (a double tap in the
-  // sheet). For file and geo the «open» is not duplicated: it
-  // lives on the short tap of the center pult.
   List<PultSpec> _subsFor(TraceFile f, I18n i18n) => [
     PultSpec(
       id: 'media_share',
@@ -526,10 +522,6 @@ class _MediaViewerState extends State<MediaViewer> {
   ];
 
   // ─── Slider for audio/video ───
-  // Position at the left end, duration at the right; the thumb is
-  // signal-colored. For video it is rebuilt from the controller;
-  // for audio — from a StreamBuilder over player.positionStream,
-  // so the rest of the screen is not rebuilt on every tick.
   Widget _sliderFor(TraceFile f, OperationalLayer bort, double side) {
     Widget slider(Duration pos, Duration dur, void Function(Duration) onSeek) {
       final maxMs = dur.inMilliseconds > 0
@@ -638,45 +630,74 @@ class _MediaViewerState extends State<MediaViewer> {
       final lat = f.lat?.toStringAsFixed(6) ?? '?';
       final lon = f.lon?.toStringAsFixed(6) ?? '?';
       final acc = f.acc?.toStringAsFixed(1) ?? '?';
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Coordinates line: a tap target for copying.
-            GestureDetector(
-              onTap: () => _copyCoords(lat, lon),
-              child: Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: side * 0.4,
-                  vertical: side * 0.2,
+      final file = File(f.path);
+
+      // Background: the screenshot stretched over the page (BoxFit.cover).
+      // Foreground: a compact coordinates line with an adjacent
+      // «open externally» pult. The screenshot file name is not shown.
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          if (file.existsSync())
+            Positioned.fill(child: Image.file(file, fit: BoxFit.cover)),
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    GestureDetector(
+                      onTap: () => _copyCoords(lat, lon),
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: side * 0.2,
+                          vertical: side * 0.1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: bort.bg.withValues(alpha: 0.75),
+                          border: Border.all(color: bort.dim),
+                          borderRadius: BorderRadius.circular(
+                            side * bort.kRadius,
+                          ),
+                        ),
+                        child: Text(
+                          '$lat, $lon',
+                          style: TextStyle(
+                            color: bort.fg,
+                            fontSize: side * 0.25,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: side * 0.15),
+                    Pult(
+                      spec: PultSpec(
+                        id: 'geo_open_ext',
+                        icon: Icons.open_in_new,
+                        onTap: () => _openExternal(f),
+                      ),
+                      fg: bort.fg,
+                      bg: bort.bg,
+                      signal: bort.signal,
+                      overrideSize: side * bort.kPultSmall,
+                    ),
+                  ],
                 ),
-                decoration: BoxDecoration(
-                  border: Border.all(color: bort.dim),
-                  borderRadius: BorderRadius.circular(side * bort.kRadius),
-                ),
-                child: Text(
-                  '$lat, $lon',
+                SizedBox(height: side * 0.15),
+                Text(
+                  '±$acc ${i18n.t('time.m')}',
                   style: TextStyle(
-                    color: bort.fg,
-                    fontSize: side * 0.5,
-                    fontFamily: 'monospace',
+                    color: bort.dim,
+                    fontSize: side * 0.25,
+                    backgroundColor: bort.bg.withValues(alpha: 0.75),
                   ),
                 ),
-              ),
+              ],
             ),
-            SizedBox(height: side * 0.3),
-            Text(
-              '±$acc ${i18n.t('time.m')}',
-              style: TextStyle(color: bort.dim, fontSize: side * 0.3),
-            ),
-            SizedBox(height: side * 0.1),
-            Text(
-              f.name,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: bort.dim, fontSize: side * 0.3),
-            ),
-          ],
-        ),
+          ),
+        ],
       );
     }
     return Center(
@@ -732,7 +753,6 @@ class _MediaViewerState extends State<MediaViewer> {
               child: VideoPlayer(ctrl),
             ),
           ),
-          // Total duration at the center, while paused only.
           if (!v.isPlaying)
             Positioned.fill(
               child: IgnorePointer(
