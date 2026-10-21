@@ -200,7 +200,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
     final side = PultScope.of(context).smallSide;
 
     // Unified control row calculation.
-    final rootSide = side * 2 / 3;
+    final rootSide = side;
     final rootReserve = ControlRow.reserve(rootSide);
 
     return Scaffold(

@@ -167,7 +167,9 @@ class _DaysTabState extends State<DaysTab> {
       grid.add(_cell(dayNum, list, side, bort));
     }
 
-    final rootSide = side * 2 / 3;
+    // rootSide equals the small pult side: the compass is drawn at
+    // 2/3 of the base side, which is exactly smallSide.
+    final rootSide = side;
 
     return Column(
       children: [
@@ -232,6 +234,10 @@ class _DaysTabState extends State<DaysTab> {
     final TextStyle style = TextStyle(
       color: dayColor,
       fontSize: side * 0.4,
+      // Normalize line height: otherwise the text sits lower than the
+      // circle or square, because the baseline offset of the default
+      // font metrics is asymmetric.
+      height: 1.0,
       decoration: m.completed ? TextDecoration.underline : TextDecoration.none,
       decorationColor: underlineColor,
     );
@@ -240,6 +246,7 @@ class _DaysTabState extends State<DaysTab> {
 
     if (m.pulse) {
       content = Container(
+        padding: EdgeInsets.all(side * 0.1),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: Border.all(
@@ -254,6 +261,7 @@ class _DaysTabState extends State<DaysTab> {
 
     if (m.scheduled) {
       content = Container(
+        padding: EdgeInsets.all(side * 0.1),
         decoration: BoxDecoration(
           border: Border.all(
             color: m.signalScheduled ? bort.signal : bort.dim,
@@ -268,7 +276,9 @@ class _DaysTabState extends State<DaysTab> {
 
     return GestureDetector(
       onTap: routines.isEmpty ? null : () => _openDay(routines),
-      child: Padding(padding: EdgeInsets.all(side * 0.1), child: content),
+      child: Center(
+        child: Padding(padding: EdgeInsets.all(side * 0.1), child: content),
+      ),
     );
   }
 

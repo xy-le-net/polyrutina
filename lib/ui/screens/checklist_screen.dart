@@ -287,7 +287,9 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     final unchecked = counts.total - counts.done;
 
     // Control row: compass on the left, title — in the remainder.
-    final rootSide = side * 2 / 3;
+    // rootSide equals the small pult side (the compass is drawn at
+    // 2/3 of the base side, which is exactly smallSide).
+    final rootSide = side;
     final rootReserve = ControlRow.reserve(rootSide);
 
     return Scaffold(

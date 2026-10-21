@@ -178,7 +178,7 @@ class _RoutineCardState extends State<RoutineCard> {
   bool _shouldShowSlot(Routine r, String kind) {
     if (_showAllSlots) return true;
     if (kind == 'note') return true;
-    if (kind == 'summary') return r.totalSeconds > 0;
+    if (kind == 'summary') return true;
 
     final bort = BortScope.of(context);
     if (bort.defaultSlots.contains(kind)) return true;
@@ -477,7 +477,7 @@ class _RoutineCardState extends State<RoutineCard> {
       blocks.add(blockOf('summary', i18n.t('routine.summary')));
     }
 
-    final rootSide = side * 2 / 3;
+    final rootSide = side;
     final rootReserve = ControlRow.reserve(rootSide);
 
     return Scaffold(

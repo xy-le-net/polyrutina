@@ -265,23 +265,26 @@ class Pult extends StatelessWidget {
       child: core,
     );
 
-    // Subpult dot: only when longSubs present.
+    // Subpult dot: only when longSubs present. Doubled in size and
+    // given a signal-colored outline, per the UX review (the dot
+    // was too small to read at arm's length on a bright screen).
     if (spec.longSubs != null) {
-      final dotD = side / 5 < _minDot ? _minDot : side / 5;
+      final dotD = (side / 5 < _minDot ? _minDot : side / 5) * 2;
       final dotColor = selected ? iconColor : signal;
       core = Stack(
         clipBehavior: Clip.none,
         children: [
           core,
           Positioned(
-            right: 0,
-            bottom: 0,
+            right: -dotD / 4,
+            bottom: -dotD / 4,
             child: Container(
               width: dotD,
               height: dotD,
               decoration: BoxDecoration(
                 color: dotColor,
                 shape: BoxShape.circle,
+                border: Border.all(color: signal, width: side / 20),
               ),
             ),
           ),

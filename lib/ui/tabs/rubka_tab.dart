@@ -34,6 +34,7 @@ import 'package:flutter/material.dart';
 import '../core/app_scope.dart';
 import '../core/block.dart';
 import '../core/bort_field.dart';
+import '../core/control_row.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_tick.dart';
 import 'rubka_appearance.dart';
@@ -143,7 +144,12 @@ class RubkaTab extends StatelessWidget {
 
         if (!wide) {
           return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 80, 16, 16),
+            padding: EdgeInsets.fromLTRB(
+              16,
+              ControlRow.reserve(side) + 16,
+              16,
+              16,
+            ),
             children: [artel, appearance, interface, data],
           );
         }
@@ -166,7 +172,12 @@ class RubkaTab extends StatelessWidget {
         );
 
         return SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(hPad, 80, hPad, 16),
+          padding: EdgeInsets.fromLTRB(
+            hPad,
+            ControlRow.reserve(side) + 16,
+            hPad,
+            16,
+          ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

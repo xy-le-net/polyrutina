@@ -76,6 +76,7 @@ import '../../data/i18n.dart';
 import '../../data/operational_layer.dart';
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
+import '../core/control_row.dart';
 import '../pults/pult_core.dart';
 
 class MediaViewer extends StatefulWidget {
@@ -353,7 +354,7 @@ class _MediaViewerState extends State<MediaViewer> {
         elevation: 0,
         automaticallyImplyLeading: false,
         centerTitle: false, // Enforce left alignment.
-        titleSpacing: side * 1.4,
+        titleSpacing: ControlRow.reserve(side),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

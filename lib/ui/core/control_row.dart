@@ -6,11 +6,11 @@
 // to its right is given to elements that must not slip under it
 // (card title, checklist title, month switchers).
 //
-// The row's content preserves its own size, is centered horizontally
-// and vertically in the area remaining from the pult. To prevent
-// overflow and overlap with the root pult, the content is wrapped in
-// an Expanded widget, and FittedBox scales it down if the width
-// exceeds the available space.
+// The row's content preserves its own size, is aligned horizontally
+// and vertically in the area remaining from the pult, and is scaled
+// down if it exceeds the available width. The alignment defaults to
+// center (appropriate for the month switcher) and can be set to
+// centerLeft for titles that should sit flush with the reserved zone.
 //
 // The row's height equals the root pult's side. Elements inside are
 // vertically centered.
@@ -33,6 +33,8 @@ class ControlRow extends StatelessWidget {
   final Widget? child;
   // Additional gap between the pult and the content.
   final double gap;
+  // Alignment of the content in the remaining space.
+  final Alignment alignment;
 
   const ControlRow({
     super.key,
@@ -40,6 +42,7 @@ class ControlRow extends StatelessWidget {
     this.rootPad = 6.0,
     this.gap = 4.0,
     this.child,
+    this.alignment = Alignment.center,
   });
 
   // Full width of the reserved zone on the left: offset + pult + gap.
@@ -62,8 +65,8 @@ class ControlRow extends StatelessWidget {
           Expanded(
             child: child == null
                 ? const SizedBox.shrink()
-                : Center(
-                    // Scale down content if it exceeds the width.
+                : Align(
+                    alignment: alignment,
                     child: FittedBox(fit: BoxFit.scaleDown, child: child),
                   ),
           ),

@@ -14,6 +14,12 @@
 //       cancelLabel: 'Cancel');
 //   if (ok) { ... }
 //
+// Button labels are set at kName / 1.6: at the full kName size the
+// words overflow the frame on narrow screens (notably with long
+// Russian labels such as «удалить» and «отмена»). The height is
+// normalized to 1.0 so that the tightened line does not drift
+// vertically against the right-aligned row.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -29,13 +35,14 @@ Future<bool> showConfirm(
   required String confirmLabel,
   required String cancelLabel,
 }) async {
-  final app = AppScope.of(context);
-  final bort = app.bort;
+  final bort = BortScope.of(context);
   final side = PultScope.of(context).smallSide;
 
   final pad = side * bort.kFramePad;
   final strokeW = side * bort.kStroke;
   final radius = side * bort.kRadius;
+  // 1.6× reduction for the action labels.
+  final actionSize = side * bort.kName / 1.6;
 
   final result = await showDialog<bool>(
     context: context,
@@ -91,7 +98,8 @@ Future<bool> showConfirm(
                             cancelLabel,
                             style: TextStyle(
                               color: bort.dim,
-                              fontSize: side * bort.kName,
+                              fontSize: actionSize,
+                              height: 1.0,
                             ),
                           ),
                         ),
@@ -108,7 +116,8 @@ Future<bool> showConfirm(
                             confirmLabel,
                             style: TextStyle(
                               color: bort.signal,
-                              fontSize: side * bort.kName,
+                              fontSize: actionSize,
+                              height: 1.0,
                             ),
                           ),
                         ),

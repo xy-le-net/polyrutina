@@ -235,7 +235,7 @@ class _ImportScreenState extends State<ImportScreen> {
     final dim = bort.dim;
     final fg = bort.fg;
 
-    final rootSide = side * 2 / 3;
+    final rootSide = side;
     final rootReserve = ControlRow.reserve(rootSide);
 
     return Scaffold(
