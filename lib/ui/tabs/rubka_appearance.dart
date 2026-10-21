@@ -4,10 +4,12 @@
 // Four theme pults: system, day, night, custom. The current one is
 // marked.
 //
-// Five role fields (bg, bgdim, dim, fg, signal) — only for the
-// «custom» theme, shown always, regardless of which theme is active:
-// the custom one can be edited while standing in any other. Day and
-// night are not editable; they have no fields.
+// The routine's day is determined as follows: completedAt, otherwise
+// scheduledAt, otherwise lastPulseAt, otherwise createdAt. The
+// priority is exactly this: completion > schedule > pulse > creation.
+// The assigned date outranks the pulse on purpose: a routine pinned
+// to a particular day must appear on that day, not on the day it
+// happened to be started. One routine — exactly one mark.
 //
 // Scopes. Dependencies are read from point scopes: BortScope (theme
 // name, labels flag, per-theme colors) and I18nScope (strings). The

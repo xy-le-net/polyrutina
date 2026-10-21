@@ -105,11 +105,23 @@ class RoutineLayer extends ChangeNotifier {
     try {
       final raw = await _file!.readAsString();
       final data = jsonDecode(raw) as Map<String, dynamic>;
+      // Lenient reload: a single damaged record is skipped, the rest
+      // load as usual. Routine.fromJson throws FormatException when
+      // the mandatory fields (id, created_at) are missing, and any
+      // other unexpected shape is caught here as well. Without this
+      // guard, one bad entry would wipe the whole cache.
       final r = data['routines'];
       if (r is List) {
-        routines = r
-            .map((e) => Routine.fromJson(e as Map<String, dynamic>))
-            .toList();
+        final loaded = <Routine>[];
+        for (final e in r) {
+          if (e is! Map) continue;
+          try {
+            loaded.add(Routine.fromJson(Map<String, dynamic>.from(e)));
+          } catch (_) {
+            // Skip the damaged record; keep the rest.
+          }
+        }
+        routines = loaded;
       }
       lastActiveBlockKind = data['last_active_block_kind'] as String?;
 

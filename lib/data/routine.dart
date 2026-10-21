@@ -94,12 +94,18 @@ class RoutineBlock {
     'time_edited': timeEdited,
   };
 
-  factory RoutineBlock.fromJson(Map<String, dynamic> j) => RoutineBlock(
-    kind: j['kind'] as String,
-    accumulatorSeconds: (j['accumulator'] as num?)?.toInt() ?? 0,
-    startedAt: (j['started_at'] as num?)?.toInt(),
-    timeEdited: j['time_edited'] as bool? ?? false,
-  );
+  factory RoutineBlock.fromJson(Map<String, dynamic> j) {
+    final kind = j['kind'];
+    if (kind is! String || kind.isEmpty) {
+      throw const FormatException('routine block: missing kind');
+    }
+    return RoutineBlock(
+      kind: kind,
+      accumulatorSeconds: (j['accumulator'] as num?)?.toInt() ?? 0,
+      startedAt: (j['started_at'] as num?)?.toInt(),
+      timeEdited: j['time_edited'] as bool? ?? false,
+    );
+  }
 }
 
 class Routine {
@@ -175,19 +181,43 @@ class Routine {
     'blocks': blocks.map((b) => b.toJson()).toList(),
   };
 
-  factory Routine.fromJson(Map<String, dynamic> j) => Routine(
-    id: (j['id'] as num).toInt(),
-    name: j['name'] as String? ?? '',
-    createdAt: (j['created_at'] as num).toInt(),
-    lastActionAt: (j['last_action_at'] as num?)?.toInt(),
-    lastPulseAt: (j['last_pulse_at'] as num?)?.toInt(),
-    completedAt: (j['completed_at'] as num?)?.toInt(),
-    scheduledAt: (j['scheduled_at'] as num?)?.toInt(),
-    plannedSeconds: (j['planned_seconds'] as num?)?.toInt() ?? 0,
-    flags: (j['flags'] as num?)?.toInt() ?? 0,
-    completed: j['completed'] as bool? ?? false,
-    blocks: (j['blocks'] as List)
-        .map((b) => RoutineBlock.fromJson(b as Map<String, dynamic>))
-        .toList(),
-  );
+  // Lenient parsing: a damaged record must not take down the whole
+  // cache. Only `id` and `created_at` are mandatory — without them
+  // the record cannot be identified or placed on the timeline, so a
+  // FormatException is thrown and the caller is expected to skip
+  // that single record. Every other field falls back to a sane
+  // default, and a malformed block is dropped without discarding
+  // its siblings.
+  factory Routine.fromJson(Map<String, dynamic> j) {
+    final id = (j['id'] as num?)?.toInt();
+    final createdAt = (j['created_at'] as num?)?.toInt();
+    if (id == null || createdAt == null) {
+      throw const FormatException('routine: missing id or created_at');
+    }
+    final blocks = <RoutineBlock>[];
+    final rawBlocks = j['blocks'];
+    if (rawBlocks is List) {
+      for (final b in rawBlocks) {
+        if (b is! Map) continue;
+        try {
+          blocks.add(RoutineBlock.fromJson(Map<String, dynamic>.from(b)));
+        } catch (_) {
+          // Skip a single malformed block; keep the rest.
+        }
+      }
+    }
+    return Routine(
+      id: id,
+      name: j['name'] as String? ?? '',
+      createdAt: createdAt,
+      lastActionAt: (j['last_action_at'] as num?)?.toInt(),
+      lastPulseAt: (j['last_pulse_at'] as num?)?.toInt(),
+      completedAt: (j['completed_at'] as num?)?.toInt(),
+      scheduledAt: (j['scheduled_at'] as num?)?.toInt(),
+      plannedSeconds: (j['planned_seconds'] as num?)?.toInt() ?? 0,
+      flags: (j['flags'] as num?)?.toInt() ?? 0,
+      completed: j['completed'] as bool? ?? false,
+      blocks: blocks,
+    );
+  }
 }

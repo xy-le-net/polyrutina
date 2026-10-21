@@ -39,6 +39,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'bort_file.dart';
 import 'database.dart';
 import 'journal_types.dart';
 
@@ -312,10 +313,14 @@ class JournalLayer extends ChangeNotifier {
     } catch (_) {}
   }
 
+  // Marks are written atomically: a crash mid-write leaves either
+  // the old journal_layer.json or the new one whole, never a torn
+  // file. Shared with BortFile and the other caches via
+  // atomicWriteJson.
   Future<void> _saveStateNow() async {
     if (_stateFile == null) return;
     final data = {'layers': _layers.map((k, v) => MapEntry(k, v.lastId))};
-    await _stateFile!.writeAsString(jsonEncode(data));
+    await atomicWriteJson(_stateFile!, data);
     _stateDirty = false;
   }
 }

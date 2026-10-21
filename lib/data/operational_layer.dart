@@ -76,8 +76,13 @@ class ShiftHistory {
     } catch (_) {}
   }
 
+  // Shift history is written atomically: a crash mid-write leaves
+  // either the old shift_history.json or the new one whole, never a
+  // torn file. Shared with BortFile and the other caches via
+  // atomicWriteJson.
   Future<void> _save() async {
-    if (_file == null) return;
+    final target = _file;
+    if (target == null) return;
     final out = <String, dynamic>{};
     for (final ye in _data.entries) {
       final months = <String, dynamic>{};
@@ -90,9 +95,7 @@ class ShiftHistory {
       }
       if (months.isNotEmpty) out[ye.key.toString()] = months;
     }
-    try {
-      await _file!.writeAsString(jsonEncode(out));
-    } catch (_) {}
+    await atomicWriteJson(target, out);
   }
 
   void addDay(int year, int month, int day, int seconds) {

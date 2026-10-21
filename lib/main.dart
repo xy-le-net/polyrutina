@@ -139,13 +139,16 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   // Everything MaterialApp reads at build time, plus what the tab
   // bar needs. Color hex strings are computed here so that any
   // change to bg/bgdim/dim/fg/signal (custom theme edits, system
-  // brightness switch) triggers a rebuild.
+  // brightness switch) triggers a rebuild. The language is part of
+  // the signature too: switching it triggers the dictionary reload
+  // in _onBortChanged below.
   String _computeBortSignature() {
     return '${_bort.themeName}|'
         '${_bort.scale.toStringAsFixed(4)}|'
         '${_bort.showFieldTab}|'
         '${_bort.showArtelTab}|'
         '${_bort.systemBrightness.name}|'
+        '${_bort.lang}|'
         '${_bort.colorToHex(_bort.bg)}|'
         '${_bort.colorToHex(_bort.bgdim)}|'
         '${_bort.colorToHex(_bort.dim)}|'
@@ -157,6 +160,14 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     final s = _computeBortSignature();
     if (s == _bortSignature) return;
     _bortSignature = s;
+    // Language switch: re-read the dictionary. Without this, the
+    // interface would keep the previous strings until restart,
+    // since the language is not otherwise a MaterialApp build
+    // input. Fire-and-forget: _reloadI18n does its own setState
+    // when the load completes.
+    if (_i18n != null && _i18n!.lang != _bort.lang) {
+      _reloadI18n();
+    }
     if (mounted) setState(() {});
   }
 
