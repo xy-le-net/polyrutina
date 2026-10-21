@@ -10,10 +10,10 @@
 // switching blocks between routines) are wrapped in
 // journal.transaction.
 //
-// Cache. Written with a 200 ms debounce. currentRoutineId lives in
-// memory; lastActiveBlockKind lives in the cache (for scroll
-// restoration after restart). Writes go through a .tmp file and a
-// rename, so a crash mid-write cannot leave a half-written cache.
+// Cache. Written with a 200 ms debounce. currentRoutineId is
+// reconstructed on startup from the first running block, so that
+// after a restart the app knows which routine is active. Cache
+// writes go through a .tmp file and a rename.
 //
 // Completion. Setting it stops the running block and records
 // completedAt; clearing it removes completedAt.
@@ -22,22 +22,24 @@
 // clears the mark.
 //
 // lastPulseAt. Advanced on block start and stop. Other actions
-// (rename, flag change, plan edit) leave it alone — otherwise the
-// day in the "days" calendar would drift for no reason.
+// (rename, flag change, plan edit) leave it alone.
 //
 // Scheduled date and planned man-hours. Edited in the card; stored
 // as Unix seconds and seconds respectively.
 //
 // Duplication. Copied: name, flags, scheduled date, planned
 // man-hours, traces of the note, prep, closeout blocks (text and
-// checklist). Transit, work, and idle traces are not carried over
-// — they describe a specific run.
+// checklist). Transit, work, and idle traces are not carried over.
 //
-// Duplication writes ONE snapshot entry (with the routine's full
-// state) instead of a series of create/rename/flags/set_schedule/
-// set_planned entries. The "snapshot" branch in _applyEntry replaces
-// the routine in place. Trace copies remain separate entries, as
-// before: those are edits to the trace layer, not to the routine.
+// Duplication writes ONE snapshot entry. The "snapshot" branch in
+// _applyEntry replaces the routine in place. Trace copies remain
+// separate entries.
+//
+// startBlock. Guarantees that only one block is active across the
+// whole app: it pauses every running block in every routine before
+// starting the target, regardless of currentRoutineId. This fixes
+// the case where currentRoutineId was lost after a restart, yet a
+// routine's block was still marked as running.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -110,6 +112,14 @@ class RoutineLayer extends ChangeNotifier {
             .toList();
       }
       lastActiveBlockKind = data['last_active_block_kind'] as String?;
+
+      // Reconstruct currentRoutineId from the first running block.
+      for (final r in routines) {
+        if (r.runningBlock != null) {
+          currentRoutineId = r.id;
+          break;
+        }
+      }
     } catch (_) {}
   }
 
@@ -274,16 +284,6 @@ class RoutineLayer extends ChangeNotifier {
   }
 
   // ─── Duplication ───
-  // Copied: name, flags, scheduled date, planned man-hours, and the
-  // traces of the note, prep, closeout blocks (text and checklist).
-  // Transit, work, and idle traces are not carried over — they
-  // describe a specific run.
-  //
-  // The routine itself is written as a single snapshot entry: create
-  // a fresh routine, then log a snapshot carrying the final state
-  // (name, flags, schedule, plan). Trace copies follow as separate
-  // entries. Everything is wrapped in one transaction — either the
-  // whole duplicate is born, or nothing.
   Future<Routine?> duplicateRoutine(JournalLayer journal, int sourceId) async {
     final src = findRoutine(sourceId);
     if (src == null) return null;
@@ -293,7 +293,6 @@ class RoutineLayer extends ChangeNotifier {
       final r = await createRoutine(journal);
       newId = r.id;
 
-      // Build the snapshot state for the new routine.
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       final snapshot = Routine(
         id: r.id,
@@ -438,8 +437,6 @@ class RoutineLayer extends ChangeNotifier {
     if (r.completed == value) return;
 
     if (value) {
-      // Pause all running blocks + completion mark — in one
-      // transaction: either all, or nothing.
       await journal.transaction(() async {
         final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
         for (final b in r.blocks) {
@@ -514,8 +511,9 @@ class RoutineLayer extends ChangeNotifier {
   }
 
   // ─── Block start ───
-  // Stops running blocks (in this routine and in the other one),
-  // starts the target — all in one transaction.
+  // Pauses EVERY running block in EVERY routine, then starts the
+  // target. This guarantees a single active block across the whole
+  // app, even if currentRoutineId was lost after a restart.
   Future<void> startBlock(
     JournalLayer journal,
     int routineId,
@@ -527,32 +525,17 @@ class RoutineLayer extends ChangeNotifier {
     await journal.transaction(() async {
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
-      if (currentRoutineId != null && currentRoutineId != routineId) {
-        final other = findRoutine(currentRoutineId!);
-        if (other != null) {
-          for (final b in other.blocks) {
-            if (b.isRunning) {
-              b.pause(at: now);
-              await journal.log(
-                type: JournalType.routine,
-                body:
-                    '{"action":"pause_block","routine":${other.id},'
-                    '"block":"${b.kind}","at":$now}',
-              );
-            }
+      for (final other in routines) {
+        for (final b in other.blocks) {
+          if (b.isRunning) {
+            b.pause(at: now);
+            await journal.log(
+              type: JournalType.routine,
+              body:
+                  '{"action":"pause_block","routine":${other.id},'
+                  '"block":"${b.kind}","at":$now}',
+            );
           }
-        }
-      }
-
-      for (final b in r.blocks) {
-        if (b.isRunning && b.kind != kind) {
-          b.pause(at: now);
-          await journal.log(
-            type: JournalType.routine,
-            body:
-                '{"action":"pause_block","routine":$routineId,'
-                '"block":"${b.kind}","at":$now}',
-          );
         }
       }
 

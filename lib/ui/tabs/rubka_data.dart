@@ -9,8 +9,7 @@
 //
 //   Group 2 (journal):
 //     — journal: volume of the bort files;
-//     — reread: reset layer memory and run through all entries
-//       (no confirmation: the action is harmless);
+//     — reread: reset layer memory and run through all entries;
 //     — delete: erase all journal entries (confirm via
 //       confirm_dialog.dart);
 //     — compress: JournalCompactor over a progress dialog;
@@ -21,6 +20,14 @@
 //   Group 3 (other):
 //     — reset: caches and defaults to the initial state;
 //     — import: receive polyrutina zip archives.
+//
+// Scopes. In build, bort and i18n come from BortScope and I18nScope;
+// the imperative methods (_refreshSize, _reload, _deleteAll, etc.)
+// continue to take journal, routineLayer, and traceLayer from
+// AppScope, where no subscription is required. This resolves the
+// «phantom» behaviour reported in the review: before, the block read
+// bort via AppScope, whose updateShouldNotify compares only the
+// appContext fields, so bort mutations did not rebuild the block.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -76,6 +83,7 @@ class _RubkaDataState extends State<RubkaData> {
   Future<void> _refreshSize() async {
     try {
       final app = AppScope.of(context);
+      final bort = BortScope.of(context);
       final dir = await getApplicationDocumentsDirectory();
 
       var j = 0;
@@ -109,15 +117,16 @@ class _RubkaDataState extends State<RubkaData> {
         _journalBytes = j;
         _mediaBytes = m;
         _sizeLoaded = true;
-        _canReread = last > app.bort.lastRereadId;
+        _canReread = last > bort.lastRereadId;
       });
     } catch (_) {}
   }
 
   Future<void> _reload() async {
     final app = AppScope.of(context);
+    final bort = BortScope.of(context);
     await app.journal.reread();
-    app.bort.setLastRereadId(await app.journal.lastEntryId());
+    bort.setLastRereadId(await app.journal.lastEntryId());
     await app.reloadI18n();
     await _refreshSize();
     if (mounted) setState(() {});
@@ -125,7 +134,8 @@ class _RubkaDataState extends State<RubkaData> {
 
   Future<void> _deleteAll() async {
     final app = AppScope.of(context);
-    final i18n = app.i18n;
+    final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
     final ok = await showConfirm(
       context,
       title: i18n.t('bort.delete_all_confirm'),
@@ -134,7 +144,7 @@ class _RubkaDataState extends State<RubkaData> {
     );
     if (!ok || !mounted) return;
     await app.journal.clearAll();
-    app.bort.setLastRereadId(await app.journal.lastEntryId());
+    bort.setLastRereadId(await app.journal.lastEntryId());
     await _refreshSize();
     if (mounted) setState(() {});
   }
@@ -142,7 +152,7 @@ class _RubkaDataState extends State<RubkaData> {
   Future<void> _compress() async {
     if (_compacting) return;
     final app = AppScope.of(context);
-    final i18n = app.i18n;
+    final i18n = I18nScope.of(context);
     final token = ProgressToken();
     setState(() => _compacting = true);
     showDialog<void>(
@@ -173,11 +183,12 @@ class _RubkaDataState extends State<RubkaData> {
 
   Future<void> _resetCache() async {
     final app = AppScope.of(context);
-    await app.bort.resetCache();
+    final bort = BortScope.of(context);
+    await bort.resetCache();
     await app.routineLayer.resetAll();
     await app.traceLayer.resetAll();
     await app.journal.reread();
-    app.bort.setLastRereadId(await app.journal.lastEntryId());
+    bort.setLastRereadId(await app.journal.lastEntryId());
     await app.reloadI18n();
     await _refreshSize();
     if (mounted) setState(() {});
@@ -185,7 +196,7 @@ class _RubkaDataState extends State<RubkaData> {
 
   Future<void> _shakeOrphans() async {
     final app = AppScope.of(context);
-    final i18n = app.i18n;
+    final i18n = I18nScope.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final dir = await getApplicationDocumentsDirectory();
     final mediaDir = Directory(p.join(dir.path, 'media'));
@@ -254,9 +265,8 @@ class _RubkaDataState extends State<RubkaData> {
 
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.of(context);
-    final bort = app.bort;
-    final i18n = app.i18n;
+    final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
     final fg = bort.fg;
     final dim = bort.dim;
     final bg = bort.bg;

@@ -1,15 +1,22 @@
 // ═══════════════════════════════════════════════════════════════════
-// rubka_interface.dart — блок «интерфейс» в рубке.
+// rubka_interface.dart — «interface» block in the rubka.
 //
-// Вынесен из rubka_tab.
+// Extracted from rubka_tab.
 //
-// Масштаб, язык, подписи — по строке. Язык — выпадающий список
-// человекочитаемый (русский / english). Подписи — прежние
-// «системные подписи»; «полевые подписи» упразднены: подписи кнопок
-// едины. Слоты — чек-лист из пяти родов: какие слоты показывать
-// в карточке рутины постоянно.
+// Scale, language, labels — one per row. Language is a human-readable
+// dropdown (русский / english). «Labels» is the former «system
+// labels» flag; «field labels» were abolished: pult labels are
+// uniform. Slots — a checklist of five kinds: which slots to show in
+// the routine card permanently.
 //
-// Прозрачность не применяется.
+// Scopes. Dependencies are read from point scopes: BortScope (scale,
+// language, labels, default slots) and I18nScope (strings). The
+// former AppScope reading did not subscribe to bort notifications
+// (AppScope.updateShouldNotify compares only the appContext fields,
+// which do not change on bort mutations), so edits inside this block
+// did not immediately rebuild the surrounding UI.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -35,9 +42,8 @@ class RubkaInterface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.of(context);
-    final bort = app.bort;
-    final i18n = app.i18n;
+    final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
     final fg = bort.fg;
     final dim = bort.dim;
     final bg = bort.bg;
@@ -66,7 +72,7 @@ class RubkaInterface extends StatelessWidget {
     );
   }
 
-  // ─── Язык: выпадающий список ───
+  // ─── Language: dropdown ───
   Widget _langRow(
     BuildContext context,
     Color fg,
@@ -75,9 +81,8 @@ class RubkaInterface extends StatelessWidget {
     Color signal,
     double side,
   ) {
-    final app = AppScope.of(context);
-    final bort = app.bort;
-    final i18n = app.i18n;
+    final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
 
     const langs = <(String, String)>[('ru', 'lang.ru'), ('en', 'lang.en')];
 
@@ -122,7 +127,7 @@ class RubkaInterface extends StatelessWidget {
     );
   }
 
-  // ─── Слоты по умолчанию ───
+  // ─── Default slots ───
   List<Widget> _slotTicks(
     BuildContext context,
     Color fg,
@@ -131,9 +136,8 @@ class RubkaInterface extends StatelessWidget {
     Color signal,
     double side,
   ) {
-    final app = AppScope.of(context);
-    final bort = app.bort;
-    final i18n = app.i18n;
+    final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
     final out = <Widget>[];
     for (final k in _slotKinds) {
       final on = bort.defaultSlots.contains(k);
@@ -176,9 +180,8 @@ class RubkaInterface extends StatelessWidget {
     Color signal,
     double side,
   ) {
-    final app = AppScope.of(context);
-    final bort = app.bort;
-    final i18n = app.i18n;
+    final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
     final type = OperationalLayer.settingTypes[key] ?? 'string';
     final value = bort.allAsStrings[key] ?? '';
 
@@ -217,8 +220,7 @@ class RubkaInterface extends StatelessWidget {
     Color signal,
     double side,
   ) {
-    final app = AppScope.of(context);
-    final bort = app.bort;
+    final bort = BortScope.of(context);
 
     switch (type) {
       case 'bool':

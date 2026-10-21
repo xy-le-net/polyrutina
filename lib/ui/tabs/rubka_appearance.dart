@@ -1,26 +1,35 @@
 // ═══════════════════════════════════════════════════════════════════
-// rubka_appearance.dart — блок «оформление» в рубке.
+// rubka_appearance.dart — «appearance» block in the rubka.
 //
-// Четыре пульта темы: система, день, ночь, своя. Текущая — отмечена.
+// Four theme pults: system, day, night, custom. The current one is
+// marked.
 //
-// Поля пяти ролей (bg, bgdim, dim, fg, signal) — токмо для «своей»
-// темы и показываются всегда, независимо от того, какая тема
-// действует: править свою можно, стоя в любой другой. День и ночь
-// не правятся, полей не имеют.
+// Five role fields (bg, bgdim, dim, fg, signal) — only for the
+// «custom» theme, shown always, regardless of which theme is active:
+// the custom one can be edited while standing in any other. Day and
+// night are not editable; they have no fields.
 //
-// Подблок с коэффициентами размеров из рубки упразднён:
-// коэффициенты остаются в файле борта и в умолчаниях, но не
-// правятся отсюда.
+// Scopes. Dependencies are read from point scopes: BortScope (theme
+// name, labels flag, per-theme colors) and I18nScope (strings). The
+// former AppScope reading did not subscribe to bort notifications
+// (AppScope.updateShouldNotify compares only the appContext fields,
+// which do not change on bort mutations); as a result this widget
+// never rebuilt, and the block appeared frozen in its initial
+// collapsed state — the «phantom» behaviour reported in the review.
 //
-// Прозрачность не применяется.
+// The coefficients subblock has been removed from the rubka: the
+// coefficients remain in the bort file and in the defaults, but are
+// not edited from here.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 
 import '../../data/theme_store.dart';
 import '../core/app_scope.dart';
-import '../core/bort_field.dart';
 import '../core/block.dart';
+import '../core/bort_field.dart';
 import '../pults/pult_core.dart';
 
 class RubkaAppearance extends StatelessWidget {
@@ -28,9 +37,8 @@ class RubkaAppearance extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.of(context);
-    final bort = app.bort;
-    final i18n = app.i18n;
+    final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
     final fg = bort.fg;
     final dim = bort.dim;
     final bg = bort.bg;
@@ -63,7 +71,8 @@ class RubkaAppearance extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _themeRow(context, fg, dim, bg, signal, side),
-          // Поля «своей» темы — всегда, вне зависимости от действующей.
+          // «Custom» theme fields — always, regardless of the active
+          // theme.
           _sectionTitle(i18n.t('theme.custom'), dim, side),
           _colorRow(context, 'custom', 'bg', fg, dim, bg, signal, side),
           _colorRow(context, 'custom', 'bgdim', fg, dim, bg, signal, side),
@@ -85,7 +94,7 @@ class RubkaAppearance extends StatelessWidget {
     );
   }
 
-  // ─── Четыре пульта темы рядом ───
+  // ─── Four theme pults side by side ───
   Widget _themeRow(
     BuildContext context,
     Color fg,
@@ -94,9 +103,8 @@ class RubkaAppearance extends StatelessWidget {
     Color signal,
     double side,
   ) {
-    final app = AppScope.of(context);
-    final bort = app.bort;
-    final i18n = app.i18n;
+    final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
     final showLabels = bort.labelsButtons;
 
     final names = ['system', 'day', 'night', 'custom'];
@@ -153,8 +161,7 @@ class RubkaAppearance extends StatelessWidget {
     Color signal,
     double side,
   ) {
-    final app = AppScope.of(context);
-    final bort = app.bort;
+    final bort = BortScope.of(context);
     final key = 'theme.$themeName.$role';
     final value = bort.allAsStrings[key] ?? '';
     final c = parseColor(value) ?? Colors.transparent;
