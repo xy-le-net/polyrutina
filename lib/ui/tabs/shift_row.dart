@@ -1,13 +1,19 @@
 // ═══════════════════════════════════════════════════════════════════
-// shift_row.dart — строка смены над списком рутин.
+// shift_row.dart — the shift row above the routines list.
 //
-// Вынесена из routines_tab. Содержит: пульс смены (пуск/пауза),
-// подпись времени, правку времени по долгому нажатию.
+// Extracted from routines_tab. Contains: the shift pulse
+// (start/pause), the time label, and time editing on long press.
 //
-// Правка времени: «дд:чч:мм:сс», Enter либо пульт подтверждения —
-// сохранить. Долгое нажатие на пульс смены — открыть поле.
+// Time edit: «dd:hh:mm:ss»; Enter or the confirm pult saves.
+// A long press on the shift pulse opens the field.
 //
-// Прозрачность не применяется.
+// Scopes. Dependencies are read from point scopes: BortScope (shift
+// state, theme, colors), I18nScope (strings), TickerScope (colon
+// blink). AppScope is consulted only for the journal and for
+// toggleShift (an AppContext method that spans the journal and the
+// routine layer).
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -60,21 +66,22 @@ class _ShiftRowState extends State<ShiftRow> {
   }
 
   Future<void> _confirm() async {
-    final app = AppScope.of(context);
+    final bort = BortScope.of(context);
+    final journal = AppScope.of(context).journal;
     final sec = parseEditable(_ctrl?.text ?? '');
     if (sec == null) {
       _cancel();
       return;
     }
-    if (sec == app.bort.shiftSecondsNow) {
+    if (sec == bort.shiftSecondsNow) {
       _cancel();
       return;
     }
-    await app.journal.log(
+    await journal.log(
       type: JournalType.actor,
       body: '{"action":"shift_edit","seconds":$sec}',
     );
-    app.bort.setShiftTime(sec);
+    bort.setShiftTime(sec);
     if (mounted) setState(() => _editing = false);
     _ctrl?.dispose();
     _focus?.dispose();
@@ -85,9 +92,10 @@ class _ShiftRowState extends State<ShiftRow> {
 
   @override
   Widget build(BuildContext context) {
+    final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
+    final ticker = TickerScope.of(context);
     final app = AppScope.of(context);
-    final bort = app.bort;
-    final i18n = app.i18n;
     final side = PultScope.of(context).smallSide;
     final fg = bort.fg;
     final dim = bort.dim;
@@ -134,10 +142,9 @@ class _ShiftRowState extends State<ShiftRow> {
       );
     }
 
-    // «Идёт отсчёт» — не одно только onShift: после ручной правки
-    // времени (setShiftTime) shiftStartedAt обнуляется, отсчёт
-    // стоит, а двоеточие мигать не должно. Смена сама по себе
-    // остаётся открытою.
+    // «Ticking» — not merely onShift: after a manual time edit
+    // (setShiftTime), shiftStartedAt is nulled, the count is on hold,
+    // and the colon must not blink. The shift itself stays open.
     final bool ticking = bort.onShift && bort.shiftStartedAt != null;
 
     Widget pulse = Pulse(
@@ -158,10 +165,10 @@ class _ShiftRowState extends State<ShiftRow> {
       bg: bg,
       signal: signal,
       side: side,
-      colonVisible: app.ticker.colonVisible,
+      colonVisible: ticker.colonVisible,
       pultSize: side * bort.kPultSmall,
       t: i18n.t,
-      ticker: app.ticker,
+      ticker: ticker,
     );
     if (bort.shiftEdited) {
       pulse = Container(

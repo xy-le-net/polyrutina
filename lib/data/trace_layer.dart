@@ -1,10 +1,10 @@
 // ═══════════════════════════════════════════════════════════════════
-// trace_layer.dart — слой следов.
+// trace_layer.dart — trace layer.
 //
-// След — универсальная сущность: примечание, комментарий, чек-лист,
-// привязка к файлу.
+// A trace is a universal entity: a note, a comment, a checklist,
+// an attachment to a file.
 //
-// Тело записи журнала (род trace):
+// Journal entry body (kind trace):
 //   {
 //     "kind": "text" | "checklist",
 //     "slot": "work",
@@ -16,15 +16,17 @@
 //     "deleted": true
 //   }
 //
-// slot — род блока рутины. kind — форма показа (text | checklist).
-// Медиа живут в files: перечень с родом (audio, photo, video, geo,
-// file), путём и именем. Файлы копируются внутрь приложения;
-// в теле следа — путь. Для рода «место» отдельный json-файл не
-// пишется: координаты (lat, lon, acc) кладутся прямо в TraceFile.
+// slot — routine block kind. kind — display form (text | checklist).
+// Media live in files: a list of {kind (audio, photo, video, geo,
+// file), path, name}. Files are copied into the application; the
+// trace body keeps the path. For the "geo" kind no separate json
+// file is written: coordinates (lat, lon, acc) go straight into
+// TraceFile.
 //
-// Кэш — отложенный (200 мс).
+// Cache is written with a 200 ms debounce, through a .tmp file and
+// a rename. A crash mid-write cannot leave a half-written cache.
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:async';
@@ -39,13 +41,13 @@ import 'database.dart';
 import 'journal_layer.dart';
 import 'journal_types.dart';
 
-// ─── Форма показа следа ───
+// ─── Trace display form ───
 class TraceKind {
   static const String text = 'text';
   static const String checklist = 'checklist';
 }
 
-// ─── Роды медиа ───
+// ─── Media kinds ───
 class MediaKind {
   static const String audio = 'audio';
   static const String photo = 'photo';
@@ -56,7 +58,7 @@ class MediaKind {
   static const List<String> all = [audio, photo, video, geo, file];
 }
 
-// ─── Один след в памяти ───
+// ─── One trace in memory ───
 class Trace {
   final int id;
   String kind;
@@ -153,8 +155,8 @@ class TraceFile {
   String path;
   String name;
 
-  // Для рода «место»: координаты и точность кладутся прямо в тело
-  // следа — отдельный json-файл не нужен.
+  // For the "geo" kind: coordinates and accuracy go straight into
+  // the trace body — no separate json file is needed.
   double? lat;
   double? lon;
   double? acc;
@@ -238,11 +240,20 @@ class TraceLayer extends ChangeNotifier {
   }
 
   Future<void> _saveToFile() async {
-    if (_file == null) return;
+    final target = _file;
+    if (target == null) return;
     final data = <String, dynamic>{
       'traces': traces.values.map((t) => {'id': t.id, ...t.toJson()}).toList(),
     };
-    await _file!.writeAsString(jsonEncode(data));
+    final tmp = File('${target.path}.tmp');
+    try {
+      await tmp.writeAsString(jsonEncode(data), flush: true);
+      await tmp.rename(target.path);
+    } catch (_) {
+      try {
+        if (await tmp.exists()) await tmp.delete();
+      } catch (_) {}
+    }
   }
 
   Future<void> saveNow() async {

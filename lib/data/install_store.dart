@@ -14,6 +14,10 @@
 // Old install.json files lack the field; they load with zero, and
 // the first call to nextMediaIndex() writes one.
 //
+// Atomic write. The target file is never written in place: data
+// goes to <name>.tmp first, which is then renamed onto the target.
+// A crash mid-write cannot leave a half-written install.json.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -69,16 +73,24 @@ class InstallStore {
   }
 
   Future<void> _save() async {
-    if (_file == null) return;
+    final target = _file;
+    if (target == null) return;
+    final tmp = File('${target.path}.tmp');
     try {
-      await _file!.writeAsString(
+      await tmp.writeAsString(
         jsonEncode({
           'first_run_unix_sec': firstRunUnixSec,
           'device_id': deviceId,
           'media_counter': mediaCounter,
         }),
+        flush: true,
       );
-    } catch (_) {}
+      await tmp.rename(target.path);
+    } catch (_) {
+      try {
+        if (await tmp.exists()) await tmp.delete();
+      } catch (_) {}
+    }
   }
 
   static Future<String> _readSystemDeviceId() async {

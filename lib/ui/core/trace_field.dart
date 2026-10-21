@@ -19,6 +19,16 @@
 //
 // Enter on the keyboard — the same as tapping the send pult.
 //
+// Scopes. Dependencies are read from point scopes: BortScope (draft,
+// theme, colors), TraceScope (traces), I18nScope (strings), and
+// AppScope (journal — the sole dependency that lives there).
+//
+// Dispose race. _autoSend captures the field text into a local
+// variable before the first await. This makes it safe to call from
+// dispose: even if the widget is torn down while the write is in
+// flight, no access to the disposed controller occurs after the
+// first suspension point.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -108,8 +118,9 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
   }
 
   void _reloadFromLayer() {
-    final app = AppScope.of(context);
-    final t = app.traceLayer.findFirstByKindSlot(
+    final traceLayer = TraceScope.of(context);
+    final bort = BortScope.of(context);
+    final t = traceLayer.findFirstByKindSlot(
       widget.objectId,
       TraceKind.text,
       widget.slot,
@@ -119,7 +130,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
       _lastSent = t.text;
       _ctrl.text = t.text;
     } else {
-      _ctrl.text = app.bort.draft(_key);
+      _ctrl.text = bort.draft(_key);
       _lastSent = _ctrl.text;
     }
   }
@@ -146,15 +157,20 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
   Future<void> _autoSend() async {
     if (!_initialized) return;
     if (!mounted) return;
-    final app = AppScope.of(context);
-    final text = _ctrl.text;
 
+    // Capture the text BEFORE any await: safe even when called from
+    // dispose, where the controller may be torn down mid-flight.
+    final text = _ctrl.text;
     if (text == _lastSent) return;
 
+    final traceLayer = TraceScope.of(context);
+    final bort = BortScope.of(context);
+    final journal = AppScope.of(context).journal;
+
     if (_traceId != -1) {
-      await app.traceLayer.updateText(app.journal, _traceId, text);
+      await traceLayer.updateText(journal, _traceId, text);
       _lastSent = text;
-      app.bort.markTraceSent(_key);
+      bort.markTraceSent(_key);
       if (mounted) setState(() {});
       return;
     }
@@ -164,15 +180,15 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
       return;
     }
 
-    final id = await app.traceLayer.createText(
-      app.journal,
+    final id = await traceLayer.createText(
+      journal,
       slot: widget.slot,
       text: text,
       parents: [widget.objectId],
     );
     _traceId = id;
     _lastSent = text;
-    app.bort.markTraceSent(_key);
+    bort.markTraceSent(_key);
     if (mounted) setState(() {});
   }
 
@@ -205,8 +221,8 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
   // Returns the number of checked and total filled items.
   // Empty items are not counted in either number.
   ({int done, int total}) _checklistCounts() {
-    final app = AppScope.of(context);
-    final t = app.traceLayer.findFirstByKindSlot(
+    final traceLayer = TraceScope.of(context);
+    final t = traceLayer.findFirstByKindSlot(
       widget.objectId,
       TraceKind.checklist,
       widget.slot,
@@ -223,8 +239,8 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
   }
 
   List<TraceFile> _files() {
-    final app = AppScope.of(context);
-    final t = app.traceLayer.findFirstByKindSlot(
+    final traceLayer = TraceScope.of(context);
+    final t = traceLayer.findFirstByKindSlot(
       widget.objectId,
       TraceKind.text,
       widget.slot,
@@ -244,7 +260,8 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
 
   void _openMediaViewer(List<TraceFile> files, int index) {
     if (index < 0 || index >= files.length) return;
-    final t = AppScope.of(context).traceLayer.findFirstByKindSlot(
+    final traceLayer = TraceScope.of(context);
+    final t = traceLayer.findFirstByKindSlot(
       widget.objectId,
       TraceKind.text,
       widget.slot,
@@ -271,9 +288,8 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.of(context);
-    final bort = app.bort;
-    final i18n = app.i18n;
+    final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
     final canSend = _canSend();
     final pultSide = widget.side * bort.kPultSmall;
 

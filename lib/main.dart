@@ -32,6 +32,17 @@
 // single left-side sheet of subpults (pult_sheet.dart) with tab
 // kinds. PultLayer is removed.
 //
+// Scopes and listeners. Five point scopes (BortScope, RoutineScope,
+// TraceScope, TickerScope, I18nScope) wrap the navigator tree. All
+// inner views obtain their dependencies from them and rebuild only
+// on the relevant layer. Consequently, main no longer listens to
+// the routine, trace, or journal layers. The bort listener remains,
+// but it is filtered: setState fires only when the MaterialApp or
+// tab bar actually needs to re-read bort state — theme name, scale,
+// tab visibility, system brightness, and the five color roles.
+// Everything else (shift transitions, midnight, block collapse) is
+// consumed by widgets under BortScope without touching main.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -83,6 +94,11 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   VoidCallback? _onTickerTick;
 
+  // Signature of bort fields that feed MaterialApp (theme colors,
+  // scale, system brightness) or the tab bar (showFieldTab,
+  // showArtelTab). Unchanged signature — no setState.
+  String _bortSignature = '';
+
   static const List<RootTabItem> _allTabs = [
     RootTabItem(icon: Icons.map, labelKey: 'tab.field'),
     RootTabItem(icon: Icons.checklist, labelKey: 'tab.routines'),
@@ -115,14 +131,32 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _onTickerTick = () => _bort.tickBort();
     _ticker.addListener(_onTickerTick!);
 
-    _bort.addListener(_onLayerChanged);
-    _routineLayer.addListener(_onLayerChanged);
-    _traceLayer.addListener(_onLayerChanged);
-    _journal.addListener(_onLayerChanged);
+    _bort.addListener(_onBortChanged);
     _init();
   }
 
-  void _onLayerChanged() {
+  // ─── Bort signature ───
+  // Everything MaterialApp reads at build time, plus what the tab
+  // bar needs. Color hex strings are computed here so that any
+  // change to bg/bgdim/dim/fg/signal (custom theme edits, system
+  // brightness switch) triggers a rebuild.
+  String _computeBortSignature() {
+    return '${_bort.themeName}|'
+        '${_bort.scale.toStringAsFixed(4)}|'
+        '${_bort.showFieldTab}|'
+        '${_bort.showArtelTab}|'
+        '${_bort.systemBrightness.name}|'
+        '${_bort.colorToHex(_bort.bg)}|'
+        '${_bort.colorToHex(_bort.bgdim)}|'
+        '${_bort.colorToHex(_bort.dim)}|'
+        '${_bort.colorToHex(_bort.fg)}|'
+        '${_bort.colorToHex(_bort.signal)}';
+  }
+
+  void _onBortChanged() {
+    final s = _computeBortSignature();
+    if (s == _bortSignature) return;
+    _bortSignature = s;
     if (mounted) setState(() {});
   }
 
@@ -137,6 +171,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _journal.start();
     _bort.setLastRereadId(await _journal.lastEntryId());
     _tab = 1;
+    _bortSignature = _computeBortSignature();
     if (mounted) setState(() {});
   }
 
@@ -155,10 +190,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     if (_onTickerTick != null) {
       _ticker.removeListener(_onTickerTick!);
     }
-    _bort.removeListener(_onLayerChanged);
-    _routineLayer.removeListener(_onLayerChanged);
-    _traceLayer.removeListener(_onLayerChanged);
-    _journal.removeListener(_onLayerChanged);
+    _bort.removeListener(_onBortChanged);
     _bort.dispose();
     _routineLayer.dispose();
     _traceLayer.dispose();
@@ -385,31 +417,46 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
         return AppScope(
           appContext: appContext,
-          child: PultScope(
-            state: _pultState,
-            child: MediaQuery(
-              data: MediaQuery.of(
-                context,
-              ).copyWith(textScaler: TextScaler.linear(_bort.scale)),
-              child: Listener(
-                behavior: HitTestBehavior.translucent,
-                onPointerDown: (_) => _bort.pulseBort(),
-                child: SafeArea(
-                  child: Stack(
-                    children: [
-                      child ?? const SizedBox.shrink(),
-                      Positioned(
-                        left: _rootPad,
-                        top: _rootPad,
-                        child: RootPult(
-                          side: rootSide,
-                          fg: _bort.fg,
-                          bg: _bort.bg,
-                          signal: _bort.signal,
-                          onOpen: _openTabsSheet,
+          child: BortScope(
+            bort: _bort,
+            child: RoutineScope(
+              routineLayer: _routineLayer,
+              child: TraceScope(
+                traceLayer: _traceLayer,
+                child: TickerScope(
+                  ticker: _ticker,
+                  child: I18nScope(
+                    i18n: _i18n!,
+                    child: PultScope(
+                      state: _pultState,
+                      child: MediaQuery(
+                        data: MediaQuery.of(
+                          context,
+                        ).copyWith(textScaler: TextScaler.linear(_bort.scale)),
+                        child: Listener(
+                          behavior: HitTestBehavior.translucent,
+                          onPointerDown: (_) => _bort.pulseBort(),
+                          child: SafeArea(
+                            child: Stack(
+                              children: [
+                                child ?? const SizedBox.shrink(),
+                                Positioned(
+                                  left: _rootPad,
+                                  top: _rootPad,
+                                  child: RootPult(
+                                    side: rootSide,
+                                    fg: _bort.fg,
+                                    bg: _bort.bg,
+                                    signal: _bort.signal,
+                                    onOpen: _openTabsSheet,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),

@@ -14,6 +14,12 @@
 //   — custom: roles are swapped (bg ↔ fg, bgdim ↔ dim, signal
 //     stays as is).
 //
+// Built-in themes live in const maps. Any caller that needs a
+// mutable copy wraps it in Map.from; callers that only read the
+// palette use the constant directly. The former _defaultDay() and
+// _defaults() factories allocated a fresh map on every call and
+// have been removed.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -87,7 +93,7 @@ class ThemeStore {
     }
     final t = _themes[name];
     if (t != null) return Map<String, Color>.from(t);
-    return _defaultDay();
+    return Map<String, Color>.from(_dayColors);
   }
 
   // ─── Compute opposite ───
@@ -135,12 +141,11 @@ class ThemeStore {
       final v = t[k];
       if (v is Map) {
         out[k.toString()] = {
-          'bg': parseColor(v['bg'] as String?) ?? _defaultDay()['bg']!,
-          'bgdim': parseColor(v['bgdim'] as String?) ?? _defaultDay()['bgdim']!,
-          'dim': parseColor(v['dim'] as String?) ?? _defaultDay()['dim']!,
-          'fg': parseColor(v['fg'] as String?) ?? _defaultDay()['fg']!,
-          'signal':
-              parseColor(v['signal'] as String?) ?? _defaultDay()['signal']!,
+          'bg': parseColor(v['bg'] as String?) ?? _dayColors['bg']!,
+          'bgdim': parseColor(v['bgdim'] as String?) ?? _dayColors['bgdim']!,
+          'dim': parseColor(v['dim'] as String?) ?? _dayColors['dim']!,
+          'fg': parseColor(v['fg'] as String?) ?? _dayColors['fg']!,
+          'signal': parseColor(v['signal'] as String?) ?? _dayColors['signal']!,
         };
       }
     }
@@ -157,15 +162,9 @@ class ThemeStore {
     final role = parts[2];
     final c = parseColor(value);
     if (c == null) return true;
-    _themes.putIfAbsent(name, _defaultDay);
+    _themes.putIfAbsent(name, () => Map<String, Color>.from(_dayColors));
     _themes[name]![role] = c;
     _invalidate();
-    return true;
-  }
-
-  bool applyDim(String value) {
-    final c = parseColor(value);
-    if (c == null) return true;
     return true;
   }
 
@@ -199,7 +198,7 @@ class ThemeStore {
   // ─── Built-in defaults ───
   void ensureThemes() {
     var changed = false;
-    for (final e in _defaults().entries) {
+    for (final e in _builtinThemes.entries) {
       if (!_themes.containsKey(e.key)) {
         _themes[e.key] = Map<String, Color>.from(e.value);
         changed = true;
@@ -208,30 +207,35 @@ class ThemeStore {
     if (changed) _invalidate();
   }
 
-  static Map<String, Map<String, Color>> _defaults() => {
-    'day': _defaultDay(),
-    'night': {
-      'bg': const Color(0xFF101010),
-      'bgdim': const Color(0xFF1C1C1C),
-      'dim': const Color(0xFF8F8F8F),
-      'fg': const Color(0xFFEFEFEF),
-      'signal': const Color(0xFFFFFFFF),
-    },
-    'custom': {
-      'bg': const Color(0xFF1B2630),
-      'bgdim': const Color(0xFF2F3D4A),
-      'dim': const Color(0xFF7A868F),
-      'fg': const Color(0xFFB9B3A6),
-      'signal': const Color(0xFFFFCB4F),
-    },
+  // ─── Const built-ins ───
+  static const Map<String, Color> _dayColors = {
+    'bg': Color(0xFFEFEFEF),
+    'bgdim': Color(0xFFE4E4E4),
+    'dim': Color(0xFF8F8F8F),
+    'fg': Color(0xFF101010),
+    'signal': Color(0xFF000000),
   };
 
-  static Map<String, Color> _defaultDay() => {
-    'bg': const Color(0xFFEFEFEF),
-    'bgdim': const Color(0xFFE4E4E4),
-    'dim': const Color(0xFF8F8F8F),
-    'fg': const Color(0xFF101010),
-    'signal': const Color(0xFF000000),
+  static const Map<String, Color> _nightColors = {
+    'bg': Color(0xFF101010),
+    'bgdim': Color(0xFF1C1C1C),
+    'dim': Color(0xFF8F8F8F),
+    'fg': Color(0xFFEFEFEF),
+    'signal': Color(0xFFFFFFFF),
+  };
+
+  static const Map<String, Color> _customColors = {
+    'bg': Color(0xFF1B2630),
+    'bgdim': Color(0xFF2F3D4A),
+    'dim': Color(0xFF7A868F),
+    'fg': Color(0xFFB9B3A6),
+    'signal': Color(0xFFFFCB4F),
+  };
+
+  static const Map<String, Map<String, Color>> _builtinThemes = {
+    'day': _dayColors,
+    'night': _nightColors,
+    'custom': _customColors,
   };
 }
 

@@ -1,10 +1,16 @@
 // ═══════════════════════════════════════════════════════════════════
-// bort_file.dart — файл борта.
+// bort_file.dart — bort file.
 //
-// Путь, чтение, отложенная запись operational_layer.json. Поля
-// снимает и кладёт сам слой: сей модуль знает токмо Map.
+// Path, reading, deferred writing of operational_layer.json. Fields
+// are taken and put by the layer itself: this module knows only Map.
 //
-// Прозрачность не применяется.
+// Atomic write. The target file is never written in place: data
+// goes to <name>.tmp first, which is then renamed onto the target.
+// On POSIX, rename within a single filesystem is atomic, so a crash
+// mid-write cannot leave a half-written target — either the old
+// file survives or the new one appears whole.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:async';
@@ -27,7 +33,7 @@ class BortFile {
     _saveTimer?.cancel();
   }
 
-  // ─── Чтение ───
+  // ─── Read ───
   Future<Map<String, dynamic>?> read() async {
     if (_file == null || !await _file!.exists()) return null;
     try {
@@ -38,9 +44,9 @@ class BortFile {
     }
   }
 
-  // ─── Отложенная запись ───
-  // builder зовётся при срабатывании таймера: карта собирается
-  // из актуальных полей слоя.
+  // ─── Deferred write ───
+  // builder is called when the timer fires: the map is assembled
+  // from the layer's current fields.
   void schedule(Map<String, dynamic> Function() builder) {
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 200), () {
@@ -48,7 +54,7 @@ class BortFile {
     });
   }
 
-  // ─── Немедленная запись ───
+  // ─── Immediate write ───
   Future<void> writeNow(Map<String, dynamic> Function() builder) async {
     _saveTimer?.cancel();
     _saveTimer = null;
@@ -56,16 +62,25 @@ class BortFile {
   }
 
   Future<void> write(Map<String, dynamic> data) async {
-    if (_file == null) return;
+    final target = _file;
+    if (target == null) return;
+    final tmp = File('${target.path}.tmp');
     try {
-      await _file!.writeAsString(jsonEncode(data));
-    } catch (_) {}
+      await tmp.writeAsString(jsonEncode(data), flush: true);
+      await tmp.rename(target.path);
+    } catch (_) {
+      // Best effort: remove the stray tmp; the target is intact.
+      try {
+        if (await tmp.exists()) await tmp.delete();
+      } catch (_) {}
+    }
   }
 
   Future<void> delete() async {
-    if (_file == null) return;
-    if (await _file!.exists()) {
-      await _file!.delete();
+    final target = _file;
+    if (target == null) return;
+    if (await target.exists()) {
+      await target.delete();
     }
   }
 }

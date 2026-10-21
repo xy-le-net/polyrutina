@@ -20,6 +20,11 @@
 // routine_flags.dart; this widget only calls buildFlagSubs with a
 // toggle closure.
 //
+// Scopes. Dependencies are read from point scopes: BortScope (theme
+// and colors), I18nScope (strings), TickerScope (colon blink), and
+// RoutineScope (setFlags). AppScope is consulted only for
+// toggleBlockWithShift (an AppContext method) and for the journal.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -111,11 +116,10 @@ class RoutineBlockView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.of(context);
-    final bort = app.bort;
-    final i18n = app.i18n;
+    final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
+    final colonVisible = TickerScope.of(context).colonVisible;
     final side = PultScope.of(context).smallSide;
-    final colonVisible = app.ticker.colonVisible;
 
     final Color bg;
     final Color dim;
@@ -196,7 +200,8 @@ class RoutineBlockView extends StatelessWidget {
             id: 'block_$kind',
             icon: _blockIcon(kind),
             selected: running,
-            onTap: () => app.toggleBlockWithShift(routine.id, kind),
+            onTap: () =>
+                AppScope.of(context).toggleBlockWithShift(routine.id, kind),
             onLongPress: onStartEdit,
           ),
           seconds: seconds,
@@ -209,7 +214,7 @@ class RoutineBlockView extends StatelessWidget {
           colonVisible: colonVisible,
           pultSize: pultSide,
           t: i18n.t,
-          ticker: app.ticker,
+          ticker: TickerScope.of(context),
         );
         if (timeEdited) {
           pulse = Container(
@@ -385,8 +390,9 @@ class RoutineBlockView extends StatelessWidget {
           subsBuilder: () => buildFlagSubs(
             flags: routine.flags,
             i18n: i18n,
-            onToggle: (newVal) =>
-                app.routineLayer.setFlags(app.journal, routine.id, newVal),
+            onToggle: (newVal) => RoutineScope.of(
+              context,
+            ).setFlags(AppScope.of(context).journal, routine.id, newVal),
           ),
         ),
         fg: fg,

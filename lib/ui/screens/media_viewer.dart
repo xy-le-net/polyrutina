@@ -31,6 +31,18 @@
 // opens via url_launcher with the geo: scheme, falling back to the
 // web map. File opens via open_filex in a system application.
 //
+// Scopes. Dependencies are read from point scopes: BortScope (theme
+// and colors), TraceScope (the layer used for deletion), I18nScope
+// (strings), and AppScope (journal — the sole dependency that lives
+// there).
+//
+// Position ticks. The audio position stream fires roughly sixty
+// times per second. It is consumed by a StreamBuilder wrapping ONLY
+// the slider and the small position label, so the rest of the tree
+// — the app bar, the play/pause pult, the body — does not rebuild
+// on every tick. Video already rebuilds only the relevant subtrees
+// through ValueListenableBuilder.
+//
 // Geo coordinates. The line «lat, lon» is a tap target: tapping
 // copies it to the clipboard; feedback — a short SnackBar.
 //
@@ -60,6 +72,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../data/i18n.dart';
+import '../../data/operational_layer.dart';
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
 import '../pults/pult_core.dart';
@@ -98,7 +112,6 @@ class _MediaViewerState extends State<MediaViewer> {
   VideoPlayerController? _video;
   AudioPlayer? _audio;
   StreamSubscription<PlayerState>? _audioStateSub;
-  StreamSubscription<Duration>? _audioPosSub;
   bool _audioPlaying = false;
 
   @override
@@ -112,7 +125,6 @@ class _MediaViewerState extends State<MediaViewer> {
   @override
   void dispose() {
     _audioStateSub?.cancel();
-    _audioPosSub?.cancel();
     _video?.dispose();
     _audio?.dispose();
     super.dispose();
@@ -125,8 +137,6 @@ class _MediaViewerState extends State<MediaViewer> {
   void _syncPlayers() {
     _audioStateSub?.cancel();
     _audioStateSub = null;
-    _audioPosSub?.cancel();
-    _audioPosSub = null;
     _video?.dispose();
     _video = null;
     _audio?.dispose();
@@ -160,11 +170,6 @@ class _MediaViewerState extends State<MediaViewer> {
         final playing =
             s.playing && s.processingState != ProcessingState.completed;
         if (_audioPlaying != playing) setState(() => _audioPlaying = playing);
-      });
-      // Position ticks drive the slider and the small position label.
-      _audioPosSub = player.positionStream.listen((_) {
-        if (!mounted || _audio != player) return;
-        setState(() {});
       });
     }
   }
@@ -248,7 +253,7 @@ class _MediaViewerState extends State<MediaViewer> {
   Future<void> _copyCoords(String lat, String lon) async {
     await Clipboard.setData(ClipboardData(text: '$lat, $lon'));
     if (!mounted) return;
-    final i18n = AppScope.of(context).i18n;
+    final i18n = I18nScope.of(context);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(i18n.t('media.copied')),
@@ -264,13 +269,14 @@ class _MediaViewerState extends State<MediaViewer> {
   // Otherwise — move to the previous; if there is none — the
   // current position stays (which yields the next of those left).
   Future<void> _remove(TraceFile f) async {
-    final app = AppScope.of(context);
+    final traceLayer = TraceScope.of(context);
+    final journal = AppScope.of(context).journal;
     final idx = _files.indexOf(f);
     if (idx < 0) return;
 
     final originalIdx = widget.files.indexOf(f);
     if (originalIdx < 0) return;
-    await app.traceLayer.removeFile(app.journal, widget.traceId, originalIdx);
+    await traceLayer.removeFile(journal, widget.traceId, originalIdx);
     if (!mounted) return;
 
     setState(() {
@@ -327,9 +333,7 @@ class _MediaViewerState extends State<MediaViewer> {
 
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.of(context);
-    final bort = app.bort;
-    final i18n = app.i18n;
+    final bort = BortScope.of(context);
     final side = PultScope.of(context).smallSide;
 
     final f = _current;
@@ -389,7 +393,7 @@ class _MediaViewerState extends State<MediaViewer> {
       body: SafeArea(
         child: Stack(
           children: [
-            Positioned.fill(child: _body(f, bort, i18n, side)),
+            Positioned.fill(child: _body(f, bort, side)),
             if (f != null &&
                 (f.kind == MediaKind.audio || f.kind == MediaKind.video))
               Positioned(
@@ -402,7 +406,7 @@ class _MediaViewerState extends State<MediaViewer> {
               left: 0,
               right: 0,
               bottom: 12,
-              child: _bottomRow(f, bort, i18n, side),
+              child: _bottomRow(f, bort, side),
             ),
           ],
         ),
@@ -413,7 +417,9 @@ class _MediaViewerState extends State<MediaViewer> {
   // ─── Bottom row: prev · center · next ───
   // The center pult's icon depends on the kind and on the playback
   // state; for video the whole row is rebuilt from the controller.
-  Widget _bottomRow(TraceFile? f, dynamic bort, dynamic i18n, double side) {
+  Widget _bottomRow(TraceFile? f, OperationalLayer bort, double side) {
+    final i18n = I18nScope.of(context);
+
     Widget centerPult(bool playing) {
       if (f == null) {
         return SizedBox(width: side);
@@ -502,7 +508,7 @@ class _MediaViewerState extends State<MediaViewer> {
   // Share + delete. Delete carries confirm (a double tap in the
   // sheet). For file and geo the «open» is not duplicated: it
   // lives on the short tap of the center pult.
-  List<PultSpec> _subsFor(TraceFile f, dynamic i18n) => [
+  List<PultSpec> _subsFor(TraceFile f, I18n i18n) => [
     PultSpec(
       id: 'media_share',
       icon: Icons.share,
@@ -520,8 +526,10 @@ class _MediaViewerState extends State<MediaViewer> {
 
   // ─── Slider for audio/video ───
   // Position at the left end, duration at the right; the thumb is
-  // signal-colored. For video it is rebuilt from the controller.
-  Widget _sliderFor(TraceFile f, dynamic bort, double side) {
+  // signal-colored. For video it is rebuilt from the controller;
+  // for audio — from a StreamBuilder over player.positionStream,
+  // so the rest of the screen is not rebuilt on every tick.
+  Widget _sliderFor(TraceFile f, OperationalLayer bort, double side) {
     Widget slider(Duration pos, Duration dur, void Function(Duration) onSeek) {
       final maxMs = dur.inMilliseconds > 0
           ? dur.inMilliseconds.toDouble()
@@ -588,11 +596,19 @@ class _MediaViewerState extends State<MediaViewer> {
     final player = _audio;
     final dur = player?.duration;
     if (player == null || dur == null) return const SizedBox.shrink();
-    return slider(player.position, dur, (d) => player.seek(d));
+    return StreamBuilder<Duration>(
+      stream: player.positionStream,
+      initialData: player.position,
+      builder: (_, snap) {
+        final pos = snap.data ?? Duration.zero;
+        return slider(pos, dur, (d) => player.seek(d));
+      },
+    );
   }
 
   // ─── Body of the current frame ───
-  Widget _body(TraceFile? f, dynamic bort, dynamic i18n, double side) {
+  Widget _body(TraceFile? f, OperationalLayer bort, double side) {
+    final i18n = I18nScope.of(context);
     if (f == null) {
       return Center(
         child: Text(
@@ -612,10 +628,10 @@ class _MediaViewerState extends State<MediaViewer> {
       }
     }
     if (f.kind == MediaKind.video) {
-      return _videoBody(f, bort, i18n, side);
+      return _videoBody(f, bort, side);
     }
     if (f.kind == MediaKind.audio) {
-      return _audioBody(f, bort, i18n, side);
+      return _audioBody(f, bort, side);
     }
     if (f.kind == MediaKind.geo) {
       final lat = f.lat?.toStringAsFixed(6) ?? '?';
@@ -688,7 +704,7 @@ class _MediaViewerState extends State<MediaViewer> {
   }
 
   // ─── Video body: player + duration at the center while paused ───
-  Widget _videoBody(TraceFile f, dynamic bort, dynamic i18n, double side) {
+  Widget _videoBody(TraceFile f, OperationalLayer bort, double side) {
     final ctrl = _video;
     if (ctrl == null || !ctrl.value.isInitialized) {
       return Center(
@@ -737,7 +753,7 @@ class _MediaViewerState extends State<MediaViewer> {
   }
 
   // ─── Audio body: total duration at the center, always ───
-  Widget _audioBody(TraceFile f, dynamic bort, dynamic i18n, double side) {
+  Widget _audioBody(TraceFile f, OperationalLayer bort, double side) {
     final player = _audio;
     final dur = player?.duration;
     return Center(

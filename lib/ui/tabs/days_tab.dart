@@ -22,6 +22,10 @@
 // (maxWidth: side * 8) with spaceEvenly inside, so the row stays
 // compact on wide screens and does not slip under the root pult.
 //
+// Scopes. Dependencies are read from point scopes: BortScope (theme),
+// RoutineScope (the layer), I18nScope (strings). AppScope is
+// consulted only for openRoutine.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -137,12 +141,12 @@ class _DaysTabState extends State<DaysTab> {
 
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.of(context);
-    final bort = app.bort;
+    final bort = BortScope.of(context);
+    final routineLayer = RoutineScope.of(context);
     final side = PultScope.of(context).smallSide;
 
     final cells = <int, List<Routine>>{};
-    for (final r in app.routineLayer.routines) {
+    for (final r in routineLayer.routines) {
       final day = _dayOf(r);
       if (day == null) continue;
       cells.putIfAbsent(day, () => []).add(r);
@@ -269,7 +273,8 @@ class _DaysTabState extends State<DaysTab> {
   }
 
   void _openDay(List<Routine> routines) {
-    final app = AppScope.of(context);
+    final bort = BortScope.of(context);
+    final openRoutine = AppScope.of(context).openRoutine;
     showPultSheet(
       context: context,
       subs: [
@@ -278,12 +283,12 @@ class _DaysTabState extends State<DaysTab> {
             id: 'r_${r.id}',
             icon: r.completed ? Icons.check : Icons.circle_outlined,
             label: r.name.isEmpty ? '—' : r.name,
-            onTap: () => app.openRoutine(r.id),
+            onTap: () => openRoutine(r.id),
           ),
       ],
-      fg: app.bort.fg,
-      bg: app.bort.bg,
-      signal: app.bort.signal,
+      fg: bort.fg,
+      bg: bort.bg,
+      signal: bort.signal,
       side: PultScope.of(context).smallSide,
     );
   }

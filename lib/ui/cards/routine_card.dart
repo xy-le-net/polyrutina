@@ -17,6 +17,12 @@
 // the screen; the title recedes by its width. centerTitle is false
 // to prevent platform-specific centering.
 //
+// Scopes. Dependencies are read from point scopes: RoutineScope
+// (the routine and its mutations), TraceScope (_hasTrace), BortScope
+// (theme, default slots), TickerScope (playback cadence), I18nScope
+// (strings). AppScope is consulted only for the journal and for the
+// ReportBuilder call, which still receives the full AppContext.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -74,14 +80,14 @@ class _RoutineCardState extends State<RoutineCard> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final app = AppScope.of(context);
+    final ticker = TickerScope.of(context);
     _ticker?.removeListener(_onTick);
-    _ticker = app.ticker;
+    _ticker = ticker;
     _ticker?.addListener(_onTick);
 
     if (!_initializedExpand) {
       _initializedExpand = true;
-      final r = app.routineLayer.findRoutine(widget.routineId);
+      final r = RoutineScope.of(context).findRoutine(widget.routineId);
       if (r != null) {
         final fresh =
             (DateTime.now().millisecondsSinceEpoch ~/ 1000) - r.createdAt < 60;
@@ -97,8 +103,7 @@ class _RoutineCardState extends State<RoutineCard> {
 
   void _onTick() {
     if (!mounted) return;
-    final app = AppScope.of(context);
-    final r = app.routineLayer.findRoutine(widget.routineId);
+    final r = RoutineScope.of(context).findRoutine(widget.routineId);
     if (r == null) return;
     final running = r.runningBlock;
     if (running == null) return;
@@ -133,8 +138,7 @@ class _RoutineCardState extends State<RoutineCard> {
   void _autoScroll() {
     if (_autoScrolled) return;
     _autoScrolled = true;
-    final app = AppScope.of(context);
-    final kind = app.routineLayer.lastActiveBlockKind;
+    final kind = RoutineScope.of(context).lastActiveBlockKind;
     if (kind == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ctx = _blockKeys[kind]?.currentContext;
@@ -150,15 +154,15 @@ class _RoutineCardState extends State<RoutineCard> {
 
   bool _hasTrace(int routineId, String kind) {
     if (kind == 'summary') return false;
-    final app = AppScope.of(context);
-    final text = app.traceLayer.findFirstByKindSlot(
+    final traceLayer = TraceScope.of(context);
+    final text = traceLayer.findFirstByKindSlot(
       routineId,
       TraceKind.text,
       kind,
     );
     if (text != null && text.text.trim().isNotEmpty) return true;
     if (text != null && text.files.isNotEmpty) return true;
-    final chk = app.traceLayer.findFirstByKindSlot(
+    final chk = traceLayer.findFirstByKindSlot(
       routineId,
       TraceKind.checklist,
       kind,
@@ -176,8 +180,8 @@ class _RoutineCardState extends State<RoutineCard> {
     if (kind == 'note') return true;
     if (kind == 'summary') return r.totalSeconds > 0;
 
-    final app = AppScope.of(context);
-    if (app.bort.defaultSlots.contains(kind)) return true;
+    final bort = BortScope.of(context);
+    if (bort.defaultSlots.contains(kind)) return true;
 
     final b = r.blockOf(kind);
     if (b != null && (b.accumulatorSeconds > 0 || b.isRunning)) return true;
@@ -198,12 +202,13 @@ class _RoutineCardState extends State<RoutineCard> {
   }
 
   Future<void> _startEdit(Routine r, String kind) async {
-    final app = AppScope.of(context);
+    final routineLayer = RoutineScope.of(context);
+    final journal = AppScope.of(context).journal;
     final b = r.blockOf(kind);
     if (b == null) return;
 
     if (b.isRunning) {
-      await app.routineLayer.pauseBlock(app.journal, r.id, kind);
+      await routineLayer.pauseBlock(journal, r.id, kind);
     }
 
     final seconds = r.blockOf(kind)?.accumulatorSeconds ?? 0;
@@ -229,7 +234,8 @@ class _RoutineCardState extends State<RoutineCard> {
   }
 
   Future<void> _confirmEdit(Routine r, String kind) async {
-    final app = AppScope.of(context);
+    final routineLayer = RoutineScope.of(context);
+    final journal = AppScope.of(context).journal;
     final text = _editCtrl?.text ?? '';
     final sec = parseEditable(text);
     final cur = r.blockOf(kind)?.accumulatorSeconds ?? 0;
@@ -242,7 +248,7 @@ class _RoutineCardState extends State<RoutineCard> {
       _cancelEdit();
       return;
     }
-    await app.routineLayer.setBlockTime(app.journal, r.id, kind, sec);
+    await routineLayer.setBlockTime(journal, r.id, kind, sec);
     if (mounted) {
       setState(() => _editingKind = null);
     }
@@ -253,24 +259,28 @@ class _RoutineCardState extends State<RoutineCard> {
   }
 
   Future<void> _toggleCompleted(Routine r) async {
-    final app = AppScope.of(context);
-    await app.routineLayer.setCompleted(app.journal, r.id, !r.completed);
+    final routineLayer = RoutineScope.of(context);
+    final journal = AppScope.of(context).journal;
+    await routineLayer.setCompleted(journal, r.id, !r.completed);
   }
 
   Future<void> _exportOne(Routine r) async {
     final app = AppScope.of(context);
-    await ReportBuilder.buildSingle(app, app.i18n, r.id, uiContext: context);
+    final i18n = I18nScope.of(context);
+    await ReportBuilder.buildSingle(app, i18n, r.id, uiContext: context);
   }
 
   // ─── Assigned date: clear ───
   Future<void> _clearSchedule(Routine r) async {
-    final app = AppScope.of(context);
-    await app.routineLayer.setSchedule(app.journal, r.id, null);
+    final routineLayer = RoutineScope.of(context);
+    final journal = AppScope.of(context).journal;
+    await routineLayer.setSchedule(journal, r.id, null);
   }
 
   // ─── Assigned date: pick ───
   Future<void> _pickSchedule(Routine r) async {
-    final app = AppScope.of(context);
+    final routineLayer = RoutineScope.of(context);
+    final journal = AppScope.of(context).journal;
     final now = DateTime.now();
     final initial = r.scheduledAt != null
         ? DateTime.fromMillisecondsSinceEpoch(r.scheduledAt! * 1000)
@@ -282,8 +292,8 @@ class _RoutineCardState extends State<RoutineCard> {
       lastDate: DateTime(now.year + 5),
     );
     if (picked == null) return;
-    await app.routineLayer.setSchedule(
-      app.journal,
+    await routineLayer.setSchedule(
+      journal,
       r.id,
       picked.millisecondsSinceEpoch ~/ 1000,
     );
@@ -291,9 +301,10 @@ class _RoutineCardState extends State<RoutineCard> {
 
   // ─── Planned duration: drum ───
   Future<void> _pickPlanned(Routine r) async {
-    final app = AppScope.of(context);
-    final i18n = app.i18n;
-    final bort = app.bort;
+    final routineLayer = RoutineScope.of(context);
+    final journal = AppScope.of(context).journal;
+    final i18n = I18nScope.of(context);
+    final bort = BortScope.of(context);
     final side = PultScope.of(context).smallSide;
 
     final sec = r.plannedSeconds;
@@ -372,17 +383,17 @@ class _RoutineCardState extends State<RoutineCard> {
 
     if (result == null) return;
     final total = result.d * 86400 + result.h * 3600 + result.m * 60;
-    await app.routineLayer.setPlanned(app.journal, r.id, total);
+    await routineLayer.setPlanned(journal, r.id, total);
   }
 
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.of(context);
-    final bort = app.bort;
-    final i18n = app.i18n;
+    final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
+    final routineLayer = RoutineScope.of(context);
     final side = PultScope.of(context).smallSide;
 
-    final r = app.routineLayer.findRoutine(widget.routineId);
+    final r = routineLayer.findRoutine(widget.routineId);
     if (r == null) {
       return Scaffold(
         backgroundColor: bort.bg,
@@ -484,7 +495,8 @@ class _RoutineCardState extends State<RoutineCard> {
           fg: bort.fg,
           readOnly: false,
           hint: i18n.t('routine.no_name'),
-          onCommit: (v) => app.routineLayer.renameRoutine(app.journal, r.id, v),
+          onCommit: (v) =>
+              routineLayer.renameRoutine(AppScope.of(context).journal, r.id, v),
         ),
       ),
       body: SafeArea(

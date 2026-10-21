@@ -1,24 +1,32 @@
 // ═══════════════════════════════════════════════════════════════════
-// rubka_tab.dart — вкладка рубки.
+// rubka_tab.dart — rubka tab.
 //
-// Четыре блока: артель, оформление, интерфейс, данные. Оформление,
-// интерфейс и данные вынесены в отдельные виджеты (rubka_appearance,
-// rubka_interface, rubka_data). Здесь — лишь сборка блоков, раскладка
-// и поле «полночь» с чекбоксами показа вкладок.
+// Four blocks: artel, appearance, interface, data. Appearance,
+// interface, and data are extracted into separate widgets
+// (rubka_appearance, rubka_interface, rubka_data). Here — block
+// assembly, layout, and the «midnight» field with the tab-visibility
+// checkboxes.
 //
-// Артель. Поле «полночь» (чч:мм) — начало технических суток.
-// Два чекбокса: показ вкладки «поле» и показ вкладки «артель».
-// По умолчанию обе скрыты; при отметке вкладка появляется в меню.
+// Artel. Midnight field (HH:MM) — the start of the technical day.
+// Two checkboxes: show the «field» tab and show the «artel» tab.
+// By default both are hidden; when checked, the tab appears in the
+// menu.
 //
-// Раскладка.
-//   Узкий экран (менее 640): блоки в один столбец сверху вниз.
-//   Широкий экран: два столбца равной ширины, блоки стыкуются
-//   без вертикальных промежутков — каждое гнездо тянется по высоте
-//   своей колонны, остаток заполняет пустота внутри рамки соседа,
-//   ежели разница высот. Столбцы: левый — артель, интерфейс;
-//   правый — оформление, данные.
+// Layout.
+//   Narrow screen (under 640): blocks in a single column, top down.
+//   Wide screen: two equal-width columns; blocks butt together
+//   without vertical gaps — each slot stretches the height of its
+//   column, the remainder fills empty space inside the neighbour's
+//   frame if there is a height difference. Columns: left — artel,
+//   interface; right — appearance, data.
 //
-// Прозрачность не применяется.
+// Scopes. The rubka itself reads BortScope and I18nScope. RubkaData
+// remains on AppScope: it touches the journal, several layers, and
+// the AppContext delegates (refresh, reloadI18n). RubkaAppearance
+// and RubkaInterface are read-only on bort and i18n; their migration
+// to point scopes is a separate edit.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -37,9 +45,8 @@ class RubkaTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.of(context);
-    final bort = app.bort;
-    final i18n = app.i18n;
+    final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
     final fg = bort.fg;
     final dim = bort.dim;
     final bg = bort.bg;
@@ -145,11 +152,10 @@ class RubkaTab extends StatelessWidget {
         const spacing = 16.0;
         final colW = (width - hPad * 2 - spacing) / 2;
 
-        // Два столбца. Внутри — без вертикальных промежутков:
-        // Block уже имеет нижний отступ (gap) внутри себя, а Column
-        // располагает их вплотную. Разница высот столбцов не создаёт
-        // промежутков между блоками, лишь свободное место внизу
-        // короткого столбца.
+        // Two columns. No vertical gaps inside: Block already carries
+        // its own bottom gap, and Column stacks them flush. The height
+        // difference does not create gaps between blocks — only empty
+        // space at the bottom of the shorter column.
         Widget col(List<Widget> children) => SizedBox(
           width: colW,
           child: Column(
@@ -174,11 +180,10 @@ class RubkaTab extends StatelessWidget {
     );
   }
 
-  // ─── Полночь: единственная частность, оставшаяся здесь ───
+  // ─── Midnight: the sole detail kept here ───
   Widget _midnightRow(BuildContext context, Color fg, double side) {
-    final app = AppScope.of(context);
-    final bort = app.bort;
-    final i18n = app.i18n;
+    final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -205,7 +210,7 @@ class RubkaTab extends StatelessWidget {
     );
   }
 
-  // ─── Чекбокс показа вкладки ───
+  // ─── Tab-visibility checkbox ───
   Widget _tabTickRow(
     BuildContext context,
     String key,
@@ -215,8 +220,7 @@ class RubkaTab extends StatelessWidget {
     Color signal,
     double side,
   ) {
-    final app = AppScope.of(context);
-    final bort = app.bort;
+    final bort = BortScope.of(context);
     final value = (bort.allAsStrings[key] ?? 'false') == 'true';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),

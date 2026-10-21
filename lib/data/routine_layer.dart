@@ -1,36 +1,45 @@
 // ═══════════════════════════════════════════════════════════════════
-// routine_layer.dart — слой рутин.
+// routine_layer.dart — routine layer.
 //
-// Держит список рутин и их блоки.
+// Holds the list of routines and their blocks.
 //
-// Журнал. Регистрируется в JournalLayer на род routine.
+// Journal. Registered in JournalLayer for the routine kind.
 //
-// Транзакции. Действия, рождающие несколько записей разом
-// (завершение рутины, пуск блока с гашением прочих, переключение
-// блока при смене рутины), оборачиваются в journal.transaction.
+// Transactions. Actions producing several entries at once
+// (completing a routine, starting a block while stopping the others,
+// switching blocks between routines) are wrapped in
+// journal.transaction.
 //
-// Кэш. Пишется отложенно (200 мс). currentRoutineId — в памяти;
-// lastActiveBlockKind — в кэше (для прокрутки после перезапуска).
+// Cache. Written with a 200 ms debounce. currentRoutineId lives in
+// memory; lastActiveBlockKind lives in the cache (for scroll
+// restoration after restart). Writes go through a .tmp file and a
+// rename, so a crash mid-write cannot leave a half-written cache.
 //
-// Завершённость. Установка гасит идущий блок и ставит completedAt;
-// снятие очищает completedAt.
+// Completion. Setting it stops the running block and records
+// completedAt; clearing it removes completedAt.
 //
-// Правка времени. setBlockTime ставит пометку timeEdited; при пуске
-// блока пометка снимается.
+// Time editing. setBlockTime marks timeEdited; starting a block
+// clears the mark.
 //
-// lastPulseAt. Двигается при пуске и остановке блока. Прочие
-// действия (переименование, смена флагов, правка плана) его не
-// трогают — иначе день в календаре «дни» сдвигался бы не по делу.
+// lastPulseAt. Advanced on block start and stop. Other actions
+// (rename, flag change, plan edit) leave it alone — otherwise the
+// day in the "days" calendar would drift for no reason.
 //
-// Намеченная дата и планируемые человекочасы. Правятся в карточке;
-// хранятся секундами Unix и секундами соответственно.
+// Scheduled date and planned man-hours. Edited in the card; stored
+// as Unix seconds and seconds respectively.
 //
-// Дублирование. Копируются: имя, флаги, намеченная дата, плановые
-// человекочасы, следы блоков описания, подготовки, завершения
-// (текст и чек-лист). Следы перехода, выполнения, простоя
-// не переносятся — они о конкретной работе.
+// Duplication. Copied: name, flags, scheduled date, planned
+// man-hours, traces of the note, prep, closeout blocks (text and
+// checklist). Transit, work, and idle traces are not carried over
+// — they describe a specific run.
 //
-// Прозрачность не применяется.
+// Duplication writes ONE snapshot entry (with the routine's full
+// state) instead of a series of create/rename/flags/set_schedule/
+// set_planned entries. The "snapshot" branch in _applyEntry replaces
+// the routine in place. Trace copies remain separate entries, as
+// before: those are edits to the trace layer, not to the routine.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:async';
@@ -48,13 +57,13 @@ import 'routine.dart';
 import 'trace_layer.dart';
 
 class RoutineLayer extends ChangeNotifier {
-  // ─── Текущее состояние ───
+  // ─── Current state ───
   List<Routine> routines = [];
 
   int? currentRoutineId;
   String? lastActiveBlockKind;
 
-  // Ссылка на слой следов — нужна для дублирования.
+  // Trace layer reference — needed for duplication.
   TraceLayer? _traces;
 
   File? _file;
@@ -88,7 +97,7 @@ class RoutineLayer extends ChangeNotifier {
     super.dispose();
   }
 
-  // ─── Кэш ───
+  // ─── Cache ───
   Future<void> _loadFromFile() async {
     if (_file == null || !await _file!.exists()) return;
     try {
@@ -112,12 +121,21 @@ class RoutineLayer extends ChangeNotifier {
   }
 
   Future<void> _saveToFile() async {
-    if (_file == null) return;
+    final target = _file;
+    if (target == null) return;
     final data = <String, dynamic>{
       'routines': routines.map((r) => r.toJson()).toList(),
       'last_active_block_kind': lastActiveBlockKind,
     };
-    await _file!.writeAsString(jsonEncode(data));
+    final tmp = File('${target.path}.tmp');
+    try {
+      await tmp.writeAsString(jsonEncode(data), flush: true);
+      await tmp.rename(target.path);
+    } catch (_) {
+      try {
+        if (await tmp.exists()) await tmp.delete();
+      } catch (_) {}
+    }
   }
 
   Future<void> saveNow() async {
@@ -126,7 +144,7 @@ class RoutineLayer extends ChangeNotifier {
     await _saveToFile();
   }
 
-  // ─── Применение записи журнала ───
+  // ─── Applying a journal entry ───
   void _applyEntry(JournalData e) {
     try {
       final data = jsonDecode(e.body) as Map<String, dynamic>;
@@ -255,15 +273,17 @@ class RoutineLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ─── Дублирование ───
-  // Копируются: имя, флаги, намеченная дата, плановые человекочасы,
-  // следы блоков описания, подготовки, завершения (текст и чек-лист).
-  // Следы перехода, выполнения, простоя не переносятся — они
-  // о конкретной работе.
+  // ─── Duplication ───
+  // Copied: name, flags, scheduled date, planned man-hours, and the
+  // traces of the note, prep, closeout blocks (text and checklist).
+  // Transit, work, and idle traces are not carried over — they
+  // describe a specific run.
   //
-  // Всё копирование — одною транзакциею: рождается несколько
-  // записей в журнале (создание рутины, имя, флаги, дата, план,
-  // по следу на слот). При сбое посреди — ни рутины, ни следов.
+  // The routine itself is written as a single snapshot entry: create
+  // a fresh routine, then log a snapshot carrying the final state
+  // (name, flags, schedule, plan). Trace copies follow as separate
+  // entries. Everything is wrapped in one transaction — either the
+  // whole duplicate is born, or nothing.
   Future<Routine?> duplicateRoutine(JournalLayer journal, int sourceId) async {
     final src = findRoutine(sourceId);
     if (src == null) return null;
@@ -272,18 +292,24 @@ class RoutineLayer extends ChangeNotifier {
     await journal.transaction(() async {
       final r = await createRoutine(journal);
       newId = r.id;
-      if (src.name.isNotEmpty) {
-        await renameRoutine(journal, r.id, src.name);
-      }
-      if (src.flags != 0) {
-        await setFlags(journal, r.id, src.flags);
-      }
-      if (src.scheduledAt != null) {
-        await setSchedule(journal, r.id, src.scheduledAt);
-      }
-      if (src.plannedSeconds > 0) {
-        await setPlanned(journal, r.id, src.plannedSeconds);
-      }
+
+      // Build the snapshot state for the new routine.
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final snapshot = Routine(
+        id: r.id,
+        name: src.name,
+        createdAt: now,
+        lastActionAt: now,
+        blocks: RoutineBlock.kinds.map((k) => RoutineBlock(kind: k)).toList(),
+        flags: src.flags,
+        scheduledAt: src.scheduledAt,
+        plannedSeconds: src.plannedSeconds,
+      );
+
+      await journal.log(
+        type: JournalType.routine,
+        body: jsonEncode({'action': 'snapshot', 'routine': snapshot.toJson()}),
+      );
 
       final traces = _traces;
       if (traces != null) {
@@ -323,7 +349,7 @@ class RoutineLayer extends ChangeNotifier {
     return findRoutine(newId!);
   }
 
-  // ─── Мутации ───
+  // ─── Mutations ───
   Future<Routine> createRoutine(JournalLayer journal) async {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final id = await journal.log(
@@ -412,8 +438,8 @@ class RoutineLayer extends ChangeNotifier {
     if (r.completed == value) return;
 
     if (value) {
-      // Пауза всех идущих блоков + отметка завершённости — одною
-      // транзакциею: либо всё, либо ничего.
+      // Pause all running blocks + completion mark — in one
+      // transaction: either all, or nothing.
       await journal.transaction(() async {
         final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
         for (final b in r.blocks) {
@@ -487,9 +513,9 @@ class RoutineLayer extends ChangeNotifier {
     }
   }
 
-  // ─── Пуск блока ───
-  // Гасит идущие блоки (в сей рутине и в чужой), пускает целевой —
-  // всё одною транзакциею.
+  // ─── Block start ───
+  // Stops running blocks (in this routine and in the other one),
+  // starts the target — all in one transaction.
   Future<void> startBlock(
     JournalLayer journal,
     int routineId,

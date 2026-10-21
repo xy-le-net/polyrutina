@@ -1,12 +1,16 @@
 // ═══════════════════════════════════════════════════════════════════
-// routine_plate.dart — плитка одной рутины в списке.
+// routine_plate.dart — one routine tile in the list.
 //
-// Вынесена из routines_tab. Содержит: рамку, имя, дату, таймер,
-// пульс рутины (пуск/пауза/открыть) с подпультом действий
-// (дублировать, отметить завершённой, удалить), чекбокс режима
-// выбора.
+// Extracted from routines_tab. Contains: frame, name, date, timer,
+// the routine pulse (start/pause/open) with an action subpult
+// (duplicate, mark completed, delete), and a select-mode checkbox.
 //
-// Прозрачность не применяется.
+// Scopes. Dependencies are read from point scopes: BortScope (theme,
+// colors, opposite palette), I18nScope (strings), TickerScope (colon
+// blink), RoutineScope (layer mutations). AppScope is consulted only
+// for the journal and for toggleBlockWithShift (an AppContext method).
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -41,9 +45,11 @@ class RoutinePlate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
+    final ticker = TickerScope.of(context);
+    final routineLayer = RoutineScope.of(context);
     final app = AppScope.of(context);
-    final bort = app.bort;
-    final i18n = app.i18n;
     final side = PultScope.of(context).smallSide;
     final running = routine.runningBlock != null;
 
@@ -89,7 +95,7 @@ class RoutinePlate extends StatelessWidget {
       pulseTap = () async {
         for (final b in routine.blocks) {
           if (b.isRunning) {
-            await app.routineLayer.pauseBlock(app.journal, routine.id, b.kind);
+            await routineLayer.pauseBlock(app.journal, routine.id, b.kind);
           }
         }
         onChanged();
@@ -109,7 +115,7 @@ class RoutinePlate extends StatelessWidget {
         icon: Icons.copy,
         label: i18n.t('bort.duplicate'),
         onTap: () async {
-          await app.routineLayer.duplicateRoutine(app.journal, routine.id);
+          await routineLayer.duplicateRoutine(app.journal, routine.id);
           onChanged();
         },
       ),
@@ -122,7 +128,7 @@ class RoutinePlate extends StatelessWidget {
           label: i18n.t('routine.mark_completed'),
           confirm: true,
           onTap: () {
-            app.routineLayer.setCompleted(app.journal, routine.id, true);
+            routineLayer.setCompleted(app.journal, routine.id, true);
           },
         ),
       );
@@ -134,7 +140,7 @@ class RoutinePlate extends StatelessWidget {
         label: i18n.t('bort.delete'),
         confirm: true,
         onTap: () {
-          app.routineLayer.deleteRoutine(app.journal, routine.id);
+          routineLayer.deleteRoutine(app.journal, routine.id);
         },
       ),
     );
@@ -206,8 +212,8 @@ class RoutinePlate extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               if (routine.scheduledAt != null)
-                // Намеченная дата — прямоугольною рамкою, единообразно
-                // с календарём вкладки «дни» (там наметка — квадрат).
+                // Assigned date — rectangular frame, uniformly with
+                // the «days» tab calendar (there the mark is a square).
                 Container(
                   padding: EdgeInsets.symmetric(
                     horizontal: dateSize * 0.3,
@@ -235,9 +241,9 @@ class RoutinePlate extends StatelessWidget {
                   fg: textMain,
                   dim: textSoft,
                   numberSize: numberSize,
-                  colonVisible: app.ticker.colonVisible,
+                  colonVisible: ticker.colonVisible,
                   t: i18n.t,
-                  ticker: app.ticker,
+                  ticker: ticker,
                 ),
               ],
             ],

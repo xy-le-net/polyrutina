@@ -1,27 +1,33 @@
 // ═══════════════════════════════════════════════════════════════════
-// journal_layer.dart — слой журнала.
+// journal_layer.dart — журнальный слой.
 //
-// Единственный, кто знает про базу и формат тела записей.
+// The single keeper of the database and the entry body format.
 //
-// Регистрация. Слой зовёт register с именем, списком родов, функцией
-// применения записи. JournalLayer помнит по каждому слою номер
-// последней отданной ему записи.
+// Registration. The layer calls register with a name, a list of
+// kinds, and an apply function. JournalLayer remembers, per layer,
+// the id of the last entry handed to it.
 //
-// Раздача. pump читает всё после наименьшей отметки, раздаёт каждому
-// слою его роды, движет отметки вперёд.
+// Distribution. pump reads everything after the smallest mark,
+// distributes to each layer its kinds, advances the marks.
 //
-// Подписка. Заводится НЕ в init, а в start — после того, как все
-// слои зарегистрировались. Сим устраняется пропуск ранних записей.
+// Subscription. Set up in start, not init — after all layers have
+// registered. This avoids dropping early entries.
 //
-// Транзакции. Действия, рождающие несколько записей разом,
-// оборачиваются в transaction. Внутри неё log не пускает pump;
-// он исполняется однократно по выходе из внешней транзакции.
+// Transactions. Actions that produce several entries at once are
+// wrapped in a transaction. Inside it, log does not run pump;
+// pump runs once on leaving the outer transaction.
 //
-// Счёт и объём журнала не ведутся здесь: рубка читает размер файлов
-// борта напрямую. Флага «локальное» для различения бортовых записей
-// здесь не ставится: служба сего — бит JournalFlag.fromServer.
+// Sync flags. deleteSynced, countSynced, and markSynced operate via
+// SQL conditions (bitwise AND against JournalFlag.synced) rather
+// than by loading every row and filtering in Dart. The former
+// approach was O(n) in the journal size; this one is O(k) in the
+// matched rows.
 //
-// Прозрачность не применяется.
+// The journal's size is not measured here: the rubka reads the bort
+// files directly. The service "local" flag for bort-side records is
+// not set here: the bit JournalFlag.fromServer serves that purpose.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:async';
@@ -69,16 +75,16 @@ class JournalLayer extends ChangeNotifier {
 
   StreamSubscription<List<JournalData>>? _sub;
 
-  // ─── Пуск ───
-  // Подписка не заводится здесь: она откладывается до start().
+  // ─── Startup ───
+  // Subscription is not set up here; it is deferred to start().
   Future<void> init() async {
     final dir = await getApplicationDocumentsDirectory();
     _stateFile = File(p.join(dir.path, 'journal_layer.json'));
     await _loadState();
   }
 
-  // ─── Подписка ───
-  // Зовётся после регистрации всех слоёв.
+  // ─── Subscription ───
+  // Called after all layers have registered.
   void start() {
     _sub ??= watchAll().listen((_) => pump());
   }
@@ -90,7 +96,7 @@ class JournalLayer extends ChangeNotifier {
     super.dispose();
   }
 
-  // ─── Регистрация ───
+  // ─── Registration ───
   void register({
     required String name,
     required List<int> types,
@@ -105,7 +111,7 @@ class JournalLayer extends ChangeNotifier {
     );
   }
 
-  // ─── Транзакция ───
+  // ─── Transaction ───
   Future<T> transaction<T>(Future<T> Function() action) async {
     _txDepth++;
     try {
@@ -116,7 +122,7 @@ class JournalLayer extends ChangeNotifier {
     }
   }
 
-  // ─── Раздача ───
+  // ─── Distribution ───
   Future<void> pump() async {
     if (_pumping) return;
     if (_layers.isEmpty) return;
@@ -148,7 +154,7 @@ class JournalLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ─── Полное перечитывание ───
+  // ─── Full reread ───
   Future<void> reread() async {
     for (final l in _layers.values) {
       l.reset?.call();
@@ -160,7 +166,7 @@ class JournalLayer extends ChangeNotifier {
     await pump();
   }
 
-  // ─── Запись ───
+  // ─── Write ───
   Future<int> log({
     required int type,
     String body = '{}',
@@ -180,7 +186,7 @@ class JournalLayer extends ChangeNotifier {
     return id;
   }
 
-  // ─── Чтение ───
+  // ─── Read ───
   Future<List<JournalData>> recent({int limit = 50}) {
     return (db.select(db.journal)
           ..orderBy([(t) => OrderingTerm.desc(t.id)])
@@ -217,7 +223,7 @@ class JournalLayer extends ChangeNotifier {
     )..orderBy([(t) => OrderingTerm.asc(t.id)])).get();
   }
 
-  // ─── Управление ───
+  // ─── Management ───
   Future<void> clearAll() async {
     await db.delete(db.journal).go();
     for (final l in _layers.values) {
@@ -233,30 +239,44 @@ class JournalLayer extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Deletes every entry carrying the synced flag. Runs as a single
+  // DELETE with a bitwise condition — no full scan in Dart.
   Future<void> deleteSynced() async {
-    final rows = await db.select(db.journal).get();
-    final ids = rows
-        .where((r) => (r.flags & JournalFlag.synced) != 0)
-        .map((r) => r.id)
-        .toList();
-    if (ids.isEmpty) return;
-    await (db.delete(db.journal)..where((t) => t.id.isIn(ids))).go();
-    notifyListeners();
+    final n = await db.customUpdate(
+      'DELETE FROM journal WHERE (flags & ?1) != 0',
+      variables: [const Variable<int>(JournalFlag.synced)],
+      updates: {db.journal},
+    );
+    if (n > 0) notifyListeners();
   }
 
+  // Counts entries carrying the synced flag. COUNT(*) with a bitwise
+  // condition — no row transfer into Dart.
+  //
+  // Type note: bitwiseAnd takes Expression<int> (wrap the mask in
+  // Constant), while equals takes a plain int for Expression<int>.
   Future<int> countSynced() async {
-    final rows = await db.select(db.journal).get();
-    return rows.where((r) => (r.flags & JournalFlag.synced) != 0).length;
+    final count = db.journal.id.count();
+    final q = db.selectOnly(db.journal)
+      ..addColumns([count])
+      ..where(
+        db.journal.flags
+            .bitwiseAnd(const Constant(JournalFlag.synced))
+            .equals(JournalFlag.synced),
+      );
+    final row = await q.getSingle();
+    return row.read(count) ?? 0;
   }
 
+  // Sets the synced flag on one entry. A single UPDATE with a bitwise
+  // OR; the WHERE clause makes it idempotent — no spurious
+  // notification when the flag is already set.
   Future<void> markSynced(int id) async {
-    final row = await (db.select(
-      db.journal,
-    )..where((t) => t.id.equals(id))).getSingleOrNull();
-    if (row == null) return;
-    final newFlags = row.flags | JournalFlag.synced;
-    await (db.update(db.journal)..where((t) => t.id.equals(id))).write(
-      JournalCompanion(flags: Value(newFlags)),
+    await db.customUpdate(
+      'UPDATE journal SET flags = flags | ?1 '
+      'WHERE id = ?2 AND (flags & ?1) = 0',
+      variables: [const Variable<int>(JournalFlag.synced), Variable<int>(id)],
+      updates: {db.journal},
     );
   }
 
@@ -269,7 +289,7 @@ class JournalLayer extends ChangeNotifier {
     return rows.isEmpty ? 0 : rows.first.id;
   }
 
-  // ─── Сохранение отметок ───
+  // ─── Mark saving ───
   void _scheduleSave() {
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 200), () {

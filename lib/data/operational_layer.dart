@@ -11,6 +11,12 @@
 // nextMediaIndex() proxies InstallStore.nextMediaIndex() so that UI
 // does not depend on InstallStore directly.
 //
+// set vs setSilent. Both apply a setting and schedule a save. set
+// notifies listeners — use it when the UI should re-read the value
+// immediately. setSilent skips the notification — use it when the
+// change affects state read on the next frame anyway, or when the
+// caller orchestrates its own refresh.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -400,6 +406,14 @@ class OperationalLayer extends ChangeNotifier {
   String oppositeThemeName() => _themes.oppositeName();
   Map<String, Color>? colorsForOpposite() => _themes.colorsForOpposite();
 
+  // ─── Block collapse ───
+  // Default expanded: note, work. Default collapsed: prep, transit,
+  // idle, closeout, summary. The set holds the COLLAPSED kinds.
+  //
+  // On first tap the initial set is materialized from the defaults
+  // and the target kind is toggled once. A kind that is collapsed
+  // by default therefore opens on the first tap; a kind expanded
+  // by default collapses on the first tap.
   bool isBlockCollapsed(int routineId, String kind) {
     final set = collapsedBlocks[routineId];
     if (set == null) {
@@ -411,25 +425,23 @@ class OperationalLayer extends ChangeNotifier {
   void toggleBlockCollapsed(int routineId, String kind) {
     final current = collapsedBlocks[routineId];
     if (current == null) {
-      final defaults = <String>{'note', 'work'};
-      final init = <String>{};
-      for (final k in const [
-        'note',
-        'prep',
-        'transit',
-        'work',
-        'idle',
-        'closeout',
-        'summary',
-      ]) {
-        final def = defaults.contains(k);
-        if (k == kind) {
-          init.add(k);
-        } else if (def) {
-          // keep expanded
-        } else {
-          init.add(k);
-        }
+      // Materialize defaults: all kinds except note and work.
+      final init = <String>{
+        for (final k in const [
+          'note',
+          'prep',
+          'transit',
+          'work',
+          'idle',
+          'closeout',
+          'summary',
+        ])
+          if (k != 'note' && k != 'work') k,
+      };
+      if (init.contains(kind)) {
+        init.remove(kind);
+      } else {
+        init.add(kind);
       }
       collapsedBlocks[routineId] = init;
     } else {
@@ -539,16 +551,20 @@ class OperationalLayer extends ChangeNotifier {
     await _file.writeNow(_buildFileMap);
   }
 
+  // ─── Setters ───
+  // set — apply, schedule a save, notify listeners.
   void set(String key, String value) {
     _apply(key, value);
     _scheduleSave();
     notifyListeners();
   }
 
+  // setSilent — same, but no notifyListeners. Used when the caller
+  // orchestrates its own refresh, or when the value is read on the
+  // next frame anyway.
   void setSilent(String key, String value) {
     _apply(key, value);
     _scheduleSave();
-    notifyListeners();
   }
 
   void setBool(String key, bool v) {
@@ -579,6 +595,7 @@ class OperationalLayer extends ChangeNotifier {
   static String traceDraftKey(int objectId, String slot) =>
       DraftsStore.traceKey(objectId, slot);
 
+  // ─── Shift ───
   void startShift() {
     if (onShift) return;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;

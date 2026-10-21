@@ -28,6 +28,10 @@
 // Saving — the whole body, an entry in the journal with the
 // «correction» flag.
 //
+// Scopes. Dependencies are read from point scopes: BortScope
+// (theme, sizes), TraceScope (the layer), I18nScope (strings).
+// AppScope is consulted only for the journal.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -94,8 +98,8 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
   }
 
   void _loadTrace() {
-    final app = AppScope.of(context);
-    final t = app.traceLayer.findFirstByKindSlot(
+    final traceLayer = TraceScope.of(context);
+    final t = traceLayer.findFirstByKindSlot(
       widget.objectId,
       TraceKind.checklist,
       widget.slot,
@@ -122,7 +126,8 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
   }
 
   Future<void> _save() async {
-    final app = AppScope.of(context);
+    final traceLayer = TraceScope.of(context);
+    final journal = AppScope.of(context).journal;
     final saved = <TraceItem>[];
     for (var i = 0; i < _items.length; i++) {
       final it = _items[i];
@@ -132,8 +137,8 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
 
     if (_traceId == -1) {
       if (saved.isEmpty) return;
-      final id = await app.traceLayer.createChecklist(
-        app.journal,
+      final id = await traceLayer.createChecklist(
+        journal,
         slot: widget.slot,
         items: saved.map((e) => e.text).toList(),
         parents: [widget.objectId],
@@ -141,10 +146,10 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
       _traceId = id;
       final hasDone = saved.any((e) => e.done);
       if (hasDone) {
-        await app.traceLayer.updateItems(app.journal, id, saved);
+        await traceLayer.updateItems(journal, id, saved);
       }
     } else {
-      await app.traceLayer.updateItems(app.journal, _traceId, saved);
+      await traceLayer.updateItems(journal, _traceId, saved);
     }
   }
 
@@ -269,10 +274,9 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.of(context);
-    final bort = app.bort;
+    final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
     final side = PultScope.of(context).smallSide;
-    final i18n = app.i18n;
 
     final titleSize = side * bort.kTitle;
     final itemSize = side * bort.kNumberSmall;

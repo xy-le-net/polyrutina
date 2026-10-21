@@ -14,6 +14,11 @@
 // independent of routine ids, so compaction does not invalidate
 // names.
 //
+// Atomic copy. The file is first copied into <target>.tmp, then
+// renamed onto the final name. A crash mid-copy cannot leave a
+// half-written media file under the canonical name; the trace
+// body (if written) points to a whole file, not a torn one.
+//
 // Photo/video series: after returning from the system camera
 // the sheet does not close — it opens again. Exit — «back».
 //
@@ -80,9 +85,7 @@ Future<void> showMediaPicker({
         label: i18n.t('media.geo'),
         // The geo point is picked on a custom map (geo_picker.dart):
         // a tap on the map, confirmation — a widget snapshot and
-        // coordinates are put into media/ as the geo kind. The former
-        // direct geolocator call is removed: the user did not see
-        // where the point was placed.
+        // coordinates are put into media/ as the geo kind.
         onTap: () =>
             showGeoPicker(context: context, objectId: objectId, slot: slot),
       ),
@@ -119,10 +122,16 @@ Future<void> _attach(
   final media = Directory(p.join(dir.path, 'media'));
   if (!await media.exists()) await media.create(recursive: true);
   final target = File(p.join(media.path, name));
+  final tmp = File('${target.path}.tmp');
 
   try {
-    await File(sourcePath).copy(target.path);
+    // Atomic copy: write to .tmp, then rename onto the final name.
+    await File(sourcePath).copy(tmp.path);
+    await tmp.rename(target.path);
   } catch (_) {
+    try {
+      if (await tmp.exists()) await tmp.delete();
+    } catch (_) {}
     return;
   }
 

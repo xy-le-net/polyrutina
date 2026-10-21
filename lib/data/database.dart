@@ -1,154 +1,176 @@
 // ═══════════════════════════════════════════════════════════════════
-// database.dart — описание таблицы журнала и класса базы данных.
+// database.dart — journal table and database class.
 //
-// Здесь только структура: какие поля, какие типы, где лежит файл.
-// Логика записи и чтения — в journal_repository.dart.
+// Structure only: which fields, which types, where the file lives.
+// Reading and writing live in journal_repository.dart.
+//
+// WAL. The connection is opened in Write-Ahead Logging mode, so
+// that readers do not block on writers, and a crash mid-transaction
+// cannot corrupt the main file. journal_compactor already relies on
+// PRAGMA wal_checkpoint(TRUNCATE); this is the piece that makes
+// that checkpoint meaningful. synchronous = NORMAL is a safe
+// companion: it preserves database integrity across power loss
+// (the last transaction may be lost, but the file stays valid),
+// while avoiding the cost of FULL on every commit.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
-// ─── Импорты ───
+// ─── Imports ───
 
-// dart:io даёт File — работу с файлами на диске.
+// dart:io gives File — disk operations.
 import 'dart:io';
 
-// Основной пакет drift: типы колонок (IntColumn, TextColumn),
-// аннотация @DriftDatabase, классы Value, Constant.
+// The main drift package: column types (IntColumn, TextColumn),
+// the @DriftDatabase annotation, Value, Constant.
 import 'package:drift/drift.dart';
 
-// Нативная реализация SQLite для мобильных и десктопа.
-// Через неё Drift открывает файл базы.
+// The native SQLite implementation for mobile and desktop.
+// Drift uses it to open the database file.
 import 'package:drift/native.dart';
 
-// path как p — утилиты для путей: p.join('a', 'b').
+// path as p — path utilities: p.join('a', 'b').
 import 'package:path/path.dart' as p;
 
-// path_provider — узнаём папку документов приложения.
+// path_provider — resolve the application's documents folder.
 import 'package:path_provider/path_provider.dart';
 
-// ─── Сгенерированная часть ───
+// ─── Generated part ───
 //
-// Директива part связывает сей файл с database.g.dart,
-// который Drift создаст сам после команды:
+// The part directive links this file with database.g.dart,
+// which Drift generates after:
 //     dart run build_runner build
 //
-// Без этой строки сгенерированный код не подключится,
-// и появится ошибка «part 'database.g.dart' is missing».
+// Without this line, the generated code is not connected, and the
+// error "part 'database.g.dart' is missing" appears.
 part 'database.g.dart';
 
 // ═══════════════════════════════════════════════════════════════════
-// Таблица Journal — единственная таблица проекта.
+// Journal table — the project's single table.
 //
-// Догма: журнал един, все данные проходят через него.
-// Никаких отдельных таблиц под рутины, следы, таймеры, настройки.
+// Dogma: the journal is one; all data flows through it. No separate
+// tables for routines, traces, timers, or settings.
 //
-// Номер записи (id) служит идентификатором объекта при связях:
-// когда след привязывается к блоку рутины либо к другому следу,
-// в теле записи хранится именно номер журнальной записи о создании
-// того объекта. Сие избавляет от хранения пар «род + имя».
+// The entry number (id) serves as the object identifier in links:
+// when a trace is attached to a routine block or to another trace,
+// the body stores the journal entry number where that object was
+// created. This avoids storing "kind + name" pairs.
 // ═══════════════════════════════════════════════════════════════════
 class Journal extends Table {
-  // ─── Поле id ───
-  // Первичный ключ, автоинкремент.
-  // Это и есть «отлучный» (локальный) номер записи.
-  // Заполняется SQLite сам, задавать вручную не нужно.
-  // Монотонен: используется как идентификатор объекта в связях.
+  // ─── id field ───
+  // Primary key, autoincrement.
+  // This is the "detached" (local) entry number.
+  // Filled by SQLite itself; no manual assignment.
+  // Monotone: used as the object identifier in links.
   IntColumn get id => integer().autoIncrement()();
 
-  // ─── Поле time ───
-  // Метка времени в секундах от начала эпохи Unix
-  // (1 января 1970 года UTC).
+  // ─── time field ───
+  // Timestamp in seconds since the Unix epoch (1 Jan 1970 UTC).
   //
-  // Почему секунды, а не миллисекунды:
-  //   — их хватает для журнала;
-  //   — число компактнее;
-  //   — ежели понадобится точность выше (два события в одну
-  //     секунду), добавим отдельное поле позже, не ломая схему.
+  // Why seconds, not milliseconds:
+  //   — sufficient for the journal;
+  //   — the number is more compact;
+  //   — if higher precision is needed later (two events in one
+  //     second), a separate field can be added without breaking the
+  //     schema.
   IntColumn get time => integer()();
 
-  // ─── Поле flags ───
-  // Битовое поле помет.
+  // ─── flags field ───
+  // Bit field of marks.
   //
-  // Занято восемь битов:
-  //   бит 0 — срочно;
-  //   бит 1 — аварийно;
-  //   бит 2 — важно;
-  //   бит 3 — спорно;
-  //   бит 4 — сложно;
-  //   бит 5 — локально;
-  //   бит 6 — синхронизировано;
-  //   бит 7 — правка (запись вытесняет прежнее состояние объекта,
-  //           а не творит новое).
-  // Прочие восемь битов (8..15) — в запасе; бит 8 занят службою
-  // (fromServer).
+  // Eight bits are used:
+  //   bit 0 — urgent;
+  //   bit 1 — emergency;
+  //   bit 2 — important;
+  //   bit 3 — disputable;
+  //   bit 4 — complex;
+  //   bit 5 — local;
+  //   bit 6 — synced;
+  //   bit 7 — correction (the entry supersedes the object's prior
+  //           state rather than creating a new object).
+  // The remaining eight bits (8..15) are spare; bit 8 is used by the
+  // service (fromServer).
   //
-  // withDefault(Constant(0)) означает: ежели при вставке флаги
-  // не заданы, положить ноль.
+  // withDefault(Constant(0)) means: if flags are not given on insert,
+  // store zero.
   IntColumn get flags => integer().withDefault(const Constant(0))();
 
-  // ─── Поле type ───
-  // Род записи числом. Расшифровка — в journal_types.dart:
-  //   0 — след
-  //   1 — рутина
-  //   2 — зарезервировано (прежде таймер)
-  //   3 — актор (смена, сессия)
-  //   4 — зарезервировано (прежде борт)
+  // ─── type field ───
+  // Entry kind as a number. Decoding lives in journal_types.dart:
+  //   0 — trace
+  //   1 — routine
+  //   2 — reserved (formerly timer)
+  //   3 — actor (shift, session)
+  //   4 — reserved (formerly bort)
   //
-  // Храним числом, а не строкою: дешевле и быстрее.
+  // Stored as a number, not a string: cheaper and faster.
   IntColumn get type => integer()();
 
-  // ─── Поле body ───
-  // Тело записи — JSON-строка.
-  // Внутрь кладём всё, что относится к данной записи:
-  //   — для следа:     {"kind":"text","text":"...","parents":[..],"children":[..]}
-  //   — для рутины:    {"action":"create"} и подобные
-  //   — для смены:     {"action":"shift_start"}
+  // ─── body field ───
+  // Entry body — a JSON string.
+  // Everything related to a given entry lives inside:
+  //   — trace:    {"kind":"text","text":"...","parents":[..],"children":[..]}
+  //   — routine:  {"action":"create"} and similar
+  //   — shift:    {"action":"shift_start"}
   //
-  // JSON даёт гибкость: поля добавляются без миграций базы.
+  // JSON gives flexibility: fields can be added without database
+  // migrations.
   TextColumn get body => text()();
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Класс базы — AppDb.
+// Database class — AppDb.
 //
-// Drift сам подставит сюда методы из database.g.dart:
-// геттер journal (таблица как запрос),
-// методы insert, select, update, delete.
+// Drift itself supplies the methods from database.g.dart:
+// the journal getter (the table as a query),
+// insert, select, update, delete.
 //
-// Нам достаточно объявить: какие таблицы в базе и какая версия схемы.
+// All we declare is: which tables the database has and the schema
+// version.
 // ═══════════════════════════════════════════════════════════════════
 @DriftDatabase(tables: [Journal])
 class AppDb extends _$AppDb {
-  // Конструктор: передаём способ соединения — _openConnection.
+  // Constructor: pass the connection method — _openConnection.
   AppDb() : super(_openConnection());
 
-  // Версия схемы.
-  // При изменении структуры таблицы версию надлежит увеличивать,
-  // иначе SQLite не поймёт, что структура поменялась, и не мигрирует.
-  // Пока у нас первая версия.
+  // Schema version.
+  // When the table structure changes, the version must be bumped;
+  // otherwise SQLite will not know the structure changed and will
+  // not migrate. Currently version one.
   @override
   int get schemaVersion => 1;
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// _openConnection — где физически лежит файл базы.
+// _openConnection — where the database file physically lives.
 //
-// Кладём в папку документов приложения:
+// Placed in the application's documents folder:
 //   Android: /data/data/<package>/app_flutter/polyrutina.sqlite
 //   Windows: C:\Users\<user>\Documents\polyrutina.sqlite
 //   iOS:     <app sandbox>/Documents/polyrutina.sqlite
 //
-// LazyDatabase означает: соединение открывается при первом
-// обращении к базе, а не тотчас при старте приложения.
+// LazyDatabase means: the connection opens on the first access to
+// the database, not immediately on app start.
+//
+// WAL mode is enabled here — on the first connection — via a setup
+// callback. See the file header for the rationale.
 // ═══════════════════════════════════════════════════════════════════
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
-    // узнаём папку документов
+    // resolve the documents folder
     final dir = await getApplicationDocumentsDirectory();
 
-    // собираем полный путь к файлу базы
+    // assemble the full path to the database file
     final file = File(p.join(dir.path, 'polyrutina.sqlite'));
 
-    // createInBackground открывает базу в отдельном потоке,
-    // чтобы тяжёлые запросы не замораживали интерфейс.
-    return NativeDatabase.createInBackground(file);
+    // createInBackground opens the database in a separate isolate,
+    // so that heavy queries do not freeze the UI.
+    return NativeDatabase.createInBackground(
+      file,
+      setup: (rawDb) {
+        rawDb.execute('PRAGMA journal_mode = WAL');
+        rawDb.execute('PRAGMA synchronous = NORMAL');
+      },
+    );
   });
 }
