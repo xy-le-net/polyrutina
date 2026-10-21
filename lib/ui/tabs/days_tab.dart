@@ -61,12 +61,17 @@ class _DaysTabState extends State<DaysTab> {
     });
   }
 
+  // Priority: completed > scheduled > pulse > created. The scheduled
+  // date, when set, takes precedence over the pulse: a routine
+  // assigned to a particular day must appear on that day, not on the
+  // day it happened to be started. If the schedule lies outside the
+  // displayed month, the routine is hidden for that month.
   int? _dayOf(Routine r) {
     if (r.completed && r.completedAt != null) {
       return _sameMonth(r.completedAt!);
     }
-    if (r.lastPulseAt != null) return _sameMonth(r.lastPulseAt!);
     if (r.scheduledAt != null) return _sameMonth(r.scheduledAt!);
+    if (r.lastPulseAt != null) return _sameMonth(r.lastPulseAt!);
     return _sameMonth(r.createdAt);
   }
 
@@ -82,11 +87,11 @@ class _DaysTabState extends State<DaysTab> {
         _sameMonth(r.completedAt!) == day) {
       return _Mark.completed;
     }
-    if (r.lastPulseAt != null && _sameMonth(r.lastPulseAt!) == day) {
-      return _Mark.pulse;
-    }
     if (r.scheduledAt != null && _sameMonth(r.scheduledAt!) == day) {
       return _Mark.scheduled;
+    }
+    if (r.lastPulseAt != null && _sameMonth(r.lastPulseAt!) == day) {
+      return _Mark.pulse;
     }
     return _Mark.none;
   }
