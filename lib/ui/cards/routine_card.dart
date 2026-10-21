@@ -4,7 +4,7 @@
 // Slots are built by RoutineBlockView (routine_block_view.dart).
 // Here — card state: name editing, block time editing, show/hide
 // slots, collapse, auto-scroll to the active slot, completion,
-// export, date picking, planned duration picking.
+// export, date picking, planned duration picking, clearing date.
 //
 // Header. Name field only. The assigned date pult and the planned
 // duration drum moved to the «note» block: the former row
@@ -15,20 +15,18 @@
 // (locale dictionary), lowercase as designed: «ок» and «отмена».
 // Result is put via routineLayer.setPlanned.
 //
-// Background alternation. Shown blocks (the summary excepted, it
-// always sits on the normal background) alternate by order: first
-// — dimmed (bgdim), second — normal, third — dimmed, and so on.
-// The running block takes the opposite theme colors; this
-// alternation does not apply to it.
+// Background alternation. Shown blocks (including the summary)
+// alternate by order: first — dimmed (bgdim), second — normal,
+// third — dimmed, and so on. The running block takes the opposite
+// theme colors; this alternation does not apply to it.
+//
+// Date clearing. The _clearSchedule method is passed to the
+// RoutineBlockView to be invoked from the «clear date» subpult.
 //
 // Header inset. The root pult hangs in the top-left corner above
 // the screen; the title recedes by its width. The centerTitle
 // property is explicitly set to false to prevent platform-specific
 // centering, and the text field truncates with ellipsis.
-//
-// Block list construction is extracted into a separate method
-// (_buildBlocksList) to keep the main build method clean and
-// readable.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -297,12 +295,14 @@ class _RoutineCardState extends State<RoutineCard> {
     );
   }
 
+  // ─── Assigned date: clear ───
+  // Clears the scheduled date.
+  Future<void> _clearSchedule(Routine r) async {
+    final app = AppScope.of(context);
+    await app.routineLayer.setSchedule(app.journal, r.id, null);
+  }
+
   // ─── Planned duration: drum ───
-  // Three wheels: days, hours, minutes. Hours — up to 23, minutes
-  // — up to 59. Magnet to values — FixedExtentScrollPhysics,
-  // without it the drum stops between notches. Button labels come
-  // from i18n (locale dictionary), lowercase as designed: «ок»
-  // and «отмена».
   Future<void> _pickPlanned(Routine r) async {
     final app = AppScope.of(context);
     final i18n = app.i18n;
@@ -390,9 +390,9 @@ class _RoutineCardState extends State<RoutineCard> {
   }
 
   // ─── Blocks list construction ───
-  // Extracted from the build method to keep it concise. Builds the
-  // list of visible blocks (note, slots, summary) based on the
-  // current state and alternates their background colors.
+  // Builds the list of visible blocks (note, slots, summary) based
+  // on the current state and alternates their background colors.
+  // The summary block is now included in the alternation rule.
   List<Widget> _buildBlocksList(
     BuildContext context,
     Routine r,
@@ -407,9 +407,9 @@ class _RoutineCardState extends State<RoutineCard> {
     Widget blockOf(String kind, String title, {bool isNote = false}) {
       final b = isNote ? null : r.blockOf(kind);
       // Alternation: index in the shown list; odd — normal, even —
-      // dimmed. The summary is outside the alternation.
+      // dimmed. Now applied to all blocks, including summary.
       final idx = shown.indexOf(kind);
-      final dimmed = kind != 'summary' && idx >= 0 && idx % 2 == 0;
+      final dimmed = idx >= 0 && idx % 2 == 0;
       return RoutineBlockView(
         key: _blockKeys[kind],
         routine: r,
@@ -445,6 +445,7 @@ class _RoutineCardState extends State<RoutineCard> {
         scheduledActive: r.scheduledAt != null,
         onPickDate: kind == 'note' ? () => _pickSchedule(r) : null,
         onPickPlanned: kind == 'note' ? () => _pickPlanned(r) : null,
+        onClearDate: kind == 'note' ? () => _clearSchedule(r) : null,
       );
     }
 
@@ -491,21 +492,18 @@ class _RoutineCardState extends State<RoutineCard> {
     final anyEdited = r.blocks.any((b) => b.timeEdited);
 
     // ─── Order of shown blocks ───
-    // Build the list of shown blocks (the summary excluded) for
-    // the alternation.
+    // Build the list of shown blocks (including summary) for the
+    // alternation.
     final shown = <String>[];
     if (_shouldShowSlot(r, 'note')) shown.add('note');
     for (final k in RoutineBlock.kinds) {
       if (_shouldShowSlot(r, k)) shown.add(k);
     }
+    if (_shouldShowSlot(r, 'summary')) shown.add('summary');
 
     // Blocks are constructed in a dedicated method for clarity.
     final blocks = _buildBlocksList(context, r, shown, now, anyEdited);
 
-    // Control row: root pult on the left, the name field — in the
-    // remainder. ControlRow computes the reserve; here — the same
-    // computation for AppBar. centerTitle is false to prevent
-    // platform-specific centering.
     final rootSide = side * 2 / 3;
     final rootReserve = ControlRow.reserve(rootSide);
 

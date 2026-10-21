@@ -11,25 +11,19 @@
 //   — exit pult closes without saving.
 //
 // Offline. Tiles are not loaded — the map is grey; the caption
-// «no network» is drawn over it. A point is still placed and saved
-// as is: the snapshot is grey, the coordinates real.
+// «no network» is drawn over it. A point is still placed and saved.
 //
 // API keys are not required: OSM tiles are directly available.
 //
-// The snapshot is put into the same media/ folder as other
-// attachments; the name follows the common template
-// (<device>_<routine>_<slot>_geo_<index>).
+// Naming. The snapshot file follows the unified media template:
+//   <kind>_<index>_<device>_<first_run>.<ext>
 //
 // The AppBar title spacing is unified via ControlRow to prevent
-// overlap with the root pult. The centerTitle is explicitly set
-// to false, and the title text truncates with ellipsis if too long.
+// overlap with the root pult. centerTitle is explicitly set to false,
+// and the title text truncates with ellipsis.
 //
 // Exit lives in the top-right corner of the app bar, as the down
-// chevron (same as checklist_screen and media_viewer) — the single
-// pattern of exit for full-screen sheets.
-//
-// The snapshot writing logic has been extracted into the private
-// method _writeSnapshot to keep _save concise and linear.
+// chevron (same as checklist_screen and media_viewer).
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -143,19 +137,20 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
 
   // ─── Write the snapshot to media/ ───
   // Returns the file path and name, or empty strings on failure.
-  // The name follows the common template.
-  Future<({String path, String name})> _writeSnapshot(
-    ui.Image img,
-    int objectId,
-    String slot,
-  ) async {
+  // The name follows the unified template:
+  // <kind>_<index>_<device>_<first_run>.png
+  Future<({String path, String name})> _writeSnapshot(ui.Image img) async {
     final app = AppScope.of(context);
     try {
       final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return (path: '', name: '');
 
-      final idx = app.bort.nextExportIndex('media_${objectId}_${slot}_geo');
-      final name = '${app.bort.deviceId}_${objectId}_${slot}_geo_$idx.png';
+      final idx = app.bort.nextExportIndex('media_geo');
+      final deviceId = app.bort.deviceId;
+      final firstRun = app.bort.firstRunUnixSec;
+
+      final name = 'geo_${idx}_${deviceId}_$firstRun.png';
+
       final dir = await getApplicationDocumentsDirectory();
       final media = Directory(p.join(dir.path, 'media'));
       if (!await media.exists()) await media.create(recursive: true);
@@ -168,9 +163,8 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
   }
 
   // ─── Save ───
-  // The snapshot is put into media/ alongside other attachments;
-  // the name follows the common template. Coordinates and path
-  // go into TraceFile.
+  // The snapshot is put into media/ alongside other attachments.
+  // Coordinates and path go into TraceFile.
   Future<void> _save() async {
     if (_busy) return;
     final latLng = _picked;
@@ -185,7 +179,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
       String name = '';
 
       if (img != null) {
-        final res = await _writeSnapshot(img, widget.objectId, widget.slot);
+        final res = await _writeSnapshot(img);
         path = res.path;
         name = res.name;
       }

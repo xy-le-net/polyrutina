@@ -5,6 +5,9 @@
 // media subpult. Recording via record; the result — a file in media/
 // attached to the slot trace.
 //
+// Naming follows the unified media template:
+//   <kind>_<index>_<device>_<first_run>.<ext>
+//
 // The file index is taken ONCE at recording start — hence the name
 // on disk and the registration in the trace body coincide.
 //
@@ -59,13 +62,12 @@ class _AudioDialogState extends State<_AudioDialog> {
       final app = AppScope.of(context);
       // Index is taken once — the name on disk and the trace
       // registration will coincide.
-      final idx = app.bort.nextExportIndex(
-        'media_${widget.objectId}_${widget.slot}_audio',
-      );
-      final name = _safe(
-        '${app.bort.deviceId}_${widget.objectId}_${widget.slot}'
-        '_audio_$idx.m4a',
-      );
+      final idx = app.bort.nextExportIndex('media_audio');
+      final deviceId = app.bort.deviceId;
+      final firstRun = app.bort.firstRunUnixSec;
+
+      // Unified naming: <kind>_<index>_<device>_<first_run>.m4a
+      final name = _safe('audio_${idx}_${deviceId}_$firstRun.m4a');
       final path = p.join(media.path, name);
       await _rec.start(const RecordConfig(), path: path);
       if (!mounted) return;

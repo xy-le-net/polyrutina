@@ -1,40 +1,56 @@
 // ═══════════════════════════════════════════════════════════════════
-// theme_store.dart — цвета и темы.
+// theme_store.dart — colors and themes.
 //
-// Действующий набор из пяти ролей: bg, bgdim, dim, fg, signal.
-// Все пять ролей — внутри каждой темы. Темы: day, night, custom.
+// The active set consists of five roles: bg, bgdim, dim, fg, signal.
+// All five roles are present within each theme. Themes: day, night,
+// custom.
 //
-// Темы образуют пары: day ↔ night. Сигнальный объект берёт цвета
-// противоположной темы целиком (colorsForOpposite).
+// Themes form pairs: day ↔ night. The signal object takes the colors
+// of the opposite theme entirely (colorsForOpposite).
 //
-// Разбор тем из JSON, разрешение действующей темы по имени либо
-// по системной гамме, применение одиночного ключа темы.
+// For the «custom» theme, the opposite palette is built from itself
+// by swapping roles (bg ↔ fg, bgdim ↔ dim). The signal color remains
+// unchanged. The resulting map is cached to avoid rebuilding it on
+// every frame. The cache is invalidated whenever themes or system
+// brightness change.
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 
 class ThemeStore {
-  // ─── Действующий набор ───
+  // ─── Active set ───
   Color bg = const Color(0xFFEFEFEF);
   Color bgdim = const Color(0xFFE4E4E4);
   Color dim = const Color(0xFF8F8F8F);
   Color fg = const Color(0xFF101010);
   Color signal = const Color(0xFF000000);
 
-  // ─── Все темы ───
-  // Имя → {bg, bgdim, dim, fg, signal}.
+  // ─── All themes ───
+  // Name → {bg, bgdim, dim, fg, signal}.
   Map<String, Map<String, Color>> themes = {};
 
-  // Имя действующей темы. «system» — особая.
+  // Name of the active theme. «system» is special.
   String themeName = 'system';
 
-  // Системная гамма.
+  // System brightness.
   Brightness systemBrightness = Brightness.light;
 
-  // ─── Разбор тем из JSON ───
+  // ─── Cache for the opposite palette ───
+  // Stores the opposite theme name and its resolved colors to avoid
+  // recomputing the map on every build.
+  String? _cachedOppositeName;
+  Map<String, Color>? _cachedOppositeColors;
+
+  void _invalidateCache() {
+    _cachedOppositeName = null;
+    _cachedOppositeColors = null;
+  }
+
+  // ─── Parse themes from JSON ───
   void parseThemes(Map<dynamic, dynamic> t) {
+    _invalidateCache();
     themes = {};
     for (final k in t.keys) {
       final v = t[k];
@@ -50,9 +66,9 @@ class ThemeStore {
     }
   }
 
-  // ─── Разрешение темы ───
-  // Ежели themeName == «system», берётся day (светло) либо night
-  // (темно) по системной гамме. Иначе — набор с сим именем.
+  // ─── Theme resolution ───
+  // If themeName == «system», takes day (light) or night (dark)
+  // according to system brightness. Otherwise — the set with that name.
   void resolve() {
     String name = themeName;
     if (name == 'system') {
@@ -68,10 +84,12 @@ class ThemeStore {
   }
 
   void setSystemBrightness(Brightness b) {
+    if (systemBrightness == b) return;
     systemBrightness = b;
+    _invalidateCache();
   }
 
-  // ─── Противоположная тема ───
+  // ─── Opposite theme name ───
   String oppositeName() {
     String name = themeName;
     if (name == 'system') {
@@ -79,26 +97,53 @@ class ThemeStore {
     }
     if (name == 'day') return 'night';
     if (name == 'night') return 'day';
-    // Своя тема — противоположной считается ночь.
-    return 'night';
+    // Custom theme: the opposite palette is built from itself.
+    return 'custom_reverse';
   }
 
-  // Пятёрка цветов противоположной темы.
+  // The five colors of the opposite theme.
   Map<String, Color>? colorsForOpposite() {
     final name = oppositeName();
-    final t = themes[name];
-    if (t == null) return null;
-    return {
-      'bg': t['bg']!,
-      'bgdim': t['bgdim']!,
-      'dim': t['dim']!,
-      'fg': t['fg']!,
-      'signal': t['signal']!,
-    };
+
+    // Return cached map if valid.
+    if (_cachedOppositeName == name && _cachedOppositeColors != null) {
+      return _cachedOppositeColors;
+    }
+
+    Map<String, Color>? result;
+
+    if (name == 'custom_reverse') {
+      final t = themes['custom'];
+      if (t != null) {
+        // Invert roles: bg <-> fg, bgdim <-> dim. Signal remains.
+        result = {
+          'bg': t['fg']!,
+          'bgdim': t['dim']!,
+          'dim': t['bgdim']!,
+          'fg': t['bg']!,
+          'signal': t['signal']!,
+        };
+      }
+    } else {
+      final t = themes[name];
+      if (t != null) {
+        result = {
+          'bg': t['bg']!,
+          'bgdim': t['bgdim']!,
+          'dim': t['dim']!,
+          'fg': t['fg']!,
+          'signal': t['signal']!,
+        };
+      }
+    }
+
+    _cachedOppositeName = name;
+    _cachedOppositeColors = result;
+    return result;
   }
 
-  // ─── Применение одного ключа цвета темы ───
-  // Ключ: theme.<имя>.<роль>. Возвращает истину, коли ключ подошёл.
+  // ─── Applying a single theme color key ───
+  // Key: theme.<name>.<role>. Returns true if the key matched.
   bool applyThemeKey(String key, String value) {
     if (!key.startsWith('theme.')) return false;
     if (key.split('.').length != 3) return false;
@@ -107,6 +152,9 @@ class ThemeStore {
     final role = parts[2];
     final c = parseColor(value);
     if (c == null) return true;
+
+    _invalidateCache();
+
     themes.putIfAbsent(
       name,
       () => {'bg': bg, 'bgdim': bgdim, 'dim': dim, 'fg': fg, 'signal': signal},
@@ -119,19 +167,17 @@ class ThemeStore {
     return true;
   }
 
-  // ─── Ключ dim (ныне без отдельного применения — dim внутри темы) ───
-  // Оставлен для совместимости с прежним ключом в файле борта:
-  // при загрузке применяется к теме, коя разрешится.
+  // ─── Key dim (no longer applied separately — dim is inside the theme) ───
+  // Kept for compatibility with the former key in the bort file.
   bool applyDim(String value) {
     final c = parseColor(value);
     if (c == null) return true;
-    // Кладём во все темы? Нет: dim — часть темы. Правка ключа 'dim'
-    // в рубке не применяется (поля нет). При загрузке старого файла
-    // — игнор.
+    // Dim is part of the theme. The 'dim' key in the rubka is not
+    // applied (no field). When loading an old file — ignore.
     return true;
   }
 
-  // ─── Сериализация ───
+  // ─── Serialization ───
   Map<String, dynamic> toJson() {
     final out = <String, dynamic>{};
     for (final e in themes.entries) {
@@ -158,10 +204,8 @@ class ThemeStore {
     return out;
   }
 
-  // ─── Встроенные умолчания ───
-  // Дополняет недостающие темы, не перетирая уже загруженные:
-  // ежели в файле борта темы custom нет (записан до правки), она
-  // добавится с умолчаниями, а day и night останутся как были.
+  // ─── Built-in defaults ───
+  // Supplements missing themes without overwriting already loaded ones.
   void ensureThemes() {
     final defaults = <String, Map<String, Color>>{
       'day': {
@@ -178,18 +222,8 @@ class ThemeStore {
         'fg': const Color(0xFFEFEFEF),
         'signal': const Color(0xFFFFFFFF),
       },
-      // Своя тема — запасной набор, согласный с assets/defaults.json.
-      // Единая лестница светлоты (22 → 30 → 52 → 80 → 88):
-      //   bg      — тёмный сине-серый, не чёрный;
-      //   bgdim   — мягкий фон между bg и dim;
-      //   dim     — холодный серый со слабым голубым, середина;
-      //   fg      — бледный тёплый белый, ближе к сливкам;
-      //   signal  — тёплый янтарь, самый яркий в наборе.
-      // Каждая пара соседей различается на восемь единиц светлоты
-      // и боле: лестница читается при чёрно-белом отображении,
-      // при протанопии, дейтеранопии и тританопии. Сине-жёлтая ось
-      // (холодные ступени против тёплого сигнала) дополнительно
-      // усиливает различие при красно-зелёных типах.
+      // Custom theme — fallback set consistent with assets/defaults.json.
+      // Single lightness ladder (22 → 30 → 52 → 80 → 88).
       'custom': {
         'bg': const Color(0xFF1B2630),
         'bgdim': const Color(0xFF2F3D4A),
@@ -198,6 +232,9 @@ class ThemeStore {
         'signal': const Color(0xFFFFCB4F),
       },
     };
+
+    _invalidateCache(); // Ensure cache is fresh after adding defaults
+
     for (final e in defaults.entries) {
       if (!themes.containsKey(e.key)) {
         themes[e.key] = Map<String, Color>.from(e.value);
@@ -206,7 +243,7 @@ class ThemeStore {
   }
 }
 
-// ─── Разбор цвета ───
+// ─── Parse color ───
 Color? parseColor(String? s) {
   if (s == null) return null;
   var t = s.trim();
@@ -217,7 +254,7 @@ Color? parseColor(String? s) {
   return Color(0xFF000000 | v);
 }
 
-// ─── Цвет в строку ───
+// ─── Color to string ───
 String colorToHex(Color c) {
   final r = (c.r * 255).round().toRadixString(16).padLeft(2, '0');
   final g = (c.g * 255).round().toRadixString(16).padLeft(2, '0');

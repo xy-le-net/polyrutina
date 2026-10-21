@@ -88,7 +88,9 @@
     "bort.media": "медиа",
     "bort.bytes": "байт",
     "bort.reload": "перечитать",
+    "bort.compress": "сжать",
     "bort.delete": "удалить",
+    "bort.delete_warning": "удалить все записи безвозвратно?",
     "bort.reset": "сброс",
     "bort.duplicate": "дублировать",
     "bort.import": "импорт",
@@ -101,6 +103,7 @@
 
     "common.ok": "ок",
     "common.cancel": "отмена",
+    "common.export": "экспорт",
     "export.prep": "подготовка архива",
     "export.cancel": "отмена",
 
@@ -228,7 +231,9 @@
     "bort.media": "media",
     "bort.bytes": "bytes",
     "bort.reload": "reread",
+    "bort.compress": "compress",
     "bort.delete": "delete",
+    "bort.delete_warning": "delete all records permanently?",
     "bort.reset": "reset",
     "bort.duplicate": "duplicate",
     "bort.import": "import",
@@ -241,6 +246,7 @@
 
     "common.ok": "ok",
     "common.cancel": "cancel",
+    "common.export": "export",
     "export.prep": "preparing archive",
     "export.cancel": "cancel",
 

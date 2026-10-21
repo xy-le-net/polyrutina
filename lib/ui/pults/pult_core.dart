@@ -4,28 +4,22 @@
 //
 // compactLabel — label flush against the text (for media counters).
 //
-// Confirmation (confirm). A confirmable pult does not act on tap
-// at once; instead it grows a quarter in place. A second tap on
-// the grown pult executes. A tap on another pult or elsewhere
-// cancels the growth. Confirmation state lives in the calling
-// widget or in the subpult sheet (pult_sheet.dart); here — only
-// the request.
+// Confirmation (confirm). The mechanism is now built directly into the
+// Pult widget. PultState tracks the confirmingId. A confirmable pult
+// grows by 1/4 in place (using OverflowBox and AnimatedScale to avoid
+// layout shifts). A second tap executes the action. Tapping another
+// pult or elsewhere cancels the growth. The confirmIcon (if provided)
+// replaces the main icon during confirmation.
 //
-// Subpults. A pult with subsBuilder or longSubs does not open a
-// panel itself: it asks via showPultSheet — the single left-side
-// sheet (pult_sheet.dart). The former PultLayer is gone.
+// Subpults. A pult with subsBuilder or longSubs opens the single
+// left-side sheet (pult_sheet.dart) on tap or long press respectively.
+// The former PultLayer is gone.
 //
-// Subpult dot. A pult carrying a subpult (either via subsBuilder
-// or via longSubs) shows a small signal-colored dot in its
-// bottom-right corner. Diameter — one twelfth of the pult side,
-// with a floor below which it does not shrink. When the pult is
-// selected, the dot takes the icon color so that it remains
-// visible against the signal-colored core. The root compass and
-// the PultTick carry no dot: neither has subpults.
-//
-// The core drawing logic (triple nested border) is extracted into
-// the _buildCore private method to improve readability of the
-// main build method.
+// Subpult dot. A pult carrying a subpult (only via longSubs) shows a
+// small signal-colored dot in its bottom-right corner. Diameter — one
+// fifth of the pult side, with a minimum of 6.0. When the pult is
+// selected, the dot takes the icon color so that it remains visible
+// against the signal-colored core.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -73,9 +67,17 @@ class PultSpec {
 class PultState extends ChangeNotifier {
   double baseSide = 32;
   double maxSide = 64;
+  String? confirmingId;
 
   double get side => baseSide > maxSide ? maxSide : baseSide;
   double get smallSide => side * 2 / 3;
+
+  // Sets the currently confirming pult ID. Resets when tapped elsewhere.
+  void setConfirming(String? id) {
+    if (confirmingId == id) return;
+    confirmingId = id;
+    notifyListeners();
+  }
 }
 
 class PultScope extends InheritedNotifier<PultState> {
@@ -111,7 +113,7 @@ class Pult extends StatefulWidget {
 
 class _PultState extends State<Pult> {
   // Floor for the subpult dot: below this it does not shrink.
-  static const double _minDot = 3.0;
+  static const double _minDot = 6.0;
 
   final _coreKey = GlobalKey();
 
@@ -121,10 +123,73 @@ class _PultState extends State<Pult> {
     } catch (_) {}
   }
 
+  // ─── Tap Handling ───
+  // Handles confirmation logic internally and delegates execution.
+  void _handleTap() {
+    final pultState = PultScope.of(context);
+    final isConfirming = pultState.confirmingId == widget.spec.id;
+
+    // 1. Second tap on the same pult: execute and reset.
+    if (isConfirming && widget.spec.onTap != null) {
+      pultState.setConfirming(null);
+      widget.spec.onTap!.call();
+      return;
+    }
+
+    // 2. Tapping any pult cancels the previous confirmation.
+    if (pultState.confirmingId != null) {
+      pultState.setConfirming(null);
+    }
+
+    // 3. First tap on a confirmable pult: start confirmation (grow).
+    if (widget.spec.confirm && widget.spec.onTap != null) {
+      pultState.setConfirming(widget.spec.id);
+      return;
+    }
+
+    // 4. Standard execution or opening a subpult sheet.
+    if (widget.spec.subsBuilder != null) {
+      _openSheet(widget.spec.subsBuilder!());
+      return;
+    }
+    widget.spec.onTap?.call();
+  }
+
+  // ─── Long Press Handling ───
+  // Cancels confirmation and opens longSubs sheet if present.
+  void _handleLongPress() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final pultState = PultScope.of(context);
+    pultState.setConfirming(null);
+
+    if (widget.spec.longSubs != null) {
+      _openSheet(widget.spec.longSubs!());
+      return;
+    }
+    widget.spec.onLongPress?.call();
+  }
+
+  void _openSheet(List<PultSpec> subs) {
+    final pultState = PultScope.of(context);
+    showPultSheet(
+      context: context,
+      subs: subs,
+      fg: widget.fg,
+      bg: widget.bg,
+      signal: widget.signal,
+      side: pultState.smallSide,
+    );
+  }
+
   // ─── Build the triple nested border core ───
-  Widget _buildCore(double side, bool selected) {
+  Widget _buildCore(double side, bool selected, bool confirming) {
     final coreColor = selected ? widget.signal : widget.fg;
     final iconColor = widget.bg;
+
+    // Substitute the icon if confirming and confirmIcon is provided.
+    final icon = (confirming && widget.spec.confirmIcon != null)
+        ? widget.spec.confirmIcon!
+        : widget.spec.icon;
 
     final borderW = side / 16;
     final rOuter = side * 0.18;
@@ -133,11 +198,9 @@ class _PultState extends State<Pult> {
 
     final iconSize = selected ? side * 0.60 : side * 0.45;
     final hasCenter = widget.spec.centerText != null;
+
     // Font size of the core label shrinks with length: one digit
-    // reads as an icon; two or more shrink proportionally so as
-    // not to spill beyond the pult outline. Applies to media
-    // counters, the unchecked count in a checklist, and frame
-    // order in the viewer.
+    // reads as an icon; two or more shrink proportionally.
     final centerLen = widget.spec.centerText?.length ?? 0;
     final centerSize = centerLen <= 1 ? iconSize : iconSize * (1.6 / centerLen);
 
@@ -164,7 +227,7 @@ class _PultState extends State<Pult> {
                   ),
                 ),
               )
-            : Icon(widget.spec.icon, color: iconColor, size: iconSize),
+            : Icon(icon, color: iconColor, size: iconSize),
       ),
     );
 
@@ -194,19 +257,17 @@ class _PultState extends State<Pult> {
   Widget build(BuildContext context) {
     final state = PultScope.of(context);
     final side = widget.overrideSize ?? state.side;
-
     final selected = widget.spec.selected;
+    final confirming = state.confirmingId == widget.spec.id;
     final iconColor = widget.bg;
 
-    Widget core = _buildCore(side, selected);
+    Widget core = _buildCore(side, selected, confirming);
 
-    // Subpult dot: signal-colored circle, bottom-right corner.
-    // Taken in the icon color when the pult is selected, so that
-    // it stays visible against the signal-colored core.
-    final hasSubs =
-        widget.spec.subsBuilder != null || widget.spec.longSubs != null;
+    // Subpult dot: shown ONLY when a long-press subpult is available.
+    // Diameter is 1/5 of the pult side, with a minimum floor.
+    final hasSubs = widget.spec.longSubs != null;
     if (hasSubs) {
-      final dotD = side / 12 < _minDot ? _minDot : side / 12;
+      final dotD = (side / 5).clamp(_minDot, double.infinity);
       final dotColor = selected ? iconColor : widget.signal;
       core = Stack(
         clipBehavior: Clip.none,
@@ -236,9 +297,7 @@ class _PultState extends State<Pult> {
     if (!hasLabel || maxLabelW < side * 1.5) {
       content = core;
     } else {
-      // Label style follows the system theme (same family, weight,
-      // style as the rest of the text). A custom style here made
-      // the label bolder and more foreign.
+      // Label style follows the system theme.
       final labelStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
         fontSize: side * 0.4,
         fontWeight: FontWeight.normal,
@@ -301,36 +360,26 @@ class _PultState extends State<Pult> {
       behavior: HitTestBehavior.opaque,
       onTap: () {
         _pulseBort();
-        if (widget.spec.subsBuilder != null) {
-          showPultSheet(
-            context: context,
-            subs: widget.spec.subsBuilder!(),
-            fg: widget.fg,
-            bg: widget.bg,
-            signal: widget.signal,
-            side: state.smallSide,
-          );
-          return;
-        }
-        widget.spec.onTap?.call();
+        _handleTap();
       },
       onLongPress: () {
-        FocusManager.instance.primaryFocus?.unfocus();
         _pulseBort();
-        if (widget.spec.longSubs != null) {
-          showPultSheet(
-            context: context,
-            subs: widget.spec.longSubs!(),
-            fg: widget.fg,
-            bg: widget.bg,
-            signal: widget.signal,
-            side: state.smallSide,
-          );
-          return;
-        }
-        widget.spec.onLongPress?.call();
+        _handleLongPress();
       },
-      child: content,
+      // OverflowBox prevents the growing pult from shifting its neighbors.
+      // AnimatedScale provides a smooth visual transition.
+      child: OverflowBox(
+        minWidth: 0.0,
+        maxWidth: double.infinity,
+        minHeight: 0.0,
+        maxHeight: double.infinity,
+        child: AnimatedScale(
+          scale: confirming ? 1.25 : 1.0,
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+          child: content,
+        ),
+      ),
     );
   }
 }

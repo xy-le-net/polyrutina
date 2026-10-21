@@ -12,15 +12,15 @@
 //
 // Block «note». In the top right row — four pults left to right:
 // assigned date, planned duration, show all slots, flags. Date pult
-// and duration pult moved here from the page start (the manual plan
-// input field is gone).
+// and duration pult moved here from the page start.
+//
+// Date pult. If a date is assigned, its frame takes the dim color
+// (unless the routine has flags, in which case it is signal-colored).
+// Long press opens a subpult with the «clear date» action.
 //
 // Corners. Top right and bottom right — one right edge, one size
 // (pultSide). The export button in «total» does not stick to the
 // completion pult.
-//
-// Strict typing is enforced for the AppContext and I18n parameters
-// in subpult builders to prevent runtime type errors.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -28,11 +28,11 @@
 import 'package:flutter/material.dart';
 
 import '../../data/i18n.dart';
-import '../../data/journal_types.dart';
 import '../../data/routine.dart';
 import '../core/app_scope.dart';
 import '../core/block.dart';
 import '../core/format.dart';
+import '../core/routine_flags.dart';
 import '../core/timer_text.dart';
 import '../core/trace_field.dart';
 import '../pults/pulse.dart';
@@ -55,14 +55,11 @@ class RoutineBlockView extends StatelessWidget {
   final FocusNode? editFocus;
 
   // ─── External signs and handlers ───
-  // Is the block dimmed — set from outside, from the display order.
   final bool dimmed;
-  // Is there an assigned date (for the marked pult).
   final bool scheduledActive;
-  // Open date picker; if null — date block is not rendered.
   final VoidCallback? onPickDate;
-  // Open planned duration drum; null — not rendered.
   final VoidCallback? onPickPlanned;
+  final VoidCallback? onClearDate; // New handler for clearing date
 
   final VoidCallback onToggleCollapsed;
   final VoidCallback? onStartEdit;
@@ -96,6 +93,7 @@ class RoutineBlockView extends StatelessWidget {
     this.scheduledActive = false,
     this.onPickDate,
     this.onPickPlanned,
+    this.onClearDate,
   });
 
   static IconData _blockIcon(String kind) {
@@ -162,7 +160,7 @@ class RoutineBlockView extends StatelessWidget {
 
     if (showPulse) {
       if (editingKind == kind) {
-        // Time editing mode: text field with a confirmation pult.
+        // Time editing mode.
         cornerTop = Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -201,7 +199,7 @@ class RoutineBlockView extends StatelessWidget {
           ],
         );
       } else {
-        // Normal mode: running timer with start/pause pult.
+        // Running timer with start/pause pult.
         Widget pulse = Pulse(
           spec: PultSpec(
             id: 'block_$kind',
@@ -222,7 +220,6 @@ class RoutineBlockView extends StatelessWidget {
           t: i18n.t,
           ticker: app.ticker,
         );
-        // Underline indicates manually edited time.
         if (timeEdited) {
           pulse = Container(
             decoration: BoxDecoration(
@@ -264,7 +261,6 @@ class RoutineBlockView extends StatelessWidget {
         ],
       );
     } else if (seconds > 0) {
-      // Static time display for non-running blocks.
       cornerTop = TimerText(
         seconds: seconds,
         running: false,
@@ -318,7 +314,7 @@ class RoutineBlockView extends StatelessWidget {
             );
     } else {
       // Input field — on the normal background (bg), even if the
-      // block is dimmed (bgdim): the field itself is not darkened.
+      // block is dimmed (bgdim).
       body = TraceField(
         objectId: routine.id,
         slot: kind,
@@ -343,6 +339,9 @@ class RoutineBlockView extends StatelessWidget {
 
     if (showFlags) {
       // Note block: top right row with date, plan, show all, and flags.
+      // Date pult signal color is dim unless the routine has flags.
+      final dateSignal = routine.flags != 0 ? signal : dim;
+
       final datePult = onPickDate == null
           ? null
           : Pult(
@@ -351,10 +350,22 @@ class RoutineBlockView extends StatelessWidget {
                 icon: Icons.event,
                 selected: scheduledActive,
                 onTap: onPickDate,
+                // Long press opens a subpult to clear the date.
+                longSubs: (scheduledActive && onClearDate != null)
+                    ? () => [
+                        PultSpec(
+                          id: 'clear_date_${routine.id}',
+                          icon: Icons.event_busy,
+                          label: i18n.t('routine.clear_date'),
+                          confirm: true,
+                          onTap: onClearDate,
+                        ),
+                      ]
+                    : null,
               ),
               fg: fg,
               bg: bg,
-              signal: signal,
+              signal: dateSignal,
               overrideSize: pultSide,
             );
       final plannedPult = onPickPlanned == null
@@ -368,7 +379,7 @@ class RoutineBlockView extends StatelessWidget {
               ),
               fg: fg,
               bg: bg,
-              signal: signal,
+              signal: dim, // Also dim by default
               overrideSize: pultSide,
             );
       final showAllPult = Pult(
@@ -449,43 +460,17 @@ class RoutineBlockView extends StatelessWidget {
     );
   }
 
-  // ─── Five senior bits that are edited from the card ───
-  static const List<int> _flagBits = [
-    JournalFlag.urgent,
-    JournalFlag.emergency,
-    JournalFlag.important,
-    JournalFlag.disputable,
-    JournalFlag.complexOp,
-  ];
-
-  static const List<String> _flagKeys = [
-    'flag.urgent',
-    'flag.emergency',
-    'flag.important',
-    'flag.disputable',
-    'flag.complexOp',
-  ];
-
-  static const List<IconData> _flagIcons = [
-    Icons.access_time,
-    Icons.warning_amber,
-    Icons.star_border,
-    Icons.help_outline,
-    Icons.fitness_center,
-  ];
-
-  // Generates subpults for flag selection. Strictly typed parameters
-  // (AppContext, I18n) replace the former dynamic types.
+  // Generates subpults for flag selection using the shared RoutineFlags.
   List<PultSpec> _flagSubs(AppContext app, Routine routine, I18n i18n) {
     final out = <PultSpec>[];
     final cur = routine.flags;
-    for (var i = 0; i < _flagBits.length; i++) {
-      final f = _flagBits[i];
+    for (var i = 0; i < RoutineFlags.bits.length; i++) {
+      final f = RoutineFlags.bits[i];
       out.add(
         PultSpec(
           id: 'flag_$i',
-          icon: _flagIcons[i],
-          label: i18n.t(_flagKeys[i]),
+          icon: RoutineFlags.icons[i],
+          label: i18n.t(RoutineFlags.keys[i]),
           selected: (cur & f) != 0,
           stayOpen: true,
           onTap: () {

@@ -16,18 +16,19 @@
 //
 // Lifecycle. Departure (paused, detached, inactive): stop the bort
 // timer, immediately save layers. Return (resumed): re-read the
-// system brightness and re-resolve the theme — in the background
-// the system could have switched light to dark. System brightness
+// system brightness and re-resolve the theme. System brightness
 // change (without backgrounding) — via didChangePlatformBrightness.
+//
+// Navigation fixes. _switchTab now closes any open routine card when
+// switching tabs, ensuring the user lands on the tab list (including
+// the «routines» tab). _openTabsSheet uses a _sheetOpen guard to
+// prevent multiple subpult sheets from stacking when the root pult
+// is tapped repeatedly.
 //
 // System bar. Overlay strip style — from the bort theme.
 //
 // Root pult — hardcoded in the top-left corner. Touch opens the
-// single left-side sheet of subpults (pult_sheet.dart) with tab
-// kinds. PultLayer is removed.
-//
-// The pult side calculation uses clamp for brevity. A temporary
-// marker comment on the control_row import has been removed.
+// single left-side sheet of subpults (pult_sheet.dart) with tab kinds.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -81,6 +82,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   VoidCallback? _onTickerTick;
 
+  // Guard flag to prevent stacking of subpult sheets.
+  bool _sheetOpen = false;
+
   // ─── Tab list ───
   // Order: field, routines, days, artel, rubka. This same index
   // corresponds to _tab. The display of the field and artel tabs is
@@ -107,9 +111,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   @override
   void initState() {
     super.initState();
-    // Lifecycle observer: departure — save layers, return —
-    // re-resolve the theme (in the background the system could
-    // have changed the scheme).
     WidgetsBinding.instance.addObserver(this);
     _db = AppDb();
     _journal = JournalLayer(_db);
@@ -141,12 +142,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     await _traceLayer.init(_journal);
     _i18n = await I18n.load(_bort.lang);
     _journal.start();
-    // Reread mark — at the current end of the journal: the
-    // «reread» button becomes active only if something was added
-    // to the journal afterwards.
+    // Reread mark — at the current end of the journal.
     _bort.setLastRereadId(await _journal.lastEntryId());
-    // Default tab — «routines»; if «field» and «artel» are
-    // hidden, index 1 still leads to routines.
+    // Default tab — «routines».
     _tab = 1;
     if (mounted) setState(() {});
   }
@@ -180,7 +178,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     super.dispose();
   }
 
-  // ─── Application lifecycle ───
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
@@ -208,16 +205,15 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     if (mounted) setState(() {});
   }
 
+  // ─── Tab Switching ───
+  // If a routine card is open, it is closed to reveal the tab view.
+  // This applies even when switching to the «routines» tab itself.
   Future<void> _switchTab(int i) async {
     _bort.pulseBort();
 
-    final cardOpen = _openedRoutineId != null;
-    final sameRoutines = i == 1 && cardOpen;
-
-    if (sameRoutines) return;
-
-    if (cardOpen && i != 1) {
+    if (_openedRoutineId != null) {
       _navigatorKey.currentState?.popUntil((r) => r.isFirst);
+      _openedRoutineId = null;
     }
 
     setState(() => _tab = i);
@@ -232,32 +228,40 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _openedRoutineId = null;
   }
 
-  void _openTabsSheet() {
+  // ─── Open Tabs Sheet ───
+  // Uses a guard flag to prevent stacking if tapped repeatedly.
+  Future<void> _openTabsSheet() async {
+    if (_sheetOpen) return;
     final ctx = _navigatorKey.currentContext;
     if (ctx == null) return;
-    final side = _pultState.smallSide;
-    final labels = _bort.labelsButtons;
-    showPultSheet(
-      context: ctx,
-      subs: [
-        for (var i = 0; i < _allTabs.length; i++)
-          if (_tabVisible(i))
-            PultSpec(
-              id: 'tab_$i',
-              icon: _allTabs[i].icon,
-              label: labels ? _i18n!.t(_allTabs[i].labelKey) : null,
-              selected: _tab == i,
-              onTap: () => _switchTab(i),
-            ),
-      ],
-      fg: _bort.fg,
-      bg: _bort.bg,
-      signal: _bort.signal,
-      side: side,
-    );
+
+    _sheetOpen = true;
+    try {
+      final side = _pultState.smallSide;
+      final labels = _bort.labelsButtons;
+      await showPultSheet(
+        context: ctx,
+        subs: [
+          for (var i = 0; i < _allTabs.length; i++)
+            if (_tabVisible(i))
+              PultSpec(
+                id: 'tab_$i',
+                icon: _allTabs[i].icon,
+                label: labels ? _i18n!.t(_allTabs[i].labelKey) : null,
+                selected: _tab == i,
+                onTap: () => _switchTab(i),
+              ),
+        ],
+        fg: _bort.fg,
+        bg: _bort.bg,
+        signal: _bort.signal,
+        side: side,
+      );
+    } finally {
+      _sheetOpen = false;
+    }
   }
 
-  // ─── Pult side calculation ───
   // Clamped to the maximum allowed size to prevent overflow.
   double _pultSide(BuildContext context) {
     final systemScale = MediaQuery.textScalerOf(context).scale(1.0);
@@ -285,10 +289,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     return Brightness.light;
   }
 
-  // ─── Tab body assembly by number ───
-  // Indices: 0 — field, 1 — routines, 2 — days, 3 — artel, 4 — rubka.
-  // Hidden tabs remain as stubs in their places: the index does not
-  // shift, hence _tab always has the same meaning.
   Widget _tabBody() {
     switch (_tab) {
       case 0:
@@ -309,7 +309,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   Widget build(BuildContext context) {
     if (_i18n == null) return const SizedBox.shrink();
 
-    // If the current tab is hidden — force a switch to routines.
     if (!_tabVisible(_tab)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !_tabVisible(_tab)) {
@@ -323,7 +322,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _pultState.maxSide = _pultMax;
 
     final rootSide = side * 2 / 3;
-    // Use the unified reserve calculation for the AppBar title.
     final rootReserve = ControlRow.reserve(rootSide, rootPad: _rootPad);
 
     final appContext = AppContext(
@@ -354,8 +352,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           backgroundColor: _bort.bg,
           foregroundColor: _bort.fg,
           elevation: 0,
-          centerTitle: false, // Force left alignment for titles.
-          titleSpacing: rootReserve, // Unified spacing.
+          centerTitle: false,
+          titleSpacing: rootReserve,
           systemOverlayStyle: _overlayStyle(
             _effectiveBrightness(_bort.systemBrightness),
           ),
@@ -400,7 +398,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                   child: Stack(
                     children: [
                       child ?? const SizedBox.shrink(),
-                      // Root pult — hardcoded in the top-left corner.
                       Positioned(
                         left: _rootPad,
                         top: _rootPad,

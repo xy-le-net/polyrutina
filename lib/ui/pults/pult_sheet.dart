@@ -10,32 +10,21 @@
 // is a column of pults at the left edge. Slide-in — SlideTransition
 // from the left edge. The common backing spans the entire width of
 // the items, including labels: IntrinsicWidth fits the Material to
-// the widest row (label widths are computed in Pult and clamped by
-// the screen limit); the signal-colored border traces the backing
+// the widest row; the signal-colored border traces the backing
 // contour.
+//
+// Confirmation (confirm). The confirmation mechanism (grow on first
+// tap, execute on second) now lives entirely inside the Pult widget.
+// The sheet no longer manages confirmingId. Tapping a pult triggers
+// its internal logic. When the action finally executes (second tap),
+// the sheet closes.
 //
 // Closing. The sheet leaves on any explicit action:
 //   — tapping an item (action executes, sheet leaves);
-//   — confirmation (first tap — pult grows, second — executes);
+//   — confirming (first tap — pult grows, second — executes and closes);
 //   — tapping outside the backing (barrierDismissible);
 //   — system back (gesture, navigation button).
-// No other exit paths exist: no crosses or arrows are rendered.
-//
-// Confirmation (confirm). A confirmable pult grows by a quarter in
-// place upon tap. A second tap on the enlarged pult — execute and
-// close the sheet. Tapping another pult — cancel the growth and
-// continue working within the sheet. Tapping outside the backing —
-// close the sheet without execution.
-//
-// Touch handling. The inner Pult has its own GestureDetector with
-// opaque behavior and would intercept the gesture from the outer
-// one; therefore Pult is wrapped in IgnorePointer, and the tap is
-// caught by the outer GestureDetector. This technique is uniform
-// for all sheet items.
-//
-// The _onTap method is refactored: the repeated sequence of closing
-// the sheet and calling the callback is extracted into a separate
-// _executeAndClose method, eliminating code duplication.
+// No other exit paths exist.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -103,73 +92,48 @@ class _SheetBody extends StatefulWidget {
 }
 
 class _SheetBodyState extends State<_SheetBody> {
-  String? _confirmingId;
-
-  // ─── Tap on a pult ───
-  // Priority: confirming the same pult → execute and close;
-  // another confirmation is active → drop the growth; confirmation
-  // requested → set the growth; otherwise — execute and close.
-  void _onTap(PultSpec s) {
-    // 1. Tapping the currently confirming pult — execute and close.
-    if (_confirmingId == s.id) {
-      _executeAndClose(s);
-      return;
-    }
-
-    // 2. If another pult was confirming, reset its state.
-    if (_confirmingId != null) {
-      setState(() => _confirmingId = null);
-    }
-
-    // 3. If this pult requires confirmation — set it as confirming.
-    if (s.confirm && s.onTap != null) {
-      setState(() => _confirmingId = s.id);
-      return;
-    }
-
-    // 4. Otherwise — execute and close immediately.
-    _executeAndClose(s);
-  }
-
-  // Helper method: closes the sheet and executes the callback.
-  // Extraction prevents code duplication and preserves the
-  // critical order: pop first, then execute.
-  void _executeAndClose(PultSpec s) {
-    final cb = s.onTap;
-    Navigator.of(context).pop();
-    cb?.call();
-  }
-
   void _pulse() {
     try {
       AppScope.of(context).pulseBort();
     } catch (_) {}
   }
 
+  // Resets any active confirmation when the user taps the background
+  // or an empty area inside the sheet.
+  void _clearConfirmation() {
+    final state = PultScope.of(context);
+    if (state.confirmingId != null) {
+      state.setConfirming(null);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final items = <Widget>[];
     for (final s in widget.subs) {
-      final confirming = _confirmingId == s.id;
-      final sSide = confirming ? widget.side * 1.25 : widget.side;
-      // During confirmation, the icon is substituted if confirmIcon
-      // is provided.
-      final spec = confirming && s.confirmIcon != null
-          ? PultSpec(
-              id: s.id,
-              icon: s.confirmIcon!,
-              confirmIcon: s.confirmIcon,
-              label: s.label,
-              labelBg: s.labelBg,
-              centerText: s.centerText,
-              selected: s.selected,
-              confirm: s.confirm,
-              onTap: s.onTap,
-              onLongPress: s.onLongPress,
-              stayOpen: s.stayOpen,
-              compactLabel: s.compactLabel,
-            )
-          : s;
+      // The Pult now handles its own confirmation. We pass a wrapped
+      // onTap that closes the sheet before invoking the original action.
+      final originalOnTap = s.onTap;
+      final wrappedSpec = PultSpec(
+        id: s.id,
+        icon: s.icon,
+        confirmIcon: s.confirmIcon,
+        label: s.label,
+        labelBg: s.labelBg,
+        centerText: s.centerText,
+        selected: s.selected,
+        confirm: s.confirm,
+        onTap: originalOnTap == null
+            ? null
+            : () {
+                Navigator.of(context).pop();
+                originalOnTap.call();
+              },
+        onLongPress: s.onLongPress,
+        stayOpen: s.stayOpen,
+        compactLabel: s.compactLabel,
+      );
+
       items.add(
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
@@ -177,54 +141,52 @@ class _SheetBodyState extends State<_SheetBody> {
             behavior: HitTestBehavior.opaque,
             onTap: () {
               _pulse();
-              _onTap(s);
+              // If tapped outside the pult but inside the padding,
+              // clear confirmation but don't close the sheet.
+              _clearConfirmation();
             },
-            // The inner Pult is wrapped: its own GestureDetector
-            // must not intercept the gesture from this outer one.
-            child: IgnorePointer(
-              child: Pult(
-                spec: spec,
-                fg: widget.fg,
-                bg: widget.bg,
-                signal: widget.signal,
-                overrideSize: sSide,
-              ),
+            child: Pult(
+              spec: wrappedSpec,
+              fg: widget.fg,
+              bg: widget.bg,
+              signal: widget.signal,
+              overrideSize: widget.side,
             ),
           ),
         ),
       );
     }
 
-    // The common backing spans the entire width of the items,
-    // including labels. IntrinsicWidth fits the backing to the
-    // widest row. The left side has no border (the sheet slides in
-    // from the left edge, a border there would be an extra line at
-    // the screen edge); the right side is rounded and traced by a
-    // signal-colored border.
+    // Common backing spans the entire width of the items, including
+    // labels. The left side has no border; the right side is rounded
+    // and traced by a signal-colored border.
     final strokeW = widget.side / 16;
     final radiusR = widget.side * 0.3;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: widget.bg,
-        borderRadius: BorderRadius.only(
-          topRight: Radius.circular(radiusR),
-          bottomRight: Radius.circular(radiusR),
+    return GestureDetector(
+      onTap: _clearConfirmation,
+      child: Container(
+        decoration: BoxDecoration(
+          color: widget.bg,
+          borderRadius: BorderRadius.only(
+            topRight: Radius.circular(radiusR),
+            bottomRight: Radius.circular(radiusR),
+          ),
+          border: Border(
+            top: BorderSide(color: widget.signal, width: strokeW),
+            bottom: BorderSide(color: widget.signal, width: strokeW),
+            right: BorderSide(color: widget.signal, width: strokeW),
+          ),
         ),
-        border: Border(
-          top: BorderSide(color: widget.signal, width: strokeW),
-          bottom: BorderSide(color: widget.signal, width: strokeW),
-          right: BorderSide(color: widget.signal, width: strokeW),
-        ),
-      ),
-      child: SafeArea(
-        child: IntrinsicWidth(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: items,
+        child: SafeArea(
+          child: IntrinsicWidth(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: items,
+              ),
             ),
           ),
         ),

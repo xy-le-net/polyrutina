@@ -5,25 +5,22 @@
 // separate dialog (audio_dialog.dart). The rest — here.
 //
 // Opened via the single left-side sheet (pult_sheet.dart) —
-// the same as all other subpults. The former
-// showModalBottomSheet is removed.
+// the same as all other subpults.
 //
-// The file is copied to media/ with a template name:
-//   <device>_<routine id>_<slot>_<kind>_<index>.<ext>
+// The file is copied to media/ with a new template name:
+//   <kind>_<index>_<device>_<first_run>.<ext>
+//
+// This removes the dependency on the routine ID, which may change
+// after journal compaction.
 //
 // Photo/video series: after returning from the system camera
 // the sheet does not close — it opens again. Exit — «back».
 //
 // Geo. No separate json file is written: coordinates are in
 // the trace file structure (TraceFile). The geo point is picked
-// on a custom map (geo_picker.dart): a tap on the map,
-// confirmation — a widget snapshot and coordinates are put into
-// media/ as the geo kind.
+// on a custom map (geo_picker.dart).
 //
 // Application context (AppContext) is taken BEFORE awaits.
-//
-// The unused geolocator import has been removed (geo picking is
-// now handled entirely by geo_picker.dart).
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -78,11 +75,6 @@ Future<void> showMediaPicker({
         id: 'pick_${MediaKind.geo}',
         icon: Icons.place_outlined,
         label: i18n.t('media.geo'),
-        // The geo point is picked on a custom map (geo_picker.dart):
-        // a tap on the map, confirmation — a widget snapshot and
-        // coordinates are put into media/ as the geo kind. The former
-        // direct geolocator call is removed: the user did not see
-        // where the point was placed.
         onTap: () =>
             showGeoPicker(context: context, objectId: objectId, slot: slot),
       ),
@@ -101,6 +93,7 @@ Future<void> showMediaPicker({
 }
 
 // ─── Copying and attaching ───
+// New naming scheme: <kind>_<index>_<device>_<first_run>.<ext>
 Future<void> _attach(
   AppContext app, {
   required int objectId,
@@ -110,9 +103,12 @@ Future<void> _attach(
   required String ext,
 }) async {
   final bort = app.bort;
+  final idx = bort.nextExportIndex('media_$kind');
+  final deviceId = bort.deviceId;
+  final firstRun = bort.firstRunUnixSec;
 
-  final idx = bort.nextExportIndex('media_${objectId}_${slot}_$kind');
-  final base = '${bort.deviceId}_${objectId}_${slot}_${kind}_$idx$ext';
+  // Build the new name: kind_index_device_first_run.ext
+  final base = '${kind}_${idx}_${deviceId}_$firstRun$ext';
   final name = _safe(base);
 
   final dir = await getApplicationDocumentsDirectory();
@@ -214,8 +210,3 @@ Future<void> _addFile(AppContext app, int objectId, String slot) async {
     );
   } catch (_) {}
 }
-
-// The former direct geolocator call is removed: the user did not see
-// where the point was placed. Now — a custom map (geo_picker.dart),
-// where the point is confirmed visually, and a snapshot of the map
-// widget is saved along with the coordinates.

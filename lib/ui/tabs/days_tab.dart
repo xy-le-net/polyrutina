@@ -14,23 +14,16 @@
 //
 // Color coordination.
 //   — underline (completed) — dimmed (dim);
-//   — circle and square — normal (fg), if the routine has no flags
-//     or is completed;
-//   — signal (signal) highlights only the circle and square
+//   — circle and square — dimmed (dim) by default;
+//   — signal (signal) highlights ONLY the circle and square
 //     of an uncompleted routine with flags;
 //   — the day number is signal-colored if and only if there is
 //     an uncompleted routine with flags on this day.
 //
-// Control row. Month switchers are rendered via ControlRow:
-// the root pult on the left, the row's content is centered in
-// the remainder. To prevent excessive compression, the row is
-// given a generous width, letting FittedBox scale down only
-// when absolutely necessary.
-//
-// Grid. Strictly seven columns (GridView.builder) with equal
-// cell proportions. The cell content (number with optional
-// borders) is centered within a fixed-size container to prevent
-// visual jitter.
+// Control row. Month switchers are rendered via ControlRow.
+// The row is wrapped in a ConstrainedBox with generous max width
+// and spaceEvenly alignment, preventing unnecessary shrinkage by
+// FittedBox on typical screen widths.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -178,39 +171,42 @@ class _DaysTabState extends State<DaysTab> {
             // Generous width to give the month switchers breathing
             // room. FittedBox in ControlRow will scale it down if
             // the screen is too narrow.
-            child: SizedBox(
-              width: side * 6,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  Pult(
-                    spec: PultSpec(
-                      id: 'prev_month',
-                      icon: Icons.chevron_left,
-                      onTap: () => _shift(-1),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: side * 8),
+              child: SizedBox(
+                width: double.infinity,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    Pult(
+                      spec: PultSpec(
+                        id: 'prev_month',
+                        icon: Icons.chevron_left,
+                        onTap: () => _shift(-1),
+                      ),
+                      fg: bort.fg,
+                      bg: bort.bg,
+                      signal: bort.signal,
+                      overrideSize: side,
                     ),
-                    fg: bort.fg,
-                    bg: bort.bg,
-                    signal: bort.signal,
-                    overrideSize: side,
-                  ),
-                  Text(
-                    '${_month.year}.'
-                    '${_month.month.toString().padLeft(2, '0')}',
-                    style: TextStyle(color: bort.fg, fontSize: side * 0.5),
-                  ),
-                  Pult(
-                    spec: PultSpec(
-                      id: 'next_month',
-                      icon: Icons.chevron_right,
-                      onTap: () => _shift(1),
+                    Text(
+                      '${_month.year}.'
+                      '${_month.month.toString().padLeft(2, '0')}',
+                      style: TextStyle(color: bort.fg, fontSize: side * 0.5),
                     ),
-                    fg: bort.fg,
-                    bg: bort.bg,
-                    signal: bort.signal,
-                    overrideSize: side,
-                  ),
-                ],
+                    Pult(
+                      spec: PultSpec(
+                        id: 'next_month',
+                        icon: Icons.chevron_right,
+                        onTap: () => _shift(1),
+                      ),
+                      fg: bort.fg,
+                      bg: bort.bg,
+                      signal: bort.signal,
+                      overrideSize: side,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -264,9 +260,11 @@ class _DaysTabState extends State<DaysTab> {
         shape: m.pulse ? BoxShape.circle : BoxShape.rectangle,
         border: (m.pulse || m.scheduled)
             ? Border.all(
+                // Borders default to dim; signal color only if the
+                // routine has flags.
                 color: m.signalPulse || m.signalScheduled
                     ? bort.signal
-                    : bort.fg,
+                    : bort.dim,
                 width: side * 0.04,
               )
             : null,

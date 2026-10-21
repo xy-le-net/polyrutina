@@ -277,13 +277,13 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     final canSend = _canSend();
     final pultSide = widget.side * bort.kPultSmall;
 
-    // The checklist pult shows the number of unchecked items. When all
-    // are checked (and there is at least one item) — the pult is
-    // signal-colored, the task is closed.
+    // The checklist pult shows the number of unchecked items.
+    // It is signal-colored as long as the checklist has any items
+    // (counts.total > 0), regardless of the completion state.
     final counts = _checklistCounts();
     final int unchecked = counts.total - counts.done;
     final String? chkCenter = unchecked > 0 ? '$unchecked' : null;
-    final bool chkSelected = counts.total > 0 && unchecked == 0;
+    final bool chkSelected = counts.total > 0;
 
     final files = _files();
 

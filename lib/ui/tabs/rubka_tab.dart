@@ -2,27 +2,18 @@
 // rubka_tab.dart — rubka tab.
 //
 // Four blocks: artel, appearance, interface, data. Appearance,
-// interface, and data are extracted into separate widgets
-// (rubka_appearance, rubka_interface, rubka_data). Here — only
-// block assembly, layout, and the «midnight» field with tab
+// interface, and data are extracted into separate widgets. Here —
+// only block assembly, layout, and the «midnight» field with tab
 // visibility checkboxes.
 //
 // Artel. The «midnight» field (hh:mm) — the start of the technical
-// day. Two checkboxes: show the «field» tab and show the «artel»
-// tab. Both hidden by default; when checked, the tab appears in
-// the menu.
+// day. Below it, a tappable «shift» row opens the shift history
+// dialog (showShiftHistoryDialog). Two checkboxes: show the «field»
+// tab and show the «artel» tab. Both hidden by default.
 //
 // Layout.
-//   Narrow screen (less than 640): blocks in one column top to bottom.
-//   Wide screen: two columns of equal width, blocks joined without
-//   vertical gaps — each slot stretches by its column height, the
-//   remainder fills the emptiness inside the neighbor's frame if
-//   there is a height difference. Columns: left — artel, interface;
-//   right — appearance, data.
-//
-// Simplifications: the two identical calls to _tabTickRow are
-// replaced by a loop over the list of keys (the label is derived
-// from the key as 'bort.$key').
+//   Narrow screen (less than 640): blocks in one column.
+//   Wide screen: two columns of equal width.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -60,7 +51,7 @@ class RubkaTab extends StatelessWidget {
 
     void set(String key, String value) => bort.set(key, value);
 
-    // ─── Artel block: midnight + tab visibility checkboxes ───
+    // ─── Artel block: midnight + shift history + tab checkboxes ───
     final artel = Block(
       title: i18n.t('block.artel'),
       collapsed: !bort.blockArtel,
@@ -145,11 +136,6 @@ class RubkaTab extends StatelessWidget {
         const spacing = 16.0;
         final colW = (width - hPad * 2 - spacing) / 2;
 
-        // Two columns. Inside — without vertical gaps: Block already
-        // has a bottom margin (gap) inside itself, and Column places
-        // them flush. The height difference between columns does not
-        // create gaps between blocks, only empty space at the bottom
-        // of the shorter column.
         Widget col(List<Widget> children) => SizedBox(
           width: colW,
           child: Column(
@@ -174,7 +160,7 @@ class RubkaTab extends StatelessWidget {
     );
   }
 
-  // ─── Midnight: the only particular left here ───
+  // ─── Midnight: technical day start ───
   Widget _midnightRow(BuildContext context, Color fg, double side) {
     final app = AppScope.of(context);
     final bort = app.bort;
@@ -205,6 +191,8 @@ class RubkaTab extends StatelessWidget {
       ),
     );
   }
+
+  // (removed — shift row is in rubka_data.dart)
 
   // ─── Tab visibility checkbox ───
   Widget _tabTickRow(
