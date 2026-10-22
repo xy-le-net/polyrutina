@@ -530,10 +530,11 @@ class OperationalLayer extends ChangeNotifier {
     await _file.delete();
     _themes.themes = {};
     _themes.themeName = 'system';
-    onShift = false;
-    totalShiftSeconds = 0;
-    shiftStartedAt = null;
-    shiftEdited = false;
+    // Shift state is deliberately kept: a cache reset must not stop
+    // the running shift. The shift is not replayed from the journal
+    // (there is no layer for the actor kind), so wiping it here would
+    // make it impossible to restore. Routines are restored by
+    // journal.reread() on the caller's side.
     _draftsStore.reset();
     _bortTime.reset();
     _shiftHistory.reset();

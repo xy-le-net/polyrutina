@@ -29,6 +29,8 @@
 
 import 'package:flutter/material.dart';
 
+import 'app_scope.dart';
+
 class ControlRow extends StatelessWidget {
   // Width of the root pult. Same for the reserve.
   final double rootSide;
@@ -59,13 +61,27 @@ class ControlRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final left = reserve(rootSide, rootPad: rootPad, gap: gap);
-    return ConstrainedBox(
+    final bort = BortScope.of(context);
+    final strokeW = rootSide * bort.kStroke;
+    final radiusW = rootSide * bort.kRadius;
+
+    // The row is drawn as a single block: a filled container with
+    // a border and rounded corners. The root pult sits on top of
+    // the left reserve, so the row and the pult read as one unit.
+    // The left margin shifts the block to align with the root pult
+    // (which is placed at rootPad from the screen edge).
+    return Container(
+      margin: EdgeInsets.only(left: rootPad),
       constraints: BoxConstraints(minHeight: rootSide),
+      decoration: BoxDecoration(
+        color: bort.bg,
+        border: Border.all(color: bort.dim, width: strokeW),
+        borderRadius: BorderRadius.circular(radiusW),
+      ),
       child: Row(
         children: [
-          // Reserve space for the root pult.
-          SizedBox(width: left),
+          // Reserve space for the root pult plus the gap.
+          SizedBox(width: rootSide + gap),
           // Allocate the remaining space and prevent overlap. The
           // SizedBox(width: double.infinity) forces the child to take
           // the full remaining width; without it, a widget such as a
@@ -75,10 +91,9 @@ class ControlRow extends StatelessWidget {
           Expanded(
             child: Align(
               alignment: alignment,
-              child: SizedBox(
-                width: double.infinity,
-                child: child ?? const SizedBox.shrink(),
-              ),
+              child: child == null
+                  ? const SizedBox.shrink()
+                  : SizedBox(width: double.infinity, child: child),
             ),
           ),
         ],

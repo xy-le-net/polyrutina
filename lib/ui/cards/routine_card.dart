@@ -492,6 +492,7 @@ class _RoutineCardState extends State<RoutineCard> {
                   initial: r.name,
                   fg: bort.fg,
                   readOnly: false,
+                  showBorder: false,
                   hint: i18n.t('routine.no_name'),
                   onCommit: (v) => routineLayer.renameRoutine(
                     AppScope.of(context).journal,

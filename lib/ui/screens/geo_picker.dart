@@ -267,12 +267,18 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            // Unified control row: root pult on the left, title and
+            // exit pult in the remaining space. Padding top and right
+            // match the root pult offset (6) so the block aligns
+            // flush with the compass in the top-left corner. The Row
+            // centers its children vertically.
             Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 8, right: 12),
+              padding: const EdgeInsets.only(top: 6, bottom: 8, right: 6),
               child: ControlRow(
                 rootSide: rootSide,
                 alignment: Alignment.centerLeft,
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Expanded(
                       child: Text(

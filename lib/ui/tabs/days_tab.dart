@@ -184,8 +184,8 @@ class _DaysTabState extends State<DaysTab> {
     // and ellipsized, so a long title cannot push the next pult out.
     return Column(
       children: [
-        SizedBox(
-          height: rootSide,
+        Padding(
+          padding: const EdgeInsets.only(top: 8, bottom: 8, right: 12),
           child: ControlRow(
             rootSide: rootSide,
             child: Row(

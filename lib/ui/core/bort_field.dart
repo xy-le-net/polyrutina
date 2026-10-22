@@ -21,6 +21,7 @@ class BortField extends StatefulWidget {
   final String? hint;
   final void Function(String value)? onChanged;
   final Future<void> Function(String value) onCommit;
+  final bool showBorder;
 
   const BortField({
     super.key,
@@ -30,6 +31,7 @@ class BortField extends StatefulWidget {
     required this.onCommit,
     this.hint,
     this.onChanged,
+    this.showBorder = true,
   });
 
   @override
@@ -79,8 +81,13 @@ class _BortFieldState extends State<BortField> {
       style: TextStyle(color: widget.fg),
       decoration: InputDecoration(
         isDense: true,
-        border: const OutlineInputBorder(),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        border: widget.showBorder
+            ? const OutlineInputBorder()
+            : InputBorder.none,
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: widget.showBorder ? 8 : 0,
+          vertical: 8,
+        ),
         hintText: widget.hint,
       ),
       onChanged: widget.onChanged,

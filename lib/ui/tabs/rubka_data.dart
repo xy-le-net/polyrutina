@@ -185,8 +185,12 @@ class _RubkaDataState extends State<RubkaData> {
     final app = AppScope.of(context);
     final bort = BortScope.of(context);
     await bort.resetCache();
-    await app.routineLayer.resetAll();
-    await app.traceLayer.resetAll();
+
+    // Explicit layer resets are redundant: journal.reread() resets
+    // every registered layer (by calling its reset hook) and replays
+    // the journal from the beginning. Routines and traces are thus
+    // rebuilt from the journal, while the shift (the actor kind) is
+    // deliberately left untouched by the bort cache reset.
     await app.journal.reread();
     bort.setLastRereadId(await app.journal.lastEntryId());
     await app.reloadI18n();
