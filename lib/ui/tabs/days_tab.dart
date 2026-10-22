@@ -177,46 +177,56 @@ class _DaysTabState extends State<DaysTab> {
     // 2/3 of the base side, which is exactly smallSide.
     final rootSide = side;
 
+    // The month row sits flush with the root pult: its height is
+    // pinned to rootSide and the previous extra vertical padding is
+    // dropped, so the prev/next pults line up with the compass in
+    // the top-left corner. The month label is wrapped in Flexible
+    // and ellipsized, so a long title cannot push the next pult out.
     return Column(
       children: [
-        Padding(
-          padding: EdgeInsets.symmetric(vertical: side * 0.3),
+        SizedBox(
+          height: rootSide,
           child: ControlRow(
             rootSide: rootSide,
-            child: SizedBox(
-              width: double.infinity,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  Pult(
-                    spec: PultSpec(
-                      id: 'prev_month',
-                      icon: Icons.chevron_left,
-                      onTap: () => _shift(-1),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                Pult(
+                  spec: PultSpec(
+                    id: 'prev_month',
+                    icon: Icons.chevron_left,
+                    onTap: () => _shift(-1),
+                  ),
+                  fg: bort.fg,
+                  bg: bort.bg,
+                  signal: bort.signal,
+                  overrideSize: side,
+                ),
+                Flexible(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: side * 0.15),
+                    child: Text(
+                      '${_month.year}.'
+                      '${_month.month.toString().padLeft(2, '0')}',
+                      style: TextStyle(color: bort.fg, fontSize: side * 0.5),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
                     ),
-                    fg: bort.fg,
-                    bg: bort.bg,
-                    signal: bort.signal,
-                    overrideSize: side,
                   ),
-                  Text(
-                    '${_month.year}.'
-                    '${_month.month.toString().padLeft(2, '0')}',
-                    style: TextStyle(color: bort.fg, fontSize: side * 0.5),
+                ),
+                Pult(
+                  spec: PultSpec(
+                    id: 'next_month',
+                    icon: Icons.chevron_right,
+                    onTap: () => _shift(1),
                   ),
-                  Pult(
-                    spec: PultSpec(
-                      id: 'next_month',
-                      icon: Icons.chevron_right,
-                      onTap: () => _shift(1),
-                    ),
-                    fg: bort.fg,
-                    bg: bort.bg,
-                    signal: bort.signal,
-                    overrideSize: side,
-                  ),
-                ],
-              ),
+                  fg: bort.fg,
+                  bg: bort.bg,
+                  signal: bort.signal,
+                  overrideSize: side,
+                ),
+              ],
             ),
           ),
         ),

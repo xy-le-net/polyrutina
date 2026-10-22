@@ -402,6 +402,11 @@ class _RoutinesTabState extends State<RoutinesTab> {
                 overrideSize: side,
               ),
             ),
+            // Export is always available: the report covers all
+            // routines, whether or not new entries have appeared
+            // since the last export. The _hasNewEntries flag is a
+            // signal lamp only (the pult turns signal-colored); it
+            // no longer locks the button.
             Positioned(
               right: 12,
               bottom: 12,
@@ -410,9 +415,9 @@ class _RoutinesTabState extends State<RoutinesTab> {
                   id: 'report',
                   icon: Icons.description_outlined,
                   selected: _hasNewEntries,
-                  onTap: _hasNewEntries ? () => _export(context) : null,
+                  onTap: () => _export(context),
                 ),
-                fg: _hasNewEntries ? fg : dim,
+                fg: fg,
                 bg: bg,
                 signal: signal,
                 overrideSize: side,

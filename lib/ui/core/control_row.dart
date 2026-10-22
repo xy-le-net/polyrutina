@@ -15,7 +15,10 @@
 // The row's height equals the root pult's side, but can grow if the
 // content is taller (minHeight instead of a fixed height). The former
 // FittedBox wrapper has been removed: it broke layouts that rely on
-// Expanded inside the child.
+// Expanded inside the child. The child is wrapped in a SizedBox with
+// infinite width so that intrinsically-sized widgets (notably a
+// TextField) take the full remaining width instead of shrinking to
+// their content and rendering long titles outside the reserved zone.
 //
 // Usage. Wrap the desired row as a ControlRow. The root pult itself
 // remains in the main screen's tree (main.dart) and is not drawn here
@@ -63,11 +66,20 @@ class ControlRow extends StatelessWidget {
         children: [
           // Reserve space for the root pult.
           SizedBox(width: left),
-          // Allocate the remaining space and prevent overlap.
+          // Allocate the remaining space and prevent overlap. The
+          // SizedBox(width: double.infinity) forces the child to take
+          // the full remaining width; without it, a widget such as a
+          // TextField would shrink to its intrinsic width under the
+          // Align's loose constraints, and long titles would render
+          // outside the reserved zone.
           Expanded(
-            child: child == null
-                ? const SizedBox.shrink()
-                : Align(alignment: alignment, child: child),
+            child: Align(
+              alignment: alignment,
+              child: SizedBox(
+                width: double.infinity,
+                child: child ?? const SizedBox.shrink(),
+              ),
+            ),
           ),
         ],
       ),
