@@ -104,10 +104,17 @@ class Block extends StatelessWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // The title is capped at a single line and
+                      // ellipsized: pults on the right can squeeze
+                      // the available width, and a two-line wrap
+                      // would break the uniform height of the block
+                      // header. Ellipsis is the lesser evil here.
                       Expanded(
                         child: Text(
                           title,
                           style: TextStyle(color: dim, fontSize: titleSize),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       if (cornerRightTop != null) ...[
