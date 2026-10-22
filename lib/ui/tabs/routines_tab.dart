@@ -1,9 +1,15 @@
 // ═══════════════════════════════════════════════════════════════════
-// routines_tab.dart — routines tab.
+// lib/ui/tabs/routines_tab.dart — routines tab.
 //
 // Above — the shift row (ShiftRow). Below — the list of routines
-// (RoutinePlate). At the bottom — three pults: create/cancel,
-// report, actions for the selected (in select mode).
+// (RoutinePlate). At the bottom — two pults: create/cancel (left)
+// and, in select mode, actions for the selected (center).
+//
+// Export has moved to the rubka («data» block): the routines list
+// no longer carries a report pult. The former _hasNewEntries signal
+// lamp and its _refreshExportState helper are removed with it —
+// the rubka's export pult fires on demand, regardless of the
+// journal tail.
 //
 // Select mode: a long press on a routine enables it. Checkboxes
 // appear to the left of the block.
@@ -17,8 +23,7 @@
 // Scopes. Dependencies are read from point scopes: RoutineScope
 // (the layer), BortScope (theme and shift state), I18nScope
 // (strings), TickerScope (playback cadence). AppScope is consulted
-// only for the journal, for openRoutine, and for the ReportBuilder
-// call (which still takes the full AppContext).
+// only for the journal and for openRoutine.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -29,7 +34,6 @@ import '../../data/routine.dart';
 import '../../data/ticker.dart';
 import '../core/app_scope.dart';
 import '../pults/pult_core.dart';
-import '../services/report.dart';
 import 'routine_plate.dart';
 import 'shift_row.dart';
 
@@ -42,7 +46,6 @@ class RoutinesTab extends StatefulWidget {
 
 class _RoutinesTabState extends State<RoutinesTab> {
   AppTicker? _ticker;
-  bool _hasNewEntries = false;
 
   bool _selectMode = false;
   final Set<int> _selected = {};
@@ -60,7 +63,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final now = DateTime.now();
     _lastMinute = now.millisecondsSinceEpoch ~/ 60000;
     _lastSecond = now.millisecondsSinceEpoch ~/ 1000;
-    _refreshExportState();
   }
 
   void _onTick() {
@@ -99,16 +101,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
     }
   }
 
-  Future<void> _refreshExportState() async {
-    final journal = AppScope.of(context).journal;
-    final bort = BortScope.of(context);
-    final last = await journal.lastEntryId();
-    final exported = bort.lastExportId;
-    if (mounted && _hasNewEntries != (last > exported)) {
-      setState(() => _hasNewEntries = last > exported);
-    }
-  }
-
   @override
   void dispose() {
     _ticker?.removeListener(_onTick);
@@ -123,27 +115,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
     if (context.mounted) {
       await openRoutine(r.id);
     }
-  }
-
-  Future<void> _export(BuildContext context) async {
-    final app = AppScope.of(context);
-    final i18n = I18nScope.of(context);
-    final messenger = ScaffoldMessenger.of(context);
-    String? path;
-    if (_selectMode && _selected.isNotEmpty) {
-      path = await ReportBuilder.buildSelected(
-        app,
-        i18n,
-        _selected.toList(),
-        uiContext: context,
-      );
-    } else {
-      path = await ReportBuilder.build(app, i18n, uiContext: context);
-    }
-    if (!mounted) return;
-    if (path == null) return;
-    messenger.showSnackBar(SnackBar(content: Text(path)));
-    await _refreshExportState();
   }
 
   void _enterSelectMode(int id) {
@@ -395,27 +366,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
                   id: _selectMode ? 'cancel_select' : 'create_routine',
                   icon: _selectMode ? Icons.close : Icons.add,
                   onTap: _selectMode ? _exitSelectMode : () => _create(context),
-                ),
-                fg: fg,
-                bg: bg,
-                signal: signal,
-                overrideSize: side,
-              ),
-            ),
-            // Export is always available: the report covers all
-            // routines, whether or not new entries have appeared
-            // since the last export. The _hasNewEntries flag is a
-            // signal lamp only (the pult turns signal-colored); it
-            // no longer locks the button.
-            Positioned(
-              right: 12,
-              bottom: 12,
-              child: Pult(
-                spec: PultSpec(
-                  id: 'report',
-                  icon: Icons.description_outlined,
-                  selected: _hasNewEntries,
-                  onTap: () => _export(context),
                 ),
                 fg: fg,
                 bg: bg,

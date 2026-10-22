@@ -1,13 +1,12 @@
 // ═══════════════════════════════════════════════════════════════════
-// rubka_data.dart — «data» block in the rubka.
+// lib/ui/tabs/rubka_data.dart — «data» block in the rubka.
 //
-// Order — by relation to the journal:
+// Contents, top to bottom:
 //
-//   Group 1 (no journal relation):
-//     — shift: tap opens shift history (action_dialog.dart);
-//     — bort: today's active time from the technical midnight.
+//   Group 1 — shift:
+//     — shift: tap opens shift history (action_dialog.dart).
 //
-//   Group 2 (journal):
+//   Group 2 — journal and transfer:
 //     — journal: volume of the bort files;
 //     — reread: reset layer memory and run through all entries;
 //     — delete: erase all journal entries (confirm via
@@ -15,11 +14,23 @@
 //     — compress: JournalCompactor over a progress dialog;
 //     — separator;
 //     — media: volume of the attachments folder;
-//     — shake: delete files not attached to anything.
-//
-//   Group 3 (other):
-//     — reset: caches and defaults to the initial state;
+//     — shake: delete files not attached to anything;
+//     — separator;
+//     — export: build the routines zip and share it
+//       (ReportBuilder.build);
 //     — import: receive polyrutina zip archives.
+//
+//   Group 3 — other:
+//     — bort: today's active time from the technical midnight
+//       (moved here to lead the last group; the bort counter itself
+//       has no journal relation and is read straight from the
+//       bort file);
+//     — reset: caches and defaults to the initial state.
+//
+// Export lives here (formerly in routines_tab): the routines list
+// no longer carries its own report pult — the report covers all
+// routines, whether or not the caller was in select mode, so the
+// rubka is the single place to trigger it.
 //
 // Scopes. In build, bort and i18n come from BortScope and I18nScope;
 // the imperative methods (_refreshSize, _reload, _deleteAll, etc.)
@@ -47,6 +58,7 @@ import '../pults/pult_core.dart';
 import '../screens/import_screen.dart';
 import '../services/action_dialog.dart';
 import '../services/journal_compactor.dart';
+import '../services/report.dart';
 
 class RubkaData extends StatefulWidget {
   const RubkaData({super.key});
@@ -181,6 +193,12 @@ class _RubkaDataState extends State<RubkaData> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _export() async {
+    final app = AppScope.of(context);
+    final i18n = I18nScope.of(context);
+    await ReportBuilder.build(app, i18n, uiContext: context);
+  }
+
   Future<void> _resetCache() async {
     final app = AppScope.of(context);
     final bort = BortScope.of(context);
@@ -292,13 +310,6 @@ class _RubkaDataState extends State<RubkaData> {
         fg,
         onTap: _openShiftHistory,
       ),
-      _valueRow(
-        i18n.t('bort.bort'),
-        bort.bortTime <= 0
-            ? '0${i18n.t('time.m')}'
-            : fmtTime(bort.bortTime, i18n.t),
-        fg,
-      ),
     ];
 
     final group2 = <Widget>[
@@ -367,19 +378,12 @@ class _RubkaDataState extends State<RubkaData> {
           overrideSize: side,
         ),
       ),
-    ];
-
-    final group3 = <Widget>[
+      divider(),
       _pultRow(
-        label: i18n.t('bort.reset'),
+        label: i18n.t('bort.export'),
         fg: fg,
         pult: Pult(
-          spec: PultSpec(
-            id: 'reset',
-            icon: Icons.restart_alt,
-            confirm: true,
-            onTap: _resetCache,
-          ),
+          spec: PultSpec(id: 'export', icon: Icons.upload, onTap: _export),
           fg: fg,
           bg: bg,
           signal: signal,
@@ -394,6 +398,32 @@ class _RubkaDataState extends State<RubkaData> {
             id: 'import',
             icon: Icons.download,
             onTap: _openImport,
+          ),
+          fg: fg,
+          bg: bg,
+          signal: signal,
+          overrideSize: side,
+        ),
+      ),
+    ];
+
+    final group3 = <Widget>[
+      _valueRow(
+        i18n.t('bort.bort'),
+        bort.bortTime <= 0
+            ? '0${i18n.t('time.m')}'
+            : fmtTime(bort.bortTime, i18n.t),
+        fg,
+      ),
+      _pultRow(
+        label: i18n.t('bort.reset'),
+        fg: fg,
+        pult: Pult(
+          spec: PultSpec(
+            id: 'reset',
+            icon: Icons.restart_alt,
+            confirm: true,
+            onTap: _resetCache,
           ),
           fg: fg,
           bg: bg,
