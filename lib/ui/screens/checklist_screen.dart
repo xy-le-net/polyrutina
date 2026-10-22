@@ -1,14 +1,15 @@
 // ═══════════════════════════════════════════════════════════════════
-// checklist_screen.dart — block checklist screen.
+// lib/ui/screens/checklist_screen.dart — block checklist screen.
 //
 // Full-screen, opened from TraceField.
 //
-// Control row. The AppBar is removed: the header is laid out with
-// ControlRow inside a SafeArea. The root pult (compass) sits on the
-// left; the remaining width is taken by the immovable part — the
-// title (block and routine names) and the exit pult on the right.
-// This unifies the header across screens and prevents the title
-// from slipping under the compass.
+// Header. The AppBar is removed: the header is laid out through
+// ScreenHeader inside a SafeArea. ScreenHeader reserves the left
+// zone for the root pult, prints the block title and the routine
+// subtitle, and puts the exit pult on the right. The former
+// per-screen Padding + ControlRow + manual title column has been
+// pulled out into ScreenHeader so the header matches the other
+// full-screen sheets.
 //
 // Exit pult. Shows the number of unchecked items when there are
 // any; otherwise — a down arrow. Long press opens the subpult:
@@ -39,7 +40,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
-import '../core/control_row.dart';
+import '../core/screen_header.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_tick.dart';
 
@@ -278,7 +279,6 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     final i18n = I18nScope.of(context);
     final side = PultScope.of(context).smallSide;
 
-    final titleSize = side * bort.kTitle;
     final itemSize = side * bort.kNumberSmall;
     final pultSide = side * bort.kPultSmall;
     final radiusW = side * bort.kRadius;
@@ -291,81 +291,38 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Unified control row: root pult on the left, title and
-            // exit pult in the remaining space. Padding top and right
-            // match the root pult offset (6) so the block aligns
-            // flush with the compass in the top-left corner. The Row
-            // centers its children vertically.
-            Padding(
-              padding: const EdgeInsets.only(top: 6, bottom: 8, right: 6),
-              child: ControlRow(
-                rootSide: side,
-                alignment: Alignment.centerLeft,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            widget.blockTitle,
-                            style: TextStyle(color: bort.fg),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          Text(
-                            widget.routineTitle,
-                            style: TextStyle(
-                              color: bort.dim,
-                              fontSize: titleSize * 0.7,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    Pult(
-                      spec: PultSpec(
-                        id: 'close_checklist',
-                        icon: Icons.keyboard_arrow_down,
-                        centerText: unchecked > 0 ? '$unchecked' : null,
-                        selected: unchecked > 0,
-                        onTap: _close,
-                        longSubs: () => [
-                          PultSpec(
-                            id: 'chk_all',
-                            icon: Icons.done_all,
-                            label: i18n.t('checklist.mark_all'),
-                            confirm: true,
-                            onTap: _markAll,
-                          ),
-                          PultSpec(
-                            id: 'chk_none',
-                            icon: Icons.check_box_outline_blank,
-                            label: i18n.t('checklist.unmark_all'),
-                            confirm: true,
-                            onTap: _unmarkAll,
-                          ),
-                          PultSpec(
-                            id: 'chk_clear',
-                            icon: Icons.clear_all,
-                            label: i18n.t('checklist.clear_all'),
-                            confirm: true,
-                            onTap: _clearAll,
-                          ),
-                        ],
-                      ),
-                      fg: bort.fg,
-                      bg: bort.bg,
-                      signal: bort.signal,
-                      overrideSize: pultSide,
-                    ),
-                  ],
+            // Unified header: root pult space on the left, block
+            // title and routine subtitle on the remaining width,
+            // exit pult on the right with a long-press subpult.
+            ScreenHeader(
+              title: widget.blockTitle,
+              subtitle: widget.routineTitle,
+              exitCenterText: unchecked > 0 ? '$unchecked' : null,
+              exitSelected: unchecked > 0,
+              onExit: _close,
+              exitLongSubs: () => [
+                PultSpec(
+                  id: 'chk_all',
+                  icon: Icons.done_all,
+                  label: i18n.t('checklist.mark_all'),
+                  confirm: true,
+                  onTap: _markAll,
                 ),
-              ),
+                PultSpec(
+                  id: 'chk_none',
+                  icon: Icons.check_box_outline_blank,
+                  label: i18n.t('checklist.unmark_all'),
+                  confirm: true,
+                  onTap: _unmarkAll,
+                ),
+                PultSpec(
+                  id: 'chk_clear',
+                  icon: Icons.clear_all,
+                  label: i18n.t('checklist.clear_all'),
+                  confirm: true,
+                  onTap: _clearAll,
+                ),
+              ],
             ),
             Expanded(
               child: ListView.builder(

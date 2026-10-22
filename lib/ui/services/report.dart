@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════
-// report.dart — routines report and zip packing.
+// lib/ui/services/report.dart — routines report and zip packing.
 //
 // The report is textual and human-readable. Each routine is a
 // section: completion mark, name, state, creation date, blocks with
@@ -7,6 +7,12 @@
 // media line.
 //
 // The archive contains report.txt, data.json, and media/.
+//
+// File names. Forbidden characters (backslash, slash, colon,
+// asterisk, question mark, quote, angle brackets, pipe) are
+// replaced by safeFileNameOr (format.dart) — the shared
+// implementation used across the app. Empty results fall back to
+// «noname» inside safeFileNameOr.
 //
 // All types are strict: AppContext, I18n, Routine, TraceFile are
 // named explicitly; no dynamic remains.
@@ -33,12 +39,6 @@ import '../core/progress_dialog.dart';
 import 'report_json.dart';
 
 class ReportBuilder {
-  static String _safe(String s) {
-    final bad = RegExp(r'[\\/:*?"<>|]');
-    final out = s.replaceAllMapped(bad, (_) => 'X');
-    return out.trim().isEmpty ? 'noname' : out;
-  }
-
   static String _stamp() {
     final n = DateTime.now();
     String two(int v) => v.toString().padLeft(2, '0');
@@ -73,13 +73,12 @@ class ReportBuilder {
   }) async {
     final r = app.routineLayer.findRoutine(routineId);
     if (r == null) return null;
-    final name = r.name.isEmpty ? 'noname' : _safe(r.name);
     return _buildAndShare(
       app,
       i18n,
       [r],
       objectKey: 'routine_$routineId',
-      routineLabel: name,
+      routineLabel: safeFileNameOr(r.name),
       uiContext: uiContext,
     );
   }

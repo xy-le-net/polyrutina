@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════
-// media_picker.dart — media selection and addition sheet.
+// lib/ui/services/media_picker.dart — media selection and addition.
 //
 // Five kinds: audio, photo, video, geo, file. Audio — via a
 // separate dialog (audio_dialog.dart). The rest — here.
@@ -12,7 +12,8 @@
 //   <kind>_<index>_<deviceId>_<firstRun>.<ext>
 // The index is a monotone per-device counter (InstallStore),
 // independent of routine ids, so compaction does not invalidate
-// names.
+// names. Forbidden characters are replaced by safeFileName
+// (format.dart) — one shared implementation for the whole app.
 //
 // Atomic copy. The file is first copied into <target>.tmp, then
 // renamed onto the final name. A crash mid-copy cannot leave a
@@ -43,6 +44,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
+import '../core/format.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_sheet.dart';
 import '../screens/geo_picker.dart';
@@ -116,7 +118,7 @@ Future<void> _attach(
 
   final idx = bort.nextMediaIndex();
   final base = '${kind}_${idx}_${bort.deviceId}_${bort.firstRunUnixSec}$ext';
-  final name = _safe(base);
+  final name = safeFileName(base);
 
   final dir = await getApplicationDocumentsDirectory();
   final media = Directory(p.join(dir.path, 'media'));
@@ -141,12 +143,6 @@ Future<void> _attach(
     slot: slot,
     file: TraceFile(kind: kind, path: target.path, name: name),
   );
-}
-
-// Replacing forbidden characters with an uppercase «X».
-String _safe(String s) {
-  final bad = RegExp(r'[\\/:*?"<>|]');
-  return s.replaceAllMapped(bad, (_) => 'X');
 }
 
 // ─── Photo: series ───

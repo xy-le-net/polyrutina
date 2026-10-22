@@ -1,9 +1,14 @@
 // ═══════════════════════════════════════════════════════════════════
-// routine_plate.dart — one routine tile in the list.
+// lib/ui/cards/routine_plate.dart — one routine tile in the list.
 //
 // Extracted from routines_tab. Contains: frame, name, date, timer,
 // the routine pulse (start/pause/open) with an action subpult
 // (duplicate, mark completed, delete), and a select-mode checkbox.
+//
+// Running palette. When the routine has a running block, the plate
+// takes the opposite theme's roles via OperationalLayer.runningColors
+// — the same method RoutineBlockView uses, so the two views cannot
+// drift apart on the fallback.
 //
 // Scopes. Dependencies are read from point scopes: BortScope (theme,
 // colors, opposite palette), I18nScope (strings), TickerScope (colon
@@ -58,18 +63,13 @@ class RoutinePlate extends StatelessWidget {
     final Color textSoft;
     final Color accent;
     if (running) {
-      final opposite = bort.colorsForOpposite();
-      if (opposite != null) {
-        plateBg = opposite['bg']!;
-        textMain = opposite['fg']!;
-        textSoft = opposite['dim']!;
-        accent = opposite['signal']!;
-      } else {
-        plateBg = bort.signal;
-        textMain = bort.bg;
-        textSoft = bort.bgdim;
-        accent = bort.bg;
-      }
+      // Running palette — from the shared OperationalLayer method,
+      // the same as RoutineBlockView.
+      final c = bort.runningColors();
+      plateBg = c.bg;
+      textMain = c.fg;
+      textSoft = c.dim;
+      accent = c.signal;
     } else {
       plateBg = bort.bg;
       textMain = bort.fg;

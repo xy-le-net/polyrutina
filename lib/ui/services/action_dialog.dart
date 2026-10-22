@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════
-// action_dialog.dart — shift history viewer.
+// lib/ui/services/action_dialog.dart — shift history viewer.
 //
 // Shows monthly shift totals: a month switcher at the top, the
 // month total, and a per-day list («mon 12: 2h 7m»). A share pult
@@ -8,6 +8,15 @@
 // Data comes from ShiftHistory (shift_history.json). Days are the
 // daily shift totals recorded at midnight; empty months show a
 // placeholder.
+//
+// Frame geometry lives in DialogFrame: bg fill, dim border,
+// kRadius corners, kFramePad inset. The frame dismisses on a tap
+// outside; the inner content absorbs touches. The optional height
+// cap is kept at side * 12 so the day list cannot overflow the
+// screen.
+//
+// Weekday key. The former local copy of _weekdayKey has been
+// removed; the shared weekdayKey from format.dart is used.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -18,44 +27,26 @@ import 'package:share_plus/share_plus.dart';
 import '../../data/i18n.dart';
 import '../../data/operational_layer.dart';
 import '../core/app_scope.dart';
+import '../core/dialog_frame.dart';
 import '../core/format.dart';
 import '../pults/pult_core.dart';
 
 Future<void> showShiftHistory(BuildContext context) async {
-  final app = AppScope.of(context);
-  final bort = app.bort;
   final side = PultScope.of(context).smallSide;
-
-  final pad = side * bort.kFramePad;
-  final strokeW = side * bort.kStroke;
-  final radius = side * bort.kRadius;
 
   await showDialog<void>(
     context: context,
     barrierColor: Colors.transparent,
     builder: (ctx) {
-      return _ShiftHistoryDialog(
-        pad: pad,
-        strokeW: strokeW,
-        radius: radius,
-        side: side,
-      );
+      return _ShiftHistoryDialog(side: side);
     },
   );
 }
 
 class _ShiftHistoryDialog extends StatefulWidget {
-  final double pad;
-  final double strokeW;
-  final double radius;
   final double side;
 
-  const _ShiftHistoryDialog({
-    required this.pad,
-    required this.strokeW,
-    required this.radius,
-    required this.side,
-  });
+  const _ShiftHistoryDialog({required this.side});
 
   @override
   State<_ShiftHistoryDialog> createState() => _ShiftHistoryDialogState();
@@ -125,7 +116,7 @@ class _ShiftHistoryDialogState extends State<_ShiftHistoryDialog> {
       final sec = days[d]!;
       total += sec;
       final dt = DateTime(_year, _month, d);
-      final wd = _weekdayKey(dt.weekday);
+      final wd = weekdayKey(dt.weekday);
       buf.writeln('${i18n.t(wd)} $d: ${fmtTime(sec, i18n.t)}');
     }
     buf.writeln();
@@ -148,156 +139,118 @@ class _ShiftHistoryDialogState extends State<_ShiftHistoryDialog> {
       total += days[d]!;
     }
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(context).pop(),
-      child: Center(
-        child: GestureDetector(
-          onTap: () {},
-          child: Container(
-            margin: EdgeInsets.symmetric(horizontal: side * 1.2),
-            constraints: BoxConstraints(maxHeight: side * 12),
-            decoration: BoxDecoration(
-              color: bort.bg,
-              border: Border.all(color: bort.dim, width: widget.strokeW),
-              borderRadius: BorderRadius.circular(widget.radius),
-            ),
-            padding: EdgeInsets.all(widget.pad),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Pult(
-                      spec: PultSpec(
-                        id: 'shift_prev',
-                        icon: Icons.chevron_left,
-                        onTap: () => _shift(-1),
-                      ),
-                      fg: bort.fg,
-                      bg: bort.bg,
-                      signal: bort.signal,
-                      overrideSize: side * bort.kPultSmall,
+    return DialogFrame(
+      onDismiss: () => Navigator.of(context).pop(),
+      maxHeight: side * 12,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Pult(
+                spec: PultSpec(
+                  id: 'shift_prev',
+                  icon: Icons.chevron_left,
+                  onTap: () => _shift(-1),
+                ),
+                fg: bort.fg,
+                bg: bort.bg,
+                signal: bort.signal,
+                overrideSize: side * bort.kPultSmall,
+              ),
+              Expanded(
+                child: Center(
+                  child: Text(
+                    _monthTitle(),
+                    style: TextStyle(
+                      color: bort.fg,
+                      fontSize: side * bort.kName,
                     ),
-                    Expanded(
-                      child: Center(
-                        child: Text(
-                          _monthTitle(),
-                          style: TextStyle(
-                            color: bort.fg,
-                            fontSize: side * bort.kName,
+                  ),
+                ),
+              ),
+              Pult(
+                spec: PultSpec(
+                  id: 'shift_next',
+                  icon: Icons.chevron_right,
+                  onTap: () => _shift(1),
+                ),
+                fg: bort.fg,
+                bg: bort.bg,
+                signal: bort.signal,
+                overrideSize: side * bort.kPultSmall,
+              ),
+            ],
+          ),
+          SizedBox(height: side * bort.kFramePad * 0.5),
+          Text(
+            '${i18n.t('bort.shift')}: ${fmtTime(total, i18n.t)}',
+            style: TextStyle(color: bort.signal, fontSize: side * bort.kName),
+          ),
+          SizedBox(height: side * bort.kFramePad * 0.5),
+          Flexible(
+            child: keys.isEmpty
+                ? Padding(
+                    padding: EdgeInsets.symmetric(
+                      vertical: side * bort.kFramePad,
+                    ),
+                    child: Text('—', style: TextStyle(color: bort.dim)),
+                  )
+                : ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final d in keys)
+                        Padding(
+                          padding: EdgeInsets.symmetric(vertical: side * 0.05),
+                          child: Text(
+                            '${_weekdayLabel(i18n, d)} $d: '
+                            '${fmtTime(days[d]!, i18n.t)}',
+                            style: TextStyle(
+                              color: bort.fg,
+                              fontSize: side * bort.kNumberSmall,
+                              fontFamily: 'monospace',
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                    Pult(
-                      spec: PultSpec(
-                        id: 'shift_next',
-                        icon: Icons.chevron_right,
-                        onTap: () => _shift(1),
-                      ),
-                      fg: bort.fg,
-                      bg: bort.bg,
-                      signal: bort.signal,
-                      overrideSize: side * bort.kPultSmall,
-                    ),
-                  ],
+                    ],
+                  ),
+          ),
+          SizedBox(height: side * bort.kFramePad * 0.8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Pult(
+                spec: PultSpec(
+                  id: 'shift_share',
+                  icon: Icons.ios_share,
+                  onTap: keys.isEmpty ? null : () => _share(app, days),
                 ),
-                SizedBox(height: widget.pad * 0.5),
-                Text(
-                  '${i18n.t('bort.shift')}: ${fmtTime(total, i18n.t)}',
+                fg: keys.isEmpty ? bort.dim : bort.fg,
+                bg: bort.bg,
+                signal: bort.signal,
+                overrideSize: side * bort.kPultSmall,
+              ),
+              SizedBox(width: side * 0.3),
+              GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Text(
+                  i18n.t('common.ok'),
                   style: TextStyle(
                     color: bort.signal,
                     fontSize: side * bort.kName,
                   ),
                 ),
-                SizedBox(height: widget.pad * 0.5),
-                Flexible(
-                  child: keys.isEmpty
-                      ? Padding(
-                          padding: EdgeInsets.symmetric(vertical: widget.pad),
-                          child: Text('—', style: TextStyle(color: bort.dim)),
-                        )
-                      : ListView(
-                          shrinkWrap: true,
-                          children: [
-                            for (final d in keys)
-                              Padding(
-                                padding: EdgeInsets.symmetric(
-                                  vertical: side * 0.05,
-                                ),
-                                child: Text(
-                                  '${_weekdayLabel(i18n, d)} $d: '
-                                  '${fmtTime(days[d]!, i18n.t)}',
-                                  style: TextStyle(
-                                    color: bort.fg,
-                                    fontSize: side * bort.kNumberSmall,
-                                    fontFamily: 'monospace',
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                ),
-                SizedBox(height: widget.pad * 0.8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Pult(
-                      spec: PultSpec(
-                        id: 'shift_share',
-                        icon: Icons.ios_share,
-                        onTap: keys.isEmpty ? null : () => _share(app, days),
-                      ),
-                      fg: keys.isEmpty ? bort.dim : bort.fg,
-                      bg: bort.bg,
-                      signal: bort.signal,
-                      overrideSize: side * bort.kPultSmall,
-                    ),
-                    SizedBox(width: side * 0.3),
-                    GestureDetector(
-                      onTap: () => Navigator.of(context).pop(),
-                      child: Text(
-                        i18n.t('common.ok'),
-                        style: TextStyle(
-                          color: bort.signal,
-                          fontSize: side * bort.kName,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ),
+        ],
       ),
     );
   }
 
   String _weekdayLabel(I18n i18n, int day) {
     final dt = DateTime(_year, _month, day);
-    return i18n.t(_weekdayKey(dt.weekday));
-  }
-}
-
-String _weekdayKey(int weekday) {
-  switch (weekday) {
-    case DateTime.monday:
-      return 'time.mon';
-    case DateTime.tuesday:
-      return 'time.tue';
-    case DateTime.wednesday:
-      return 'time.wed';
-    case DateTime.thursday:
-      return 'time.thu';
-    case DateTime.friday:
-      return 'time.fri';
-    case DateTime.saturday:
-      return 'time.sat';
-    case DateTime.sunday:
-    default:
-      return 'time.sun';
+    return i18n.t(weekdayKey(dt.weekday));
   }
 }

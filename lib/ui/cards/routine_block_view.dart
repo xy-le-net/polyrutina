@@ -126,18 +126,14 @@ class RoutineBlockView extends StatelessWidget {
     final Color fg;
     final Color signal;
     if (running) {
-      final opp = bort.colorsForOpposite();
-      if (opp != null) {
-        bg = opp['bg']!;
-        dim = opp['dim']!;
-        fg = opp['fg']!;
-        signal = opp['signal']!;
-      } else {
-        bg = bort.signal;
-        dim = bort.dim;
-        fg = bort.bg;
-        signal = bort.bg;
-      }
+      // Running palette — from the shared OperationalLayer method
+      // (runningColors), so that this block and RoutinePlate cannot
+      // drift apart on the opposite-theme fallback.
+      final c = bort.runningColors();
+      bg = c.bg;
+      dim = c.dim;
+      fg = c.fg;
+      signal = c.signal;
     } else {
       bg = dimmed ? bort.bgdim : bort.bg;
       dim = bort.dim;

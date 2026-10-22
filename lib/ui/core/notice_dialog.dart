@@ -1,24 +1,25 @@
 // ═══════════════════════════════════════════════════════════════════
-// notice_dialog.dart — всплывающее уведомление в стиле блоков.
+// lib/ui/core/notice_dialog.dart — floating notice.
 //
-// Устройство. Рамка той же формы, что блоки: фон bg, обводка dim,
-// скругление радиуса kRadius, отбивка kFramePad. Внутри — текст
-// и кнопка подтверждения словом (сигнального цвета), как «сброс»
-// в иных местах. Снимается касанием кнопки либо касанием вне
-// рамки. Иных кнопок нет.
+// Frame geometry lives in DialogFrame: bg fill, dim border,
+// kRadius corners, kFramePad inset. Inside — title, optional
+// subtitle, and a confirm word (signal-colored), as in «reset»
+// elsewhere. Dismissed by the button or by a tap outside the frame.
+// No other buttons.
 //
-// Употребление.
+// Usage:
 //   await showNotice(context, title: 'сирот не нашлось');
 //   await showNotice(context, title: 'удалено: 3',
 //                    subtitle: 'освобождено: 12 МБ');
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 
 import '../pults/pult_core.dart';
 import 'app_scope.dart';
+import 'dialog_frame.dart';
 
 Future<void> showNotice(
   BuildContext context, {
@@ -31,74 +32,52 @@ Future<void> showNotice(
   final side = PultScope.of(context).smallSide;
 
   final pad = side * bort.kFramePad;
-  final strokeW = side * bort.kStroke;
-  final radius = side * bort.kRadius;
 
   await showDialog<void>(
     context: context,
     barrierColor: Colors.transparent,
     builder: (ctx) {
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        // Касание вне рамки — снять.
-        onTap: () => Navigator.of(ctx).pop(),
-        child: Center(
-          child: GestureDetector(
-            // Касание внутри рамки — поглотить, не снимать.
-            onTap: () {},
-            child: Container(
-              margin: EdgeInsets.symmetric(horizontal: side * 1.2),
-              decoration: BoxDecoration(
-                color: bort.bg,
-                border: Border.all(color: bort.dim, width: strokeW),
-                borderRadius: BorderRadius.circular(radius),
+      return DialogFrame(
+        onDismiss: () => Navigator.of(ctx).pop(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: TextStyle(color: bort.fg, fontSize: side * bort.kTitle),
+            ),
+            if (subtitle != null) ...[
+              SizedBox(height: pad * 0.5),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: bort.dim,
+                  fontSize: side * bort.kNumberSmall,
+                ),
               ),
-              padding: EdgeInsets.all(pad),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
+            ],
+            SizedBox(height: pad * 0.8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: GestureDetector(
+                onTap: () => Navigator.of(ctx).pop(),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: side * 0.2,
+                    vertical: side * 0.1,
+                  ),
+                  child: Text(
+                    i18n.t('common.ok'),
                     style: TextStyle(
-                      color: bort.fg,
-                      fontSize: side * bort.kTitle,
+                      color: bort.signal,
+                      fontSize: side * bort.kName,
                     ),
                   ),
-                  if (subtitle != null) ...[
-                    SizedBox(height: pad * 0.5),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        color: bort.dim,
-                        fontSize: side * bort.kNumberSmall,
-                      ),
-                    ),
-                  ],
-                  SizedBox(height: pad * 0.8),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: GestureDetector(
-                      onTap: () => Navigator.of(ctx).pop(),
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: side * 0.2,
-                          vertical: side * 0.1,
-                        ),
-                        child: Text(
-                          i18n.t('common.ok'),
-                          style: TextStyle(
-                            color: bort.signal,
-                            fontSize: side * bort.kName,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
-          ),
+          ],
         ),
       );
     },

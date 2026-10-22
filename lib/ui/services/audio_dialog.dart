@@ -1,14 +1,16 @@
 // ═══════════════════════════════════════════════════════════════════
-// audio_dialog.dart — диалог записи аудио.
+// lib/ui/services/audio_dialog.dart — audio recording dialog.
 //
-// Вынесен из media_picker. Открывается кнопкою «аудио» в подпульте
-// медиа. Запись чрез record, результат — файл в media/ и привязка
-// к следу слота.
+// Extracted from media_picker. Opened by the «audio» pult in the
+// media subpult. Recording goes through the record package; the
+// result is a file in media/ attached to the slot's trace.
 //
-// Индекс файла берётся ОДИН раз при старте записи — оттого имя
-// на диске и регистрация в теле следа совпадают.
+// File index is taken ONCE at recording start — so the on-disk
+// name and the registration in the trace body match. Forbidden
+// characters are replaced by safeFileName (format.dart) — one
+// shared implementation for the whole app.
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:io';
@@ -20,6 +22,7 @@ import 'package:record/record.dart';
 
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
+import '../core/format.dart';
 import '../pults/pult_core.dart';
 
 Future<void> showAudioDialog(
@@ -58,7 +61,7 @@ class _AudioDialogState extends State<_AudioDialog> {
       if (!mounted) return;
       final app = AppScope.of(context);
       final idx = app.bort.nextMediaIndex();
-      final name = _safe(
+      final name = safeFileName(
         'audio_$idx'
         '_${app.bort.deviceId}'
         '_${app.bort.firstRunUnixSec}.m4a',
@@ -155,10 +158,4 @@ class _AudioDialogState extends State<_AudioDialog> {
       ),
     );
   }
-}
-
-// ─── Замена запретных знаков заглавною «X» ───
-String _safe(String s) {
-  final bad = RegExp(r'[\\/:*?"<>|]');
-  return s.replaceAllMapped(bad, (_) => 'X');
 }

@@ -409,6 +409,27 @@ class OperationalLayer extends ChangeNotifier {
   String oppositeThemeName() => _themes.oppositeName();
   Map<String, Color>? colorsForOpposite() => _themes.colorsForOpposite();
 
+  // ─── Running palette ───
+  // Colors for a routine block or plate that is currently running:
+  // the opposite theme's roles, so the running item inverts against
+  // its neighbours, with a defensive fallback to the signal/bg pair
+  // (the fallback is unreachable today — colorsForOpposite always
+  // yields a map — but kept for the method's contract). Both
+  // RoutineBlockView and RoutinePlate read this; their former
+  // inline duplication of the branch is removed.
+  ({Color bg, Color dim, Color fg, Color signal}) runningColors() {
+    final opp = colorsForOpposite();
+    if (opp != null) {
+      return (
+        bg: opp['bg']!,
+        dim: opp['dim']!,
+        fg: opp['fg']!,
+        signal: opp['signal']!,
+      );
+    }
+    return (bg: signal, dim: dim, fg: bg, signal: bg);
+  }
+
   // ─── Block collapse ───
   // Default expanded: note, work. Default collapsed: prep, transit,
   // idle, closeout, summary. The set holds the COLLAPSED kinds.

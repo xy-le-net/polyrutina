@@ -282,13 +282,15 @@ class Pult extends StatelessWidget {
     );
 
     // Subpult dot: only when longSubs present. Doubled in size. The
-    // outline is drawn in the pult's core color (fg or signal),
-    // which is always the opposite of the dot's own color (signal
-    // or bg) — so the dot reads as a distinct marker in both the
-    // selected and unselected states.
+    // dot's fill is signal-colored when idle and bg-colored when
+    // selected; the outline is always the exact opposite of the
+    // fill (bg for idle, signal for selected), so the dot reads as
+    // a marker in both states without depending on the surrounding
+    // block hue or the pult's core color.
     if (spec.longSubs != null) {
       final dotD = (side / 5 < _minDot ? _minDot : side / 5) * 2;
       final dotColor = selected ? iconColor : signal;
+      final dotOutline = selected ? signal : bg;
       core = Stack(
         clipBehavior: Clip.none,
         children: [
@@ -302,7 +304,7 @@ class Pult extends StatelessWidget {
               decoration: BoxDecoration(
                 color: dotColor,
                 shape: BoxShape.circle,
-                border: Border.all(color: coreColor, width: side / 20),
+                border: Border.all(color: dotOutline, width: side / 20),
               ),
             ),
           ),

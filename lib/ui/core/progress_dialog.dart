@@ -1,32 +1,39 @@
 // ═══════════════════════════════════════════════════════════════════
-// progress_dialog.dart — всплывающая рамка с круговым прогрессом.
+// lib/ui/core/progress_dialog.dart — circular progress dialog.
 //
-// Устройство. Рамка той же формы, что блоки и уведомления: фон bg,
-// обводка dim, скругление радиуса kRadius, отбивка kFramePad.
-// Внутри — надпись, круговой индикатор заполнения и надпись-ссылка
-// «отмена» сигнального цвета.
+// Frame geometry lives in DialogFrame: bg fill, dim border,
+// kRadius corners, kFramePad inset. Inside — title, circular
+// progress with a percentage at the center, and a cancel word
+// (signal-colored).
 //
-// Прогресс. Значение от 0.0 до 1.0. Внутри круга — проценты
-// целыми (без десятых). Круг рисуется штатным CircularProgressIndicator
-// с value; цвет — сигнальный, подложка — dim.
+// The frame does not dismiss on a tap outside: a progress dialog
+// must not vanish by accident. DialogFrame is called with a
+// no-op onDismiss, which absorbs the touch without closing.
 //
-// Отмена. Касание слова «отмена» — сигнал отмены; диалог закрывается,
-// вызывающий код должен утилизировать незавершённую работу.
+// Progress. The value runs from 0.0 to 1.0. Percentages are shown
+// as integers (no decimals). The ring is drawn with the standard
+// CircularProgressIndicator at `value`; the arc is signal-colored,
+// the track is dim.
 //
-// Употребление:
+// Cancel. Tapping the «cancel» word sets the token's cancelled
+// flag; the dialog closes; the caller must then abandon the
+// unfinished work.
+//
+// Usage:
 //   final token = ProgressToken();
 //   showDialog(..., builder: (_) => ProgressDialog(token: token));
-//   // в работе периодически: token.report(0.3);
-//   // по завершении: Navigator.pop(context);
-//   // если token.cancelled — прервать работу.
+//   // during work: token.report(0.3);
+//   // on completion: Navigator.pop(context);
+//   // if token.cancelled — abort the work.
 //
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 
 import '../pults/pult_core.dart';
 import 'app_scope.dart';
+import 'dialog_frame.dart';
 
 class ProgressToken extends ChangeNotifier {
   double _value = 0;
@@ -66,83 +73,76 @@ class ProgressDialog extends StatelessWidget {
 
     final pad = side * bort.kFramePad;
     final strokeW = side * bort.kStroke;
-    final radius = side * bort.kRadius;
     final circleSize = side * 2.4;
 
-    return Center(
-      child: Container(
-        margin: EdgeInsets.symmetric(horizontal: side * 1.2),
-        decoration: BoxDecoration(
-          color: bort.bg,
-          border: Border.all(color: bort.dim, width: strokeW),
-          borderRadius: BorderRadius.circular(radius),
-        ),
-        padding: EdgeInsets.all(pad),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              title,
-              style: TextStyle(color: bort.fg, fontSize: side * bort.kTitle),
-            ),
-            SizedBox(height: pad),
-            // Круговой прогресс с процентами внутри.
-            AnimatedBuilder(
-              animation: token,
-              builder: (_, __) {
-                final percent = (token.value * 100).round();
-                return SizedBox(
-                  width: circleSize,
-                  height: circleSize,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      SizedBox(
-                        width: circleSize,
-                        height: circleSize,
-                        child: CircularProgressIndicator(
-                          value: token.value,
-                          strokeWidth: strokeW * 6,
-                          color: bort.signal,
-                          backgroundColor: bort.dim,
-                        ),
+    return DialogFrame(
+      // A progress dialog does not dismiss on an outside tap:
+      // the no-op absorbs the touch without closing.
+      onDismiss: () {},
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            title,
+            style: TextStyle(color: bort.fg, fontSize: side * bort.kTitle),
+          ),
+          SizedBox(height: pad),
+          // Circular progress with percentages at the center.
+          AnimatedBuilder(
+            animation: token,
+            builder: (_, __) {
+              final percent = (token.value * 100).round();
+              return SizedBox(
+                width: circleSize,
+                height: circleSize,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: circleSize,
+                      height: circleSize,
+                      child: CircularProgressIndicator(
+                        value: token.value,
+                        strokeWidth: strokeW * 6,
+                        color: bort.signal,
+                        backgroundColor: bort.dim,
                       ),
-                      Text(
-                        '$percent%',
-                        style: TextStyle(
-                          color: bort.fg,
-                          fontSize: side * bort.kName,
-                          fontFamily: 'monospace',
-                        ),
+                    ),
+                    Text(
+                      '$percent%',
+                      style: TextStyle(
+                        color: bort.fg,
+                        fontSize: side * bort.kName,
+                        fontFamily: 'monospace',
                       ),
-                    ],
-                  ),
-                );
-              },
-            ),
-            SizedBox(height: pad),
-            // Слово-ссылка «отмена» сигнальным цветом.
-            GestureDetector(
-              onTap: () {
-                token.cancel();
-                Navigator.of(context).pop();
-              },
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: side * 0.2,
-                  vertical: side * 0.1,
+                    ),
+                  ],
                 ),
-                child: Text(
-                  i18n.t('export.cancel'),
-                  style: TextStyle(
-                    color: bort.signal,
-                    fontSize: side * bort.kName,
-                  ),
+              );
+            },
+          ),
+          SizedBox(height: pad),
+          // The «cancel» word — signal-colored.
+          GestureDetector(
+            onTap: () {
+              token.cancel();
+              Navigator.of(context).pop();
+            },
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: side * 0.2,
+                vertical: side * 0.1,
+              ),
+              child: Text(
+                i18n.t('export.cancel'),
+                style: TextStyle(
+                  color: bort.signal,
+                  fontSize: side * bort.kName,
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

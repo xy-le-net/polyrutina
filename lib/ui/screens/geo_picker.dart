@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════
-// geo_picker.dart — geo point picking on a self-hosted map.
+// lib/ui/screens/geo_picker.dart — geo point picking on a map.
 //
 // Opened from the media picker sheet. Structure:
 //   — map (flutter_map) full-screen;
@@ -10,8 +10,15 @@
 //     widget (RepaintBoundary → PNG) into media/ under the geo kind;
 //   — exit pult closes without saving.
 //
+// Header. The AppBar is removed: the header is laid out through
+// ScreenHeader inside a SafeArea. ScreenHeader reserves the left
+// zone for the root pult, prints the geo title, and puts the exit
+// pult on the right. The former per-screen Padding + ControlRow +
+// manual title has been pulled out into ScreenHeader so the header
+// matches the other full-screen sheets.
+//
 // Tile sources. The default OpenStreetMap tile server is not always
-// reachable (blocked, rate-limited, or behind a slow network). Four
+// reachable (blocked, rate-limited, or behind a slow network). Five
 // alternative raster sources are built in, none requiring an API key:
 //   — OSM standard;
 //   — Esri World Street Map;
@@ -31,12 +38,6 @@
 // attachments; the name follows the common template
 // (<device>_<routine>_<slot>_geo_<index>).
 //
-// The header uses ControlRow for unified spacing with the root pult.
-//
-// Exit lives in the top-right corner of the header, as the down
-// chevron (same as checklist_screen and media_viewer) — the single
-// pattern of exit for full-screen sheets.
-//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -54,7 +55,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
-import '../core/control_row.dart';
+import '../core/screen_header.dart';
 import '../pults/pult_core.dart';
 
 Future<void> showGeoPicker({
@@ -258,8 +259,6 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
     final i18n = app.i18n;
     final side = PultScope.of(context).smallSide;
 
-    final rootSide = side;
-
     final source = _tileSources[_tileSourceIndex];
 
     return Scaffold(
@@ -267,41 +266,11 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Unified control row: root pult on the left, title and
-            // exit pult in the remaining space. Padding top and right
-            // match the root pult offset (6) so the block aligns
-            // flush with the compass in the top-left corner. The Row
-            // centers its children vertically.
-            Padding(
-              padding: const EdgeInsets.only(top: 6, bottom: 8, right: 6),
-              child: ControlRow(
-                rootSide: rootSide,
-                alignment: Alignment.centerLeft,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        i18n.t('media.geo'),
-                        style: TextStyle(color: bort.fg),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Pult(
-                      spec: PultSpec(
-                        id: 'geo_cancel',
-                        icon: Icons.keyboard_arrow_down,
-                        onTap: _busy ? null : _close,
-                      ),
-                      fg: bort.fg,
-                      bg: bort.bg,
-                      signal: bort.signal,
-                      overrideSize: side * bort.kPultSmall,
-                    ),
-                  ],
-                ),
-              ),
+            // Unified header: root pult space on the left, geo title
+            // on the remaining width, exit pult on the right.
+            ScreenHeader(
+              title: i18n.t('media.geo'),
+              onExit: _busy ? null : _close,
             ),
             Expanded(
               child: Stack(

@@ -1,11 +1,11 @@
 // ═══════════════════════════════════════════════════════════════════
-// confirm_dialog.dart — modal confirmation in the block style.
+// lib/ui/core/confirm_dialog.dart — modal confirmation.
 //
-// Shape follows the blocks: bg fill, dim border, kRadius corners,
-// kFramePad inset. Inside — title text, optional subtitle, and two
-// words: cancel (dim) and confirm (signal). Tap on cancel, on
-// confirm, or outside the frame dismisses the dialog; the result
-// is a bool: true for confirm, false otherwise.
+// Frame geometry lives in DialogFrame: bg fill, dim border,
+// kRadius corners, kFramePad inset. Inside — title, optional
+// subtitle, and two words: cancel (dim) and confirm (signal).
+// Tap on cancel, on confirm, or outside the frame dismisses the
+// dialog; the result is a bool — true for confirm, false otherwise.
 //
 // Usage:
 //   final ok = await showConfirm(context,
@@ -27,6 +27,7 @@ import 'package:flutter/material.dart';
 
 import '../pults/pult_core.dart';
 import 'app_scope.dart';
+import 'dialog_frame.dart';
 
 Future<bool> showConfirm(
   BuildContext context, {
@@ -39,8 +40,6 @@ Future<bool> showConfirm(
   final side = PultScope.of(context).smallSide;
 
   final pad = side * bort.kFramePad;
-  final strokeW = side * bort.kStroke;
-  final radius = side * bort.kRadius;
   // 1.6× reduction for the action labels.
   final actionSize = side * bort.kName / 1.6;
 
@@ -48,86 +47,68 @@ Future<bool> showConfirm(
     context: context,
     barrierColor: Colors.transparent,
     builder: (ctx) {
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => Navigator.of(ctx).pop(false),
-        child: Center(
-          child: GestureDetector(
-            onTap: () {},
-            child: Container(
-              margin: EdgeInsets.symmetric(horizontal: side * 1.2),
-              decoration: BoxDecoration(
-                color: bort.bg,
-                border: Border.all(color: bort.dim, width: strokeW),
-                borderRadius: BorderRadius.circular(radius),
+      return DialogFrame(
+        onDismiss: () => Navigator.of(ctx).pop(false),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: TextStyle(color: bort.fg, fontSize: side * bort.kTitle),
+            ),
+            if (subtitle != null) ...[
+              SizedBox(height: pad * 0.5),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: bort.dim,
+                  fontSize: side * bort.kNumberSmall,
+                ),
               ),
-              padding: EdgeInsets.all(pad),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      color: bort.fg,
-                      fontSize: side * bort.kTitle,
+            ],
+            SizedBox(height: pad * 0.8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                GestureDetector(
+                  onTap: () => Navigator.of(ctx).pop(false),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: side * 0.3,
+                      vertical: side * 0.1,
                     ),
-                  ),
-                  if (subtitle != null) ...[
-                    SizedBox(height: pad * 0.5),
-                    Text(
-                      subtitle,
+                    child: Text(
+                      cancelLabel,
                       style: TextStyle(
                         color: bort.dim,
-                        fontSize: side * bort.kNumberSmall,
+                        fontSize: actionSize,
+                        height: 1.0,
                       ),
                     ),
-                  ],
-                  SizedBox(height: pad * 0.8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      GestureDetector(
-                        onTap: () => Navigator.of(ctx).pop(false),
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: side * 0.3,
-                            vertical: side * 0.1,
-                          ),
-                          child: Text(
-                            cancelLabel,
-                            style: TextStyle(
-                              color: bort.dim,
-                              fontSize: actionSize,
-                              height: 1.0,
-                            ),
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: side * 0.4),
-                      GestureDetector(
-                        onTap: () => Navigator.of(ctx).pop(true),
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: side * 0.3,
-                            vertical: side * 0.1,
-                          ),
-                          child: Text(
-                            confirmLabel,
-                            style: TextStyle(
-                              color: bort.signal,
-                              fontSize: actionSize,
-                              height: 1.0,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
-                ],
-              ),
+                ),
+                SizedBox(width: side * 0.4),
+                GestureDetector(
+                  onTap: () => Navigator.of(ctx).pop(true),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: side * 0.3,
+                      vertical: side * 0.1,
+                    ),
+                    child: Text(
+                      confirmLabel,
+                      style: TextStyle(
+                        color: bort.signal,
+                        fontSize: actionSize,
+                        height: 1.0,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
+          ],
         ),
       );
     },

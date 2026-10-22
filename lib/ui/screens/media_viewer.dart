@@ -1,15 +1,18 @@
 // ═══════════════════════════════════════════════════════════════════
-// media_viewer.dart — full-screen media viewer.
+// lib/ui/screens/media_viewer.dart — full-screen media viewer.
 //
 // Opened from TraceField by tapping the kind icon. Shows media of a
 // single kind (the one opened), paged in reverse chronology: start
 // at the latest added, «back» — older, «forward» — newer. Buttons
 // are absent when there is nowhere to page.
 //
-// Control row. The AppBar is removed: the header is laid out with
-// ControlRow inside a SafeArea. The root pult (compass) sits on the
-// left; the remaining width holds the titles and the exit pult on
-// the right. This unifies the header across screens.
+// Header. The AppBar is removed: the header is laid out through
+// ScreenHeader inside a SafeArea. ScreenHeader reserves the left
+// zone for the root pult, prints the block title and the routine
+// subtitle (with the frame counter when there is somewhere to
+// page), and puts the exit pult on the right. The former
+// per-screen Padding + ControlRow + manual title column has been
+// pulled out into ScreenHeader.
 //
 // The bottom center pult varies by kind. Audio and video: play/pause.
 // Photo: share. File: open. Geo: open externally (the same action
@@ -74,7 +77,7 @@ import '../../data/i18n.dart';
 import '../../data/operational_layer.dart';
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
-import '../core/control_row.dart';
+import '../core/screen_header.dart';
 import '../pults/pult_core.dart';
 
 class MediaViewer extends StatefulWidget {
@@ -342,56 +345,13 @@ class _MediaViewerState extends State<MediaViewer> {
       body: SafeArea(
         child: Column(
           children: [
-            // Unified control row: root pult on the left, titles and
-            // exit pult in the remaining space. Padding top and right
-            // match the root pult offset (6) so the block aligns
-            // flush with the compass in the top-left corner. The Row
-            // centers its children vertically.
-            Padding(
-              padding: const EdgeInsets.only(top: 6, bottom: 8, right: 6),
-              child: ControlRow(
-                rootSide: side,
-                alignment: Alignment.centerLeft,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            widget.blockTitle.isEmpty ? '—' : widget.blockTitle,
-                            style: TextStyle(color: bort.fg),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          Text(
-                            subtitle,
-                            style: TextStyle(
-                              color: bort.dim,
-                              fontSize: side * bort.kTitle * 0.7,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    Pult(
-                      spec: PultSpec(
-                        id: 'media_close',
-                        icon: Icons.keyboard_arrow_down,
-                        onTap: _close,
-                      ),
-                      fg: bort.fg,
-                      bg: bort.bg,
-                      signal: bort.signal,
-                      overrideSize: side * bort.kPultSmall,
-                    ),
-                  ],
-                ),
-              ),
+            // Unified header: root pult space on the left, block
+            // title and frame subtitle on the remaining width, exit
+            // pult on the right.
+            ScreenHeader(
+              title: widget.blockTitle.isEmpty ? '—' : widget.blockTitle,
+              subtitle: subtitle,
+              onExit: _close,
             ),
             Expanded(
               child: Stack(
@@ -636,9 +596,10 @@ class _MediaViewerState extends State<MediaViewer> {
       final acc = f.acc?.toStringAsFixed(1) ?? '?';
       final file = File(f.path);
 
-      // Background: the screenshot stretched over the page (BoxFit.cover).
-      // Foreground: a compact coordinates line with an adjacent
-      // «open externally» pult. The screenshot file name is not shown.
+      // Background: the screenshot stretched over the page
+      // (BoxFit.cover). Foreground: a compact coordinates line
+      // with an adjacent «open externally» pult. The screenshot
+      // file name is not shown.
       return Stack(
         fit: StackFit.expand,
         children: [

@@ -1,40 +1,46 @@
 // ═══════════════════════════════════════════════════════════════════
-// format.dart — единые форматтеры дат и длительностей.
+// format.dart — shared formatters for dates, durations, and names.
 //
-// Всё, что зависит от языка (подписи единиц времени, дни недели),
-// берётся чрез переводчик Translate (сие String Function(String)).
+// Everything language-dependent (time-unit labels, weekdays) goes
+// through the translator Translate (a String Function(String)).
 //
-// Подписи единиц: time.d, time.h, time.m, time.s.
-// Дни недели: time.mon, time.tue, time.wed, time.thu, time.fri,
-//             time.sat, time.sun.
+// Unit labels: time.d, time.h, time.m, time.s.
+// Weekdays: time.mon, time.tue, time.wed, time.thu, time.fri,
+//           time.sat, time.sun.
 //
-// Ведущий ноль — только у второго числа в паре («3ч 07м», «3д 05ч»).
-// Одиночное число — без нуля («7м», «5с»).
+// Leading zero — only on the second number of a pair («3ч 07м»,
+// «3д 05ч»). A single number carries no zero («7м», «5с»).
 //
-// Прозрачность не применяется.
+// File names. safeFileName strips characters forbidden by the
+// filesystem (backslash, slash, colon, asterisk, question mark,
+// quote, angle brackets, pipe) and replaces each with an uppercase
+// «X». safeFileNameOr additionally falls back to «noname» when the
+// result is empty — the convention used by the export report.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 typedef Translate = String Function(String key);
 
-// ─── Дата «пн 06.10 10:31» ───
+// ─── Date «пн 06.10 10:31» ───
 String fmtDate(int unixSec, Translate t) {
   final d = DateTime.fromMillisecondsSinceEpoch(unixSec * 1000);
-  final wd = _weekdayKey(d.weekday);
+  final wd = weekdayKey(d.weekday);
   String two(int n) => n.toString().padLeft(2, '0');
   return '${t(wd)} ${two(d.day)}.${two(d.month)} '
       '${two(d.hour)}:${two(d.minute)}';
 }
 
-// ─── Дата полная, с годом — для отчёта ───
+// ─── Full date with the year — for the report ───
 String fmtDateFull(int unixSec, Translate t) {
   final d = DateTime.fromMillisecondsSinceEpoch(unixSec * 1000);
-  final wd = _weekdayKey(d.weekday);
+  final wd = weekdayKey(d.weekday);
   String two(int n) => n.toString().padLeft(2, '0');
   return '${t(wd)} ${two(d.day)}.${two(d.month)}.${d.year} '
       '${two(d.hour)}:${two(d.minute)}';
 }
 
-// ─── Короткое время «9ч 03м», «3д 5ч», «7м» ───
+// ─── Short time «9ч 03м», «3д 5ч», «7м» ───
 String fmtTime(int sec, Translate t) {
   if (sec < 0) sec = 0;
   final days = sec ~/ 86400;
@@ -46,7 +52,7 @@ String fmtTime(int sec, Translate t) {
   return '$minutes${t('time.m')}';
 }
 
-// ─── Формат правки времени: «дд:чч:мм:сс» ───
+// ─── Editable time format: «дд:чч:мм:сс» ───
 String fmtEditable(int sec) {
   if (sec < 0) sec = 0;
   final d = sec ~/ 86400;
@@ -59,7 +65,7 @@ String fmtEditable(int sec) {
   return '${two(m)}:${two(s)}';
 }
 
-// ─── Разбор правки времени ───
+// ─── Editable time parsing ───
 int? parseEditable(String s) {
   final t = s.trim();
   if (t.isEmpty) return 0;
@@ -94,9 +100,9 @@ int? parseEditable(String s) {
   return null;
 }
 
-// ─── Плановое время: «дни:часы:минуты» ───
-// Дни — до трёх знаков, часы и минуты — всегда по два знака.
-// Предел — 999 суток без малого.
+// ─── Planned time: «days:hours:minutes» ───
+// Days — up to three digits; hours and minutes — always two.
+// The ceiling is 999 days short of a full year.
 const int kPlannedMaxSec = 999 * 86400 + 23 * 3600 + 59 * 60;
 
 String fmtPlannedTime(int sec) {
@@ -109,12 +115,12 @@ String fmtPlannedTime(int sec) {
   return '$d:${two(h)}:${two(m)}';
 }
 
-// ─── Разбор планового времени ───
-// Одно число — минуты. Два чрез двоеточие — часы и минуты.
-// Три — дни, часы, минуты. Любая часть — неотрицательное целое
-// без ограничения по разрядности; приведение к канону — в
-// fmtPlannedTime. Возвращает секунды; null — ежели знаки
-// не числовые, отрицательные либо итог превосходит предел.
+// ─── Planned time parsing ───
+// One number — minutes. Two, colon-separated — hours and minutes.
+// Three — days, hours, minutes. Any part must be a non-negative
+// integer without a digit limit; the canonical reduction happens
+// in fmtPlannedTime. Returns seconds; null when the input contains
+// non-numeric or negative parts, or the total exceeds the ceiling.
 int? parsePlannedTime(String s) {
   final t = s.trim();
   if (t.isEmpty) return 0;
@@ -148,8 +154,9 @@ int? parsePlannedTime(String s) {
   return total;
 }
 
-// ─── Ключ дня недели ───
-String _weekdayKey(int weekday) {
+// ─── Weekday key ───
+// Public: both the formatters above and action_dialog use it.
+String weekdayKey(int weekday) {
   switch (weekday) {
     case DateTime.monday:
       return 'time.mon';
@@ -167,4 +174,21 @@ String _weekdayKey(int weekday) {
     default:
       return 'time.sun';
   }
+}
+
+// ─── Forbidden-character replacement ───
+// Every occurrence of a filesystem-reserved character is replaced
+// with an uppercase «X». No trimming, no fallback: the caller
+// decides what to do with an empty result.
+String safeFileName(String s) {
+  final bad = RegExp(r'[\\/:*?"<>|]');
+  return s.replaceAllMapped(bad, (_) => 'X');
+}
+
+// ─── Forbidden-character replacement with fallback ───
+// Same as safeFileName, but an empty (or whitespace-only) result
+// becomes «noname» — the export report's convention.
+String safeFileNameOr(String s) {
+  final out = safeFileName(s).trim();
+  return out.isEmpty ? 'noname' : out;
 }
