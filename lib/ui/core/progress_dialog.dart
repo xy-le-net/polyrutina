@@ -34,6 +34,7 @@ import 'package:flutter/material.dart';
 import '../pults/pult_core.dart';
 import 'app_scope.dart';
 import 'dialog_frame.dart';
+import 'link_text.dart';
 
 class ProgressToken extends ChangeNotifier {
   double _value = 0;
@@ -122,25 +123,19 @@ class ProgressDialog extends StatelessWidget {
             },
           ),
           SizedBox(height: pad),
-          // The «cancel» word — signal-colored.
-          GestureDetector(
+          // The «cancel» word — signal-colored, underlined.
+          LinkText(
+            text: i18n.t('export.cancel'),
+            color: bort.signal,
+            fontSize: side * bort.kName,
+            padding: EdgeInsets.symmetric(
+              horizontal: side * 0.2,
+              vertical: side * 0.1,
+            ),
             onTap: () {
               token.cancel();
               Navigator.of(context).pop();
             },
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: side * 0.2,
-                vertical: side * 0.1,
-              ),
-              child: Text(
-                i18n.t('export.cancel'),
-                style: TextStyle(
-                  color: bort.signal,
-                  fontSize: side * bort.kName,
-                ),
-              ),
-            ),
           ),
         ],
       ),

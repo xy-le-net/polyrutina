@@ -3,7 +3,10 @@
 //
 // Frame geometry lives in DialogFrame: bg fill, dim border,
 // kRadius corners, kFramePad inset. Inside — title, optional
-// subtitle, and two words: cancel (dim) and confirm (signal).
+// subtitle, and two words: cancel (dim, underlined) and confirm
+// (signal, underlined). Both words go through LinkText, so the
+// underline and the hit area are uniform across the app.
+//
 // Tap on cancel, on confirm, or outside the frame dismisses the
 // dialog; the result is a bool — true for confirm, false otherwise.
 //
@@ -28,6 +31,7 @@ import 'package:flutter/material.dart';
 import '../pults/pult_core.dart';
 import 'app_scope.dart';
 import 'dialog_frame.dart';
+import 'link_text.dart';
 
 Future<bool> showConfirm(
   BuildContext context, {
@@ -42,6 +46,10 @@ Future<bool> showConfirm(
   final pad = side * bort.kFramePad;
   // 1.6× reduction for the action labels.
   final actionSize = side * bort.kName / 1.6;
+  final actionPad = EdgeInsets.symmetric(
+    horizontal: side * 0.3,
+    vertical: side * 0.1,
+  );
 
   final result = await showDialog<bool>(
     context: context,
@@ -71,40 +79,20 @@ Future<bool> showConfirm(
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                GestureDetector(
+                LinkText(
+                  text: cancelLabel,
+                  color: bort.dim,
+                  fontSize: actionSize,
+                  padding: actionPad,
                   onTap: () => Navigator.of(ctx).pop(false),
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: side * 0.3,
-                      vertical: side * 0.1,
-                    ),
-                    child: Text(
-                      cancelLabel,
-                      style: TextStyle(
-                        color: bort.dim,
-                        fontSize: actionSize,
-                        height: 1.0,
-                      ),
-                    ),
-                  ),
                 ),
                 SizedBox(width: side * 0.4),
-                GestureDetector(
+                LinkText(
+                  text: confirmLabel,
+                  color: bort.signal,
+                  fontSize: actionSize,
+                  padding: actionPad,
                   onTap: () => Navigator.of(ctx).pop(true),
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: side * 0.3,
-                      vertical: side * 0.1,
-                    ),
-                    child: Text(
-                      confirmLabel,
-                      style: TextStyle(
-                        color: bort.signal,
-                        fontSize: actionSize,
-                        height: 1.0,
-                      ),
-                    ),
-                  ),
                 ),
               ],
             ),

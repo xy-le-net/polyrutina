@@ -28,6 +28,7 @@ import '../../data/i18n.dart';
 import '../core/app_scope.dart';
 import '../core/dialog_frame.dart';
 import '../core/format.dart';
+import '../core/link_text.dart';
 import '../pults/pult_core.dart';
 
 Future<void> showShiftHistory(BuildContext context) async {
@@ -222,15 +223,11 @@ class _ShiftHistoryDialogState extends State<_ShiftHistoryDialog> {
                 overrideSize: side * bort.kPultSmall,
               ),
               SizedBox(width: side * 0.3),
-              GestureDetector(
+              LinkText(
+                text: i18n.t('common.ok'),
+                color: bort.signal,
+                fontSize: side * bort.kName,
                 onTap: () => Navigator.of(context).pop(),
-                child: Text(
-                  i18n.t('common.ok'),
-                  style: TextStyle(
-                    color: bort.signal,
-                    fontSize: side * bort.kName,
-                  ),
-                ),
               ),
             ],
           ),

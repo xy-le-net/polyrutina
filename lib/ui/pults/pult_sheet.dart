@@ -8,28 +8,23 @@
 // A tap on the empty area of the sheet (barrier) closes it. The
 // confirming state lives in PultState and is reset on close.
 //
-// Stack guard. A module-level depth counter (_sheetDepth) tracks
-// how many sheets are currently open. When showPultSheet is called
-// while another sheet is still open — a rapid tap on another pult,
-// or a sheet left half-closed by a system back — the stale sheet
-// is dismissed first via popUntil(isFirst), so the new one never
-// lands on top of an old one. The finally block decrements the
-// counter and resets the confirming state on every exit path,
-// including an early pop, so no dangling state survives the
-// interruption.
+// Route tracking. The sheet's route is remembered in a module-level
+// variable (_currentSheetRoute). When a new sheet is requested while
+// a previous one is still active, ONLY that previous route is
+// removed — not everything above the page, as the earlier
+// popUntil(isFirst) guard did. The earlier guard swept away a
+// routine card that had just been pushed by openRoutine, leaving
+// the next sheet attached to a discarded context (the «opens but
+// ignores taps» symptom). Route tracking keeps the card intact and
+// opens the next sheet above it.
+//
+// RawDialogRoute is used directly because DialogRoute does not
+// expose transitionDuration / transitionBuilder; RawDialogRoute
+// carries the slide-in transition on its own.
 //
 // Reactivity. The optional rebuildOn parameter, when supplied,
 // makes the sheet body listen to that Listenable and rebuild its
-// items on every notification. This is needed for the flags
-// subpult: tapping a flag writes to the routine layer, and the
-// parent pult itself rebuilds via RoutineScope — but the open
-// sheet, whose items were snapshotted at open time, would
-// otherwise never reflect the new «selected» state. When
-// rebuildOn is null, the body is static, as before.
-//
-// No external GestureDetector wraps the pults: the inner Pult
-// receives taps directly, which removes the double-tap ambiguity
-// that the previous IgnorePointer workaround introduced.
+// items on every notification (e.g. the flags subpult).
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -38,17 +33,15 @@ import 'package:flutter/material.dart';
 
 import 'pult_core.dart';
 
-// Tracks how many pult sheets are currently open across the app.
-// Used by showPultSheet to dismiss a stale sheet before opening a
-// fresh one, so sheets never stack.
-int _sheetDepth = 0;
+// The currently open pult-sheet route, if any. Used by showPultSheet
+// to remove a stale sheet without touching routes below it (for
+// example, a routine card pushed after selecting a routine from the
+// day subpult).
+Route<void>? _currentSheetRoute;
 
 Future<void> showPultSheet({
   required BuildContext context,
   required List<PultSpec> subs,
-  // Optional builder used for reactive rebuilds: when rebuildOn is
-  // non-null, the sheet regenerates its items via this builder on
-  // each notification. The initial `subs` snapshot is used otherwise.
   List<PultSpec> Function()? subsBuilder,
   required Color fg,
   required Color bg,
@@ -58,69 +51,70 @@ Future<void> showPultSheet({
 }) async {
   if (subs.isEmpty) return;
   final state = PultScope.of(context);
+  final navigator = Navigator.of(context);
 
-  // Stack guard: if any sheet is still open, dismiss every route
-  // above the page before opening the new one. This covers both a
-  // rapid tap on another pult and a sheet left half-closed by the
-  // system back button.
-  if (_sheetDepth > 0) {
-    Navigator.of(context).popUntil((r) => r.isFirst);
+  // Remove a stale sheet if one is still active. Only that route is
+  // removed — nothing below it. removeRoute() does not pop through
+  // the stack, so a routine card that landed after the previous
+  // sheet was dismissed stays put, and the new sheet opens above it.
+  final stale = _currentSheetRoute;
+  if (stale != null) {
+    if (stale.isActive) {
+      navigator.removeRoute(stale);
+    }
+    _currentSheetRoute = null;
     await Future<void>.delayed(Duration.zero);
-    // The context may have been unmounted while the stale sheet was
-    // dismissing; guard the subsequent showGeneralDialog call.
-    // Returning here is safe: _sheetDepth has not been incremented
-    // yet, so no counter leak — the stale sheet's finally owns its
-    // own decrement.
     if (!context.mounted) return;
   }
 
-  _sheetDepth++;
-  try {
-    await showGeneralDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: '',
-      barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 180),
-      pageBuilder: (_, __, ___) => const SizedBox.shrink(),
-      transitionBuilder: (ctx, anim, _, __) {
-        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOut);
-        final body = _SheetBody(
-          subs: subs,
-          fg: fg,
-          bg: bg,
-          signal: signal,
-          side: side,
-          state: state,
-        );
-        return SlideTransition(
-          position: Tween(
-            begin: const Offset(-1, 0),
-            end: Offset.zero,
-          ).animate(curved),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: rebuildOn == null || subsBuilder == null
-                ? body
-                : ListenableBuilder(
-                    listenable: rebuildOn,
-                    builder: (_, __) => _SheetBody(
-                      subs: subsBuilder(),
-                      fg: fg,
-                      bg: bg,
-                      signal: signal,
-                      side: side,
-                      state: state,
-                    ),
+  final route = RawDialogRoute<void>(
+    pageBuilder: (_, __, ___) => const SizedBox.shrink(),
+    barrierDismissible: true,
+    barrierLabel: '',
+    barrierColor: Colors.transparent,
+    transitionDuration: const Duration(milliseconds: 180),
+    transitionBuilder: (ctx, anim, _, __) {
+      final curved = CurvedAnimation(parent: anim, curve: Curves.easeOut);
+      final body = _SheetBody(
+        subs: subs,
+        fg: fg,
+        bg: bg,
+        signal: signal,
+        side: side,
+        state: state,
+      );
+      return SlideTransition(
+        position: Tween(
+          begin: const Offset(-1, 0),
+          end: Offset.zero,
+        ).animate(curved),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: rebuildOn == null || subsBuilder == null
+              ? body
+              : ListenableBuilder(
+                  listenable: rebuildOn,
+                  builder: (_, __) => _SheetBody(
+                    subs: subsBuilder(),
+                    fg: fg,
+                    bg: bg,
+                    signal: signal,
+                    side: side,
+                    state: state,
                   ),
-          ),
-        );
-      },
-    );
+                ),
+        ),
+      );
+    },
+  );
+
+  _currentSheetRoute = route;
+  try {
+    await navigator.push(route);
   } finally {
-    _sheetDepth--;
-    if (_sheetDepth < 0) _sheetDepth = 0;
-    // Reset any leftover confirming state on close.
+    if (identical(_currentSheetRoute, route)) {
+      _currentSheetRoute = null;
+    }
     state.setConfirming(null);
   }
 }

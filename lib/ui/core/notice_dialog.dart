@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 import '../pults/pult_core.dart';
 import 'app_scope.dart';
 import 'dialog_frame.dart';
+import 'link_text.dart';
 
 Future<void> showNotice(
   BuildContext context, {
@@ -60,21 +61,15 @@ Future<void> showNotice(
             SizedBox(height: pad * 0.8),
             Align(
               alignment: Alignment.centerRight,
-              child: GestureDetector(
-                onTap: () => Navigator.of(ctx).pop(),
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: side * 0.2,
-                    vertical: side * 0.1,
-                  ),
-                  child: Text(
-                    i18n.t('common.ok'),
-                    style: TextStyle(
-                      color: bort.signal,
-                      fontSize: side * bort.kName,
-                    ),
-                  ),
+              child: LinkText(
+                text: i18n.t('common.ok'),
+                color: bort.signal,
+                fontSize: side * bort.kName,
+                padding: EdgeInsets.symmetric(
+                  horizontal: side * 0.2,
+                  vertical: side * 0.1,
                 ),
+                onTap: () => Navigator.of(ctx).pop(),
               ),
             ),
           ],

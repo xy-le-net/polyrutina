@@ -251,7 +251,11 @@ class RubkaTab extends StatelessWidget {
                   width: 140,
                   child: Text(
                     i18n.t('bort.shift'),
-                    style: TextStyle(color: bort.signal),
+                    style: TextStyle(
+                      color: bort.signal,
+                      decoration: TextDecoration.underline,
+                      decorationColor: bort.signal,
+                    ),
                   ),
                 ),
                 Expanded(
@@ -260,6 +264,8 @@ class RubkaTab extends StatelessWidget {
                     style: TextStyle(
                       color: bort.signal,
                       fontFamily: 'monospace',
+                      decoration: TextDecoration.underline,
+                      decorationColor: bort.signal,
                     ),
                   ),
                 ),

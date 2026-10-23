@@ -99,13 +99,16 @@ class AppContext {
       return;
     }
     bort.stopShift();
-    final cur = routineLayer.currentRoutineId;
-    if (cur == null) return;
-    final r = routineLayer.findRoutine(cur);
-    if (r == null) return;
-    for (final b in r.blocks) {
-      if (b.isRunning) {
-        await routineLayer.pauseBlock(journal, r.id, b.kind);
+    // Walk every routine, not only the current one: with routine
+    // mutex off, several blocks may be running at once, and all of
+    // them must stop when the shift stops. The routine layer is the
+    // single source of truth for which blocks are running; the bort
+    // keeps no parallel list.
+    for (final r in routineLayer.routines) {
+      for (final b in r.blocks) {
+        if (b.isRunning) {
+          await routineLayer.pauseBlock(journal, r.id, b.kind);
+        }
       }
     }
   }
