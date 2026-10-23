@@ -224,7 +224,15 @@ Future<void> _applyParsed(
   final TraceLayer traceLayer = app.traceLayer;
   final JournalLayer journal = app.journal;
 
-  final r = await routineLayer.createRoutine(journal, sourceKey: p.key);
+  // Imported routines carry their historical creation moment from
+  // the archive; without this, an old routine would look as if it
+  // had just been created at the instant of import. A zero from the
+  // schema is treated as «absent» and falls back to now.
+  final r = await routineLayer.createRoutine(
+    journal,
+    sourceKey: p.key,
+    createdAt: p.createdAt > 0 ? p.createdAt : null,
+  );
   if (p.name.isNotEmpty) {
     await routineLayer.renameRoutine(journal, r.id, p.name);
   }

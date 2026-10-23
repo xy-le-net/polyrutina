@@ -149,12 +149,22 @@ class Routine {
     this.sourceKey = '',
   }) : lastActionAt = lastActionAt ?? createdAt;
 
-  factory Routine.create(int id, {int? at, String sourceKey = ''}) {
+  // createdAt overrides the creation moment: import supplies the
+  // historical value from the archive, so a routine does not look
+  // as if it was created at the instant of import. lastActionAt
+  // still defaults to the entry time (now), keeping the freshly
+  // imported routine at the top of the «recent» ordering.
+  factory Routine.create(
+    int id, {
+    int? at,
+    String sourceKey = '',
+    int? createdAt,
+  }) {
     final t = at ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
     return Routine(
       id: id,
       name: '',
-      createdAt: t,
+      createdAt: createdAt ?? t,
       lastActionAt: t,
       blocks: RoutineBlock.kinds.map((k) => RoutineBlock(kind: k)).toList(),
       sourceKey: sourceKey,

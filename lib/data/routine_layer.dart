@@ -202,8 +202,18 @@ class RoutineLayer extends ChangeNotifier {
           final bodyId = (data['routine'] as num?)?.toInt();
           final id = bodyId ?? e.id;
           final sourceKey = data['source_key'] as String? ?? '';
+          // Historical creation moment from the body; e.time is
+          // the current fallback for routines created natively.
+          final createdAt = (data['created_at'] as num?)?.toInt();
           if (findRoutine(id) == null) {
-            routines.add(Routine.create(id, at: e.time, sourceKey: sourceKey));
+            routines.add(
+              Routine.create(
+                id,
+                at: e.time,
+                sourceKey: sourceKey,
+                createdAt: createdAt,
+              ),
+            );
           }
           break;
         case 'rename':
@@ -372,14 +382,21 @@ class RoutineLayer extends ChangeNotifier {
   Future<Routine> createRoutine(
     JournalLayer journal, {
     String sourceKey = '',
+    int? createdAt,
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final body = sourceKey.isEmpty
-        ? '{"action":"create"}'
-        : jsonEncode({'action': 'create', 'source_key': sourceKey});
-    final id = await journal.log(type: JournalType.routine, body: body);
+    // created_at is written into the create entry body so that a
+    // reread restores the historical creation moment (the entry's
+    // own time is always «now» — journal.log stamps it that way).
+    final bodyMap = <String, dynamic>{'action': 'create'};
+    if (sourceKey.isNotEmpty) bodyMap['source_key'] = sourceKey;
+    if (createdAt != null) bodyMap['created_at'] = createdAt;
+    final id = await journal.log(
+      type: JournalType.routine,
+      body: jsonEncode(bodyMap),
+    );
     if (findRoutine(id) == null) {
-      final r = Routine.create(id, sourceKey: sourceKey);
+      final r = Routine.create(id, sourceKey: sourceKey, createdAt: createdAt);
       r.lastActionAt = now;
       routines.add(r);
     }

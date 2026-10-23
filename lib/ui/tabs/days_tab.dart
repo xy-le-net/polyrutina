@@ -329,6 +329,11 @@ class _DaysTabState extends State<DaysTab> {
       );
     }
     if (m.pulse) {
+      // Circle border uses the same color as the underline (dim by
+      // default, signal when the day's completion carries flags),
+      // so the two marks read as one family and the circle stays
+      // visible on top of the today plate (bgdim) rather than
+      // blending into it.
       layers.add(
         Center(
           child: SizedBox(
@@ -337,10 +342,7 @@ class _DaysTabState extends State<DaysTab> {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(
-                  color: m.signalPulse ? bort.signal : bort.dim,
-                  width: markStroke,
-                ),
+                border: Border.all(color: underlineColor, width: markStroke),
               ),
             ),
           ),
