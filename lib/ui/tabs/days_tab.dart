@@ -1,10 +1,10 @@
 // ═══════════════════════════════════════════════════════════════════
-// days_tab.dart — «days» tab. Month calendar.
+// lib/ui/tabs/days_tab.dart — «days» tab. Month calendar.
 //
 // The routine's day is determined as follows: completedAt, otherwise
-// lastPulseAt, otherwise scheduledAt, otherwise createdAt. The priority
-// is exactly this: completion > pulse > schedule. One routine — exactly
-// one mark.
+// scheduledAt, otherwise lastPulseAt, otherwise createdAt. The
+// priority is exactly this: completion > schedule > pulse > creation.
+// One routine — exactly one mark.
 //
 // Marks in the cell:
 //   — completed (completedAt on this day) — underlined number;
@@ -18,10 +18,22 @@
 //     signal-colored; the day number turns signal if and only if at
 //     least one routine of that day carries flags.
 //
+// Today. The current day carries a medium-tone square plate
+// (bort.bgdim) with soft corners, drawn underneath all marks. The
+// plate does not replace any of the three mark layers; it merely
+// signals «this is today» without competing with them.
+//
+// Cell layout. Flat Stack: square (scheduled), circle (pulse), and
+// the number are independent layers of a fixed-size box. The former
+// nested wrapping (square padding over circle padding over text)
+// shrank the inner circle whenever the outer square was present,
+// shifting the digit off-center. The fixed-size Stack keeps the
+// circle's diameter constant regardless of which marks are active.
+//
 // Control row. The month switcher occupies the full remaining width
-// after the root pult. The ConstrainedBox limit is removed: the row
-// stretches edge to edge with spaceEvenly, so the prev/next buttons
-// sit closer to the screen edges and the month label is centered.
+// after the root pult. The row stretches edge to edge with
+// spaceEvenly, so the prev/next buttons sit closer to the screen
+// edges and the month label is centered.
 //
 // Scopes. Dependencies are read from point scopes: BortScope (theme),
 // RoutineScope (the layer), I18nScope (strings). AppScope is
@@ -32,6 +44,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../data/operational_layer.dart';
 import '../../data/routine.dart';
 import '../core/app_scope.dart';
 import '../core/control_row.dart';
@@ -158,6 +171,12 @@ class _DaysTabState extends State<DaysTab> {
       cells.putIfAbsent(day, () => []).add(r);
     }
 
+    // The current day (if the displayed month is the current one).
+    final now = DateTime.now();
+    final int? todayDay = (now.year == _month.year && now.month == _month.month)
+        ? now.day
+        : null;
+
     final firstWeekday = _month.weekday;
     final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
     final totalCells = (((firstWeekday - 1) + daysInMonth + 6) ~/ 7) * 7;
@@ -170,7 +189,7 @@ class _DaysTabState extends State<DaysTab> {
         continue;
       }
       final list = cells[dayNum] ?? const <Routine>[];
-      grid.add(_cell(dayNum, list, side, bort));
+      grid.add(_cell(dayNum, list, side, bort, isToday: dayNum == todayDay));
     }
 
     // rootSide equals the small pult side: the compass is drawn at
@@ -242,7 +261,13 @@ class _DaysTabState extends State<DaysTab> {
     );
   }
 
-  Widget _cell(int day, List<Routine> routines, double side, dynamic bort) {
+  Widget _cell(
+    int day,
+    List<Routine> routines,
+    double side,
+    OperationalLayer bort, {
+    required bool isToday,
+  }) {
     final m = _marksOf(day, routines);
 
     final dayColor = m.hasSignal ? bort.signal : bort.dim;
@@ -258,42 +283,80 @@ class _DaysTabState extends State<DaysTab> {
       decorationColor: underlineColor,
     );
 
-    Widget content = Text('$day', style: style);
+    // Flat layout: square and circle are independent layers of a
+    // Stack with a fixed footprint, and the day number sits on top.
+    // The former nested wrapping (square padding over circle
+    // padding over text) shrank the inner circle whenever the outer
+    // square was present, shifting the digit off-center; the
+    // fixed-size Stack keeps the circle's diameter constant
+    // regardless of which marks are active.
+    final double boxSide = side * 0.9;
+    final double circleSide = side * 0.65;
+    final double markStroke = side * 0.04;
 
-    if (m.pulse) {
-      content = Container(
-        padding: EdgeInsets.all(side * 0.1),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: m.signalPulse ? bort.signal : bort.dim,
-            width: side * 0.04,
+    final layers = <Widget>[];
+
+    // Today plate — a soft square underneath all marks. Its radius
+    // matches the scheduled square so the two shapes read as one
+    // family; its fill is bgdim (medium tone), which stands out from
+    // the page without competing with signal-colored marks.
+    if (isToday) {
+      layers.add(
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: bort.bgdim,
+              borderRadius: BorderRadius.circular(side * 0.12),
+            ),
           ),
         ),
-        alignment: Alignment.center,
-        child: content,
       );
     }
 
     if (m.scheduled) {
-      content = Container(
-        padding: EdgeInsets.all(side * 0.1),
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: m.signalScheduled ? bort.signal : bort.dim,
-            width: side * 0.04,
+      layers.add(
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: m.signalScheduled ? bort.signal : bort.dim,
+                width: markStroke,
+              ),
+              borderRadius: BorderRadius.circular(side * 0.05),
+            ),
           ),
-          borderRadius: BorderRadius.circular(side * 0.05),
         ),
-        alignment: Alignment.center,
-        child: content,
       );
     }
+    if (m.pulse) {
+      layers.add(
+        Center(
+          child: SizedBox(
+            width: circleSide,
+            height: circleSide,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: m.signalPulse ? bort.signal : bort.dim,
+                  width: markStroke,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    layers.add(Text('$day', style: style));
 
     return GestureDetector(
       onTap: routines.isEmpty ? null : () => _openDay(routines),
       child: Center(
-        child: Padding(padding: EdgeInsets.all(side * 0.1), child: content),
+        child: SizedBox(
+          width: boxSide,
+          height: boxSide,
+          child: Stack(alignment: Alignment.center, children: layers),
+        ),
       ),
     );
   }

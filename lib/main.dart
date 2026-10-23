@@ -26,7 +26,17 @@
 //
 // System back. PopScope intercepts back: if a card is open, close
 // it; otherwise if not on the routines tab, switch to routines;
-// otherwise let the system pop (normal app close).
+// otherwise — hand control back to the system via
+// SystemNavigator.pop(), so the app closes the same way the OS back
+// button would. The former silent-swallow branch (the handler
+// simply did nothing when the state was already clean) is gone.
+//
+// _openedRoutineId. BOTH the entry and the exit of _openedRoutineId
+// go through setState, so PopScope.canPop is recomputed at every
+// frame. The former bare setState(() {}) followed by a bare field
+// assignment left the field update outside the rebuild, freezing
+// canPop at its previous value; the system back handler then
+// occasionally closed the app while a card was still open.
 //
 // Root pult — hardcoded in the top-left corner. Touch opens the
 // single left-side sheet of subpults (pult_sheet.dart) with tab
@@ -242,29 +252,27 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   Future<void> _switchTab(int i) async {
     _bort.pulseBort();
 
-    final cardOpen = _openedRoutineId != null;
-
-    if (i == 1) {
-      if (cardOpen) {
-        _navigatorKey.currentState?.popUntil((r) => r.isFirst);
-      }
-      if (_tab != 1) setState(() => _tab = 1);
-      return;
-    }
-
-    if (cardOpen) {
+    // Pop the card (if open) once, before any branch: both the
+    // «routines» path and the others need the same first action,
+    // and the former code duplicated the popUntil call.
+    if (_openedRoutineId != null) {
       _navigatorKey.currentState?.popUntil((r) => r.isFirst);
     }
-    setState(() => _tab = i);
+    if (_tab != i) setState(() => _tab = i);
   }
 
   Future<void> _openRoutine(int id) async {
-    setState(() {});
-    _openedRoutineId = id;
+    // setState wraps BOTH the entry and the exit of _openedRoutineId
+    // so PopScope.canPop tracks the true state at every frame. The
+    // former bare setState(() {}) left the field updates outside the
+    // rebuild, freezing canPop at its previous value; the system
+    // back handler then occasionally closed the app while the card
+    // was still on top.
+    setState(() => _openedRoutineId = id);
     await _navigatorKey.currentState?.push(
       MaterialPageRoute(builder: (_) => RoutineCard(routineId: id)),
     );
-    _openedRoutineId = null;
+    if (mounted) setState(() => _openedRoutineId = null);
   }
 
   void _openTabsSheet() {
@@ -345,7 +353,14 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     }
     if (_tab != 1) {
       setState(() => _tab = 1);
+      return;
     }
+    // Reached when canPop was stale-false: the card is gone and we
+    // are already on the routines tab, so there is nothing for this
+    // handler to do. Hand control to the system so the app closes
+    // the same way the OS back button would; the former silent
+    // swallow left a back press with no visible effect.
+    SystemNavigator.pop();
   }
 
   @override
