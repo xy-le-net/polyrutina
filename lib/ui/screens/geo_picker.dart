@@ -138,6 +138,12 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
   // Currently selected tile source.
   int _tileSourceIndex = 0;
 
+  // Sources already tried on this page: tracked so the auto-fallback
+  // stops after every source has been attempted once, and so a
+  // manual pick disables the fallback for the rest of the session.
+  final Set<int> _triedSources = {0};
+  bool _userSwitched = false;
+
   final _mapController = MapController();
 
   @override
@@ -244,12 +250,30 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
   void _close() => Navigator.of(context).pop();
 
   // ─── Switch tile source ───
-  void _switchTileSource(int index) {
+  void _switchTileSource(int index, {bool byUser = false}) {
     if (index == _tileSourceIndex) return;
+    if (byUser) _userSwitched = true;
+    _triedSources.add(index);
     setState(() {
       _tileSourceIndex = index;
       _noNetwork = false;
     });
+  }
+
+  // ─── Auto-fallback ───
+  // When tiles fail on the current source and there are still
+  // untried sources, switch to the next one. Disabled the moment
+  // the user makes a manual choice (_userSwitched). Stops after
+  // every source has been attempted once, so a fully offline
+  // network does not cycle forever.
+  void _autoFallbackIfNeeded() {
+    if (_userSwitched) return;
+    for (var i = 0; i < _tileSources.length; i++) {
+      if (!_triedSources.contains(i)) {
+        _switchTileSource(i);
+        return;
+      }
+    }
   }
 
   @override
@@ -294,9 +318,10 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                           subdomains: source.subdomains,
                           userAgentPackageName: 'polyrutina',
                           errorTileCallback: (_, __, ___) {
-                            if (mounted && !_noNetwork) {
-                              setState(() => _noNetwork = true);
-                            }
+                            if (!mounted) return;
+                            if (_noNetwork) return;
+                            setState(() => _noNetwork = true);
+                            _autoFallbackIfNeeded();
                           },
                         ),
                         if (_picked != null)
@@ -367,13 +392,30 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Tile-source pult: opens a subpult with the
-                        // list of sources.
+                        // Tile-source pult: a tap opens the subpult
+                        // directly (was long-press only). Long-press
+                        // is kept as a secondary trigger so the
+                        // subpult dot still marks this pult as having
+                        // a submenu.
                         Pult(
                           spec: PultSpec(
                             id: 'geo_layers',
                             icon: Icons.layers,
-                            onTap: null,
+                            subsBuilder: () => [
+                              for (var i = 0; i < _tileSources.length; i++)
+                                PultSpec(
+                                  id: 'tile_$i',
+                                  icon: Icons.map,
+                                  label: _tileSources[i].label,
+                                  selected: i == _tileSourceIndex,
+                                  // No stayOpen: the sheet closes
+                                  // on selection, so the picked
+                                  // source is reflected by the map
+                                  // re-render.
+                                  onTap: () =>
+                                      _switchTileSource(i, byUser: true),
+                                ),
+                            ],
                             longSubs: () => [
                               for (var i = 0; i < _tileSources.length; i++)
                                 PultSpec(
@@ -381,8 +423,8 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                                   icon: Icons.map,
                                   label: _tileSources[i].label,
                                   selected: i == _tileSourceIndex,
-                                  stayOpen: true,
-                                  onTap: () => _switchTileSource(i),
+                                  onTap: () =>
+                                      _switchTileSource(i, byUser: true),
                                 ),
                             ],
                           ),

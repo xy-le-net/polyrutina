@@ -282,10 +282,18 @@ class _RubkaDataState extends State<RubkaData> {
       return;
     }
 
+    // Build the «in use» set from BOTH the on-disk basename and
+    // the logical name. Imported media carry their original archive
+    // name in `name` while the file on disk was written under a
+    // fresh monotone name; comparing only `name` would treat such
+    // files as orphans. Comparing the path's basename catches them;
+    // keeping `name` as well preserves compatibility with older
+    // records written before the naming was unified.
     final used = <String>{};
     for (final t in app.traceLayer.traces.values) {
       if (t.deleted) continue;
       for (final f in t.files) {
+        if (f.path.isNotEmpty) used.add(p.basename(f.path));
         if (f.name.isNotEmpty) used.add(f.name);
       }
     }

@@ -597,69 +597,44 @@ class _MediaViewerState extends State<MediaViewer> {
       final file = File(f.path);
 
       // Background: the screenshot stretched over the page
-      // (BoxFit.cover). Foreground: a compact coordinates line
-      // with an adjacent «open externally» pult. The screenshot
-      // file name is not shown.
+      // (BoxFit.cover). Foreground: a single coordinates line
+      // (accuracy in parentheses) sitting above the bottom pult
+      // row — not centered vertically. Tapping copies ONLY the
+      // coordinates; accuracy is visible but not copied. The
+      // «open externally» action lives on the bottom center pult
+      // (see _bottomRow), so no separate pult is drawn here.
       return Stack(
         fit: StackFit.expand,
         children: [
           if (file.existsSync())
             Positioned.fill(child: Image.file(file, fit: BoxFit.cover)),
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    GestureDetector(
-                      onTap: () => _copyCoords(lat, lon),
-                      child: Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: side * 0.2,
-                          vertical: side * 0.1,
-                        ),
-                        decoration: BoxDecoration(
-                          color: bort.bg.withValues(alpha: 0.75),
-                          border: Border.all(color: bort.dim),
-                          borderRadius: BorderRadius.circular(
-                            side * bort.kRadius,
-                          ),
-                        ),
-                        child: Text(
-                          '$lat, $lon',
-                          style: TextStyle(
-                            color: bort.fg,
-                            fontSize: side * 0.25,
-                            fontFamily: 'monospace',
-                          ),
-                        ),
-                      ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: side * 1.6,
+            child: Center(
+              child: GestureDetector(
+                onTap: () => _copyCoords(lat, lon),
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: side * 0.2,
+                    vertical: side * 0.1,
+                  ),
+                  decoration: BoxDecoration(
+                    color: bort.bg.withValues(alpha: 0.75),
+                    border: Border.all(color: bort.dim),
+                    borderRadius: BorderRadius.circular(side * bort.kRadius),
+                  ),
+                  child: Text(
+                    '$lat, $lon (±$acc ${i18n.t('time.m')})',
+                    style: TextStyle(
+                      color: bort.fg,
+                      fontSize: side * 0.25,
+                      fontFamily: 'monospace',
                     ),
-                    SizedBox(width: side * 0.15),
-                    Pult(
-                      spec: PultSpec(
-                        id: 'geo_open_ext',
-                        icon: Icons.open_in_new,
-                        onTap: () => _openExternal(f),
-                      ),
-                      fg: bort.fg,
-                      bg: bort.bg,
-                      signal: bort.signal,
-                      overrideSize: side * bort.kPultSmall,
-                    ),
-                  ],
-                ),
-                SizedBox(height: side * 0.15),
-                Text(
-                  '±$acc ${i18n.t('time.m')}',
-                  style: TextStyle(
-                    color: bort.dim,
-                    fontSize: side * 0.25,
-                    backgroundColor: bort.bg.withValues(alpha: 0.75),
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ],
