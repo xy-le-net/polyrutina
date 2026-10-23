@@ -4,12 +4,13 @@
 // The routine's day is determined as follows: completedAt, otherwise
 // scheduledAt, otherwise lastPulseAt, otherwise createdAt. The
 // priority is exactly this: completion > schedule > pulse > creation.
-// One routine — exactly one mark.
+// One routine — exactly one day, exactly one mark.
 //
 // Marks in the cell:
 //   — completed (completedAt on this day) — underlined number;
-//   — with pulse (lastPulseAt on this day) — round border;
-//   — scheduled (scheduledAt on this day) — square border.
+//   — scheduled (scheduledAt on this day) — square border;
+//   — unfinished (any remaining routine on this day: not completed,
+//     not scheduled) — round border.
 // Different routines of the day bring different marks; they combine.
 //
 // Color. Every element of a cell — the digit, the underline, the
@@ -18,8 +19,6 @@
 //   — fg on the today cell (the plate fill would otherwise hide
 //     dim marks);
 //   — dim elsewhere (subtle but contrasty against bg).
-// The circle and the underline share cellColor, satisfying the
-// «circle matches underline» requirement without special-casing.
 //
 // Today. The current day carries a medium-tone square plate
 // (bort.bgdim) with soft corners, drawn underneath all marks. The
@@ -32,14 +31,17 @@
 // one item per mark kind, only for kinds with a non-zero count this
 // month. Counts are computed from the same _markOfRoutine logic
 // that populates the grid, so the legend and the marks agree.
+// The legend is left-aligned (flush with the month row's left edge)
+// and its circle is sized to match the square, so the two shapes
+// read as one family.
 //
-// Cell layout. Flat Stack: square (scheduled), circle (pulse), and
-// the number are independent layers of a fixed-size box. The former
-// nested wrapping shrank the inner circle whenever the outer square
-// was present, shifting the digit off-center. The fixed-size Stack
-// keeps the circle's diameter at boxSide — the square's side — so
-// the two marks read as the same size (the ring is inscribed in the
-// square, both strokes centred on the same boundary).
+// Cell layout. Flat Stack: square (scheduled), circle (unfinished),
+// and the number are independent layers of a fixed-size box. The
+// former nested wrapping shrank the inner circle whenever the outer
+// square was present, shifting the digit off-center. The fixed-size
+// Stack keeps the circle's diameter at boxSide — the square's side
+// — so the two marks read as the same size (the ring is inscribed
+// in the square, both strokes centred on the same boundary).
 //
 // Circle stroke. 0.08 * side, twice the square's stroke: a thin
 // ring on the today plate is almost invisible at small cell sizes,
@@ -51,6 +53,12 @@
 // width after the root pult. The row stretches edge to edge with
 // spaceEvenly, so the prev/next buttons sit closer to the screen
 // edges and the month label is centered.
+//
+// Day sub-pult. Tapping a number opens a pult sheet listing that
+// day's routines, each carrying its status icon (check for
+// completed, square for scheduled, circle for unfinished); a
+// routine carrying flags renders signal-colored. The sheet
+// dismisses on a tap outside, like every other pult sheet.
 //
 // Scopes. Dependencies are read from point scopes: BortScope
 // (theme), RoutineScope (the layer), I18nScope (strings). AppScope
@@ -121,18 +129,18 @@ class _DaysTabState extends State<DaysTab> {
     if (r.scheduledAt != null && _sameMonth(r.scheduledAt!) == day) {
       return _Mark.scheduled;
     }
-    if (r.lastPulseAt != null && _sameMonth(r.lastPulseAt!) == day) {
-      return _Mark.pulse;
+    if (!r.completed) {
+      return _Mark.unfinished;
     }
     return _Mark.none;
   }
 
-  ({bool completed, bool pulse, bool scheduled, bool hasSignal}) _marksOf(
+  ({bool completed, bool unfinished, bool scheduled, bool hasSignal}) _marksOf(
     int day,
     List<Routine> routines,
   ) {
     var completed = false;
-    var pulse = false;
+    var unfinished = false;
     var scheduled = false;
     var hasSignal = false;
     for (final r in routines) {
@@ -142,8 +150,8 @@ class _DaysTabState extends State<DaysTab> {
         case _Mark.completed:
           completed = true;
           break;
-        case _Mark.pulse:
-          pulse = true;
+        case _Mark.unfinished:
+          unfinished = true;
           break;
         case _Mark.scheduled:
           scheduled = true;
@@ -154,7 +162,7 @@ class _DaysTabState extends State<DaysTab> {
     }
     return (
       completed: completed,
-      pulse: pulse,
+      unfinished: unfinished,
       scheduled: scheduled,
       hasSignal: hasSignal,
     );
@@ -169,7 +177,7 @@ class _DaysTabState extends State<DaysTab> {
 
     final cells = <int, List<Routine>>{};
     var scheduledCount = 0;
-    var pulseCount = 0;
+    var unfinishedCount = 0;
     var completedCount = 0;
     for (final r in routineLayer.routines) {
       final day = _dayOf(r);
@@ -179,8 +187,8 @@ class _DaysTabState extends State<DaysTab> {
         case _Mark.scheduled:
           scheduledCount++;
           break;
-        case _Mark.pulse:
-          pulseCount++;
+        case _Mark.unfinished:
+          unfinishedCount++;
           break;
         case _Mark.completed:
           completedCount++;
@@ -218,7 +226,7 @@ class _DaysTabState extends State<DaysTab> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.only(top: 8, bottom: 8, right: 12),
+          padding: const EdgeInsets.only(bottom: 8, right: 12),
           child: ControlRow(
             rootSide: rootSide,
             child: Row(
@@ -268,7 +276,7 @@ class _DaysTabState extends State<DaysTab> {
           bort,
           i18n,
           scheduled: scheduledCount,
-          pulsed: pulseCount,
+          unfinished: unfinishedCount,
           completed: completedCount,
         ),
         Expanded(
@@ -288,13 +296,15 @@ class _DaysTabState extends State<DaysTab> {
   // monthly count printed inside the shape, followed by the word.
   // Only non-zero counts are shown, so an empty month carries no
   // legend at all. Colors are dim — a legend should inform, not
-  // compete with the grid.
+  // compete with the grid. Left-aligned so the shapes line up with
+  // the month row's left edge. The circle matches the square in
+  // size; the digit sits at the center of the shape in both cases.
   Widget _legend(
     double side,
     OperationalLayer bort,
     I18n i18n, {
     required int scheduled,
-    required int pulsed,
+    required int unfinished,
     required int completed,
   }) {
     final color = bort.dim;
@@ -348,23 +358,19 @@ class _DaysTabState extends State<DaysTab> {
         ),
       );
     }
-    if (pulsed > 0) {
+    if (unfinished > 0) {
       items.add(
         item(
-          Center(
-            child: SizedBox(
-              width: itemSize * 0.7,
-              height: itemSize * 0.7,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: color, width: side * 0.04),
-                ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: color, width: side * 0.04),
               ),
             ),
           ),
-          pulsed,
-          i18n.t('days.legend.pulse'),
+          unfinished,
+          i18n.t('days.legend.unfinished'),
         ),
       );
     }
@@ -393,11 +399,14 @@ class _DaysTabState extends State<DaysTab> {
         horizontal: side * 0.4,
         vertical: side * 0.15,
       ),
-      child: Wrap(
-        alignment: WrapAlignment.center,
-        spacing: side * 0.4,
-        runSpacing: side * 0.15,
-        children: items,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Wrap(
+          alignment: WrapAlignment.start,
+          spacing: side * 0.4,
+          runSpacing: side * 0.15,
+          children: items,
+        ),
       ),
     );
   }
@@ -429,7 +438,7 @@ class _DaysTabState extends State<DaysTab> {
 
     final boxSide = side * 0.9;
     // The circle's diameter equals the square's side, so the two
-    // marks are visually the same size and the pulse ring is
+    // marks are visually the same size and the unfinished ring is
     // inscribed in the scheduled square (both strokes centred on
     // the same outer boundary).
     final circleSide = boxSide;
@@ -471,7 +480,7 @@ class _DaysTabState extends State<DaysTab> {
         ),
       );
     }
-    if (m.pulse) {
+    if (m.unfinished) {
       layers.add(
         Center(
           child: SizedBox(
@@ -510,8 +519,9 @@ class _DaysTabState extends State<DaysTab> {
         for (final r in routines)
           PultSpec(
             id: 'r_${r.id}',
-            icon: r.completed ? Icons.check : Icons.circle_outlined,
+            icon: _statusIcon(r),
             label: r.name.isEmpty ? '—' : r.name,
+            selected: r.flags != 0,
             onTap: () => openRoutine(r.id),
           ),
       ],
@@ -521,6 +531,15 @@ class _DaysTabState extends State<DaysTab> {
       side: PultScope.of(context).smallSide,
     );
   }
+
+  // Status icon for the day sub-pult: check for completed, square
+  // for scheduled, circle for unfinished. Mirrors the calendar's
+  // marks so the sheet speaks the same visual language.
+  IconData _statusIcon(Routine r) {
+    if (r.completed) return Icons.check;
+    if (r.scheduledAt != null) return Icons.crop_square;
+    return Icons.circle_outlined;
+  }
 }
 
-enum _Mark { none, scheduled, pulse, completed }
+enum _Mark { none, scheduled, unfinished, completed }

@@ -484,7 +484,7 @@ class _RoutineCardState extends State<RoutineCard> {
             // Unified control row: root pult on the left, name field
             // in the remaining space.
             Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 8, right: 12),
+              padding: const EdgeInsets.only(bottom: 8, right: 12),
               child: ControlRow(
                 rootSide: side,
                 alignment: Alignment.centerLeft,

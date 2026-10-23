@@ -153,7 +153,7 @@
     "report.subject": "Отчёт по рутинам",
 
     "days.legend.scheduled": "назначенные",
-    "days.legend.pulse": "в работе",
+    "days.legend.unfinished": "незавершённые",
     "days.legend.completed": "завершённые",
 
     "stub.title": "раздел",
@@ -314,7 +314,7 @@
     "report.subject": "Routines report",
 
     "days.legend.scheduled": "scheduled",
-    "days.legend.pulse": "in work",
+    "days.legend.unfinished": "unfinished",
     "days.legend.completed": "completed",
 
     "stub.title": "section",

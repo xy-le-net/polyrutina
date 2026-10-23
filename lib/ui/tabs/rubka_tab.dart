@@ -146,7 +146,7 @@ class RubkaTab extends StatelessWidget {
           return ListView(
             padding: EdgeInsets.fromLTRB(
               16,
-              ControlRow.reserve(side) + 16,
+              ControlRow.reserve(side) + 8,
               16,
               16,
             ),
@@ -174,7 +174,7 @@ class RubkaTab extends StatelessWidget {
         return SingleChildScrollView(
           padding: EdgeInsets.fromLTRB(
             hPad,
-            ControlRow.reserve(side) + 16,
+            ControlRow.reserve(side) + 8,
             hPad,
             16,
           ),

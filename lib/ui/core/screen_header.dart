@@ -77,7 +77,7 @@ class ScreenHeader extends StatelessWidget {
     final pultSide = side * bort.kPultSmall;
 
     return Padding(
-      padding: const EdgeInsets.only(top: 6, bottom: 8, right: 6),
+      padding: const EdgeInsets.only(bottom: 8, right: 6),
       child: ControlRow(
         rootSide: side,
         alignment: Alignment.centerLeft,
