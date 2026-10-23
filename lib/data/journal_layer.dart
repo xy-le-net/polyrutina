@@ -281,6 +281,16 @@ class JournalLayer extends ChangeNotifier {
     );
   }
 
+  // Number of entries currently in the journal. A SQL COUNT(*),
+  // no row transfer — used by the compactor to report how many
+  // entries were dropped in this pass.
+  Future<int> countEntries() async {
+    final count = db.journal.id.count();
+    final q = db.selectOnly(db.journal)..addColumns([count]);
+    final row = await q.getSingle();
+    return row.read(count) ?? 0;
+  }
+
   Future<int> lastEntryId() async {
     final rows =
         await (db.select(db.journal)

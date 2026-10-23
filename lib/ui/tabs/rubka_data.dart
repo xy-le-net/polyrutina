@@ -8,29 +8,34 @@
 //
 //   Group 2 — journal and transfer:
 //     — journal: volume of the bort files;
-//     — reread: reset layer memory and run through all entries;
-//     — delete: erase all journal entries (confirm via
-//       confirm_dialog.dart);
-//     — compress: JournalCompactor over a progress dialog;
+//     — reread: reset layer memory and run through all entries
+//       (always enabled; the pult itself confirms via a grow-in);
+//     — delete: erase all journal entries (pult grow-in, then
+//       showConfirm — a two-stage confirmation);
+//     — compress: JournalCompactor over a progress dialog; on
+//       completion, a showNotice with the result («journal
+//       optimal» or «dropped N entries, freed K»);
 //     — separator;
 //     — media: volume of the attachments folder;
 //     — shake: delete files not attached to anything;
 //     — separator;
 //     — export: build the routines zip and share it
 //       (ReportBuilder.build);
-//     — import: receive polyrutina zip archives.
+//     — import: open the system file sheet directly and report
+//       the totals (routines, media, bytes) — the former separate
+//       import page is removed.
 //
 //   Group 3 — other:
 //     — bort: today's active time from the technical midnight
 //       (moved here to lead the last group; the bort counter itself
 //       has no journal relation and is read straight from the
 //       bort file);
-//     — reset: caches and defaults to the initial state.
+//     — reset: caches and defaults to the initial state (pult
+//       grow-in, then showConfirm).
 //
-// Export lives here (formerly in routines_tab): the routines list
-// no longer carries its own report pult — the report covers all
-// routines, whether or not the caller was in select mode, so the
-// rubka is the single place to trigger it.
+// Reread. The former _canReread gate is gone: rereading is safe at
+// any time (it resets layer memory and replays the journal), so the
+// pult is always enabled and the confirmation is the grow-in.
 //
 // Scopes. In build, bort and i18n come from BortScope and I18nScope;
 // the imperative methods (_refreshSize, _reload, _deleteAll, etc.)
@@ -55,8 +60,8 @@ import '../core/format.dart';
 import '../core/notice_dialog.dart';
 import '../core/progress_dialog.dart';
 import '../pults/pult_core.dart';
-import '../screens/import_screen.dart';
 import '../services/action_dialog.dart';
+import '../services/import_service.dart';
 import '../services/journal_compactor.dart';
 import '../services/report.dart';
 
@@ -71,7 +76,6 @@ class _RubkaDataState extends State<RubkaData> {
   int _journalBytes = 0;
   int _mediaBytes = 0;
   bool _sizeLoaded = false;
-  bool _canReread = false;
   bool _compacting = false;
 
   String _fmtSize(int bytes) {
@@ -94,8 +98,6 @@ class _RubkaDataState extends State<RubkaData> {
 
   Future<void> _refreshSize() async {
     try {
-      final app = AppScope.of(context);
-      final bort = BortScope.of(context);
       final dir = await getApplicationDocumentsDirectory();
 
       var j = 0;
@@ -123,13 +125,11 @@ class _RubkaDataState extends State<RubkaData> {
         }
       }
 
-      final last = await app.journal.lastEntryId();
       if (!mounted) return;
       setState(() {
         _journalBytes = j;
         _mediaBytes = m;
         _sizeLoaded = true;
-        _canReread = last > bort.lastRereadId;
       });
     } catch (_) {}
   }
@@ -174,8 +174,9 @@ class _RubkaDataState extends State<RubkaData> {
       builder: (_) =>
           ProgressDialog(token: token, title: i18n.t('bort.compress')),
     );
+    CompactResult? result;
     try {
-      await JournalCompactor.compact(
+      result = await JournalCompactor.compact(
         journal: app.journal,
         routineLayer: app.routineLayer,
         traceLayer: app.traceLayer,
@@ -191,6 +192,17 @@ class _RubkaDataState extends State<RubkaData> {
     }
     await _refreshSize();
     if (mounted) setState(() {});
+    if (result == null || !mounted) return;
+    if (result.unchanged) {
+      await showNotice(context, title: i18n.t('compact.optimal'));
+    } else {
+      await showNotice(
+        context,
+        title: '${i18n.t('compact.done_prefix')} ${result.entriesDropped}',
+        subtitle:
+            '${i18n.t('compact.freed_prefix')} ${_fmtSize(result.bytesFreed)}',
+      );
+    }
   }
 
   Future<void> _export() async {
@@ -199,9 +211,50 @@ class _RubkaDataState extends State<RubkaData> {
     await ReportBuilder.build(app, i18n, uiContext: context);
   }
 
+  Future<void> _import() async {
+    final app = AppScope.of(context);
+    final i18n = I18nScope.of(context);
+    final result = await importFromPicker(app: app);
+    await app.refresh();
+    await _refreshSize();
+    if (!mounted) return;
+
+    if (result.cancelled) {
+      await showNotice(context, title: i18n.t('import.cancelled'));
+      return;
+    }
+    if (result.routines == 0 && result.media == 0) {
+      final title = i18n.t('import.empty');
+      final subtitle = result.skipped > 0
+          ? '${i18n.t('import.skipped_prefix')} ${result.skipped}'
+          : null;
+      await showNotice(context, title: title, subtitle: subtitle);
+      return;
+    }
+
+    final parts = <String>[
+      '${i18n.t('import.routines_prefix')} ${result.routines}',
+      '${i18n.t('import.media_prefix')} ${result.media}',
+    ];
+    final title = '${i18n.t('import.summary')}: ${parts.join(', ')}';
+    final subtitle = result.skipped > 0
+        ? '${i18n.t('import.skipped_prefix')} ${result.skipped} · '
+              '${i18n.t('import.freed_prefix')} ${_fmtSize(result.bytes)}'
+        : '${i18n.t('import.freed_prefix')} ${_fmtSize(result.bytes)}';
+    await showNotice(context, title: title, subtitle: subtitle);
+  }
+
   Future<void> _resetCache() async {
     final app = AppScope.of(context);
     final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
+    final ok = await showConfirm(
+      context,
+      title: i18n.t('bort.reset_confirm'),
+      confirmLabel: i18n.t('bort.reset'),
+      cancelLabel: i18n.t('common.cancel'),
+    );
+    if (!ok || !mounted) return;
     await bort.resetCache();
 
     // Explicit layer resets are redundant: journal.reread() resets
@@ -265,16 +318,6 @@ class _RubkaDataState extends State<RubkaData> {
     }
   }
 
-  Future<void> _openImport() async {
-    final app = AppScope.of(context);
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const ImportScreen()));
-    await app.refresh();
-    await _refreshSize();
-    if (mounted) setState(() {});
-  }
-
   void _openShiftHistory() {
     showShiftHistory(context);
   }
@@ -321,9 +364,10 @@ class _RubkaDataState extends State<RubkaData> {
           spec: PultSpec(
             id: 'reload',
             icon: Icons.refresh,
-            onTap: _canReread ? _reload : null,
+            confirm: true,
+            onTap: _reload,
           ),
-          fg: _canReread ? fg : dim,
+          fg: fg,
           bg: bg,
           signal: signal,
           overrideSize: side,
@@ -336,6 +380,7 @@ class _RubkaDataState extends State<RubkaData> {
           spec: PultSpec(
             id: 'delete',
             icon: Icons.delete_outline,
+            confirm: true,
             onTap: _deleteAll,
           ),
           fg: fg,
@@ -394,11 +439,7 @@ class _RubkaDataState extends State<RubkaData> {
         label: i18n.t('bort.import'),
         fg: fg,
         pult: Pult(
-          spec: PultSpec(
-            id: 'import',
-            icon: Icons.download,
-            onTap: _openImport,
-          ),
+          spec: PultSpec(id: 'import', icon: Icons.download, onTap: _import),
           fg: fg,
           bg: bg,
           signal: signal,

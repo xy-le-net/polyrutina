@@ -360,6 +360,22 @@ class TraceLayer extends ChangeNotifier {
       'files': [],
     });
     final id = await journal.log(type: JournalType.trace, body: body);
+    // Pre-insert so callers inside a journal transaction (import, in
+    // particular) can find this trace immediately, before the journal
+    // pumps. Without this, attachFile right after createText during a
+    // transaction sees an empty traces map and silently returns,
+    // leaving the file on disk unattached — the orphaned media.
+    // _applyEntry skips entries already present in the map, so no
+    // double-insert occurs when the pump eventually runs.
+    traces.putIfAbsent(
+      id,
+      () => Trace(
+        id: id,
+        slot: slot,
+        text: text,
+        parents: List<int>.from(parents),
+      ),
+    );
     _scheduleSave();
     return id;
   }
@@ -380,6 +396,18 @@ class TraceLayer extends ChangeNotifier {
       'files': [],
     });
     final id = await journal.log(type: JournalType.trace, body: body);
+    // Same pre-insert rationale as in createText: the importer, while
+    // inside a transaction, must see this checklist immediately.
+    traces.putIfAbsent(
+      id,
+      () => Trace(
+        id: id,
+        kind: TraceKind.checklist,
+        slot: slot,
+        items: [for (final s in items) TraceItem(text: s, done: false)],
+        parents: List<int>.from(parents),
+      ),
+    );
     _scheduleSave();
     return id;
   }

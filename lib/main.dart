@@ -24,19 +24,21 @@
 // Sheet guard. _sheetOpen prevents subpults from stacking: while a
 // sheet is open, further sheet requests are ignored.
 //
-// System back. PopScope intercepts back: if a card is open, close
-// it; otherwise if not on the routines tab, switch to routines;
-// otherwise — hand control back to the system via
-// SystemNavigator.pop(), so the app closes the same way the OS back
-// button would. The former silent-swallow branch (the handler
-// simply did nothing when the state was already clean) is gone.
+// System back. PopScope.canPop is always FALSE: the handler owns
+// the outcome. _handleBack closes the card if one is open, or
+// switches to the routines tab if another tab is active; on the
+// routines tab with no card it absorbs the press — the app does
+// not close from the back button. Closing is left to the OS
+// gestures (home, recents), so a stray back tap on the list can
+// never quit the app.
 //
 // _openedRoutineId. BOTH the entry and the exit of _openedRoutineId
-// go through setState, so PopScope.canPop is recomputed at every
-// frame. The former bare setState(() {}) followed by a bare field
-// assignment left the field update outside the rebuild, freezing
-// canPop at its previous value; the system back handler then
-// occasionally closed the app while a card was still open.
+// go through setState, so the tab body and any derived UI track the
+// true state at every frame. The former bare setState(() {})
+// followed by a bare field assignment left the field update outside
+// the rebuild, which is what originally caused the «back button
+// quits the app» defect together with the PopScope that could pop
+// on its own.
 //
 // Root pult — hardcoded in the top-left corner. Touch opens the
 // single left-side sheet of subpults (pult_sheet.dart) with tab
@@ -263,11 +265,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   Future<void> _openRoutine(int id) async {
     // setState wraps BOTH the entry and the exit of _openedRoutineId
-    // so PopScope.canPop tracks the true state at every frame. The
-    // former bare setState(() {}) left the field updates outside the
-    // rebuild, freezing canPop at its previous value; the system
-    // back handler then occasionally closed the app while the card
-    // was still on top.
+    // so the tab body and derived UI track the true state at every
+    // frame. The former bare setState(() {}) left the field updates
+    // outside the rebuild.
     setState(() => _openedRoutineId = id);
     await _navigatorKey.currentState?.push(
       MaterialPageRoute(builder: (_) => RoutineCard(routineId: id)),
@@ -346,6 +346,13 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     }
   }
 
+  // ─── Back handler ───
+  // Always reached when PopScope reports canPop == false, i.e. on
+  // every back press. Two outcomes are actionable — close the card,
+  // or switch to the routines tab. Otherwise (already on the
+  // routines tab, no card) the press is absorbed and nothing
+  // happens: the app does not close from the back button, which is
+  // the confirmed intent.
   void _handleBack() {
     if (_openedRoutineId != null) {
       _navigatorKey.currentState?.popUntil((r) => r.isFirst);
@@ -355,12 +362,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       setState(() => _tab = 1);
       return;
     }
-    // Reached when canPop was stale-false: the card is gone and we
-    // are already on the routines tab, so there is nothing for this
-    // handler to do. Hand control to the system so the app closes
-    // the same way the OS back button would; the former silent
-    // swallow left a back press with no visible effect.
-    SystemNavigator.pop();
+    // Absorb. Nothing to do — the press has no visible effect.
   }
 
   @override
@@ -491,7 +493,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
         );
       },
       home: PopScope(
-        canPop: _tab == 1 && _openedRoutineId == null,
+        canPop: false,
         onPopInvokedWithResult: (didPop, _) {
           if (didPop) return;
           _handleBack();

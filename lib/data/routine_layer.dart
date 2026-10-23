@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════
-// routine_layer.dart — routine layer.
+// lib/data/routine_layer.dart — routine layer.
 //
 // Holds the list of routines and their blocks.
 //
@@ -30,6 +30,7 @@
 // Duplication. Copied: name, flags, scheduled date, planned
 // man-hours, traces of the note, prep, closeout blocks (text and
 // checklist). Transit, work, and idle traces are not carried over.
+// The copy's sourceKey is empty (it is not an import).
 //
 // Duplication writes ONE snapshot entry. The "snapshot" branch in
 // _applyEntry replaces the routine in place. Trace copies remain
@@ -40,6 +41,12 @@
 // starting the target, regardless of currentRoutineId. This fixes
 // the case where currentRoutineId was lost after a restart, yet a
 // routine's block was still marked as running.
+//
+// sourceKey. createRoutine accepts an optional sourceKey; when
+// non-empty it is written into the create entry body (so a reread
+// restores it) and into the in-memory routine. findRoutineBySourceKey
+// lets the importer skip routines already present — re-importing
+// the same archive is idempotent.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -194,8 +201,9 @@ class RoutineLayer extends ChangeNotifier {
         case 'create':
           final bodyId = (data['routine'] as num?)?.toInt();
           final id = bodyId ?? e.id;
+          final sourceKey = data['source_key'] as String? ?? '';
           if (findRoutine(id) == null) {
-            routines.add(Routine.create(id, at: e.time));
+            routines.add(Routine.create(id, at: e.time, sourceKey: sourceKey));
           }
           break;
         case 'rename':
@@ -361,14 +369,17 @@ class RoutineLayer extends ChangeNotifier {
   }
 
   // ─── Mutations ───
-  Future<Routine> createRoutine(JournalLayer journal) async {
+  Future<Routine> createRoutine(
+    JournalLayer journal, {
+    String sourceKey = '',
+  }) async {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final id = await journal.log(
-      type: JournalType.routine,
-      body: '{"action":"create"}',
-    );
+    final body = sourceKey.isEmpty
+        ? '{"action":"create"}'
+        : jsonEncode({'action': 'create', 'source_key': sourceKey});
+    final id = await journal.log(type: JournalType.routine, body: body);
     if (findRoutine(id) == null) {
-      final r = Routine.create(id);
+      final r = Routine.create(id, sourceKey: sourceKey);
       r.lastActionAt = now;
       routines.add(r);
     }
@@ -601,6 +612,18 @@ class RoutineLayer extends ChangeNotifier {
   Routine? findRoutine(int id) {
     for (final r in routines) {
       if (r.id == id) return r;
+    }
+    return null;
+  }
+
+  // ─── Lookup by source key ───
+  // Returns the routine whose sourceKey equals the given value, or
+  // null. The importer uses this to skip routines that are already
+  // present, so re-importing the same archive is idempotent.
+  Routine? findRoutineBySourceKey(String key) {
+    if (key.isEmpty) return null;
+    for (final r in routines) {
+      if (r.sourceKey == key) return r;
     }
     return null;
   }

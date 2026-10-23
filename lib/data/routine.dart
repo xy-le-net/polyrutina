@@ -1,47 +1,51 @@
 // ═══════════════════════════════════════════════════════════════════
-// routine.dart — модель рутины и её блоков.
+// lib/data/routine.dart — routine and its blocks.
 //
-// Рутина: идентификатор, имя, время создания, время последнего
-// действия, время последнего отработавшего пульса, время установки
-// завершённости, намеченная дата, планируемые человекочасы, пять
-// блоков, флаги, признак завершённости.
+// Routine: id, name, creation time, last action time, last
+// effective pulse time, completion-install time, scheduled date,
+// planned man-hours, five blocks, flags, completion flag, and
+// sourceKey.
 //
-// Блок: род, накопленные секунды, метка старта, признак правки
-// времени (timeEdited).
+// Block: kind, accumulated seconds, start mark, time-edited flag.
 //
-// lastActionAt. Время последнего действия — для сортировки.
+// lastActionAt. Time of the last action — for sorting.
 //
-// lastPulseAt. Время последнего отработавшего пульса — при пуске
-// либо остановке блока. Служит для выбора дня в календаре «дни»,
-// где прочие действия (переименование, смена флагов) не должны
-// сдвигать метку.
+// lastPulseAt. Time of the last effective pulse — on block start
+// or stop. Used to pick the day in the «days» calendar, where
+// other actions (rename, flag change) must not shift the mark.
 //
-// completedAt. Миг установки завершённости; снимается при снятии
-// оной. Старшая мера дня при выборе пометы в календаре.
+// completedAt. The moment completion was set; cleared when it is
+// unset. The senior measure of the day when the mark is chosen in
+// the calendar.
 //
-// scheduledAt. Намеченная конечная дата (секунды Unix). Нульозначие
-// отсутствия.
+// scheduledAt. Planned end date (Unix seconds). Zero means absent.
 //
-// plannedSeconds. Планируемые человекочасы в секундах; ввод и вывод
-// в формате «дд:чч:мм» (годы и месяцы сверх — не укладываются,
-// но за пределы 99 дней выходить не возбраняется).
+// plannedSeconds. Planned man-hours in seconds; input and output
+// in «dd:hh:mm» format (years and months beyond — do not fit,
+// but going past 99 days is not prohibited).
 //
-// flags. Биты JournalFlag. Правятся в карточке.
+// flags. JournalFlag bits. Edited in the card.
 //
-// completed. Признак завершённости. Ставится в блоке «итог».
+// completed. Completion flag. Set in the «summary» block.
 //
-// timeEdited (у блока). Истина, ежели время правилось вручную.
-// Показывается подчёркнутым. При пуске блока сбрасывается.
+// sourceKey. Identifier of the source routine this one was
+// imported from: «deviceId/firstRun/routineId» of the exporting
+// device. Empty for routines created natively or via duplication.
+// Used by import to skip already-present routines, so re-importing
+// the same archive is idempotent.
 //
-// Роды блоков: prep, transit, work, idle, closeout.
+// timeEdited (per block). True when time was edited manually.
+// Shown underlined. Reset on block start.
+//
+// Block kinds: prep, transit, work, idle, closeout.
 // ═══════════════════════════════════════════════════════════════════
 
 class RoutineBlock {
-  static const String prep = 'prep'; // подготовка
-  static const String transit = 'transit'; // переход
-  static const String work = 'work'; // выполнение
-  static const String idle = 'idle'; // простой
-  static const String closeout = 'closeout'; // завершение
+  static const String prep = 'prep'; // preparation
+  static const String transit = 'transit'; // transit
+  static const String work = 'work'; // execution
+  static const String idle = 'idle'; // idle
+  static const String closeout = 'closeout'; // closeout
 
   static const List<String> kinds = [prep, transit, work, idle, closeout];
 
@@ -80,7 +84,7 @@ class RoutineBlock {
     startedAt = null;
   }
 
-  // Правка времени вручную. Ноль — стирание, пометка снимается.
+  // Manual time edit. Zero — erasure, the mark is cleared.
   void setEditedTime(int seconds) {
     accumulatorSeconds = seconds;
     startedAt = null;
@@ -123,6 +127,13 @@ class Routine {
   int flags;
   bool completed;
 
+  // Identifier of the source routine this one was imported from:
+  // «deviceId/firstRun/routineId» of the exporting device. Empty
+  // for routines created natively or via duplication. Used by
+  // import to skip already-present routines, so re-importing the
+  // same archive is idempotent.
+  String sourceKey;
+
   Routine({
     required this.id,
     this.name = '',
@@ -135,9 +146,10 @@ class Routine {
     this.plannedSeconds = 0,
     this.flags = 0,
     this.completed = false,
+    this.sourceKey = '',
   }) : lastActionAt = lastActionAt ?? createdAt;
 
-  factory Routine.create(int id, {int? at}) {
+  factory Routine.create(int id, {int? at, String sourceKey = ''}) {
     final t = at ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
     return Routine(
       id: id,
@@ -145,6 +157,7 @@ class Routine {
       createdAt: t,
       lastActionAt: t,
       blocks: RoutineBlock.kinds.map((k) => RoutineBlock(kind: k)).toList(),
+      sourceKey: sourceKey,
     );
   }
 
@@ -178,6 +191,7 @@ class Routine {
     'planned_seconds': plannedSeconds,
     'flags': flags,
     'completed': completed,
+    'source_key': sourceKey,
     'blocks': blocks.map((b) => b.toJson()).toList(),
   };
 
@@ -217,6 +231,7 @@ class Routine {
       plannedSeconds: (j['planned_seconds'] as num?)?.toInt() ?? 0,
       flags: (j['flags'] as num?)?.toInt() ?? 0,
       completed: j['completed'] as bool? ?? false,
+      sourceKey: j['source_key'] as String? ?? '',
       blocks: blocks,
     );
   }

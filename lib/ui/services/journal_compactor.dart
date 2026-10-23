@@ -1,10 +1,17 @@
 // ═══════════════════════════════════════════════════════════════════
-// journal_compactor.dart — journal compaction.
+// lib/ui/services/journal_compactor.dart — journal compaction.
 //
 // Collapses the journal into a compact form: erases all entries,
 // writes routine snapshots (action "snapshot"), rewrites traces
 // with remapped trace-to-trace references, saves a single monthly
 // shift record, and resets the export and reread marks.
+//
+// CompactResult. Every run returns a CompactResult carrying the
+// entry count and the database byte size, measured before and
+// after the reclaim step. The rubka compares the two and reports
+// either «journal optimal» (entriesAfter == entriesBefore and
+// bytesAfter == bytesBefore) or «dropped N entries, freed K» to
+// the user.
 //
 // Order of operations:
 //   1. Capture routine snapshots in memory (ids preserved).
@@ -32,14 +39,41 @@
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../../data/journal_layer.dart';
 import '../../data/journal_types.dart';
 import '../../data/operational_layer.dart';
 import '../../data/routine_layer.dart';
 import '../../data/trace_layer.dart';
+
+// Result of a compaction pass: before/after numbers for entries and
+// the database file. Callers compare before vs after to decide what
+// (if anything) to report to the user.
+class CompactResult {
+  final int entriesBefore;
+  final int entriesAfter;
+  final int bytesBefore;
+  final int bytesAfter;
+
+  const CompactResult({
+    required this.entriesBefore,
+    required this.entriesAfter,
+    required this.bytesBefore,
+    required this.bytesAfter,
+  });
+
+  int get entriesDropped => entriesBefore - entriesAfter;
+  int get bytesFreed => bytesBefore - bytesAfter;
+
+  // True when neither entries nor bytes changed — the journal was
+  // already in its compact form.
+  bool get unchanged => entriesDropped <= 0 && bytesFreed <= 0;
+}
 
 class JournalCompactor {
   /// Compacts the journal.
@@ -49,13 +83,19 @@ class JournalCompactor {
   /// [traceLayer] — the trace layer (for re-written traces).
   /// [bort] — the operational layer (for shift history and marks).
   /// [onProgress] — progress callback (0..1).
-  static Future<void> compact({
+  static Future<CompactResult> compact({
     required JournalLayer journal,
     required RoutineLayer routineLayer,
     required TraceLayer traceLayer,
     required OperationalLayer bort,
     ValueChanged<double>? onProgress,
   }) async {
+    onProgress?.call(0.02);
+
+    // Snapshot the «before» numbers.
+    final entriesBefore = await journal.countEntries();
+    final bytesBefore = await _databaseBytes();
+
     onProgress?.call(0.05);
 
     // 1. Capture routine snapshots in memory. Ids are preserved
@@ -178,6 +218,37 @@ class JournalCompactor {
       // Space reclamation failed; the journal itself is intact.
     }
     onProgress?.call(1.0);
+
+    // Snapshot the «after» numbers.
+    final entriesAfter = await journal.countEntries();
+    final bytesAfter = await _databaseBytes();
+
+    return CompactResult(
+      entriesBefore: entriesBefore,
+      entriesAfter: entriesAfter,
+      bytesBefore: bytesBefore,
+      bytesAfter: bytesAfter,
+    );
+  }
+
+  // Total on-disk size of the journal's SQLite files (main, wal,
+  // shm). Missing files count as zero.
+  static Future<int> _databaseBytes() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      var total = 0;
+      for (final name in const [
+        'polyrutina.sqlite',
+        'polyrutina.sqlite-wal',
+        'polyrutina.sqlite-shm',
+      ]) {
+        final f = File(p.join(dir.path, name));
+        if (await f.exists()) total += await f.length();
+      }
+      return total;
+    } catch (_) {
+      return 0;
+    }
   }
 
   static bool _sameList(List<int> a, List<int> b) {
