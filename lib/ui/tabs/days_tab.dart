@@ -25,15 +25,24 @@
 // plate does not replace any of the three mark layers; it merely
 // signals «this is today» without competing with them.
 //
-// Legend + stats. Under the month switcher sits a short legend that
+// Circle stroke. The circle's stroke equals the square's stroke:
+// both marks live at the same visual weight, so a day that carries
+// both reads as one shape family rather than two competing
+// outlines. Earlier the circle was drawn twice as thick on the
+// theory that a thin ring would be invisible on the today plate;
+// in practice the doubled stroke dominated the digit, so the
+// strokes are now equal.
+//
+// Legend + stats. Under the calendar grid sits a short legend that
 // doubles as monthly statistics: [square with count inside] word,
 // [circle with count inside] word, [count with underline] word —
 // one item per mark kind, only for kinds with a non-zero count this
 // month. Counts are computed from the same _markOfRoutine logic
-// that populates the grid, so the legend and the marks agree.
-// The legend is left-aligned (flush with the month row's left edge)
-// and its circle is sized to match the square, so the two shapes
-// read as one family.
+// that populates the grid, so the legend and the marks agree. The
+// legend is left-aligned and its shapes are sized to match the
+// calendar cells (same frame size, same stroke, same font as the
+// day numbers), so the legend reads as a continuation of the grid
+// rather than as a footnote.
 //
 // Cell layout. Flat Stack: square (scheduled), circle (unfinished),
 // and the number are independent layers of a fixed-size box. The
@@ -42,12 +51,6 @@
 // Stack keeps the circle's diameter at boxSide — the square's side
 // — so the two marks read as the same size (the ring is inscribed
 // in the square, both strokes centred on the same boundary).
-//
-// Circle stroke. 0.08 * side, twice the square's stroke: a thin
-// ring on the today plate is almost invisible at small cell sizes,
-// whereas a horizontal underline of the same thickness stays
-// legible. The doubled stroke restores the circle as a visible
-// mark without competing with the digit.
 //
 // Control row. The month switcher occupies the full remaining
 // width after the root pult. The row stretches edge to edge with
@@ -271,14 +274,6 @@ class _DaysTabState extends State<DaysTab> {
             ),
           ),
         ),
-        _legend(
-          side,
-          bort,
-          i18n,
-          scheduled: scheduledCount,
-          unfinished: unfinishedCount,
-          completed: completedCount,
-        ),
         Expanded(
           child: GridView.count(
             padding: EdgeInsets.all(side * 0.3),
@@ -287,18 +282,27 @@ class _DaysTabState extends State<DaysTab> {
             children: grid,
           ),
         ),
+        _legend(
+          side,
+          bort,
+          i18n,
+          scheduled: scheduledCount,
+          unfinished: unfinishedCount,
+          completed: completedCount,
+        ),
       ],
     );
   }
 
-  // ─── Legend + stats under the month ───
+  // ─── Legend + stats under the calendar grid ───
   // One item per mark kind (square, circle, underline) with the
   // monthly count printed inside the shape, followed by the word.
   // Only non-zero counts are shown, so an empty month carries no
   // legend at all. Colors are dim — a legend should inform, not
-  // compete with the grid. Left-aligned so the shapes line up with
-  // the month row's left edge. The circle matches the square in
-  // size; the digit sits at the center of the shape in both cases.
+  // compete with the grid. Left-aligned; the shapes are sized to
+  // match the calendar cells (same frame side, stroke, and font as
+  // the day numbers), so the legend reads as a continuation of the
+  // grid rather than as a footnote.
   Widget _legend(
     double side,
     OperationalLayer bort,
@@ -308,7 +312,12 @@ class _DaysTabState extends State<DaysTab> {
     required int completed,
   }) {
     final color = bort.dim;
-    final itemSize = side * 0.55;
+    // Match the calendar cell's box side, font, and stroke so that
+    // legend shapes and numbers have the same visual weight as the
+    // grid above.
+    final itemSize = side * 0.9;
+    final markStroke = side * 0.04;
+    final fontSize = side * 0.4;
 
     Widget item(Widget mark, int count, String label) {
       return Row(
@@ -325,7 +334,7 @@ class _DaysTabState extends State<DaysTab> {
                   '$count',
                   style: TextStyle(
                     color: color,
-                    fontSize: side * 0.3,
+                    fontSize: fontSize,
                     height: 1.0,
                   ),
                 ),
@@ -335,7 +344,7 @@ class _DaysTabState extends State<DaysTab> {
           SizedBox(width: side * 0.1),
           Text(
             label,
-            style: TextStyle(color: color, fontSize: side * 0.3),
+            style: TextStyle(color: color, fontSize: fontSize),
           ),
         ],
       );
@@ -348,7 +357,7 @@ class _DaysTabState extends State<DaysTab> {
           Positioned.fill(
             child: DecoratedBox(
               decoration: BoxDecoration(
-                border: Border.all(color: color, width: side * 0.04),
+                border: Border.all(color: color, width: markStroke),
                 borderRadius: BorderRadius.circular(side * 0.05),
               ),
             ),
@@ -365,7 +374,7 @@ class _DaysTabState extends State<DaysTab> {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: color, width: side * 0.04),
+                border: Border.all(color: color, width: markStroke),
               ),
             ),
           ),
@@ -381,7 +390,7 @@ class _DaysTabState extends State<DaysTab> {
             alignment: Alignment.bottomCenter,
             child: Container(
               margin: EdgeInsets.only(bottom: itemSize * 0.1),
-              height: side * 0.04,
+              height: markStroke,
               width: itemSize * 0.6,
               color: color,
             ),
@@ -395,9 +404,11 @@ class _DaysTabState extends State<DaysTab> {
     if (items.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: side * 0.4,
-        vertical: side * 0.15,
+      padding: EdgeInsets.fromLTRB(
+        side * 0.4,
+        side * 0.15,
+        side * 0.4,
+        side * 0.3,
       ),
       child: Align(
         alignment: Alignment.centerLeft,
@@ -442,12 +453,10 @@ class _DaysTabState extends State<DaysTab> {
     // inscribed in the scheduled square (both strokes centred on
     // the same outer boundary).
     final circleSide = boxSide;
+    // One stroke width for both marks: circle and square sit at the
+    // same visual weight, and the digit is not overpowered by a
+    // heavier ring.
     final markStroke = side * 0.04;
-    // The ring is drawn twice as thick as the square/underline
-    // stroke: a thin ring on the today plate reads as almost
-    // invisible, whereas a horizontal underline of the same
-    // thickness stays legible.
-    final circleStroke = side * 0.08;
 
     final layers = <Widget>[];
 
@@ -489,7 +498,7 @@ class _DaysTabState extends State<DaysTab> {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: cellColor, width: circleStroke),
+                border: Border.all(color: cellColor, width: markStroke),
               ),
             ),
           ),

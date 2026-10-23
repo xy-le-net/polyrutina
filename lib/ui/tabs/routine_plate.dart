@@ -262,7 +262,12 @@ class RoutinePlate extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: plateBg,
-          border: Border.all(color: textSoft, width: strokeW),
+          // Frame follows flags: signal-colored when the routine
+          // carries any flag bit, neutral textSoft otherwise.
+          border: Border.all(
+            color: routine.flags != 0 ? accent : textSoft,
+            width: strokeW,
+          ),
           borderRadius: BorderRadius.circular(radiusW),
         ),
         padding: EdgeInsets.all(framePad),
