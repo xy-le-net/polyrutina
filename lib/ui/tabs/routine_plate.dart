@@ -159,117 +159,131 @@ class RoutinePlate extends StatelessWidget {
       overrideSize: pultSide,
     );
 
-    final body = Row(
-      children: [
-        if (selectMode) ...[
-          PultTick(
-            id: 'sel_${routine.id}',
-            value: selected,
-            binary: true,
-            fg: textMain,
-            bg: plateBg,
-            signal: accent,
-            overrideSize: pultSide,
-            onTap: onSelectToggle,
-          ),
-          SizedBox(width: side * 0.15),
-        ],
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+    // Flags sit in a vertical column on the left strip of the plate,
+    // occupying its full height. Glyphs share one inverted plate
+    // (accent background, plate-colored glyphs, no frame) and are
+    // enlarged by a quarter against the former inline size.
+    final Widget? flagsColumn = routine.flags == 0
+        ? null
+        : Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: side * 0.1,
+              vertical: side * 0.05,
+            ),
+            decoration: BoxDecoration(
+              color: accent,
+              borderRadius: BorderRadius.circular(radiusW * 0.4),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var i = 0; i < kFlagBits.length; i++)
+                  if ((routine.flags & kFlagBits[i]) != 0)
+                    Padding(
+                      padding: EdgeInsets.symmetric(vertical: side * 0.03),
+                      child: Icon(
+                        kFlagIcons[i],
+                        color: plateBg,
+                        size: nameSize * 1.125,
+                      ),
+                    ),
+              ],
+            ),
+          );
+
+    // IntrinsicHeight + stretch lets the flags column occupy the
+    // plate's full height while the middle column keeps its natural
+    // size; everything else is centered by Align.
+    final body = IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (selectMode) ...[
+            Center(
+              child: PultTick(
+                id: 'sel_${routine.id}',
+                value: selected,
+                binary: true,
+                fg: textMain,
+                bg: plateBg,
+                signal: accent,
+                overrideSize: pultSide,
+                onTap: onSelectToggle,
+              ),
+            ),
+            SizedBox(width: side * 0.15),
+          ],
+          if (flagsColumn != null) ...[
+            flagsColumn,
+            SizedBox(width: side * 0.15),
+          ],
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (routine.flags != 0) ...[
-                    // Flag glyphs share one inverted plate: accent
-                    // background, plate-colored glyphs, no frame.
+                  Text(
+                    routine.name.isEmpty
+                        ? i18n.t('routine.no_name')
+                        : routine.name,
+                    style: TextStyle(
+                      color: routine.flags != 0 ? accent : textMain,
+                      fontSize: nameSize,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 10),
+                  if (routine.scheduledAt != null)
+                    // Assigned date — rectangular frame, uniformly
+                    // with the «days» tab calendar (there the mark is
+                    // a square).
                     Container(
                       padding: EdgeInsets.symmetric(
-                        horizontal: side * 0.1,
-                        vertical: side * 0.05,
+                        horizontal: dateSize * 0.3,
+                        vertical: dateSize * 0.1,
                       ),
                       decoration: BoxDecoration(
-                        color: accent,
-                        borderRadius: BorderRadius.circular(radiusW * 0.4),
+                        border: Border.all(color: accent, width: strokeW * 2),
+                        borderRadius: BorderRadius.circular(radiusW * 0.3),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (var i = 0; i < kFlagBits.length; i++)
-                            if ((routine.flags & kFlagBits[i]) != 0)
-                              Padding(
-                                padding: EdgeInsets.only(right: side * 0.05),
-                                child: Icon(
-                                  kFlagIcons[i],
-                                  color: plateBg,
-                                  size: nameSize * 0.9,
-                                ),
-                              ),
-                        ],
+                      child: Text(
+                        fmtDate(routine.scheduledAt!, i18n.t),
+                        style: TextStyle(color: accent, fontSize: dateSize),
                       ),
+                    )
+                  else
+                    Text(
+                      fmtDate(routine.createdAt, i18n.t),
+                      style: TextStyle(color: textSoft, fontSize: dateSize),
                     ),
-                    SizedBox(width: side * 0.1),
-                  ],
-                  Expanded(
-                    child: Text(
-                      routine.name.isEmpty
-                          ? i18n.t('routine.no_name')
-                          : routine.name,
-                      style: TextStyle(
-                        color: routine.flags != 0 ? accent : textMain,
-                        fontSize: nameSize,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
                 ],
               ),
-              const SizedBox(height: 10),
-              if (routine.scheduledAt != null)
-                // Assigned date — rectangular frame, uniformly with
-                // the «days» tab calendar (there the mark is a square).
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: dateSize * 0.3,
-                    vertical: dateSize * 0.1,
-                  ),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: accent, width: strokeW * 2),
-                    borderRadius: BorderRadius.circular(radiusW * 0.3),
-                  ),
-                  child: Text(
-                    fmtDate(routine.scheduledAt!, i18n.t),
-                    style: TextStyle(color: accent, fontSize: dateSize),
-                  ),
-                )
-              else
-                Text(
-                  fmtDate(routine.createdAt, i18n.t),
-                  style: TextStyle(color: textSoft, fontSize: dateSize),
-                ),
-            ],
+            ),
           ),
-        ),
-        // Routine time — placed to the left of the pult.
-        if (routine.totalSeconds > 0) ...[
+          // Routine time — placed to the left of the pult.
+          if (routine.totalSeconds > 0) ...[
+            SizedBox(width: side * 0.15),
+            Center(
+              child: TimerText(
+                seconds: routine.totalSeconds,
+                running: running,
+                fg: textMain,
+                dim: textSoft,
+                numberSize: numberSize,
+                colonVisible: ticker.colonVisible,
+                t: i18n.t,
+                ticker: ticker,
+              ),
+            ),
+          ],
           SizedBox(width: side * 0.15),
-          TimerText(
-            seconds: routine.totalSeconds,
-            running: running,
-            fg: textMain,
-            dim: textSoft,
-            numberSize: numberSize,
-            colonVisible: ticker.colonVisible,
-            t: i18n.t,
-            ticker: ticker,
-          ),
+          Center(child: rightControl),
         ],
-        SizedBox(width: side * 0.15),
-        rightControl,
-      ],
+      ),
     );
 
     return GestureDetector(

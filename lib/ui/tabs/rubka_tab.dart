@@ -6,22 +6,20 @@
 // (rubka_appearance, rubka_interface, rubka_data). Here — block
 // assembly, layout, and the «artel» block body.
 //
-// Artel. Midnight field (HH:MM) — the start of the technical day.
-// Routine mutex checkbox — when on (default), starting a routine
-// block pauses every other running block across the app; off, blocks
-// run independently. Shift row — today's active time from the
-// technical midnight; a tap opens the shift history (the row was
-// moved here from «data», where it opened the same dialog). Two
-// checkboxes: show the «field» tab and show the «artel» tab.
+// Artel. The shift row is the first line — signal-colored in full
+// and refreshed on every ticker beat, so the running total keeps
+// pace with the wall clock. Then: midnight field (HH:MM) — the
+// start of the technical day; routine mutex checkbox; two
+// checkboxes for tab visibility («field» and «artel»).
 //
 // Layout.
 //   Narrow screen (under 640): blocks in a single column, top down.
 //   Wide screen: two equal-width columns; blocks butt together
-//   without vertical gaps — each slot stretches the height of its
-//   column. Columns: left — artel, interface; right — appearance,
-//   data.
+//   without vertical gaps. Columns: left — artel, interface;
+//   right — appearance, data.
 //
-// Scopes. BortScope and I18nScope for the rubka itself.
+// Scopes. BortScope and I18nScope for the rubka itself;
+// TickerScope for the shift row's live refresh.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -78,6 +76,9 @@ class RubkaTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Shift row — first line of the block, signal-colored in
+          // full, refreshed by the ticker so the number ticks.
+          _shiftRow(context, side),
           _midnightRow(context, fg, side),
           _tabTickRow(
             context,
@@ -88,7 +89,6 @@ class RubkaTab extends StatelessWidget {
             signal,
             side,
           ),
-          _shiftRow(context, fg, dim, side),
           _tabTickRow(
             context,
             'show_field_tab',
@@ -226,34 +226,48 @@ class RubkaTab extends StatelessWidget {
     );
   }
 
-  // ─── Shift row: today's active time, opens the shift history ───
-  Widget _shiftRow(BuildContext context, Color fg, Color dim, double side) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
-    final value = bort.shiftSecondsNow <= 0
-        ? '0${i18n.t('time.m')}'
-        : fmtTime(bort.shiftSecondsNow, i18n.t);
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => showShiftHistory(context),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 140,
-              child: Text(i18n.t('bort.shift'), style: TextStyle(color: fg)),
+  // ─── Shift row: signal-colored in full, refreshed on the ticker ───
+  // AnimatedBuilder re-reads BortScope inside the builder, so both
+  // the ticker (2 Hz) and any bort mutation (start/stop/pulse)
+  // trigger a fresh read of shiftSecondsNow. Without this, an idle
+  // running shift would sit on a stale «0м» until the next tap.
+  Widget _shiftRow(BuildContext context, double side) {
+    final ticker = TickerScope.of(context);
+    return AnimatedBuilder(
+      animation: ticker,
+      builder: (context, _) {
+        final bort = BortScope.of(context);
+        final i18n = I18nScope.of(context);
+        final sec = bort.shiftSecondsNow;
+        final value = sec <= 0 ? '0${i18n.t('time.m')}' : fmtTime(sec, i18n.t);
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => showShiftHistory(context),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 140,
+                  child: Text(
+                    i18n.t('bort.shift'),
+                    style: TextStyle(color: bort.signal),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    value,
+                    style: TextStyle(
+                      color: bort.signal,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ),
+              ],
             ),
-            Expanded(
-              child: Text(
-                value,
-                style: TextStyle(color: fg, fontFamily: 'monospace'),
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 

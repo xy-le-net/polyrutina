@@ -135,6 +135,22 @@ class ShiftHistory {
     );
   }
 
+  // Read the recorded totals for an arbitrary (year, month). Used by
+  // the shift-history dialog when the user navigates to a month other
+  // than the most recent one. Returns an empty map when the month has
+  // no recorded days.
+  Map<int, int> daysFor(int year, int month) {
+    final out = <int, int>{};
+    final months = _data[year];
+    if (months == null) return out;
+    final days = months[month];
+    if (days == null) return out;
+    for (final e in days.entries) {
+      if (e.value > 0) out[e.key] = e.value;
+    }
+    return out;
+  }
+
   void pruneBefore(MonthShift keep) {
     _data.removeWhere((y, months) {
       if (y < keep.year) return true;
@@ -279,11 +295,29 @@ class OperationalLayer extends ChangeNotifier {
       if (start < curMid) running = curMid - start;
     }
     final skipped = oldPrev > 0 && curMid - oldPrev > 86400;
-    if (!skipped) running += totalShiftSeconds;
-    if (running > 86400) running = 86400;
-    if (running > 0) {
-      final dt = DateTime.fromMillisecondsSinceEpoch(prevDayStart * 1000);
-      _shiftHistory.addDay(dt.year, dt.month, dt.day, running);
+    if (!skipped) {
+      running += totalShiftSeconds;
+      if (running > 86400) running = 86400;
+      if (running > 0) {
+        final dt = DateTime.fromMillisecondsSinceEpoch(prevDayStart * 1000);
+        _shiftHistory.addDay(dt.year, dt.month, dt.day, running);
+      }
+    } else {
+      // A gap of more than a day: the app was not opened at the
+      // previous midnight. Preserve the accumulated total rather
+      // than dropping it: attribute it to the last known midnight
+      // (oldPrev), capped at 24 hours. The running portion (from
+      // prevDayStart) is attributed to its own day separately.
+      if (totalShiftSeconds > 0 && oldPrev > 0) {
+        final capped = totalShiftSeconds > 86400 ? 86400 : totalShiftSeconds;
+        final dt = DateTime.fromMillisecondsSinceEpoch(oldPrev * 1000);
+        _shiftHistory.addDay(dt.year, dt.month, dt.day, capped);
+      }
+      if (running > 0) {
+        final capped = running > 86400 ? 86400 : running;
+        final dt = DateTime.fromMillisecondsSinceEpoch(prevDayStart * 1000);
+        _shiftHistory.addDay(dt.year, dt.month, dt.day, capped);
+      }
     }
   }
 

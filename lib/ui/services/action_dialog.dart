@@ -25,7 +25,6 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../data/i18n.dart';
-import '../../data/operational_layer.dart';
 import '../core/app_scope.dart';
 import '../core/dialog_frame.dart';
 import '../core/format.dart';
@@ -83,25 +82,16 @@ class _ShiftHistoryDialogState extends State<_ShiftHistoryDialog> {
 
   Map<int, int> _daysFor(AppContext app) {
     final history = app.bort.shiftHistory;
-    final month = history.lastMonth();
-    if (month == null) return {};
-    if (month.year != _year || month.month != _month) {
-      final all = _collectAll(history);
-      final key = '$_year-$_month';
-      return all[key] ?? {};
-    }
-    final out = <int, int>{};
-    for (final e in month.days.entries) {
-      final d = int.tryParse(e.key);
-      if (d != null && e.value > 0) out[d] = e.value;
+    final out = history.daysFor(_year, _month);
+    // Today's live shift is not written to the history until
+    // midnight; merge it when the dialog shows the current month,
+    // so today's cell is not stuck at zero while the shift runs.
+    final now = DateTime.now();
+    if (_year == now.year && _month == now.month) {
+      final live = app.bort.shiftSecondsNow;
+      if (live > 0) out[now.day] = live;
     }
     return out;
-  }
-
-  Map<String, Map<int, int>> _collectAll(ShiftHistory history) {
-    // lastMonth() exposes only the latest month; other months are
-    // rendered empty by design, as the compactor keeps the last one.
-    return {};
   }
 
   String _monthTitle() => '$_year.${_month.toString().padLeft(2, '0')}';
