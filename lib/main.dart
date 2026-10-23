@@ -461,25 +461,44 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                         data: MediaQuery.of(
                           context,
                         ).copyWith(textScaler: TextScaler.linear(_bort.scale)),
-                        child: Listener(
-                          behavior: HitTestBehavior.translucent,
-                          onPointerDown: (_) => _bort.pulseBort(),
-                          child: SafeArea(
-                            child: Stack(
-                              children: [
-                                child ?? const SizedBox.shrink(),
-                                Positioned(
-                                  left: _rootPad,
-                                  top: _rootPad,
-                                  child: RootPult(
-                                    side: rootSide,
-                                    fg: _bort.fg,
-                                    bg: _bort.bg,
-                                    signal: _bort.signal,
-                                    onOpen: _openTabsSheet,
-                                  ),
+                        // The status bar area is inside the SafeArea's
+                        // padding, i.e. OUTSIDE its child. Without an
+                        // explicit paint there, on Android's
+                        // edge-to-edge (where statusBarColor is
+                        // ignored) the icons end up over an unpainted
+                        // layer and can vanish on the light palette.
+                        // ColoredBox paints bort.bg behind everything;
+                        // AnnotatedRegion applies the icon style to
+                        // this subtree rather than relying on the
+                        // global SystemChrome call, which a route or
+                        // an AppBar can silently override.
+                        child: AnnotatedRegion<SystemUiOverlayStyle>(
+                          value: _overlayStyle(
+                            _effectiveBrightness(systemBrightness),
+                          ),
+                          child: ColoredBox(
+                            color: _bort.bg,
+                            child: Listener(
+                              behavior: HitTestBehavior.translucent,
+                              onPointerDown: (_) => _bort.pulseBort(),
+                              child: SafeArea(
+                                child: Stack(
+                                  children: [
+                                    child ?? const SizedBox.shrink(),
+                                    Positioned(
+                                      left: _rootPad,
+                                      top: _rootPad,
+                                      child: RootPult(
+                                        side: rootSide,
+                                        fg: _bort.fg,
+                                        bg: _bort.bg,
+                                        signal: _bort.signal,
+                                        onOpen: _openTabsSheet,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              ),
                             ),
                           ),
                         ),

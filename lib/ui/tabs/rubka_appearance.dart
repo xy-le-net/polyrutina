@@ -109,12 +109,18 @@ class RubkaAppearance extends StatelessWidget {
     final i18n = I18nScope.of(context);
     final showLabels = bort.labelsButtons;
 
-    final names = ['system', 'day', 'night', 'custom'];
+    // «invers» — the custom palette flipped by the same rule as the
+    // running-block inverse (bg↔fg, bgdim↔dim, signal kept); it is
+    // computed on read from the custom colors, so editing custom
+    // updates it automatically. Placed after custom — «под пункт
+    // своя» — matching the theme_store resolution.
+    final names = ['system', 'day', 'night', 'custom', 'invers'];
     final icons = [
       Icons.brightness_auto,
       Icons.light_mode_outlined,
       Icons.dark_mode_outlined,
       Icons.palette_outlined,
+      Icons.invert_colors,
     ];
 
     return Padding(
