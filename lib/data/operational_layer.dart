@@ -17,6 +17,13 @@
 // change affects state read on the next frame anyway, or when the
 // caller orchestrates its own refresh.
 //
+// mutexRoutines. When true (the default), starting a routine block
+// pauses every other running block across the whole app — only one
+// block is active at a time. When false, blocks are independent and
+// may run concurrently. The switch is read by AppContext when it
+// delegates to RoutineLayer.toggleBlock / startBlock; the routine
+// layer itself carries no opinion on the matter.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -194,6 +201,10 @@ class OperationalLayer extends ChangeNotifier {
   bool blockInterface = false;
   bool blockData = false;
 
+  // When true, starting a routine block pauses every other running
+  // block across the app. When false, blocks run independently.
+  bool mutexRoutines = true;
+
   bool showFieldTab = false;
   bool showArtelTab = false;
 
@@ -292,6 +303,7 @@ class OperationalLayer extends ChangeNotifier {
       blockAppearance = data['block_appearance'] as bool? ?? blockAppearance;
       blockInterface = data['block_interface'] as bool? ?? blockInterface;
       blockData = data['block_data'] as bool? ?? blockData;
+      mutexRoutines = data['mutex_routines'] as bool? ?? mutexRoutines;
       showFieldTab = data['show_field_tab'] as bool? ?? showFieldTab;
       showArtelTab = data['show_artel_tab'] as bool? ?? showArtelTab;
       selectedType = (data['selected_type'] as num?)?.toInt() ?? selectedType;
@@ -335,6 +347,7 @@ class OperationalLayer extends ChangeNotifier {
     blockAppearance = data['block_appearance'] as bool? ?? blockAppearance;
     blockInterface = data['block_interface'] as bool? ?? blockInterface;
     blockData = data['block_data'] as bool? ?? blockData;
+    mutexRoutines = data['mutex_routines'] as bool? ?? mutexRoutines;
     showFieldTab = data['show_field_tab'] as bool? ?? showFieldTab;
     showArtelTab = data['show_artel_tab'] as bool? ?? showArtelTab;
     selectedType = (data['selected_type'] as num?)?.toInt() ?? selectedType;
@@ -412,11 +425,7 @@ class OperationalLayer extends ChangeNotifier {
   // ─── Running palette ───
   // Colors for a routine block or plate that is currently running:
   // the opposite theme's roles, so the running item inverts against
-  // its neighbours, with a defensive fallback to the signal/bg pair
-  // (the fallback is unreachable today — colorsForOpposite always
-  // yields a map — but kept for the method's contract). Both
-  // RoutineBlockView and RoutinePlate read this; their former
-  // inline duplication of the branch is removed.
+  // its neighbours, with a defensive fallback to the signal/bg pair.
   ({Color bg, Color dim, Color fg, Color signal}) runningColors() {
     final opp = colorsForOpposite();
     if (opp != null) {
@@ -433,11 +442,6 @@ class OperationalLayer extends ChangeNotifier {
   // ─── Block collapse ───
   // Default expanded: note, work. Default collapsed: prep, transit,
   // idle, closeout, summary. The set holds the COLLAPSED kinds.
-  //
-  // On first tap the initial set is materialized from the defaults
-  // and the target kind is toggled once. A kind that is collapsed
-  // by default therefore opens on the first tap; a kind expanded
-  // by default collapses on the first tap.
   bool isBlockCollapsed(int routineId, String kind) {
     final set = collapsedBlocks[routineId];
     if (set == null) {
@@ -449,7 +453,6 @@ class OperationalLayer extends ChangeNotifier {
   void toggleBlockCollapsed(int routineId, String kind) {
     final current = collapsedBlocks[routineId];
     if (current == null) {
-      // Materialize defaults: all kinds except note and work.
       final init = <String>{
         for (final k in const [
           'note',
@@ -564,6 +567,7 @@ class OperationalLayer extends ChangeNotifier {
     defaultSlots = {'work'};
     showFieldTab = false;
     showArtelTab = false;
+    mutexRoutines = true;
     lastExportId = 0;
     lastRereadId = 0;
     await _loadDefaults();
@@ -691,6 +695,9 @@ class OperationalLayer extends ChangeNotifier {
       case 'block_data':
         blockData = _parseBool(value) ?? blockData;
         break;
+      case 'mutex_routines':
+        mutexRoutines = _parseBool(value) ?? mutexRoutines;
+        break;
       case 'selected_type':
         selectedType = int.tryParse(value) ?? selectedType;
         break;
@@ -768,6 +775,7 @@ class OperationalLayer extends ChangeNotifier {
       'block_appearance': blockAppearance,
       'block_interface': blockInterface,
       'block_data': blockData,
+      'mutex_routines': mutexRoutines,
       'show_field_tab': showFieldTab,
       'show_artel_tab': showArtelTab,
       'selected_type': selectedType,
@@ -817,6 +825,7 @@ class OperationalLayer extends ChangeNotifier {
     out['block_appearance'] = blockAppearance.toString();
     out['block_interface'] = blockInterface.toString();
     out['block_data'] = blockData.toString();
+    out['mutex_routines'] = mutexRoutines.toString();
     out['show_field_tab'] = showFieldTab.toString();
     out['show_artel_tab'] = showArtelTab.toString();
     out['midnight'] = _bortTime.midnight;
@@ -838,6 +847,7 @@ class OperationalLayer extends ChangeNotifier {
     'scale': 'string',
     'lang': 'string',
     'labels_buttons': 'bool',
+    'mutex_routines': 'bool',
     'midnight': 'string',
     'k_pult': 'string',
     'k_pult_small': 'string',

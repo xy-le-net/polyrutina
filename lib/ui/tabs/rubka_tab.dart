@@ -4,27 +4,24 @@
 // Four blocks: artel, appearance, interface, data. Appearance,
 // interface, and data are extracted into separate widgets
 // (rubka_appearance, rubka_interface, rubka_data). Here — block
-// assembly, layout, and the «midnight» field with the tab-visibility
-// checkboxes.
+// assembly, layout, and the «artel» block body.
 //
 // Artel. Midnight field (HH:MM) — the start of the technical day.
-// Two checkboxes: show the «field» tab and show the «artel» tab.
-// By default both are hidden; when checked, the tab appears in the
-// menu.
+// Routine mutex checkbox — when on (default), starting a routine
+// block pauses every other running block across the app; off, blocks
+// run independently. Shift row — today's active time from the
+// technical midnight; a tap opens the shift history (the row was
+// moved here from «data», where it opened the same dialog). Two
+// checkboxes: show the «field» tab and show the «artel» tab.
 //
 // Layout.
 //   Narrow screen (under 640): blocks in a single column, top down.
 //   Wide screen: two equal-width columns; blocks butt together
 //   without vertical gaps — each slot stretches the height of its
-//   column, the remainder fills empty space inside the neighbour's
-//   frame if there is a height difference. Columns: left — artel,
-//   interface; right — appearance, data.
+//   column. Columns: left — artel, interface; right — appearance,
+//   data.
 //
-// Scopes. The rubka itself reads BortScope and I18nScope. RubkaData
-// remains on AppScope: it touches the journal, several layers, and
-// the AppContext delegates (refresh, reloadI18n). RubkaAppearance
-// and RubkaInterface are read-only on bort and i18n; their migration
-// to point scopes is a separate edit.
+// Scopes. BortScope and I18nScope for the rubka itself.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -35,8 +32,10 @@ import '../core/app_scope.dart';
 import '../core/block.dart';
 import '../core/bort_field.dart';
 import '../core/control_row.dart';
+import '../core/format.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_tick.dart';
+import '../services/action_dialog.dart';
 import 'rubka_appearance.dart';
 import 'rubka_data.dart';
 import 'rubka_interface.dart';
@@ -80,6 +79,16 @@ class RubkaTab extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _midnightRow(context, fg, side),
+          _tabTickRow(
+            context,
+            'mutex_routines',
+            i18n.t('bort.mutex_routines'),
+            fg,
+            bg,
+            signal,
+            side,
+          ),
+          _shiftRow(context, fg, dim, side),
           _tabTickRow(
             context,
             'show_field_tab',
@@ -158,10 +167,6 @@ class RubkaTab extends StatelessWidget {
         const spacing = 16.0;
         final colW = (width - hPad * 2 - spacing) / 2;
 
-        // Two columns. No vertical gaps inside: Block already carries
-        // its own bottom gap, and Column stacks them flush. The height
-        // difference does not create gaps between blocks — only empty
-        // space at the bottom of the shorter column.
         Widget col(List<Widget> children) => SizedBox(
           width: colW,
           child: Column(
@@ -191,7 +196,7 @@ class RubkaTab extends StatelessWidget {
     );
   }
 
-  // ─── Midnight: the sole detail kept here ───
+  // ─── Midnight: the start of the technical day ───
   Widget _midnightRow(BuildContext context, Color fg, double side) {
     final bort = BortScope.of(context);
     final i18n = I18nScope.of(context);
@@ -221,7 +226,38 @@ class RubkaTab extends StatelessWidget {
     );
   }
 
-  // ─── Tab-visibility checkbox ───
+  // ─── Shift row: today's active time, opens the shift history ───
+  Widget _shiftRow(BuildContext context, Color fg, Color dim, double side) {
+    final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
+    final value = bort.shiftSecondsNow <= 0
+        ? '0${i18n.t('time.m')}'
+        : fmtTime(bort.shiftSecondsNow, i18n.t);
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => showShiftHistory(context),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 140,
+              child: Text(i18n.t('bort.shift'), style: TextStyle(color: fg)),
+            ),
+            Expanded(
+              child: Text(
+                value,
+                style: TextStyle(color: fg, fontFamily: 'monospace'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── Checkbox (binary) ───
   Widget _tabTickRow(
     BuildContext context,
     String key,

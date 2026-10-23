@@ -21,41 +21,34 @@
 //   — dim elsewhere (subtle but contrasty against bg).
 //
 // Today. The current day carries a medium-tone square plate
-// (bort.bgdim) with soft corners, drawn underneath all marks. The
-// plate does not replace any of the three mark layers; it merely
-// signals «this is today» without competing with them.
+// (bort.bgdim) with soft corners, drawn underneath all marks.
 //
-// Circle stroke. The circle's stroke equals the square's stroke:
-// both marks live at the same visual weight, so a day that carries
-// both reads as one shape family rather than two competing
-// outlines. Earlier the circle was drawn twice as thick on the
-// theory that a thin ring would be invisible on the today plate;
-// in practice the doubled stroke dominated the digit, so the
-// strokes are now equal.
+// Legend + stats. Below the calendar grid, separated by a couple of
+// text lines, sits a short legend that doubles as monthly
+// statistics: [square with count inside] word, [circle with count
+// inside] word, [count with underline] word — one item per mark
+// kind, only for kinds with a non-zero count this month. Counts
+// come from the same _markOfRoutine logic that populates the grid,
+// so the legend and the marks agree. The legend is left-aligned;
+// its shapes are sized to match the calendar cells (same frame
+// side, stroke, and font as the day numbers). Row and column gaps
+// inside the Wrap are equal, so the legend reads as a tidy block
+// rather than a loose scatter.
 //
-// Legend + stats. Under the calendar grid sits a short legend that
-// doubles as monthly statistics: [square with count inside] word,
-// [circle with count inside] word, [count with underline] word —
-// one item per mark kind, only for kinds with a non-zero count this
-// month. Counts are computed from the same _markOfRoutine logic
-// that populates the grid, so the legend and the marks agree. The
-// legend is left-aligned and its shapes are sized to match the
-// calendar cells (same frame size, same stroke, same font as the
-// day numbers), so the legend reads as a continuation of the grid
-// rather than as a footnote.
+// Layout. The month switcher stays fixed at the top. The grid and
+// the legend share one scrollable column: when the grid is shorter
+// than the viewport, the legend sits a couple of lines below the
+// grid, not pinned to the screen bottom; when the grid overflows,
+// the whole column scrolls and the legend follows the last cell
+// row.
 //
 // Cell layout. Flat Stack: square (scheduled), circle (unfinished),
 // and the number are independent layers of a fixed-size box. The
-// former nested wrapping shrank the inner circle whenever the outer
-// square was present, shifting the digit off-center. The fixed-size
-// Stack keeps the circle's diameter at boxSide — the square's side
-// — so the two marks read as the same size (the ring is inscribed
-// in the square, both strokes centred on the same boundary).
+// circle's diameter equals the square's side, so the two marks
+// read as the same size and the ring is inscribed in the square.
 //
-// Control row. The month switcher occupies the full remaining
-// width after the root pult. The row stretches edge to edge with
-// spaceEvenly, so the prev/next buttons sit closer to the screen
-// edges and the month label is centered.
+// Circle stroke. Equal to the square's stroke: both marks live at
+// the same visual weight.
 //
 // Day sub-pult. Tapping a number opens a pult sheet listing that
 // day's routines, each carrying its status icon (check for
@@ -63,9 +56,8 @@
 // routine carrying flags renders signal-colored. The sheet
 // dismisses on a tap outside, like every other pult sheet.
 //
-// Scopes. Dependencies are read from point scopes: BortScope
-// (theme), RoutineScope (the layer), I18nScope (strings). AppScope
-// is consulted only for openRoutine.
+// Scopes. BortScope (theme), RoutineScope (the layer), I18nScope
+// (strings). AppScope is consulted only for openRoutine.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -201,7 +193,6 @@ class _DaysTabState extends State<DaysTab> {
       }
     }
 
-    // The current day (if the displayed month is the current one).
     final now = DateTime.now();
     final int? todayDay = (now.year == _month.year && now.month == _month.month)
         ? now.day
@@ -222,8 +213,6 @@ class _DaysTabState extends State<DaysTab> {
       grid.add(_cell(dayNum, list, side, bort, isToday: dayNum == todayDay));
     }
 
-    // rootSide equals the small pult side: the compass is drawn at
-    // 2/3 of the base side, which is exactly smallSide.
     final rootSide = side;
 
     return Column(
@@ -274,21 +263,34 @@ class _DaysTabState extends State<DaysTab> {
             ),
           ),
         ),
+        // Grid and legend share one scrollable column: the legend
+        // follows the grid a couple of text lines below and is not
+        // pinned to the screen bottom.
         Expanded(
-          child: GridView.count(
+          child: SingleChildScrollView(
             padding: EdgeInsets.all(side * 0.3),
-            crossAxisCount: 7,
-            childAspectRatio: 1,
-            children: grid,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: 7,
+                  childAspectRatio: 1,
+                  children: grid,
+                ),
+                SizedBox(height: side * 0.8),
+                _legend(
+                  side,
+                  bort,
+                  i18n,
+                  scheduled: scheduledCount,
+                  unfinished: unfinishedCount,
+                  completed: completedCount,
+                ),
+              ],
+            ),
           ),
-        ),
-        _legend(
-          side,
-          bort,
-          i18n,
-          scheduled: scheduledCount,
-          unfinished: unfinishedCount,
-          completed: completedCount,
         ),
       ],
     );
@@ -297,12 +299,10 @@ class _DaysTabState extends State<DaysTab> {
   // ─── Legend + stats under the calendar grid ───
   // One item per mark kind (square, circle, underline) with the
   // monthly count printed inside the shape, followed by the word.
-  // Only non-zero counts are shown, so an empty month carries no
-  // legend at all. Colors are dim — a legend should inform, not
-  // compete with the grid. Left-aligned; the shapes are sized to
-  // match the calendar cells (same frame side, stroke, and font as
-  // the day numbers), so the legend reads as a continuation of the
-  // grid rather than as a footnote.
+  // Only non-zero counts are shown. Colors are dim — a legend
+  // should inform, not compete with the grid. Left-aligned; the
+  // shapes are sized to match the calendar cells. Wrap spacing and
+  // run spacing are equal, so the legend reads as a tidy block.
   Widget _legend(
     double side,
     OperationalLayer bort,
@@ -312,12 +312,10 @@ class _DaysTabState extends State<DaysTab> {
     required int completed,
   }) {
     final color = bort.dim;
-    // Match the calendar cell's box side, font, and stroke so that
-    // legend shapes and numbers have the same visual weight as the
-    // grid above.
     final itemSize = side * 0.9;
     final markStroke = side * 0.04;
     final fontSize = side * 0.4;
+    final gap = side * 0.3;
 
     Widget item(Widget mark, int count, String label) {
       return Row(
@@ -403,21 +401,13 @@ class _DaysTabState extends State<DaysTab> {
 
     if (items.isEmpty) return const SizedBox.shrink();
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        side * 0.4,
-        side * 0.15,
-        side * 0.4,
-        side * 0.3,
-      ),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Wrap(
-          alignment: WrapAlignment.start,
-          spacing: side * 0.4,
-          runSpacing: side * 0.15,
-          children: items,
-        ),
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Wrap(
+        alignment: WrapAlignment.start,
+        spacing: gap,
+        runSpacing: gap,
+        children: items,
       ),
     );
   }
@@ -431,10 +421,6 @@ class _DaysTabState extends State<DaysTab> {
   }) {
     final m = _marksOf(day, routines);
 
-    // Uniform color: the digit, underline, circle, and square all
-    // share cellColor. Signal overrides everything. On the today
-    // cell, fg (bright) replaces dim (subtle), so thin strokes are
-    // not swallowed by the plate fill.
     final cellColor = m.hasSignal
         ? bort.signal
         : (isToday ? bort.fg : bort.dim);
@@ -448,22 +434,11 @@ class _DaysTabState extends State<DaysTab> {
     );
 
     final boxSide = side * 0.9;
-    // The circle's diameter equals the square's side, so the two
-    // marks are visually the same size and the unfinished ring is
-    // inscribed in the scheduled square (both strokes centred on
-    // the same outer boundary).
     final circleSide = boxSide;
-    // One stroke width for both marks: circle and square sit at the
-    // same visual weight, and the digit is not overpowered by a
-    // heavier ring.
     final markStroke = side * 0.04;
 
     final layers = <Widget>[];
 
-    // Today plate — a soft square underneath all marks. Its radius
-    // matches the scheduled square so the two shapes read as one
-    // family; its fill is bgdim (medium tone), which stands out
-    // from the page without competing with signal-colored marks.
     if (isToday) {
       layers.add(
         Positioned.fill(
@@ -541,9 +516,6 @@ class _DaysTabState extends State<DaysTab> {
     );
   }
 
-  // Status icon for the day sub-pult: check for completed, square
-  // for scheduled, circle for unfinished. Mirrors the calendar's
-  // marks so the sheet speaks the same visual language.
   IconData _statusIcon(Routine r) {
     if (r.completed) return Icons.check;
     if (r.scheduledAt != null) return Icons.crop_square;

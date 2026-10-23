@@ -3,10 +3,7 @@
 //
 // Contents, top to bottom:
 //
-//   Group 1 — shift:
-//     — shift: tap opens shift history (action_dialog.dart).
-//
-//   Group 2 — journal and transfer:
+//   Group 1 — journal and transfer:
 //     — journal: volume of the bort files;
 //     — reread: reset layer memory and run through all entries
 //       (always enabled; the pult itself confirms via a grow-in);
@@ -25,13 +22,16 @@
 //       the totals (routines, media, bytes) — the former separate
 //       import page is removed.
 //
-//   Group 3 — other:
+//   Group 2 — other:
 //     — bort: today's active time from the technical midnight
-//       (moved here to lead the last group; the bort counter itself
-//       has no journal relation and is read straight from the
-//       bort file);
+//       (the bort counter has no journal relation and is read
+//       straight from the bort file);
 //     — reset: caches and defaults to the initial state (pult
 //       grow-in, then showConfirm).
+//
+// Shift. The shift row lives in the «artel» block of the rubka
+// (rubka_tab.dart), not here. The dialog itself is unchanged —
+// action_dialog.dart — but this block no longer opens it.
 //
 // Reread. The former _canReread gate is gone: rereading is safe at
 // any time (it resets layer memory and replays the journal), so the
@@ -40,10 +40,7 @@
 // Scopes. In build, bort and i18n come from BortScope and I18nScope;
 // the imperative methods (_refreshSize, _reload, _deleteAll, etc.)
 // continue to take journal, routineLayer, and traceLayer from
-// AppScope, where no subscription is required. This resolves the
-// «phantom» behaviour reported in the review: before, the block read
-// bort via AppScope, whose updateShouldNotify compares only the
-// appContext fields, so bort mutations did not rebuild the block.
+// AppScope, where no subscription is required.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -60,7 +57,6 @@ import '../core/format.dart';
 import '../core/notice_dialog.dart';
 import '../core/progress_dialog.dart';
 import '../pults/pult_core.dart';
-import '../services/action_dialog.dart';
 import '../services/import_service.dart';
 import '../services/journal_compactor.dart';
 import '../services/report.dart';
@@ -286,9 +282,7 @@ class _RubkaDataState extends State<RubkaData> {
     // the logical name. Imported media carry their original archive
     // name in `name` while the file on disk was written under a
     // fresh monotone name; comparing only `name` would treat such
-    // files as orphans. Comparing the path's basename catches them;
-    // keeping `name` as well preserves compatibility with older
-    // records written before the naming was unified.
+    // files as orphans.
     final used = <String>{};
     for (final t in app.traceLayer.traces.values) {
       if (t.deleted) continue;
@@ -326,10 +320,6 @@ class _RubkaDataState extends State<RubkaData> {
     }
   }
 
-  void _openShiftHistory() {
-    showShiftHistory(context);
-  }
-
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -353,17 +343,6 @@ class _RubkaDataState extends State<RubkaData> {
     );
 
     final group1 = <Widget>[
-      _valueRow(
-        i18n.t('bort.shift'),
-        bort.shiftSecondsNow <= 0
-            ? '0${i18n.t('time.m')}'
-            : fmtTime(bort.shiftSecondsNow, i18n.t),
-        fg,
-        onTap: _openShiftHistory,
-      ),
-    ];
-
-    final group2 = <Widget>[
       _valueRow(i18n.t('bort.journal'), _fmtSize(_journalBytes), fg),
       _pultRow(
         label: i18n.t('bort.reload'),
@@ -456,7 +435,7 @@ class _RubkaDataState extends State<RubkaData> {
       ),
     ];
 
-    final group3 = <Widget>[
+    final group2 = <Widget>[
       _valueRow(
         i18n.t('bort.bort'),
         bort.bortTime <= 0
@@ -484,7 +463,7 @@ class _RubkaDataState extends State<RubkaData> {
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [...group1, divider(), ...group2, divider(), ...group3],
+      children: [...group1, divider(), ...group2],
     );
   }
 

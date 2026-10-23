@@ -76,7 +76,15 @@ class AppContext {
       bort.startShift();
     }
 
-    await routineLayer.toggleBlock(journal, routineId, kind);
+    // The mutex flag lives in the operational layer; the routine
+    // layer merely obeys. When mutex is off, other blocks keep
+    // running.
+    await routineLayer.toggleBlock(
+      journal,
+      routineId,
+      kind,
+      mutex: bort.mutexRoutines,
+    );
   }
 
   // ─── Смена ───

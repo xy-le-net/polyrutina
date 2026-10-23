@@ -347,7 +347,10 @@ class RoutineBlockView extends StatelessWidget {
                       ]
                     : null,
               ),
-              fg: hasFlags ? signal : dim,
+              // Date pult follows the date itself, not the routine's
+              // flags: signal-colored when a date is set, neutral
+              // fg otherwise — the same look as the other pults.
+              fg: scheduledActive ? signal : fg,
               bg: bg,
               signal: signal,
               overrideSize: pultSide,

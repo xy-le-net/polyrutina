@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════
-// lib/ui/cards/routine_plate.dart — one routine tile in the list.
+// lib/ui/tabs/routine_plate.dart — one routine tile in the list.
 //
 // Extracted from routines_tab. Contains: frame, name, date, timer,
 // the routine pulse (start/pause/open) with an action subpult
@@ -183,17 +183,34 @@ class RoutinePlate extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   if (routine.flags != 0) ...[
-                    for (var i = 0; i < kFlagBits.length; i++)
-                      if ((routine.flags & kFlagBits[i]) != 0)
-                        Padding(
-                          padding: EdgeInsets.only(right: side * 0.05),
-                          child: Icon(
-                            kFlagIcons[i],
-                            color: accent,
-                            size: nameSize * 0.9,
-                          ),
-                        ),
-                    SizedBox(width: side * 0.05),
+                    // Flag glyphs share one inverted plate: accent
+                    // background, plate-colored glyphs, no frame.
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: side * 0.1,
+                        vertical: side * 0.05,
+                      ),
+                      decoration: BoxDecoration(
+                        color: accent,
+                        borderRadius: BorderRadius.circular(radiusW * 0.4),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (var i = 0; i < kFlagBits.length; i++)
+                            if ((routine.flags & kFlagBits[i]) != 0)
+                              Padding(
+                                padding: EdgeInsets.only(right: side * 0.05),
+                                child: Icon(
+                                  kFlagIcons[i],
+                                  color: plateBg,
+                                  size: nameSize * 0.9,
+                                ),
+                              ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(width: side * 0.1),
                   ],
                   Expanded(
                     child: Text(

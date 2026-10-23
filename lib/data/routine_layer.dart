@@ -553,11 +553,16 @@ class RoutineLayer extends ChangeNotifier {
     notifyListeners();
   }
 
+  // mutex: when true (the default), starting the target pauses every
+  // other running block across the whole app. When false, blocks are
+  // independent and may run concurrently. Pausing never mutexes — a
+  // running block stops on its own.
   Future<void> toggleBlock(
     JournalLayer journal,
     int routineId,
-    String kind,
-  ) async {
+    String kind, {
+    bool mutex = true,
+  }) async {
     final r = findRoutine(routineId);
     if (r == null) return;
     final b = r.blockOf(kind);
@@ -565,7 +570,7 @@ class RoutineLayer extends ChangeNotifier {
     if (b.isRunning) {
       await pauseBlock(journal, routineId, kind);
     } else {
-      await startBlock(journal, routineId, kind);
+      await startBlock(journal, routineId, kind, mutex: mutex);
     }
   }
 
@@ -576,24 +581,29 @@ class RoutineLayer extends ChangeNotifier {
   Future<void> startBlock(
     JournalLayer journal,
     int routineId,
-    String kind,
-  ) async {
+    String kind, {
+    bool mutex = true,
+  }) async {
     final r = findRoutine(routineId);
     if (r == null) return;
 
     await journal.transaction(() async {
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
-      for (final other in routines) {
-        for (final b in other.blocks) {
-          if (b.isRunning) {
-            b.pause(at: now);
-            await journal.log(
-              type: JournalType.routine,
-              body:
-                  '{"action":"pause_block","routine":${other.id},'
-                  '"block":"${b.kind}","at":$now}',
-            );
+      // Mutex branch: pause every other running block across all
+      // routines. When mutex is off, other blocks keep running.
+      if (mutex) {
+        for (final other in routines) {
+          for (final b in other.blocks) {
+            if (b.isRunning) {
+              b.pause(at: now);
+              await journal.log(
+                type: JournalType.routine,
+                body:
+                    '{"action":"pause_block","routine":${other.id},'
+                    '"block":"${b.kind}","at":$now}',
+              );
+            }
           }
         }
       }
