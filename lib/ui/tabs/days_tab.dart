@@ -12,38 +12,56 @@
 //   — scheduled (scheduledAt on this day) — square border.
 // Different routines of the day bring different marks; they combine.
 //
-// Color coordination.
-//   — all marks default to dim (underline, circle, square);
-//   — any routine with flags (completed or not) makes its own mark
-//     signal-colored; the day number turns signal if and only if at
-//     least one routine of that day carries flags.
+// Color. Every element of a cell — the digit, the underline, the
+// circle, and the square — uses one uniform cellColor:
+//   — signal when any routine of that day carries flags;
+//   — fg on the today cell (the plate fill would otherwise hide
+//     dim marks);
+//   — dim elsewhere (subtle but contrasty against bg).
+// The circle and the underline share cellColor, satisfying the
+// «circle matches underline» requirement without special-casing.
 //
 // Today. The current day carries a medium-tone square plate
 // (bort.bgdim) with soft corners, drawn underneath all marks. The
 // plate does not replace any of the three mark layers; it merely
 // signals «this is today» without competing with them.
 //
+// Legend + stats. Under the month switcher sits a short legend that
+// doubles as monthly statistics: [square with count inside] word,
+// [circle with count inside] word, [count with underline] word —
+// one item per mark kind, only for kinds with a non-zero count this
+// month. Counts are computed from the same _markOfRoutine logic
+// that populates the grid, so the legend and the marks agree.
+//
 // Cell layout. Flat Stack: square (scheduled), circle (pulse), and
 // the number are independent layers of a fixed-size box. The former
-// nested wrapping (square padding over circle padding over text)
-// shrank the inner circle whenever the outer square was present,
-// shifting the digit off-center. The fixed-size Stack keeps the
-// circle's diameter constant regardless of which marks are active.
+// nested wrapping shrank the inner circle whenever the outer square
+// was present, shifting the digit off-center. The fixed-size Stack
+// keeps the circle's diameter at boxSide — the square's side — so
+// the two marks read as the same size (the ring is inscribed in the
+// square, both strokes centred on the same boundary).
 //
-// Control row. The month switcher occupies the full remaining width
-// after the root pult. The row stretches edge to edge with
+// Circle stroke. 0.08 * side, twice the square's stroke: a thin
+// ring on the today plate is almost invisible at small cell sizes,
+// whereas a horizontal underline of the same thickness stays
+// legible. The doubled stroke restores the circle as a visible
+// mark without competing with the digit.
+//
+// Control row. The month switcher occupies the full remaining
+// width after the root pult. The row stretches edge to edge with
 // spaceEvenly, so the prev/next buttons sit closer to the screen
 // edges and the month label is centered.
 //
-// Scopes. Dependencies are read from point scopes: BortScope (theme),
-// RoutineScope (the layer), I18nScope (strings). AppScope is
-// consulted only for openRoutine.
+// Scopes. Dependencies are read from point scopes: BortScope
+// (theme), RoutineScope (the layer), I18nScope (strings). AppScope
+// is consulted only for openRoutine.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 
+import '../../data/i18n.dart';
 import '../../data/operational_layer.dart';
 import '../../data/routine.dart';
 import '../core/app_scope.dart';
@@ -109,39 +127,26 @@ class _DaysTabState extends State<DaysTab> {
     return _Mark.none;
   }
 
-  ({
-    bool completed,
-    bool pulse,
-    bool scheduled,
-    bool signalCompleted,
-    bool signalPulse,
-    bool signalScheduled,
-    bool hasSignal,
-  })
-  _marksOf(int day, List<Routine> routines) {
+  ({bool completed, bool pulse, bool scheduled, bool hasSignal}) _marksOf(
+    int day,
+    List<Routine> routines,
+  ) {
     var completed = false;
     var pulse = false;
     var scheduled = false;
-    var signalCompleted = false;
-    var signalPulse = false;
-    var signalScheduled = false;
     var hasSignal = false;
     for (final r in routines) {
       final mark = _markOfRoutine(r, day);
-      final hasFlags = r.flags != 0;
-      if (hasFlags) hasSignal = true;
+      if (r.flags != 0) hasSignal = true;
       switch (mark) {
         case _Mark.completed:
           completed = true;
-          if (hasFlags) signalCompleted = true;
           break;
         case _Mark.pulse:
           pulse = true;
-          if (hasFlags) signalPulse = true;
           break;
         case _Mark.scheduled:
           scheduled = true;
-          if (hasFlags) signalScheduled = true;
           break;
         case _Mark.none:
           break;
@@ -151,9 +156,6 @@ class _DaysTabState extends State<DaysTab> {
       completed: completed,
       pulse: pulse,
       scheduled: scheduled,
-      signalCompleted: signalCompleted,
-      signalPulse: signalPulse,
-      signalScheduled: signalScheduled,
       hasSignal: hasSignal,
     );
   }
@@ -162,13 +164,30 @@ class _DaysTabState extends State<DaysTab> {
   Widget build(BuildContext context) {
     final bort = BortScope.of(context);
     final routineLayer = RoutineScope.of(context);
+    final i18n = I18nScope.of(context);
     final side = PultScope.of(context).smallSide;
 
     final cells = <int, List<Routine>>{};
+    var scheduledCount = 0;
+    var pulseCount = 0;
+    var completedCount = 0;
     for (final r in routineLayer.routines) {
       final day = _dayOf(r);
       if (day == null) continue;
       cells.putIfAbsent(day, () => []).add(r);
+      switch (_markOfRoutine(r, day)) {
+        case _Mark.scheduled:
+          scheduledCount++;
+          break;
+        case _Mark.pulse:
+          pulseCount++;
+          break;
+        case _Mark.completed:
+          completedCount++;
+          break;
+        case _Mark.none:
+          break;
+      }
     }
 
     // The current day (if the displayed month is the current one).
@@ -196,11 +215,6 @@ class _DaysTabState extends State<DaysTab> {
     // 2/3 of the base side, which is exactly smallSide.
     final rootSide = side;
 
-    // The month row sits flush with the root pult: its height is
-    // pinned to rootSide and the previous extra vertical padding is
-    // dropped, so the prev/next pults line up with the compass in
-    // the top-left corner. The month label is wrapped in Flexible
-    // and ellipsized, so a long title cannot push the next pult out.
     return Column(
       children: [
         Padding(
@@ -249,6 +263,14 @@ class _DaysTabState extends State<DaysTab> {
             ),
           ),
         ),
+        _legend(
+          side,
+          bort,
+          i18n,
+          scheduled: scheduledCount,
+          pulsed: pulseCount,
+          completed: completedCount,
+        ),
         Expanded(
           child: GridView.count(
             padding: EdgeInsets.all(side * 0.3),
@@ -261,6 +283,125 @@ class _DaysTabState extends State<DaysTab> {
     );
   }
 
+  // ─── Legend + stats under the month ───
+  // One item per mark kind (square, circle, underline) with the
+  // monthly count printed inside the shape, followed by the word.
+  // Only non-zero counts are shown, so an empty month carries no
+  // legend at all. Colors are dim — a legend should inform, not
+  // compete with the grid.
+  Widget _legend(
+    double side,
+    OperationalLayer bort,
+    I18n i18n, {
+    required int scheduled,
+    required int pulsed,
+    required int completed,
+  }) {
+    final color = bort.dim;
+    final itemSize = side * 0.55;
+
+    Widget item(Widget mark, int count, String label) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: itemSize,
+            height: itemSize,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                mark,
+                Text(
+                  '$count',
+                  style: TextStyle(
+                    color: color,
+                    fontSize: side * 0.3,
+                    height: 1.0,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(width: side * 0.1),
+          Text(
+            label,
+            style: TextStyle(color: color, fontSize: side * 0.3),
+          ),
+        ],
+      );
+    }
+
+    final items = <Widget>[];
+    if (scheduled > 0) {
+      items.add(
+        item(
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border.all(color: color, width: side * 0.04),
+                borderRadius: BorderRadius.circular(side * 0.05),
+              ),
+            ),
+          ),
+          scheduled,
+          i18n.t('days.legend.scheduled'),
+        ),
+      );
+    }
+    if (pulsed > 0) {
+      items.add(
+        item(
+          Center(
+            child: SizedBox(
+              width: itemSize * 0.7,
+              height: itemSize * 0.7,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: color, width: side * 0.04),
+                ),
+              ),
+            ),
+          ),
+          pulsed,
+          i18n.t('days.legend.pulse'),
+        ),
+      );
+    }
+    if (completed > 0) {
+      items.add(
+        item(
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Container(
+              margin: EdgeInsets.only(bottom: itemSize * 0.1),
+              height: side * 0.04,
+              width: itemSize * 0.6,
+              color: color,
+            ),
+          ),
+          completed,
+          i18n.t('days.legend.completed'),
+        ),
+      );
+    }
+
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: side * 0.4,
+        vertical: side * 0.15,
+      ),
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        spacing: side * 0.4,
+        runSpacing: side * 0.15,
+        children: items,
+      ),
+    );
+  }
+
   Widget _cell(
     int day,
     List<Routine> routines,
@@ -270,36 +411,41 @@ class _DaysTabState extends State<DaysTab> {
   }) {
     final m = _marksOf(day, routines);
 
-    final dayColor = m.hasSignal ? bort.signal : bort.dim;
-    final underlineColor = m.signalCompleted ? bort.signal : bort.dim;
+    // Uniform color: the digit, underline, circle, and square all
+    // share cellColor. Signal overrides everything. On the today
+    // cell, fg (bright) replaces dim (subtle), so thin strokes are
+    // not swallowed by the plate fill.
+    final cellColor = m.hasSignal
+        ? bort.signal
+        : (isToday ? bort.fg : bort.dim);
+
     final TextStyle style = TextStyle(
-      color: dayColor,
+      color: cellColor,
       fontSize: side * 0.4,
-      // Normalize line height: otherwise the text sits lower than the
-      // circle or square, because the baseline offset of the default
-      // font metrics is asymmetric.
       height: 1.0,
       decoration: m.completed ? TextDecoration.underline : TextDecoration.none,
-      decorationColor: underlineColor,
+      decorationColor: cellColor,
     );
 
-    // Flat layout: square and circle are independent layers of a
-    // Stack with a fixed footprint, and the day number sits on top.
-    // The former nested wrapping (square padding over circle
-    // padding over text) shrank the inner circle whenever the outer
-    // square was present, shifting the digit off-center; the
-    // fixed-size Stack keeps the circle's diameter constant
-    // regardless of which marks are active.
-    final double boxSide = side * 0.9;
-    final double circleSide = side * 0.65;
-    final double markStroke = side * 0.04;
+    final boxSide = side * 0.9;
+    // The circle's diameter equals the square's side, so the two
+    // marks are visually the same size and the pulse ring is
+    // inscribed in the scheduled square (both strokes centred on
+    // the same outer boundary).
+    final circleSide = boxSide;
+    final markStroke = side * 0.04;
+    // The ring is drawn twice as thick as the square/underline
+    // stroke: a thin ring on the today plate reads as almost
+    // invisible, whereas a horizontal underline of the same
+    // thickness stays legible.
+    final circleStroke = side * 0.08;
 
     final layers = <Widget>[];
 
     // Today plate — a soft square underneath all marks. Its radius
     // matches the scheduled square so the two shapes read as one
-    // family; its fill is bgdim (medium tone), which stands out from
-    // the page without competing with signal-colored marks.
+    // family; its fill is bgdim (medium tone), which stands out
+    // from the page without competing with signal-colored marks.
     if (isToday) {
       layers.add(
         Positioned.fill(
@@ -318,10 +464,7 @@ class _DaysTabState extends State<DaysTab> {
         Positioned.fill(
           child: DecoratedBox(
             decoration: BoxDecoration(
-              border: Border.all(
-                color: m.signalScheduled ? bort.signal : bort.dim,
-                width: markStroke,
-              ),
+              border: Border.all(color: cellColor, width: markStroke),
               borderRadius: BorderRadius.circular(side * 0.05),
             ),
           ),
@@ -329,11 +472,6 @@ class _DaysTabState extends State<DaysTab> {
       );
     }
     if (m.pulse) {
-      // Circle border uses the same color as the underline (dim by
-      // default, signal when the day's completion carries flags),
-      // so the two marks read as one family and the circle stays
-      // visible on top of the today plate (bgdim) rather than
-      // blending into it.
       layers.add(
         Center(
           child: SizedBox(
@@ -342,7 +480,7 @@ class _DaysTabState extends State<DaysTab> {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: underlineColor, width: markStroke),
+                border: Border.all(color: cellColor, width: circleStroke),
               ),
             ),
           ),

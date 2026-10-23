@@ -12,6 +12,16 @@
 // archive is idempotent — such routines are counted as «skipped»
 // and produce no new entries, no media copies, no trace copies.
 //
+// Historical state. The archive carries created_at, completed_at,
+// scheduled_at, last_pulse_at, and planned_seconds. Per-field
+// setters cover the first (createRoutine(createdAt: ...)), the
+// third (setSchedule), and the fifth (setPlanned); the remaining
+// two — completed_at and last_pulse_at — have no dedicated setters
+// because they are normally set by the completion and pulse flows.
+// After the setters run, _applyParsed patches those two in memory
+// and writes ONE «snapshot» entry (RoutineLayer.writeSnapshot), so
+// a reread restores the historical timestamps.
+//
 // Media orphan prevention. Media files are copied into media/ ONLY
 // for routines that are actually going to be imported, and under
 // fresh monotone names (via nextMediaIndex), so the archive's raw
@@ -225,8 +235,8 @@ Future<void> _applyParsed(
   final JournalLayer journal = app.journal;
 
   // Imported routines carry their historical creation moment from
-  // the archive; without this, an old routine would look as if it
-  // had just been created at the instant of import. A zero from the
+  // the archive; without it, an old routine would look as if it had
+  // just been created at the instant of import. A zero from the
   // schema is treated as «absent» and falls back to now.
   final r = await routineLayer.createRoutine(
     journal,
@@ -246,6 +256,12 @@ Future<void> _applyParsed(
     }
   }
 
+  if (p.scheduledAt != null) {
+    await routineLayer.setSchedule(journal, r.id, p.scheduledAt);
+  }
+  if (p.plannedSeconds > 0) {
+    await routineLayer.setPlanned(journal, r.id, p.plannedSeconds);
+  }
   if (p.completed) {
     await routineLayer.setCompleted(journal, r.id, true);
   }
@@ -303,5 +319,16 @@ Future<void> _applyParsed(
         ),
       );
     }
+  }
+
+  // Patch the two historical timestamps that have no dedicated
+  // setters (setCompleted stamps completedAt with «now»; lastPulseAt
+  // is only advanced by startBlock/pauseBlock), then write ONE
+  // snapshot entry so a reread restores them.
+  final live = routineLayer.findRoutine(r.id);
+  if (live != null) {
+    if (p.lastPulseAt != null) live.lastPulseAt = p.lastPulseAt;
+    if (p.completedAt != null) live.completedAt = p.completedAt;
+    await routineLayer.writeSnapshot(journal, live);
   }
 }

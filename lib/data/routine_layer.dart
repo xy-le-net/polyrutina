@@ -405,6 +405,25 @@ class RoutineLayer extends ChangeNotifier {
     return findRoutine(id)!;
   }
 
+  // ─── Snapshot ───
+  // Writes the routine's full in-memory state as one «snapshot»
+  // entry. The _applyEntry handler replaces the routine in place on
+  // reread, so every field — including those without dedicated
+  // setters (lastPulseAt, completedAt) — is restored as-is. Used by
+  // the importer after the per-field setters have been applied: it
+  // is cheaper to patch the remaining historical timestamps in the
+  // in-memory routine and snapshot once than to add a setter for
+  // each. Mirrors the same «snapshot» mechanism used by
+  // duplicateRoutine.
+  Future<void> writeSnapshot(JournalLayer journal, Routine r) async {
+    await journal.log(
+      type: JournalType.routine,
+      body: jsonEncode({'action': 'snapshot', 'routine': r.toJson()}),
+    );
+    _scheduleSave();
+    notifyListeners();
+  }
+
   Future<void> renameRoutine(JournalLayer journal, int id, String name) async {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final r = findRoutine(id);

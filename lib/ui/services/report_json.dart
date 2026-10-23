@@ -1,7 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════
-// report_json.dart — сборка и разбор переносимого формата рутины.
+// lib/ui/services/report_json.dart — build and parse of the
+// portable routine format.
 //
-// Формат data.json (версия schema=1):
+// data.json (schema = 1):
 //   {
 //     "schema": 1,
 //     "source_device": "...",
@@ -12,6 +13,10 @@
 //     "completed": false,
 //     "created_at": 1234567890,
 //     "last_action_at": 1234567890,
+//     "last_pulse_at": 1234567890,
+//     "completed_at": 1234567890,
+//     "scheduled_at": 1234567890,
+//     "planned_seconds": 0,
 //     "blocks": [
 //       {"kind":"prep","accumulator":0,"time_edited":false},
 //       ...
@@ -22,11 +27,16 @@
 //     ]
 //   }
 //
-// Файлы в traces[].files: {kind, name, lat?, lon?, acc?}. Поле «name» —
-// имя файла в архиве (в папке media/). Поле «path» в json не пишется:
-// при разборе путь собирается локально.
+// Optional fields (last_pulse_at, completed_at, scheduled_at) are
+// null when unset; planned_seconds is always written, zero when
+// unset. On the receiving side, null means «absent», and the
+// importer uses that to leave the corresponding value untouched.
 //
-// Прозрачность не применяется.
+// Files inside traces[].files: {kind, name, lat?, lon?, acc?}. The
+// `name` is the file's basename in the archive (media/). `path`
+// is not written to JSON: on import the path is assembled locally.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import '../../data/routine.dart';
@@ -35,7 +45,7 @@ import '../core/app_scope.dart';
 class ReportJson {
   static const int schemaVersion = 1;
 
-  // ─── Сборка одного объекта рутины ───
+  // ─── Build a single routine object ───
   static Map<String, dynamic> buildRoutine(AppContext app, Routine r) {
     final bort = app.bort;
     final traces = <Map<String, dynamic>>[];
@@ -71,6 +81,10 @@ class ReportJson {
       'completed': r.completed,
       'created_at': r.createdAt,
       'last_action_at': r.lastActionAt,
+      'last_pulse_at': r.lastPulseAt,
+      'completed_at': r.completedAt,
+      'scheduled_at': r.scheduledAt,
+      'planned_seconds': r.plannedSeconds,
       'blocks': [
         for (final b in r.blocks)
           {
@@ -83,7 +97,7 @@ class ReportJson {
     };
   }
 
-  // ─── Разбор ───
+  // ─── Parse ───
   static ParsedRoutine? parseRoutine(Map<String, dynamic> j) {
     final schema = (j['schema'] as num?)?.toInt();
     if (schema == null || schema > schemaVersion) return null;
@@ -162,6 +176,10 @@ class ReportJson {
       completed: j['completed'] as bool? ?? false,
       createdAt: (j['created_at'] as num?)?.toInt() ?? 0,
       lastActionAt: (j['last_action_at'] as num?)?.toInt() ?? 0,
+      lastPulseAt: (j['last_pulse_at'] as num?)?.toInt(),
+      completedAt: (j['completed_at'] as num?)?.toInt(),
+      scheduledAt: (j['scheduled_at'] as num?)?.toInt(),
+      plannedSeconds: (j['planned_seconds'] as num?)?.toInt() ?? 0,
       blocks: blocks,
       traces: traces,
     );
@@ -177,6 +195,10 @@ class ParsedRoutine {
   final bool completed;
   final int createdAt;
   final int lastActionAt;
+  final int? lastPulseAt;
+  final int? completedAt;
+  final int? scheduledAt;
+  final int plannedSeconds;
   final List<ParsedBlock> blocks;
   final List<ParsedTrace> traces;
 
@@ -189,6 +211,10 @@ class ParsedRoutine {
     required this.completed,
     required this.createdAt,
     required this.lastActionAt,
+    this.lastPulseAt,
+    this.completedAt,
+    this.scheduledAt,
+    this.plannedSeconds = 0,
     required this.blocks,
     required this.traces,
   });

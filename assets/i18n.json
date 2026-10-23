@@ -152,6 +152,10 @@
     "report.in_progress": "в процессе",
     "report.subject": "Отчёт по рутинам",
 
+    "days.legend.scheduled": "назначенные",
+    "days.legend.pulse": "в работе",
+    "days.legend.completed": "завершённые",
+
     "stub.title": "раздел",
     "stub.text": "ещё не готов"
   },
@@ -308,6 +312,10 @@
     "report.completed": "completed",
     "report.in_progress": "in progress",
     "report.subject": "Routines report",
+
+    "days.legend.scheduled": "scheduled",
+    "days.legend.pulse": "in work",
+    "days.legend.completed": "completed",
 
     "stub.title": "section",
     "stub.text": "not ready yet"
