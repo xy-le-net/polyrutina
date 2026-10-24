@@ -2,29 +2,36 @@
 // lib/ui/pults/pult_sheet.dart — single left-side sheet of subpults.
 //
 // Every subpult panel slides in from the left. The sheet body is
-// stateless; pults inside handle their own taps and confirmation,
-// and close the sheet via PultSheetScope when an action executes.
+// stateless; pults inside handle their own taps and confirmation.
 //
-// A tap on the empty area of the sheet (barrier) closes it. The
-// confirming state lives in PultState and is reset on close.
+// Closing semantics. The scope's closeSheet callback removes the
+// sheet's route SYNCHRONOUSLY via Navigator.removeRoute. This matters
+// in the tap-then-act flow: Pult._execute calls closeSheet, then
+// onTap — if closeSheet only scheduled a maybePop, the pop would
+// complete a frame later, after onTap has already pushed a routine
+// card, and the sheet would linger above that card with a stale
+// title. With synchronous removal, the sheet is gone before onTap
+// runs, and the card lands alone on the stack.
+//
+// Sheets marked stayOpen (the flags checklist) do not call
+// closeSheet at all; they persist and rebuild reactively via
+// rebuildOn.
+//
+// A tap outside the sheet closes it through the dialog barrier. The
+// user is not going anywhere else from that tap, so the barrier's
+// maybePop is fine — the synchronous removal above is reserved for
+// the tap-then-act path.
 //
 // Route tracking. The sheet's route is remembered in a module-level
 // variable (_currentSheetRoute). When a new sheet is requested while
 // a previous one is still active, ONLY that previous route is
-// removed — not everything above the page, as the earlier
-// popUntil(isFirst) guard did. The earlier guard swept away a
-// routine card that had just been pushed by openRoutine, leaving
-// the next sheet attached to a discarded context (the «opens but
-// ignores taps» symptom). Route tracking keeps the card intact and
-// opens the next sheet above it.
+// removed via removeRoute — nothing below it. The earlier
+// popUntil(isFirst) guard swept away a routine card that had just
+// been pushed by openRoutine; route tracking keeps the card intact
+// and opens the next sheet above it.
 //
 // RawDialogRoute is used directly because DialogRoute does not
-// expose transitionDuration / transitionBuilder; RawDialogRoute
-// carries the slide-in transition on its own.
-//
-// Reactivity. The optional rebuildOn parameter, when supplied,
-// makes the sheet body listen to that Listenable and rebuild its
-// items on every notification (e.g. the flags subpult).
+// expose transitionDuration / transitionBuilder.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -54,9 +61,7 @@ Future<void> showPultSheet({
   final navigator = Navigator.of(context);
 
   // Remove a stale sheet if one is still active. Only that route is
-  // removed — nothing below it. removeRoute() does not pop through
-  // the stack, so a routine card that landed after the previous
-  // sheet was dismissed stays put, and the new sheet opens above it.
+  // removed — nothing below it.
   final stale = _currentSheetRoute;
   if (stale != null) {
     if (stale.isActive) {
@@ -67,7 +72,17 @@ Future<void> showPultSheet({
     if (!context.mounted) return;
   }
 
-  final route = RawDialogRoute<void>(
+  // Synchronous closer captured by the sheet body and by the scope.
+  // The route reference is filled in below (late) and is stable for
+  // the lifetime of this sheet.
+  late final RawDialogRoute<void> route;
+
+  void closeNow() {
+    if (!route.isActive) return;
+    navigator.removeRoute(route);
+  }
+
+  route = RawDialogRoute<void>(
     pageBuilder: (_, __, ___) => const SizedBox.shrink(),
     barrierDismissible: true,
     barrierLabel: '',
@@ -82,6 +97,7 @@ Future<void> showPultSheet({
         signal: signal,
         side: side,
         state: state,
+        closeSheet: closeNow,
       );
       return SlideTransition(
         position: Tween(
@@ -101,6 +117,7 @@ Future<void> showPultSheet({
                     signal: signal,
                     side: side,
                     state: state,
+                    closeSheet: closeNow,
                   ),
                 ),
         ),
@@ -126,6 +143,7 @@ class _SheetBody extends StatelessWidget {
   final Color signal;
   final double side;
   final PultState state;
+  final VoidCallback closeSheet;
 
   const _SheetBody({
     required this.subs,
@@ -134,6 +152,7 @@ class _SheetBody extends StatelessWidget {
     required this.signal,
     required this.side,
     required this.state,
+    required this.closeSheet,
   });
 
   @override
@@ -156,7 +175,7 @@ class _SheetBody extends StatelessWidget {
     ];
 
     return PultSheetScope(
-      closeSheet: () => Navigator.of(context).maybePop(),
+      closeSheet: closeSheet,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => state.setConfirming(null),

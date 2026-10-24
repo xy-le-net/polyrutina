@@ -1,46 +1,43 @@
 // ═══════════════════════════════════════════════════════════════════
 // lib/ui/screens/media_viewer.dart — full-screen media viewer.
 //
-// Opened from TraceField by tapping the kind icon. Shows media of a
-// single kind (the one opened), paged in reverse chronology: start
+// Shows media of a single kind, paged in reverse chronology: start
 // at the latest added, «back» — older, «forward» — newer. Buttons
 // are absent when there is nowhere to page.
 //
-// Header. The AppBar is removed: the header is laid out through
-// ScreenHeader inside a SafeArea. ScreenHeader reserves the left
-// zone for the root pult, prints the block title and the routine
-// subtitle (with the frame counter when there is somewhere to
-// page), and puts the exit pult on the right. The former
-// per-screen Padding + ControlRow + manual title column has been
-// pulled out into ScreenHeader.
+// Embedded kinds. A TraceFile whose kind is «file» is inspected by
+// its extension: images, video, and audio are embedded exactly as
+// if they had been captured through the native pickers — same
+// viewers, same sliders, same play/pause pult. Only files with no
+// matching extension (archives, documents, unknown blobs) fall back
+// to the plain-name screen: basename (no internal path), open in
+// the system application via the bottom center pult.
 //
-// The bottom center pult varies by kind. Audio and video: play/pause.
-// Photo: share. File: open. Geo: open externally (the same action
-// is also available from the coordinates line, see below).
+// Header. ScreenHeader reserves the left zone for the root pult,
+// prints the block title and the routine subtitle (with the frame
+// counter when there is somewhere to page), and puts the exit pult
+// on the right.
+//
+// The bottom center pult varies by effective kind. Audio and video:
+// play/pause. Photo: share. Geo and unknown files: open externally.
 //
 // Subpult dot. Since the center pult carries a subpult, the pult
 // core draws a small signal-colored dot in its bottom-right corner.
 //
 // Playback. Photo — InteractiveViewer. Video — video_player with
-// the play/pause moved to the bottom center pult; a position slider
-// sits above the pult row, with the position and the total duration
-// at its ends (small). Audio — just_audio likewise; the total
-// duration sits at the screen center, always. Geo opens via
-// url_launcher with the geo: scheme, falling back to the web map.
-// File opens via open_filex in a system application.
+// the play/pause on the bottom center pult; a position slider sits
+// above the pult row, with the position and total duration at its
+// ends (small). Audio — just_audio likewise; the total duration
+// sits at the screen center. Geo opens via url_launcher with the
+// geo: scheme, falling back to the web map. File opens via
+// open_filex in a system application.
 //
-// Geo view. The screenshot (if any) is stretched as the background
-// of the page (BoxFit.cover). The coordinates line is halved in
-// size and doubled as a tap target: tapping copies it to the
-// clipboard; a short SnackBar provides feedback. Next to the
-// coordinates sits a pult that opens the point in the system's
-// default application (geo: or the web map). The screenshot file
-// name is not displayed.
+// Geo view. The screenshot (if any) is stretched as the page
+// background (BoxFit.cover). The coordinates line is tap-to-copy;
+// a short SnackBar provides feedback.
 //
-// Scopes. Dependencies are read from point scopes: BortScope (theme
-// and colors), TraceScope (the layer used for deletion), I18nScope
-// (strings), and AppScope (journal — the sole dependency that lives
-// there).
+// Scopes. BortScope (theme and colors), TraceScope (the layer used
+// for deletion), I18nScope (strings), AppScope (journal).
 //
 // Position ticks. The audio position stream fires roughly sixty
 // times per second. It is consumed by a StreamBuilder wrapping ONLY
@@ -54,10 +51,7 @@
 // Deletion. The removed frame is dropped from the local list; the
 // viewer moves to the previous valid frame (or the next, if there
 // is no previous). If nothing remains in this kind — the screen
-// closes, returning to the card.
-//
-// Deletion is an edit entry with the file stripped; the file on
-// disk stays as evidence of history.
+// closes. The file on disk stays as evidence of history.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -69,6 +63,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
@@ -105,6 +100,38 @@ class MediaViewer extends StatefulWidget {
 }
 
 class _MediaViewerState extends State<MediaViewer> {
+  // Extensions recognised for embedding when the TraceFile kind is
+  // «file». Kept in one place so that a future kind (e.g. PDF) lands
+  // here rather than in scattered checks.
+  static const Set<String> _photoExt = {
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.gif',
+    '.webp',
+    '.bmp',
+    '.heic',
+    '.heif',
+  };
+  static const Set<String> _videoExt = {
+    '.mp4',
+    '.mov',
+    '.m4v',
+    '.mkv',
+    '.avi',
+    '.webm',
+  };
+  static const Set<String> _audioExt = {
+    '.mp3',
+    '.m4a',
+    '.aac',
+    '.wav',
+    '.ogg',
+    '.flac',
+    '.opus',
+    '.oga',
+  };
+
   // Local list — only the actual files. On deletion it shortens:
   // the removed frame disappears, the rest stay.
   late List<TraceFile> _files;
@@ -132,6 +159,20 @@ class _MediaViewerState extends State<MediaViewer> {
     super.dispose();
   }
 
+  // ─── Effective kind ───
+  // For a TraceFile whose kind is «file», the extension decides
+  // whether the content is embedded as photo, video, or audio.
+  // Everything else (including unknown extensions) keeps the «file»
+  // kind and shows the plain-name screen.
+  String _effectiveKind(TraceFile f) {
+    if (f.kind != MediaKind.file) return f.kind;
+    final ext = p.extension(f.path.isEmpty ? f.name : f.path).toLowerCase();
+    if (_photoExt.contains(ext)) return MediaKind.photo;
+    if (_videoExt.contains(ext)) return MediaKind.video;
+    if (_audioExt.contains(ext)) return MediaKind.audio;
+    return MediaKind.file;
+  }
+
   // ─── Bring players in accord with the current frame ───
   // Old ones are disposed, the needed one is created. Initialization
   // is asynchronous; if the frame changes before it finishes, the
@@ -147,8 +188,9 @@ class _MediaViewerState extends State<MediaViewer> {
 
     final f = _current;
     if (f == null) return;
+    final ek = _effectiveKind(f);
 
-    if (f.kind == MediaKind.video) {
+    if (ek == MediaKind.video) {
       final ctrl = VideoPlayerController.file(File(f.path));
       _video = ctrl;
       ctrl
@@ -162,10 +204,9 @@ class _MediaViewerState extends State<MediaViewer> {
             setState(() {});
           })
           .catchError((_) {});
-    } else if (f.kind == MediaKind.audio) {
+    } else if (ek == MediaKind.audio) {
       final player = AudioPlayer();
       _audio = player;
-      // catchError must return Duration? — otherwise a type error.
       player.setFilePath(f.path).catchError((_) => null);
       _audioStateSub = player.playerStateStream.listen((s) {
         if (!mounted || _audio != player) return;
@@ -251,7 +292,7 @@ class _MediaViewerState extends State<MediaViewer> {
 
   // ─── Copy geo coordinates ───
   // Tapping the «lat, lon» line copies it. Feedback — a short
-  // SnackBar (dialog would be too heavy for this).
+  // SnackBar.
   Future<void> _copyCoords(String lat, String lon) async {
     await Clipboard.setData(ClipboardData(text: '$lat, $lon'));
     if (!mounted) return;
@@ -332,6 +373,7 @@ class _MediaViewerState extends State<MediaViewer> {
     final side = PultScope.of(context).smallSide;
 
     final f = _current;
+    final ek = f == null ? null : _effectiveKind(f);
 
     // Second title line: routine title, and the frame order when
     // there is somewhere to page.
@@ -345,9 +387,6 @@ class _MediaViewerState extends State<MediaViewer> {
       body: SafeArea(
         child: Column(
           children: [
-            // Unified header: root pult space on the left, block
-            // title and frame subtitle on the remaining width, exit
-            // pult on the right.
             ScreenHeader(
               title: widget.blockTitle.isEmpty ? '—' : widget.blockTitle,
               subtitle: subtitle,
@@ -357,13 +396,12 @@ class _MediaViewerState extends State<MediaViewer> {
               child: Stack(
                 children: [
                   Positioned.fill(child: _body(f, bort, side)),
-                  if (f != null &&
-                      (f.kind == MediaKind.audio || f.kind == MediaKind.video))
+                  if (ek == MediaKind.audio || ek == MediaKind.video)
                     Positioned(
                       left: side * 0.5,
                       right: side * 0.5,
                       bottom: side * 1.6,
-                      child: _sliderFor(f, bort, side),
+                      child: _sliderFor(f!, bort, side),
                     ),
                   Positioned(
                     left: 0,
@@ -383,21 +421,22 @@ class _MediaViewerState extends State<MediaViewer> {
   // ─── Bottom row: prev · center · next ───
   Widget _bottomRow(TraceFile? f, OperationalLayer bort, double side) {
     final i18n = I18nScope.of(context);
+    final ek = f == null ? null : _effectiveKind(f);
 
     Widget centerPult(bool playing) {
       if (f == null) {
         return SizedBox(width: side);
       }
       late final PultSpec spec;
-      if (f.kind == MediaKind.audio || f.kind == MediaKind.video) {
+      if (ek == MediaKind.audio || ek == MediaKind.video) {
         spec = PultSpec(
           id: 'media_center',
           icon: playing ? Icons.pause : Icons.play_arrow,
           selected: playing,
-          onTap: f.kind == MediaKind.audio ? _toggleAudio : _toggleVideo,
+          onTap: ek == MediaKind.audio ? _toggleAudio : _toggleVideo,
           longSubs: () => _subsFor(f, i18n),
         );
-      } else if (f.kind == MediaKind.photo) {
+      } else if (ek == MediaKind.photo) {
         spec = PultSpec(
           id: 'media_center',
           icon: Icons.share,
@@ -405,7 +444,7 @@ class _MediaViewerState extends State<MediaViewer> {
           longSubs: () => _subsFor(f, i18n),
         );
       } else {
-        // file, geo
+        // geo, unknown file
         spec = PultSpec(
           id: 'media_center',
           icon: Icons.open_in_new,
@@ -459,7 +498,7 @@ class _MediaViewerState extends State<MediaViewer> {
       ],
     );
 
-    if (f != null && f.kind == MediaKind.video && _video != null) {
+    if (ek == MediaKind.video && _video != null) {
       return ValueListenableBuilder<VideoPlayerValue>(
         valueListenable: _video!,
         builder: (_, v, __) => row(v.isPlaying),
@@ -537,7 +576,8 @@ class _MediaViewerState extends State<MediaViewer> {
       );
     }
 
-    if (f.kind == MediaKind.video) {
+    final ek = _effectiveKind(f);
+    if (ek == MediaKind.video) {
       final ctrl = _video;
       if (ctrl == null || !ctrl.value.isInitialized) {
         return const SizedBox.shrink();
@@ -574,7 +614,9 @@ class _MediaViewerState extends State<MediaViewer> {
         ),
       );
     }
-    if (f.kind == MediaKind.photo) {
+    final ek = _effectiveKind(f);
+
+    if (ek == MediaKind.photo) {
       final file = File(f.path);
       if (file.existsSync()) {
         return InteractiveViewer(
@@ -584,10 +626,10 @@ class _MediaViewerState extends State<MediaViewer> {
         );
       }
     }
-    if (f.kind == MediaKind.video) {
+    if (ek == MediaKind.video) {
       return _videoBody(f, bort, side);
     }
-    if (f.kind == MediaKind.audio) {
+    if (ek == MediaKind.audio) {
       return _audioBody(f, bort, side);
     }
     if (f.kind == MediaKind.geo) {
@@ -596,13 +638,6 @@ class _MediaViewerState extends State<MediaViewer> {
       final acc = f.acc?.toStringAsFixed(1) ?? '?';
       final file = File(f.path);
 
-      // Background: the screenshot stretched over the page
-      // (BoxFit.cover). Foreground: a single coordinates line
-      // (accuracy in parentheses) sitting above the bottom pult
-      // row — not centered vertically. Tapping copies ONLY the
-      // coordinates; accuracy is visible but not copied. The
-      // «open externally» action lives on the bottom center pult
-      // (see _bottomRow), so no separate pult is drawn here.
       return Stack(
         fit: StackFit.expand,
         children: [
@@ -640,6 +675,12 @@ class _MediaViewerState extends State<MediaViewer> {
         ],
       );
     }
+
+    // Unknown file: show only the short name (no internal path);
+    // open externally via the bottom center pult.
+    final displayName = f.name.isNotEmpty
+        ? f.name
+        : (f.path.isEmpty ? '—' : p.basename(f.path));
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -649,15 +690,9 @@ class _MediaViewerState extends State<MediaViewer> {
             Icon(_icon(f.kind), color: bort.dim, size: side * 1.5),
             const SizedBox(height: 12),
             Text(
-              f.name,
+              displayName,
               textAlign: TextAlign.center,
               style: TextStyle(color: bort.fg, fontSize: side * 0.4),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              f.path,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: bort.dim, fontSize: side * 0.28),
             ),
           ],
         ),

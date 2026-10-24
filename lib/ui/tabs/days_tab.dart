@@ -13,51 +13,32 @@
 //     not scheduled) — round border.
 // Different routines of the day bring different marks; they combine.
 //
-// Color. Every element of a cell — the digit, the underline, the
-// circle, and the square — uses one uniform cellColor:
-//   — signal when any routine of that day carries flags;
-//   — fg on the today cell (the plate fill would otherwise hide
-//     dim marks);
-//   — dim elsewhere (subtle but contrasty against bg).
+// Color. Each mark is colored after the routine that produced it:
+// signal if that routine carries any flag bit, dim otherwise. The
+// day number is signal-colored when at least one routine on that day
+// carries flags, dim otherwise. The today plate (bort.bgdim) marks
+// «today» alone and does not alter any color. The legend at the
+// bottom is always dim — it informs, not competes with the grid.
 //
-// Today. The current day carries a medium-tone square plate
-// (bort.bgdim) with soft corners, drawn underneath all marks.
+// Long press on a day number creates a routine scheduled on that
+// day and opens its card immediately. Short tap opens the day
+// sub-pult with that day's routines (dismissed on a tap outside; the
+// sheet guard in pult_sheet.dart handles stale sheets).
 //
 // Legend + stats. Below the calendar grid, separated by a couple of
 // text lines, sits a short legend that doubles as monthly
 // statistics: [square with count inside] word, [circle with count
 // inside] word, [count with underline] word — one item per mark
-// kind, only for kinds with a non-zero count this month. Counts
-// come from the same _markOfRoutine logic that populates the grid,
-// so the legend and the marks agree. The legend is left-aligned;
-// its shapes are sized to match the calendar cells (same frame
-// side, stroke, and font as the day numbers). Row and column gaps
-// inside the Wrap are equal, so the legend reads as a tidy block
-// rather than a loose scatter.
-//
-// Layout. The month switcher stays fixed at the top. The grid and
-// the legend share one scrollable column: when the grid is shorter
-// than the viewport, the legend sits a couple of lines below the
-// grid, not pinned to the screen bottom; when the grid overflows,
-// the whole column scrolls and the legend follows the last cell
-// row.
-//
-// Cell layout. Flat Stack: square (scheduled), circle (unfinished),
-// and the number are independent layers of a fixed-size box. The
-// circle's diameter equals the square's side, so the two marks
-// read as the same size and the ring is inscribed in the square.
+// kind, only for kinds with a non-zero count this month. The legend
+// is left-aligned; its shapes are sized to match the calendar cells
+// (same frame side, stroke, and font as the day numbers).
 //
 // Circle stroke. Equal to the square's stroke: both marks live at
-// the same visual weight.
-//
-// Day sub-pult. Tapping a number opens a pult sheet listing that
-// day's routines, each carrying its status icon (check for
-// completed, square for scheduled, circle for unfinished); a
-// routine carrying flags renders signal-colored. The sheet
-// dismisses on a tap outside, like every other pult sheet.
+// the same visual weight. The circle's diameter equals the square's
+// side, so the two marks read as the same size.
 //
 // Scopes. BortScope (theme), RoutineScope (the layer), I18nScope
-// (strings). AppScope is consulted only for openRoutine.
+// (strings). AppScope is consulted for openRoutine and journal.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -97,9 +78,7 @@ class _DaysTabState extends State<DaysTab> {
 
   // Priority: completed > scheduled > pulse > created. The scheduled
   // date, when set, takes precedence over the pulse: a routine
-  // assigned to a particular day must appear on that day, not on the
-  // day it happened to be started. If the schedule lies outside the
-  // displayed month, the routine is hidden for that month.
+  // assigned to a particular day must appear on that day.
   int? _dayOf(Routine r) {
     if (r.completed && r.completedAt != null) {
       return _sameMonth(r.completedAt!);
@@ -130,26 +109,41 @@ class _DaysTabState extends State<DaysTab> {
     return _Mark.none;
   }
 
-  ({bool completed, bool unfinished, bool scheduled, bool hasSignal}) _marksOf(
-    int day,
-    List<Routine> routines,
-  ) {
+  // Per-kind marks with their own signal flags (from the producing
+  // routine) and a global anySignal for the day number.
+  ({
+    bool completed,
+    bool completedSignal,
+    bool unfinished,
+    bool unfinishedSignal,
+    bool scheduled,
+    bool scheduledSignal,
+    bool anySignal,
+  })
+  _marksOf(int day, List<Routine> routines) {
     var completed = false;
+    var completedSignal = false;
     var unfinished = false;
+    var unfinishedSignal = false;
     var scheduled = false;
-    var hasSignal = false;
+    var scheduledSignal = false;
+    var anySignal = false;
     for (final r in routines) {
       final mark = _markOfRoutine(r, day);
-      if (r.flags != 0) hasSignal = true;
+      final sig = r.flags != 0;
+      if (sig) anySignal = true;
       switch (mark) {
         case _Mark.completed:
           completed = true;
+          if (sig) completedSignal = true;
           break;
         case _Mark.unfinished:
           unfinished = true;
+          if (sig) unfinishedSignal = true;
           break;
         case _Mark.scheduled:
           scheduled = true;
+          if (sig) scheduledSignal = true;
           break;
         case _Mark.none:
           break;
@@ -157,9 +151,12 @@ class _DaysTabState extends State<DaysTab> {
     }
     return (
       completed: completed,
+      completedSignal: completedSignal,
       unfinished: unfinished,
+      unfinishedSignal: unfinishedSignal,
       scheduled: scheduled,
-      hasSignal: hasSignal,
+      scheduledSignal: scheduledSignal,
+      anySignal: anySignal,
     );
   }
 
@@ -263,9 +260,6 @@ class _DaysTabState extends State<DaysTab> {
             ),
           ),
         ),
-        // Grid and legend share one scrollable column: the legend
-        // follows the grid a couple of text lines below and is not
-        // pinned to the screen bottom.
         Expanded(
           child: SingleChildScrollView(
             padding: EdgeInsets.all(side * 0.3),
@@ -297,12 +291,10 @@ class _DaysTabState extends State<DaysTab> {
   }
 
   // ─── Legend + stats under the calendar grid ───
-  // One item per mark kind (square, circle, underline) with the
-  // monthly count printed inside the shape, followed by the word.
-  // Only non-zero counts are shown. Colors are dim — a legend
-  // should inform, not compete with the grid. Left-aligned; the
-  // shapes are sized to match the calendar cells. Wrap spacing and
-  // run spacing are equal, so the legend reads as a tidy block.
+  // Always dim: the legend informs about the shapes, it does not
+  // carry signal. Left-aligned; the shapes match the calendar cells
+  // in size, stroke, and font, so the legend reads as a continuation
+  // of the grid. Wrap spacing and run spacing are equal.
   Widget _legend(
     double side,
     OperationalLayer bort,
@@ -421,16 +413,22 @@ class _DaysTabState extends State<DaysTab> {
   }) {
     final m = _marksOf(day, routines);
 
-    final cellColor = m.hasSignal
-        ? bort.signal
-        : (isToday ? bort.fg : bort.dim);
+    // Number and underline carry independent colors: the number is
+    // signal when any routine on the day has flags, dim otherwise;
+    // the underline (the completion mark) follows the color of the
+    // completed routine(s) only. Each shape (square, circle) follows
+    // its own mark's flag-bearing routine.
+    final numberColor = m.anySignal ? bort.signal : bort.dim;
+    final underlineColor = m.completedSignal ? bort.signal : bort.dim;
+    final scheduledColor = m.scheduledSignal ? bort.signal : bort.dim;
+    final unfinishedColor = m.unfinishedSignal ? bort.signal : bort.dim;
 
     final TextStyle style = TextStyle(
-      color: cellColor,
+      color: numberColor,
       fontSize: side * 0.4,
       height: 1.0,
       decoration: m.completed ? TextDecoration.underline : TextDecoration.none,
-      decorationColor: cellColor,
+      decorationColor: underlineColor,
     );
 
     final boxSide = side * 0.9;
@@ -457,7 +455,7 @@ class _DaysTabState extends State<DaysTab> {
         Positioned.fill(
           child: DecoratedBox(
             decoration: BoxDecoration(
-              border: Border.all(color: cellColor, width: markStroke),
+              border: Border.all(color: scheduledColor, width: markStroke),
               borderRadius: BorderRadius.circular(side * 0.05),
             ),
           ),
@@ -473,7 +471,7 @@ class _DaysTabState extends State<DaysTab> {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: cellColor, width: markStroke),
+                border: Border.all(color: unfinishedColor, width: markStroke),
               ),
             ),
           ),
@@ -484,6 +482,7 @@ class _DaysTabState extends State<DaysTab> {
 
     return GestureDetector(
       onTap: routines.isEmpty ? null : () => _openDay(routines),
+      onLongPress: () => _createOnDay(day),
       child: Center(
         child: SizedBox(
           width: boxSide,
@@ -494,6 +493,10 @@ class _DaysTabState extends State<DaysTab> {
     );
   }
 
+  // ─── Day sub-pult ───
+  // Lists that day's routines with their status icon; flag-carrying
+  // routines render signal-colored. Dismissed by the sheet guard on
+  // a tap outside or on navigation.
   void _openDay(List<Routine> routines) {
     final bort = BortScope.of(context);
     final openRoutine = AppScope.of(context).openRoutine;
@@ -514,6 +517,23 @@ class _DaysTabState extends State<DaysTab> {
       signal: bort.signal,
       side: PultScope.of(context).smallSide,
     );
+  }
+
+  // ─── Create a routine on this day ───
+  // Long press on the day number: create an empty routine, stamp it
+  // with scheduledAt = that day, and open its card immediately.
+  Future<void> _createOnDay(int day) async {
+    final app = AppScope.of(context);
+    final routineLayer = RoutineScope.of(context);
+    final r = await routineLayer.createRoutine(app.journal);
+    final dt = DateTime(_month.year, _month.month, day);
+    await routineLayer.setSchedule(
+      app.journal,
+      r.id,
+      dt.millisecondsSinceEpoch ~/ 1000,
+    );
+    if (!mounted) return;
+    await app.openRoutine(r.id);
   }
 
   IconData _statusIcon(Routine r) {

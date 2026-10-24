@@ -1,37 +1,53 @@
 // ═══════════════════════════════════════════════════════════════════
 // lib/data/theme_store.dart — colors and themes.
 //
-// The active set of five roles: bg, bgdim, dim, fg, signal.
+// Five roles, in the ladder order used across the app:
+//   1 — signal background (accent plate),
+//   2 — background,
+//   3 — dim content,
+//   4 — content,
+//   5 — signal content.
+//
+// The stored field names predate this ordering and are kept for now:
+//   bgdim  — position 1 (signal background),
+//   bg     — position 2 (background),
+//   dim    — position 3 (dim content),
+//   fg     — position 4 (content),
+//   signal — position 5 (signal content).
+// The fields are to be renamed later; until then this comment is the
+// source of truth for the mapping.
+//
 // All five roles live inside each theme. Stored themes: day, night,
-// custom. Computed themes: system (resolves to day or night from
-// the OS brightness) and invers (the strict mirror of custom).
+// custom. Computed themes: system (resolves to day or night from the
+// OS brightness) and invers (the mirror of custom).
 //
 // Current and opposite palettes are both resolved and cached. The
 // cache is invalidated whenever the theme name, the system
-// brightness, the theme map as a whole, any single theme color,
-// or the defaults change.
+// brightness, the theme map as a whole, any single theme color, or
+// the defaults change.
 //
 // «invers» is computed on read from the current «custom» colors as
-// a strict mirror of the lightness ladder, so editing custom
-// updates it automatically; nothing about it is persisted.
-// applyThemeKey rejects theme.invers.* so a stray edit cannot
-// desync the computed palette from its source.
+// the mirror of the ladder, so editing custom updates it
+// automatically; nothing about it is persisted. applyThemeKey
+// rejects theme.invers.* so a stray edit cannot desync the computed
+// palette from its source.
 //
 // Opposite palette:
 //   — day ↔ night: the paired theme, taken as is;
 //   — custom ↔ invers: the two are each other's opposite;
 //   — any other case (including custom when the caller wants the
-//     runtime visual inverse): a strict mirror of the lightness
-//     ladder — bg ↔ signal, bgdim ↔ fg, dim fixed.
+//     runtime visual inverse): the mirror rule.
 //
-// Strict mirror. The five roles, read in the order bg, bgdim, dim,
-// fg, signal, occupy a monotone lightness ladder. The mirror swaps
-// 1 ↔ 5 and 2 ↔ 4 while keeping 3 in place, so the inverted ladder
-// stays monotone and each pair of roles maps to its counterpart.
-// The operation is an involution: applying it twice restores the
-// original palette. That is what makes «custom» and «invers» mirror
-// each other through one mechanism — the same way day and night
-// mirror each other through their stored palettes.
+// Mirror rule. Positions occupy a monotone lightness ladder; the
+// mirror swaps the extremes (1↔5) and the pair next to them (2↔4)
+// while keeping the middle (3) in place: bgdim ↔ signal, bg ↔ fg,
+// dim fixed. The operation is an involution — applying it twice
+// restores the original palette — which is what makes «custom» and
+// «invers» mirror each other through one mechanism. In the
+// resulting «invers» the page background is the custom content
+// color (the lighter of the two main colors), and the custom signal
+// color shows up only as an accent plate, never as the page
+// background.
 //
 // Built-in themes live in const maps. Any caller that needs a
 // mutable copy wraps it in Map.from; callers that only read the
@@ -111,9 +127,9 @@ class ThemeStore {
       name = _systemBrightness == Brightness.dark ? 'night' : 'day';
     }
     if (name == 'invers') {
-      // Strict mirror of the custom palette: bg ↔ signal,
-      // bgdim ↔ fg, dim fixed. Fallback to the built-in custom
-      // when the user has not stored one.
+      // Mirror of the custom palette: bgdim ↔ signal, bg ↔ fg,
+      // dim fixed. Fallback to the built-in custom when the user
+      // has not stored one.
       final custom = _themes['custom'] ?? _customColors;
       return _invert(custom);
     }
@@ -146,17 +162,15 @@ class ThemeStore {
     return _invert(_cur);
   }
 
-  // Strict mirror of the lightness ladder: 1↔5, 2↔4, 3↔3 in the
-  // role order bg, bgdim, dim, fg, signal. Involution: applying it
-  // twice restores the original palette, which is exactly what
-  // makes «custom» and «invers» mirror each other through one
-  // mechanism.
+  // Mirror rule: 1↔5, 2↔4, 3 fixed in the ladder order. In the
+  // stored field names that is bgdim ↔ signal, bg ↔ fg, dim fixed.
+  // Involution: applying it twice restores the original palette.
   static Map<String, Color> _invert(Map<String, Color> cur) => {
-    'bg': cur['signal']!,
-    'bgdim': cur['fg']!,
+    'bg': cur['fg']!,
+    'bgdim': cur['signal']!,
     'dim': cur['dim']!,
-    'fg': cur['bgdim']!,
-    'signal': cur['bg']!,
+    'fg': cur['bg']!,
+    'signal': cur['bgdim']!,
   };
 
   // ─── Opposite name ───

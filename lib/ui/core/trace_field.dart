@@ -8,6 +8,14 @@
 // scrolls. Limit — twenty-four lines or up to the keyboard start,
 // whichever is less. On focus loss — return to three lines.
 //
+// Keep visible. Whenever the field expands — on focus gain, on any
+// metrics change (the keyboard appearing, screen rotation, a system
+// bar showing up) — the field is scrolled into view by the enclosing
+// Scrollable. The key is captured on the TextField itself and used
+// with Scrollable.ensureVisible(alignment: 0.0), so the top of the
+// field always sits at the top of the viewport and the whole
+// expanded field stays above the keyboard at any text scale.
+//
 // Below the field — a row of media pults (TraceMediaRow), if there
 // is media in the slot.
 //
@@ -51,8 +59,8 @@ class TraceField extends StatefulWidget {
   final Color bg;
   final Color signal;
   // Input field background. Differs from block bg: the block might be
-  // dimmed (bgdim), while the input field is normal (bg). This separation
-  // saves the field from extra darkening.
+  // dimmed (bgdim), while the input field is normal (bg). This
+  // separation saves the field from extra darkening.
   final Color fieldBg;
   final double side;
   final String blockTitle;
@@ -83,6 +91,8 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
 
   late final TextEditingController _ctrl;
   final _focus = FocusNode();
+  // Captured on the TextField itself; used by _ensureVisible.
+  final _fieldKey = GlobalKey();
 
   bool _initialized = false;
   bool _focused = false;
@@ -105,8 +115,27 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     final f = _focus.hasFocus;
     if (_focused != f) {
       setState(() => _focused = f);
+      if (f) _ensureVisible();
     }
     if (!f) _autoSend();
+  }
+
+  // Scrolls the field into view when the field is expanded. Called
+  // after focus gain, after a metrics change (keyboard appearing),
+  // and after the expansion frame — a post-frame callback ensures
+  // the new field height is already laid out.
+  void _ensureVisible() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_focused) return;
+      final ctx = _fieldKey.currentContext;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.0,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   @override
@@ -152,6 +181,14 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
         state == AppLifecycleState.detached) {
       _autoSend();
     }
+  }
+
+  // The keyboard appearing/disappearing, screen rotation, system bar
+  // changes — any of these change the available viewport and may push
+  // the expanded field below the fold. Re-scroll once layout settles.
+  @override
+  void didChangeMetrics() {
+    if (_focused) _ensureVisible();
   }
 
   Future<void> _autoSend() async {
@@ -329,51 +366,57 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: TextField(
-                controller: _ctrl,
-                focusNode: _focus,
-                maxLines: maxLines,
-                minLines: minLines,
-                style: TextStyle(
-                  color: widget.fg,
-                  fontSize: widget.side * bort.kNumberSmall,
+              // KeyedSubtree ensures _fieldKey.currentContext points at
+              // the field's own render object, so ensureVisible scrolls
+              // to the TextField's bounds — not to the surrounding Row.
+              child: KeyedSubtree(
+                key: _fieldKey,
+                child: TextField(
+                  controller: _ctrl,
+                  focusNode: _focus,
+                  maxLines: maxLines,
+                  minLines: minLines,
+                  style: TextStyle(
+                    color: widget.fg,
+                    fontSize: widget.side * bort.kNumberSmall,
+                  ),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    // Input field — on the normal background, regardless
+                    // of block dimming.
+                    filled: true,
+                    fillColor: widget.fieldBg,
+                    hintText: i18n.t('routine.block.note'),
+                    hintStyle: TextStyle(color: widget.dim),
+                    border: OutlineInputBorder(
+                      borderSide: BorderSide(color: widget.dim),
+                      borderRadius: BorderRadius.circular(
+                        widget.side * bort.kRadius,
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: widget.dim),
+                      borderRadius: BorderRadius.circular(
+                        widget.side * bort.kRadius,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: widget.fg),
+                      borderRadius: BorderRadius.circular(
+                        widget.side * bort.kRadius,
+                      ),
+                    ),
+                    contentPadding: EdgeInsets.all(widget.side * 0.15),
+                  ),
+                  onChanged: (v) {
+                    bort.setDraft(_key, v);
+                    setState(() {});
+                  },
+                  onSubmitted: (_) {
+                    _autoSend();
+                    _focus.unfocus();
+                  },
                 ),
-                decoration: InputDecoration(
-                  isDense: true,
-                  // Input field — on the normal background, regardless
-                  // of block dimming.
-                  filled: true,
-                  fillColor: widget.fieldBg,
-                  hintText: i18n.t('routine.block.note'),
-                  hintStyle: TextStyle(color: widget.dim),
-                  border: OutlineInputBorder(
-                    borderSide: BorderSide(color: widget.dim),
-                    borderRadius: BorderRadius.circular(
-                      widget.side * bort.kRadius,
-                    ),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: widget.dim),
-                    borderRadius: BorderRadius.circular(
-                      widget.side * bort.kRadius,
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: widget.fg),
-                    borderRadius: BorderRadius.circular(
-                      widget.side * bort.kRadius,
-                    ),
-                  ),
-                  contentPadding: EdgeInsets.all(widget.side * 0.15),
-                ),
-                onChanged: (v) {
-                  bort.setDraft(_key, v);
-                  setState(() {});
-                },
-                onSubmitted: (_) {
-                  _autoSend();
-                  _focus.unfocus();
-                },
               ),
             ),
             SizedBox(width: widget.side * 0.15),
