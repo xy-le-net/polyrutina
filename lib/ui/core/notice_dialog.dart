@@ -53,7 +53,7 @@ Future<void> showNotice(
               Text(
                 subtitle,
                 style: TextStyle(
-                  color: bort.dim,
+                  color: bort.mid,
                   fontSize: side * bort.kNumberSmall,
                 ),
               ),
@@ -63,7 +63,7 @@ Future<void> showNotice(
               alignment: Alignment.centerRight,
               child: LinkText(
                 text: i18n.t('common.ok'),
-                color: bort.signal,
+                color: bort.fgsignal,
                 fontSize: side * bort.kName,
                 padding: EdgeInsets.symmetric(
                   horizontal: side * 0.2,

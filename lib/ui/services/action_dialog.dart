@@ -9,7 +9,7 @@
 // daily shift totals recorded at midnight; empty months show a
 // placeholder.
 //
-// Frame geometry lives in DialogFrame: bg fill, dim border,
+// Frame geometry lives in DialogFrame: bg fill, mid border,
 // kRadius corners, kFramePad inset. The frame dismisses on a tap
 // outside; the inner content absorbs touches. The optional height
 // cap is kept at side * 12 so the day list cannot overflow the
@@ -147,7 +147,7 @@ class _ShiftHistoryDialogState extends State<_ShiftHistoryDialog> {
                 ),
                 fg: bort.fg,
                 bg: bort.bg,
-                signal: bort.signal,
+                signal: bort.fgsignal,
                 overrideSize: side * bort.kPultSmall,
               ),
               Expanded(
@@ -169,7 +169,7 @@ class _ShiftHistoryDialogState extends State<_ShiftHistoryDialog> {
                 ),
                 fg: bort.fg,
                 bg: bort.bg,
-                signal: bort.signal,
+                signal: bort.fgsignal,
                 overrideSize: side * bort.kPultSmall,
               ),
             ],
@@ -177,7 +177,7 @@ class _ShiftHistoryDialogState extends State<_ShiftHistoryDialog> {
           SizedBox(height: side * bort.kFramePad * 0.5),
           Text(
             '${i18n.t('bort.shift')}: ${fmtTime(total, i18n.t)}',
-            style: TextStyle(color: bort.signal, fontSize: side * bort.kName),
+            style: TextStyle(color: bort.fgsignal, fontSize: side * bort.kName),
           ),
           SizedBox(height: side * bort.kFramePad * 0.5),
           Flexible(
@@ -186,7 +186,7 @@ class _ShiftHistoryDialogState extends State<_ShiftHistoryDialog> {
                     padding: EdgeInsets.symmetric(
                       vertical: side * bort.kFramePad,
                     ),
-                    child: Text('—', style: TextStyle(color: bort.dim)),
+                    child: Text('—', style: TextStyle(color: bort.mid)),
                   )
                 : ListView(
                     shrinkWrap: true,
@@ -217,15 +217,15 @@ class _ShiftHistoryDialogState extends State<_ShiftHistoryDialog> {
                   icon: Icons.ios_share,
                   onTap: keys.isEmpty ? null : () => _share(app, days),
                 ),
-                fg: keys.isEmpty ? bort.dim : bort.fg,
+                fg: keys.isEmpty ? bort.mid : bort.fg,
                 bg: bort.bg,
-                signal: bort.signal,
+                signal: bort.fgsignal,
                 overrideSize: side * bort.kPultSmall,
               ),
               SizedBox(width: side * 0.3),
               LinkText(
                 text: i18n.t('common.ok'),
-                color: bort.signal,
+                color: bort.fgsignal,
                 fontSize: side * bort.kName,
                 onTap: () => Navigator.of(context).pop(),
               ),

@@ -14,11 +14,11 @@
 // Different routines of the day bring different marks; they combine.
 //
 // Color. Each mark is colored after the routine that produced it:
-// signal if that routine carries any flag bit, dim otherwise. The
-// day number is signal-colored when at least one routine on that day
-// carries flags, dim otherwise. The today plate (bort.bgdim) marks
-// «today» alone and does not alter any color. The legend at the
-// bottom is always dim — it informs, not competes with the grid.
+// fgsignal if that routine carries any flag bit, mid otherwise. The
+// day number is fgsignal-colored when at least one routine on that
+// day carries flags, mid otherwise. The today plate (bort.bgsignal)
+// marks «today» alone and does not alter any color. The legend at
+// the bottom is always mid — it informs, not competes with the grid.
 //
 // Long press on a day number creates a routine scheduled on that
 // day and opens its card immediately. Short tap opens the day
@@ -229,7 +229,7 @@ class _DaysTabState extends State<DaysTab> {
                   ),
                   fg: bort.fg,
                   bg: bort.bg,
-                  signal: bort.signal,
+                  signal: bort.fgsignal,
                   overrideSize: side,
                 ),
                 Flexible(
@@ -253,7 +253,7 @@ class _DaysTabState extends State<DaysTab> {
                   ),
                   fg: bort.fg,
                   bg: bort.bg,
-                  signal: bort.signal,
+                  signal: bort.fgsignal,
                   overrideSize: side,
                 ),
               ],
@@ -291,7 +291,7 @@ class _DaysTabState extends State<DaysTab> {
   }
 
   // ─── Legend + stats under the calendar grid ───
-  // Always dim: the legend informs about the shapes, it does not
+  // Always mid: the legend informs about the shapes, it does not
   // carry signal. Left-aligned; the shapes match the calendar cells
   // in size, stroke, and font, so the legend reads as a continuation
   // of the grid. Wrap spacing and run spacing are equal.
@@ -303,7 +303,7 @@ class _DaysTabState extends State<DaysTab> {
     required int unfinished,
     required int completed,
   }) {
-    final color = bort.dim;
+    final color = bort.mid;
     final itemSize = side * 0.9;
     final markStroke = side * 0.04;
     final fontSize = side * 0.4;
@@ -414,14 +414,14 @@ class _DaysTabState extends State<DaysTab> {
     final m = _marksOf(day, routines);
 
     // Number and underline carry independent colors: the number is
-    // signal when any routine on the day has flags, dim otherwise;
+    // fgsignal when any routine on the day has flags, mid otherwise;
     // the underline (the completion mark) follows the color of the
     // completed routine(s) only. Each shape (square, circle) follows
     // its own mark's flag-bearing routine.
-    final numberColor = m.anySignal ? bort.signal : bort.dim;
-    final underlineColor = m.completedSignal ? bort.signal : bort.dim;
-    final scheduledColor = m.scheduledSignal ? bort.signal : bort.dim;
-    final unfinishedColor = m.unfinishedSignal ? bort.signal : bort.dim;
+    final numberColor = m.anySignal ? bort.fgsignal : bort.mid;
+    final underlineColor = m.completedSignal ? bort.fgsignal : bort.mid;
+    final scheduledColor = m.scheduledSignal ? bort.fgsignal : bort.mid;
+    final unfinishedColor = m.unfinishedSignal ? bort.fgsignal : bort.mid;
 
     final TextStyle style = TextStyle(
       color: numberColor,
@@ -442,7 +442,7 @@ class _DaysTabState extends State<DaysTab> {
         Positioned.fill(
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: bort.bgdim,
+              color: bort.bgsignal,
               borderRadius: BorderRadius.circular(side * 0.12),
             ),
           ),
@@ -495,7 +495,7 @@ class _DaysTabState extends State<DaysTab> {
 
   // ─── Day sub-pult ───
   // Lists that day's routines with their status icon; flag-carrying
-  // routines render signal-colored. Dismissed by the sheet guard on
+  // routines render fgsignal-colored. Dismissed by the sheet guard on
   // a tap outside or on navigation.
   void _openDay(List<Routine> routines) {
     final bort = BortScope.of(context);
@@ -514,7 +514,7 @@ class _DaysTabState extends State<DaysTab> {
       ],
       fg: bort.fg,
       bg: bort.bg,
-      signal: bort.signal,
+      signal: bort.fgsignal,
       side: PultScope.of(context).smallSide,
     );
   }

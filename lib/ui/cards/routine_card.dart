@@ -361,9 +361,9 @@ class _RoutineCardState extends State<RoutineCard> {
             mainAxisSize: MainAxisSize.min,
             children: [
               wheel(max: 999, initial: d, onChanged: (v) => d = v),
-              Text(':', style: TextStyle(color: bort.dim)),
+              Text(':', style: TextStyle(color: bort.mid)),
               wheel(max: 23, initial: h, onChanged: (v) => h = v),
-              Text(':', style: TextStyle(color: bort.dim)),
+              Text(':', style: TextStyle(color: bort.mid)),
               wheel(max: 59, initial: m, onChanged: (v) => m = v),
             ],
           ),
@@ -400,7 +400,7 @@ class _RoutineCardState extends State<RoutineCard> {
         body: Center(
           child: Text(
             i18n.t('routine.not_found'),
-            style: TextStyle(color: bort.dim),
+            style: TextStyle(color: bort.mid),
           ),
         ),
       );

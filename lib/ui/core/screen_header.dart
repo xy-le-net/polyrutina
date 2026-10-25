@@ -105,7 +105,7 @@ class ScreenHeader extends StatelessWidget {
                         Text(
                           subtitle!,
                           style: TextStyle(
-                            color: bort.dim,
+                            color: bort.mid,
                             fontSize: titleSize,
                           ),
                           maxLines: 1,
@@ -126,7 +126,7 @@ class ScreenHeader extends StatelessWidget {
                 ),
                 fg: bort.fg,
                 bg: bort.bg,
-                signal: bort.signal,
+                signal: bort.fgsignal,
                 overrideSize: pultSide,
               ),
           ],

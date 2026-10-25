@@ -228,8 +228,8 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final app = AppScope.of(context);
     final fg = bort.fg;
     final bg = bort.bg;
-    final signal = bort.signal;
-    final dim = bort.dim;
+    final signal = bort.fgsignal;
+    final dim = bort.mid;
     final side = PultScope.of(context).smallSide;
 
     return LayoutBuilder(

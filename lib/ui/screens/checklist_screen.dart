@@ -341,7 +341,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                           binary: true,
                           fg: bort.fg,
                           bg: bort.bg,
-                          signal: bort.signal,
+                          signal: bort.fgsignal,
                           overrideSize: pultSide,
                           onTap: canToggle ? () => _toggleDone(i) : null,
                         ),
@@ -361,13 +361,13 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                               decoration: InputDecoration(
                                 isDense: true,
                                 hintText: i18n.t('routine.block.note'),
-                                hintStyle: TextStyle(color: bort.dim),
+                                hintStyle: TextStyle(color: bort.mid),
                                 border: OutlineInputBorder(
-                                  borderSide: BorderSide(color: bort.dim),
+                                  borderSide: BorderSide(color: bort.mid),
                                   borderRadius: BorderRadius.circular(radiusW),
                                 ),
                                 enabledBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(color: bort.dim),
+                                  borderSide: BorderSide(color: bort.mid),
                                   borderRadius: BorderRadius.circular(radiusW),
                                 ),
                                 focusedBorder: OutlineInputBorder(

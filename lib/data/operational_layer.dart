@@ -184,10 +184,10 @@ class OperationalLayer extends ChangeNotifier {
   final ShiftHistory _shiftHistory = ShiftHistory();
 
   Color get bg => _themes.bg;
-  Color get bgdim => _themes.bgdim;
-  Color get dim => _themes.dim;
+  Color get bgsignal => _themes.bgsignal;
+  Color get mid => _themes.mid;
   Color get fg => _themes.fg;
-  Color get signal => _themes.signal;
+  Color get fgsignal => _themes.fgsignal;
   Map<String, Map<String, Color>> get themes => _themes.themes;
   String get themeName => _themes.themeName;
   Brightness get systemBrightness => _themes.systemBrightness;
@@ -459,18 +459,19 @@ class OperationalLayer extends ChangeNotifier {
   // ─── Running palette ───
   // Colors for a routine block or plate that is currently running:
   // the opposite theme's roles, so the running item inverts against
-  // its neighbours, with a defensive fallback to the signal/bg pair.
-  ({Color bg, Color dim, Color fg, Color signal}) runningColors() {
+  // its neighbours, with a defensive fallback to the
+  // fgsignal/bg pair.
+  ({Color bg, Color mid, Color fg, Color fgsignal}) runningColors() {
     final opp = colorsForOpposite();
     if (opp != null) {
       return (
         bg: opp['bg']!,
-        dim: opp['dim']!,
+        mid: opp['mid']!,
         fg: opp['fg']!,
-        signal: opp['signal']!,
+        fgsignal: opp['fgsignal']!,
       );
     }
-    return (bg: signal, dim: dim, fg: bg, signal: bg);
+    return (bg: fgsignal, mid: mid, fg: bg, fgsignal: bg);
   }
 
   // ─── Block collapse ───

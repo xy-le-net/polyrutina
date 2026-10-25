@@ -98,9 +98,9 @@ class _ShiftRowState extends State<ShiftRow> {
     final app = AppScope.of(context);
     final side = PultScope.of(context).smallSide;
     final fg = bort.fg;
-    final dim = bort.dim;
+    final dim = bort.mid;
     final bg = bort.bg;
-    final signal = bort.signal;
+    final signal = bort.fgsignal;
 
     if (_editing) {
       return Padding(

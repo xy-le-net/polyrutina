@@ -1,15 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════
-// rubka_appearance.dart — «appearance» block in the rubka.
+// lib/ui/tabs/rubka_appearance.dart — «appearance» block in the rubka.
 //
-// Four theme pults: system, day, night, custom. The current one is
-// marked.
-//
-// The routine's day is determined as follows: completedAt, otherwise
-// scheduledAt, otherwise lastPulseAt, otherwise createdAt. The
-// priority is exactly this: completion > schedule > pulse > creation.
-// The assigned date outranks the pulse on purpose: a routine pinned
-// to a particular day must appear on that day, not on the day it
-// happened to be started. One routine — exactly one mark.
+// Five theme pults: system, day, night, custom, invers. The current
+// one is marked.
 //
 // Scopes. Dependencies are read from point scopes: BortScope (theme
 // name, labels flag, per-theme colors) and I18nScope (strings). The
@@ -37,14 +30,24 @@ import '../pults/pult_core.dart';
 class RubkaAppearance extends StatelessWidget {
   const RubkaAppearance({super.key});
 
+  // Roles in the ladder order: bgsignal → bg → mid → fg → fgsignal.
+  // Matches ThemeStore's five-role set.
+  static const List<String> _roles = [
+    'bgsignal',
+    'bg',
+    'mid',
+    'fg',
+    'fgsignal',
+  ];
+
   @override
   Widget build(BuildContext context) {
     final bort = BortScope.of(context);
     final i18n = I18nScope.of(context);
     final fg = bort.fg;
-    final dim = bort.dim;
+    final mid = bort.mid;
     final bg = bort.bg;
-    final signal = bort.signal;
+    final fgsignal = bort.fgsignal;
     final side = PultScope.of(context).smallSide;
 
     final titleSize = side * bort.kTitle;
@@ -61,9 +64,9 @@ class RubkaAppearance extends StatelessWidget {
       onToggleCollapsed: () =>
           set('block_appearance', (!bort.blockAppearance).toString()),
       bg: bg,
-      dim: dim,
+      dim: mid,
       fg: fg,
-      signal: signal,
+      signal: fgsignal,
       titleSize: titleSize,
       pad: pad,
       gap: gap,
@@ -72,37 +75,34 @@ class RubkaAppearance extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _themeRow(context, fg, dim, bg, signal, side),
+          _themeRow(context, fg, mid, bg, fgsignal, side),
           // «Custom» theme fields — always, regardless of the active
           // theme.
-          _sectionTitle(i18n.t('theme.custom'), dim, side),
-          _colorRow(context, 'custom', 'bg', fg, dim, bg, signal, side),
-          _colorRow(context, 'custom', 'bgdim', fg, dim, bg, signal, side),
-          _colorRow(context, 'custom', 'dim', fg, dim, bg, signal, side),
-          _colorRow(context, 'custom', 'fg', fg, dim, bg, signal, side),
-          _colorRow(context, 'custom', 'signal', fg, dim, bg, signal, side),
+          _sectionTitle(i18n.t('theme.custom'), mid, side),
+          for (final role in _roles)
+            _colorRow(context, 'custom', role, fg, mid, bg, fgsignal, side),
         ],
       ),
     );
   }
 
-  Widget _sectionTitle(String text, Color dim, double side) {
+  Widget _sectionTitle(String text, Color mid, double side) {
     return Padding(
       padding: EdgeInsets.only(top: side * 0.3, bottom: side * 0.1),
       child: Text(
         text,
-        style: TextStyle(color: dim, fontSize: side * 0.35),
+        style: TextStyle(color: mid, fontSize: side * 0.35),
       ),
     );
   }
 
-  // ─── Four theme pults side by side ───
+  // ─── Five theme pults side by side ───
   Widget _themeRow(
     BuildContext context,
     Color fg,
-    Color dim,
+    Color mid,
     Color bg,
-    Color signal,
+    Color fgsignal,
     double side,
   ) {
     final bort = BortScope.of(context);
@@ -110,10 +110,10 @@ class RubkaAppearance extends StatelessWidget {
     final showLabels = bort.labelsButtons;
 
     // «invers» — the custom palette flipped by the same rule as the
-    // running-block inverse (bg↔fg, bgdim↔dim, signal kept); it is
-    // computed on read from the custom colors, so editing custom
-    // updates it automatically. Placed after custom — «под пункт
-    // своя» — matching the theme_store resolution.
+    // running-block inverse (bg↔fg, bgsignal↔fgsignal, mid kept);
+    // it is computed on read from the custom colors, so editing
+    // custom updates it automatically. Placed after custom —
+    // «под пункт своя» — matching the theme_store resolution.
     final names = ['system', 'day', 'night', 'custom', 'invers'];
     final icons = [
       Icons.brightness_auto,
@@ -148,7 +148,7 @@ class RubkaAppearance extends StatelessWidget {
                     ),
                     fg: fg,
                     bg: bg,
-                    signal: signal,
+                    signal: fgsignal,
                     overrideSize: side,
                   ),
               ],
@@ -164,9 +164,9 @@ class RubkaAppearance extends StatelessWidget {
     String themeName,
     String role,
     Color fg,
-    Color dim,
+    Color mid,
     Color bg,
-    Color signal,
+    Color fgsignal,
     double side,
   ) {
     final bort = BortScope.of(context);

@@ -29,7 +29,7 @@ class StubTab extends StatelessWidget {
             style: TextStyle(color: bort.fg, fontSize: 18),
           ),
           const SizedBox(height: 8),
-          Text(i18n.t('stub.text'), style: TextStyle(color: bort.dim)),
+          Text(i18n.t('stub.text'), style: TextStyle(color: bort.mid)),
         ],
       ),
     );

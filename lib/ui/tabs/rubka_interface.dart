@@ -45,9 +45,9 @@ class RubkaInterface extends StatelessWidget {
     final bort = BortScope.of(context);
     final i18n = I18nScope.of(context);
     final fg = bort.fg;
-    final dim = bort.dim;
+    final dim = bort.mid;
     final bg = bort.bg;
-    final signal = bort.signal;
+    final signal = bort.fgsignal;
     final side = PultScope.of(context).smallSide;
 
     return Column(

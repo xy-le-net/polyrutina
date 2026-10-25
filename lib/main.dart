@@ -162,10 +162,10 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
         '${_bort.systemBrightness.name}|'
         '${_bort.lang}|'
         '${_bort.colorToHex(_bort.bg)}|'
-        '${_bort.colorToHex(_bort.bgdim)}|'
-        '${_bort.colorToHex(_bort.dim)}|'
+        '${_bort.colorToHex(_bort.bgsignal)}|'
+        '${_bort.colorToHex(_bort.mid)}|'
         '${_bort.colorToHex(_bort.fg)}|'
-        '${_bort.colorToHex(_bort.signal)}';
+        '${_bort.colorToHex(_bort.fgsignal)}';
   }
 
   void _onBortChanged() {
@@ -297,7 +297,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       ],
       fg: _bort.fg,
       bg: _bort.bg,
-      signal: _bort.signal,
+      signal: _bort.fgsignal,
       side: side,
     ).whenComplete(() {
       _sheetOpen = false;
@@ -432,7 +432,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           focusedBorder: OutlineInputBorder(
             borderSide: BorderSide(color: _bort.fg, width: 2),
           ),
-          hintStyle: TextStyle(color: _bort.dim),
+          hintStyle: TextStyle(color: _bort.mid),
         ),
         iconTheme: IconThemeData(color: _bort.fg),
       ),
@@ -492,7 +492,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                                         side: rootSide,
                                         fg: _bort.fg,
                                         bg: _bort.bg,
-                                        signal: _bort.signal,
+                                        signal: _bort.fgsignal,
                                         onOpen: _openTabsSheet,
                                       ),
                                     ),

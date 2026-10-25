@@ -2,52 +2,37 @@
 // lib/data/theme_store.dart — colors and themes.
 //
 // Five roles, in the ladder order used across the app:
-//   1 — signal background (accent plate),
-//   2 — background,
-//   3 — dim content,
-//   4 — content,
-//   5 — signal content.
+//   1 — bgsignal: background of signal elements (accent plates,
+//                 the collapse mark); the soft end, close to bg;
+//   2 — bg:       base background;
+//   3 — mid:      secondary content and soft strokes;
+//   4 — fg:       base content;
+//   5 — fgsignal: content of signal elements, the accent color;
+//                 the extreme end, opposite the accent plate.
 //
-// The stored field names predate this ordering and are kept for now:
-//   bgdim  — position 1 (signal background),
-//   bg     — position 2 (background),
-//   dim    — position 3 (dim content),
-//   fg     — position 4 (content),
-//   signal — position 5 (signal content).
-// The fields are to be renamed later; until then this comment is the
-// source of truth for the mapping.
+// Usage rule. bg/fg — the base pair (page surface, main text).
+// bgsignal/fgsignal — signal elements: selected pults, the
+// collapse mark, the active date pult, primary links, the shift
+// row. When a signal element is drawn as a plate, fgsignal fills
+// the plate and bgsignal colors the icon or text on it; when it
+// is drawn as text, fgsignal alone colors it. mid — secondary
+// text and hairline strokes.
 //
-// All five roles live inside each theme. Stored themes: day, night,
-// custom. Computed themes: system (resolves to day or night from the
-// OS brightness) and invers (the mirror of custom).
+// Opposite mechanism. The opposite of a palette is its mirror:
+// bg ↔ fg, bgsignal ↔ fgsignal, mid fixed. The operation is an
+// involution — mirroring twice returns the original — so the
+// mechanism is uniform for every theme. Day and night are stored
+// as exact mirrors of each other (night = mirror(day)); custom
+// and invers likewise. Thus the same rule reproduces the former
+// day↔night pairing without a special case.
 //
-// Current and opposite palettes are both resolved and cached. The
-// cache is invalidated whenever the theme name, the system
-// brightness, the theme map as a whole, any single theme color, or
-// the defaults change.
-//
-// «invers» is computed on read from the current «custom» colors as
-// the mirror of the ladder, so editing custom updates it
-// automatically; nothing about it is persisted. applyThemeKey
-// rejects theme.invers.* so a stray edit cannot desync the computed
+// Stored themes: day, night, custom. Computed themes: system
+// (resolves to day or night from the OS brightness) and invers
+// (the mirror of the current palette). «invers» is computed on
+// read from «custom», so editing custom updates it automatically;
+// nothing about «invers» is persisted. applyThemeKey rejects
+// theme.invers.* so a stray edit cannot desync the computed
 // palette from its source.
-//
-// Opposite palette:
-//   — day ↔ night: the paired theme, taken as is;
-//   — custom ↔ invers: the two are each other's opposite;
-//   — any other case (including custom when the caller wants the
-//     runtime visual inverse): the mirror rule.
-//
-// Mirror rule. Positions occupy a monotone lightness ladder; the
-// mirror swaps the extremes (1↔5) and the pair next to them (2↔4)
-// while keeping the middle (3) in place: bgdim ↔ signal, bg ↔ fg,
-// dim fixed. The operation is an involution — applying it twice
-// restores the original palette — which is what makes «custom» and
-// «invers» mirror each other through one mechanism. In the
-// resulting «invers» the page background is the custom content
-// color (the lighter of the two main colors), and the custom signal
-// color shows up only as an accent plate, never as the page
-// background.
 //
 // Built-in themes live in const maps. Any caller that needs a
 // mutable copy wraps it in Map.from; callers that only read the
@@ -100,10 +85,10 @@ class ThemeStore {
   Map<String, Color> get _cur => _curCache ??= _computeCurrent();
 
   Color get bg => _cur['bg']!;
-  Color get bgdim => _cur['bgdim']!;
-  Color get dim => _cur['dim']!;
+  Color get bgsignal => _cur['bgsignal']!;
+  Color get mid => _cur['mid']!;
   Color get fg => _cur['fg']!;
-  Color get signal => _cur['signal']!;
+  Color get fgsignal => _cur['fgsignal']!;
 
   // ─── Opposite palette ───
   Map<String, Color> get _opp => _oppCache ??= _computeOpposite();
@@ -127,9 +112,8 @@ class ThemeStore {
       name = _systemBrightness == Brightness.dark ? 'night' : 'day';
     }
     if (name == 'invers') {
-      // Mirror of the custom palette: bgdim ↔ signal, bg ↔ fg,
-      // dim fixed. Fallback to the built-in custom when the user
-      // has not stored one.
+      // Mirror of the custom palette. Fallback to the built-in
+      // custom when the user has not stored one.
       final custom = _themes['custom'] ?? _customColors;
       return _invert(custom);
     }
@@ -139,38 +123,20 @@ class ThemeStore {
   }
 
   // ─── Compute opposite ───
-  Map<String, Color> _computeOpposite() {
-    String name = _themeName;
-    if (name == 'system') {
-      name = _systemBrightness == Brightness.dark ? 'night' : 'day';
-    }
-    if (name == 'invers') {
-      final custom = _themes['custom'];
-      if (custom != null) return Map<String, Color>.from(custom);
-      return Map<String, Color>.from(_customColors);
-    }
-    String pair;
-    if (name == 'day') {
-      pair = 'night';
-    } else if (name == 'night') {
-      pair = 'day';
-    } else {
-      return _invert(_cur);
-    }
-    final t = _themes[pair];
-    if (t != null) return Map<String, Color>.from(t);
-    return _invert(_cur);
-  }
+  // Unified: the opposite is always the mirror of the current
+  // palette. Since night = mirror(day) and custom/invers are each
+  // other's mirror, this reproduces the day↔night pairing and the
+  // custom↔invers pairing with one rule.
+  Map<String, Color> _computeOpposite() => _invert(_cur);
 
-  // Mirror rule: 1↔5, 2↔4, 3 fixed in the ladder order. In the
-  // stored field names that is bgdim ↔ signal, bg ↔ fg, dim fixed.
+  // Mirror rule: bg ↔ fg, bgsignal ↔ fgsignal, mid fixed.
   // Involution: applying it twice restores the original palette.
   static Map<String, Color> _invert(Map<String, Color> cur) => {
     'bg': cur['fg']!,
-    'bgdim': cur['signal']!,
-    'dim': cur['dim']!,
+    'bgsignal': cur['fgsignal']!,
+    'mid': cur['mid']!,
     'fg': cur['bg']!,
-    'signal': cur['bgdim']!,
+    'fgsignal': cur['bgsignal']!,
   };
 
   // ─── Opposite name ───
@@ -197,16 +163,30 @@ class ThemeStore {
       if (v is Map) {
         out[name] = {
           'bg': parseColor(v['bg'] as String?) ?? _dayColors['bg']!,
-          'bgdim': parseColor(v['bgdim'] as String?) ?? _dayColors['bgdim']!,
-          'dim': parseColor(v['dim'] as String?) ?? _dayColors['dim']!,
+          'bgsignal':
+              parseColor(v['bgsignal'] as String?) ?? _dayColors['bgsignal']!,
+          'mid': parseColor(v['mid'] as String?) ?? _dayColors['mid']!,
           'fg': parseColor(v['fg'] as String?) ?? _dayColors['fg']!,
-          'signal': parseColor(v['signal'] as String?) ?? _dayColors['signal']!,
+          'fgsignal':
+              parseColor(v['fgsignal'] as String?) ?? _dayColors['fgsignal']!,
         };
       }
     }
     _themes = out;
     _invalidate();
   }
+
+  // ─── Roles accepted by applyThemeKey ───
+  // Only the five current role names. Legacy names (bgdim, dim,
+  // signal) are silently ignored, so old saved states degrade to
+  // the built-in defaults rather than corrupting the palette.
+  static const Set<String> _roleSet = {
+    'bg',
+    'bgsignal',
+    'mid',
+    'fg',
+    'fgsignal',
+  };
 
   // ─── Apply a single theme color key ───
   bool applyThemeKey(String key, String value) {
@@ -218,6 +198,7 @@ class ThemeStore {
     // «invers» is computed from custom; edits to it are ignored so a
     // stray change cannot desync the palette from its source.
     if (name == 'invers') return true;
+    if (!_roleSet.contains(role)) return true;
     final c = parseColor(value);
     if (c == null) return true;
     _themes.putIfAbsent(name, () => Map<String, Color>.from(_dayColors));
@@ -232,10 +213,10 @@ class ThemeStore {
     for (final e in _themes.entries) {
       out[e.key] = {
         'bg': colorToHex(e.value['bg']!),
-        'bgdim': colorToHex(e.value['bgdim']!),
-        'dim': colorToHex(e.value['dim']!),
+        'bgsignal': colorToHex(e.value['bgsignal']!),
+        'mid': colorToHex(e.value['mid']!),
         'fg': colorToHex(e.value['fg']!),
-        'signal': colorToHex(e.value['signal']!),
+        'fgsignal': colorToHex(e.value['fgsignal']!),
       };
     }
     return out;
@@ -245,10 +226,10 @@ class ThemeStore {
     final out = <String, String>{};
     for (final e in _themes.entries) {
       out['theme.${e.key}.bg'] = colorToHex(e.value['bg']!);
-      out['theme.${e.key}.bgdim'] = colorToHex(e.value['bgdim']!);
-      out['theme.${e.key}.dim'] = colorToHex(e.value['dim']!);
+      out['theme.${e.key}.bgsignal'] = colorToHex(e.value['bgsignal']!);
+      out['theme.${e.key}.mid'] = colorToHex(e.value['mid']!);
       out['theme.${e.key}.fg'] = colorToHex(e.value['fg']!);
-      out['theme.${e.key}.signal'] = colorToHex(e.value['signal']!);
+      out['theme.${e.key}.fgsignal'] = colorToHex(e.value['fgsignal']!);
     }
     return out;
   }
@@ -266,28 +247,45 @@ class ThemeStore {
   }
 
   // ─── Const built-ins ───
+  //
+  // day — light theme. The ladder, from soft to extreme:
+  //   bg #EFEFEF, bgsignal #E4E4E4, mid #8F8F8F,
+  //   fg #101010, fgsignal #202020.
+  // fgsignal is #202020, not pure black: keeps the accent readable
+  // as a plate without the harsh extreme that dominated the old
+  // scheme.
   static const Map<String, Color> _dayColors = {
     'bg': Color(0xFFEFEFEF),
-    'bgdim': Color(0xFFE4E4E4),
-    'dim': Color(0xFF8F8F8F),
+    'bgsignal': Color(0xFFE4E4E4),
+    'mid': Color(0xFF8F8F8F),
     'fg': Color(0xFF101010),
-    'signal': Color(0xFF000000),
+    'fgsignal': Color(0xFF202020),
   };
 
+  // night — exact mirror of day: bg↔fg, bgsignal↔fgsignal.
+  //   bg #101010, bgsignal #202020, mid #8F8F8F,
+  //   fg #EFEFEF, fgsignal #E4E4E4.
   static const Map<String, Color> _nightColors = {
     'bg': Color(0xFF101010),
-    'bgdim': Color(0xFF1C1C1C),
-    'dim': Color(0xFF8F8F8F),
+    'bgsignal': Color(0xFF202020),
+    'mid': Color(0xFF8F8F8F),
     'fg': Color(0xFFEFEFEF),
-    'signal': Color(0xFFFFFFFF),
+    'fgsignal': Color(0xFFE4E4E4),
   };
 
+  // custom — dark theme with a yellow accent. The ladder from soft
+  // to extreme:
+  //   bg #1B2630, bgsignal #2F3D4A, mid #7A868F,
+  //   fg #B9B3A6, fgsignal #FFCB4F.
+  // Its mirror (invers) yields beige page, dark alternate blocks,
+  // dark text, dark-blue accents — a coherent light theme under
+  // the same rule.
   static const Map<String, Color> _customColors = {
     'bg': Color(0xFF1B2630),
-    'bgdim': Color(0xFF2F3D4A),
-    'dim': Color(0xFF7A868F),
+    'bgsignal': Color(0xFF2F3D4A),
+    'mid': Color(0xFF7A868F),
     'fg': Color(0xFFB9B3A6),
-    'signal': Color(0xFFFFCB4F),
+    'fgsignal': Color(0xFFFFCB4F),
   };
 
   // Only day, night, custom are stored built-ins. «invers» is

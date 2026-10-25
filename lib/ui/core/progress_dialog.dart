@@ -105,8 +105,8 @@ class ProgressDialog extends StatelessWidget {
                       child: CircularProgressIndicator(
                         value: token.value,
                         strokeWidth: strokeW * 6,
-                        color: bort.signal,
-                        backgroundColor: bort.dim,
+                        color: bort.fgsignal,
+                        backgroundColor: bort.mid,
                       ),
                     ),
                     Text(
@@ -126,7 +126,7 @@ class ProgressDialog extends StatelessWidget {
           // The «cancel» word — signal-colored, underlined.
           LinkText(
             text: i18n.t('export.cancel'),
-            color: bort.signal,
+            color: bort.fgsignal,
             fontSize: side * bort.kName,
             padding: EdgeInsets.symmetric(
               horizontal: side * 0.2,

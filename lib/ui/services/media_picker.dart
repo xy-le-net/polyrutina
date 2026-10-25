@@ -100,7 +100,7 @@ Future<void> showMediaPicker({
     ],
     fg: bort.fg,
     bg: bort.bg,
-    signal: bort.signal,
+    signal: bort.fgsignal,
     side: side,
   );
 }

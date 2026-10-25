@@ -68,13 +68,13 @@ class RoutinePlate extends StatelessWidget {
       final c = bort.runningColors();
       plateBg = c.bg;
       textMain = c.fg;
-      textSoft = c.dim;
-      accent = c.signal;
+      textSoft = c.mid;
+      accent = c.fgsignal;
     } else {
       plateBg = bort.bg;
       textMain = bort.fg;
-      textSoft = bort.dim;
-      accent = bort.signal;
+      textSoft = bort.mid;
+      accent = bort.fgsignal;
     }
 
     final nameSize = side * bort.kName;

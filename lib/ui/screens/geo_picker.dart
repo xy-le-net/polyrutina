@@ -333,7 +333,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                                 height: 40,
                                 child: Icon(
                                   Icons.place,
-                                  color: bort.signal,
+                                  color: bort.fgsignal,
                                   size: 40,
                                 ),
                               ),
@@ -359,7 +359,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                           child: Text(
                             i18n.t('media.no_network'),
                             style: TextStyle(
-                              color: bort.dim,
+                              color: bort.mid,
                               fontSize: side * 0.35,
                             ),
                           ),
@@ -377,7 +377,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                         child: Text(
                           '…',
                           style: TextStyle(
-                            color: bort.dim,
+                            color: bort.mid,
                             fontSize: side * 0.5,
                           ),
                         ),
@@ -430,7 +430,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                           ),
                           fg: bort.fg,
                           bg: bort.bg,
-                          signal: bort.signal,
+                          signal: bort.fgsignal,
                           overrideSize: side * 1.2,
                         ),
                         SizedBox(width: side * 0.5),
@@ -442,9 +442,9 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                             selected: _picked != null,
                             onTap: (_busy || _picked == null) ? null : _save,
                           ),
-                          fg: _picked != null ? bort.fg : bort.dim,
+                          fg: _picked != null ? bort.fg : bort.mid,
                           bg: bort.bg,
-                          signal: bort.signal,
+                          signal: bort.fgsignal,
                           overrideSize: side * 1.2,
                         ),
                       ],

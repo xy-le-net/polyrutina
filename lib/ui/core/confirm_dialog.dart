@@ -70,7 +70,7 @@ Future<bool> showConfirm(
               Text(
                 subtitle,
                 style: TextStyle(
-                  color: bort.dim,
+                  color: bort.mid,
                   fontSize: side * bort.kNumberSmall,
                 ),
               ),
@@ -81,7 +81,7 @@ Future<bool> showConfirm(
               children: [
                 LinkText(
                   text: cancelLabel,
-                  color: bort.dim,
+                  color: bort.mid,
                   fontSize: actionSize,
                   padding: actionPad,
                   onTap: () => Navigator.of(ctx).pop(false),
@@ -89,7 +89,7 @@ Future<bool> showConfirm(
                 SizedBox(width: side * 0.4),
                 LinkText(
                   text: confirmLabel,
-                  color: bort.signal,
+                  color: bort.fgsignal,
                   fontSize: actionSize,
                   padding: actionPad,
                   onTap: () => Navigator.of(ctx).pop(true),

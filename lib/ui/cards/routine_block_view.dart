@@ -131,14 +131,14 @@ class RoutineBlockView extends StatelessWidget {
       // drift apart on the opposite-theme fallback.
       final c = bort.runningColors();
       bg = c.bg;
-      dim = c.dim;
+      dim = c.mid;
       fg = c.fg;
-      signal = c.signal;
+      signal = c.fgsignal;
     } else {
-      bg = dimmed ? bort.bgdim : bort.bg;
-      dim = bort.dim;
+      bg = dimmed ? bort.bgsignal : bort.bg;
+      dim = bort.mid;
       fg = bort.fg;
-      signal = bort.signal;
+      signal = bort.fgsignal;
     }
 
     final titleSize = side * bort.kTitle;

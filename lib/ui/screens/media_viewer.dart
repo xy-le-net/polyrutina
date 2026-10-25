@@ -22,7 +22,7 @@
 // play/pause. Photo: share. Geo and unknown files: open externally.
 //
 // Subpult dot. Since the center pult carries a subpult, the pult
-// core draws a small signal-colored dot in its bottom-right corner.
+// core draws a small fgsignal-colored dot in its bottom-right corner.
 //
 // Playback. Photo — InteractiveViewer. Video — video_player with
 // the play/pause on the bottom center pult; a position slider sits
@@ -456,7 +456,7 @@ class _MediaViewerState extends State<MediaViewer> {
         spec: spec,
         fg: bort.fg,
         bg: bort.bg,
-        signal: bort.signal,
+        signal: bort.fgsignal,
         overrideSize: side,
       );
     }
@@ -473,7 +473,7 @@ class _MediaViewerState extends State<MediaViewer> {
             ),
             fg: bort.fg,
             bg: bort.bg,
-            signal: bort.signal,
+            signal: bort.fgsignal,
             overrideSize: side,
           )
         else
@@ -490,7 +490,7 @@ class _MediaViewerState extends State<MediaViewer> {
             ),
             fg: bort.fg,
             bg: bort.bg,
-            signal: bort.signal,
+            signal: bort.fgsignal,
             overrideSize: side,
           )
         else
@@ -536,10 +536,10 @@ class _MediaViewerState extends State<MediaViewer> {
         children: [
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
-              activeTrackColor: bort.signal,
-              inactiveTrackColor: bort.dim,
-              thumbColor: bort.signal,
-              overlayColor: bort.signal.withValues(alpha: 0.2),
+              activeTrackColor: bort.fgsignal,
+              inactiveTrackColor: bort.mid,
+              thumbColor: bort.fgsignal,
+              overlayColor: bort.fgsignal.withValues(alpha: 0.2),
               trackHeight: 2,
             ),
             child: Slider(
@@ -556,7 +556,7 @@ class _MediaViewerState extends State<MediaViewer> {
                 Text(
                   _fmtDur(pos),
                   style: TextStyle(
-                    color: bort.dim,
+                    color: bort.mid,
                     fontSize: side * 0.3,
                     fontFamily: 'monospace',
                   ),
@@ -564,7 +564,7 @@ class _MediaViewerState extends State<MediaViewer> {
                 Text(
                   _fmtDur(dur),
                   style: TextStyle(
-                    color: bort.dim,
+                    color: bort.mid,
                     fontSize: side * 0.3,
                     fontFamily: 'monospace',
                   ),
@@ -610,7 +610,7 @@ class _MediaViewerState extends State<MediaViewer> {
       return Center(
         child: Text(
           i18n.t('media.attached'),
-          style: TextStyle(color: bort.dim),
+          style: TextStyle(color: bort.mid),
         ),
       );
     }
@@ -657,7 +657,7 @@ class _MediaViewerState extends State<MediaViewer> {
                   ),
                   decoration: BoxDecoration(
                     color: bort.bg.withValues(alpha: 0.75),
-                    border: Border.all(color: bort.dim),
+                    border: Border.all(color: bort.mid),
                     borderRadius: BorderRadius.circular(side * bort.kRadius),
                   ),
                   child: Text(
@@ -687,7 +687,7 @@ class _MediaViewerState extends State<MediaViewer> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(_icon(f.kind), color: bort.dim, size: side * 1.5),
+            Icon(_icon(f.kind), color: bort.mid, size: side * 1.5),
             const SizedBox(height: 12),
             Text(
               displayName,
@@ -708,11 +708,11 @@ class _MediaViewerState extends State<MediaViewer> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.videocam_outlined, color: bort.dim, size: side * 1.5),
+            Icon(Icons.videocam_outlined, color: bort.mid, size: side * 1.5),
             const SizedBox(height: 12),
             Text(
               f.name,
-              style: TextStyle(color: bort.dim, fontSize: side * 0.3),
+              style: TextStyle(color: bort.mid, fontSize: side * 0.3),
             ),
           ],
         ),

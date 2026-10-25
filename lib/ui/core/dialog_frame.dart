@@ -83,7 +83,7 @@ class DialogFrame extends StatelessWidget {
                 : BoxConstraints(maxHeight: maxHeight!),
             decoration: BoxDecoration(
               color: bort.bg,
-              border: Border.all(color: bort.dim, width: strokeW),
+              border: Border.all(color: bort.mid, width: strokeW),
               borderRadius: BorderRadius.circular(radius),
             ),
             padding: EdgeInsets.all(pad),

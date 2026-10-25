@@ -1,12 +1,12 @@
 // ═══════════════════════════════════════════════════════════════════
-// rubka_tab.dart — rubka tab.
+// lib/ui/tabs/rubka_tab.dart — rubka tab.
 //
 // Four blocks: artel, appearance, interface, data. Appearance,
 // interface, and data are extracted into separate widgets
 // (rubka_appearance, rubka_interface, rubka_data). Here — block
 // assembly, layout, and the «artel» block body.
 //
-// Artel. The shift row is the first line — signal-colored in full
+// Artel. The shift row is the first line — fgsignal-colored in full
 // and refreshed on every ticker beat, so the running total keeps
 // pace with the wall clock. Then: midnight field (HH:MM) — the
 // start of the technical day; routine mutex checkbox; two
@@ -46,9 +46,9 @@ class RubkaTab extends StatelessWidget {
     final bort = BortScope.of(context);
     final i18n = I18nScope.of(context);
     final fg = bort.fg;
-    final dim = bort.dim;
+    final mid = bort.mid;
     final bg = bort.bg;
-    final signal = bort.signal;
+    final fgsignal = bort.fgsignal;
     final side = PultScope.of(context).smallSide;
 
     final titleSize = side * bort.kTitle;
@@ -65,9 +65,9 @@ class RubkaTab extends StatelessWidget {
       onToggleCollapsed: () =>
           set('block_artel', (!bort.blockArtel).toString()),
       bg: bg,
-      dim: dim,
+      dim: mid,
       fg: fg,
-      signal: signal,
+      signal: fgsignal,
       titleSize: titleSize,
       pad: pad,
       gap: gap,
@@ -76,7 +76,7 @@ class RubkaTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Shift row — first line of the block, signal-colored in
+          // Shift row — first line of the block, fgsignal-colored in
           // full, refreshed by the ticker so the number ticks.
           _shiftRow(context, side),
           _midnightRow(context, fg, side),
@@ -86,7 +86,7 @@ class RubkaTab extends StatelessWidget {
             i18n.t('bort.mutex_routines'),
             fg,
             bg,
-            signal,
+            fgsignal,
             side,
           ),
           _tabTickRow(
@@ -95,7 +95,7 @@ class RubkaTab extends StatelessWidget {
             i18n.t('bort.show_field_tab'),
             fg,
             bg,
-            signal,
+            fgsignal,
             side,
           ),
           _tabTickRow(
@@ -104,7 +104,7 @@ class RubkaTab extends StatelessWidget {
             i18n.t('bort.show_artel_tab'),
             fg,
             bg,
-            signal,
+            fgsignal,
             side,
           ),
         ],
@@ -119,9 +119,9 @@ class RubkaTab extends StatelessWidget {
       onToggleCollapsed: () =>
           set('block_interface', (!bort.blockInterface).toString()),
       bg: bg,
-      dim: dim,
+      dim: mid,
       fg: fg,
-      signal: signal,
+      signal: fgsignal,
       titleSize: titleSize,
       pad: pad,
       gap: gap,
@@ -135,9 +135,9 @@ class RubkaTab extends StatelessWidget {
       collapsed: !bort.blockData,
       onToggleCollapsed: () => set('block_data', (!bort.blockData).toString()),
       bg: bg,
-      dim: dim,
+      dim: mid,
       fg: fg,
-      signal: signal,
+      signal: fgsignal,
       titleSize: titleSize,
       pad: pad,
       gap: gap,
@@ -226,7 +226,7 @@ class RubkaTab extends StatelessWidget {
     );
   }
 
-  // ─── Shift row: signal-colored in full, refreshed on the ticker ───
+  // ─── Shift row: fgsignal-colored in full, refreshed on the ticker ───
   // AnimatedBuilder re-reads BortScope inside the builder, so both
   // the ticker (2 Hz) and any bort mutation (start/stop/pulse)
   // trigger a fresh read of shiftSecondsNow. Without this, an idle
@@ -252,9 +252,9 @@ class RubkaTab extends StatelessWidget {
                   child: Text(
                     i18n.t('bort.shift'),
                     style: TextStyle(
-                      color: bort.signal,
+                      color: bort.fgsignal,
                       decoration: TextDecoration.underline,
-                      decorationColor: bort.signal,
+                      decorationColor: bort.fgsignal,
                     ),
                   ),
                 ),
@@ -262,10 +262,10 @@ class RubkaTab extends StatelessWidget {
                   child: Text(
                     value,
                     style: TextStyle(
-                      color: bort.signal,
+                      color: bort.fgsignal,
                       fontFamily: 'monospace',
                       decoration: TextDecoration.underline,
-                      decorationColor: bort.signal,
+                      decorationColor: bort.fgsignal,
                     ),
                   ),
                 ),

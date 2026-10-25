@@ -331,15 +331,15 @@ class _RubkaDataState extends State<RubkaData> {
     final bort = BortScope.of(context);
     final i18n = I18nScope.of(context);
     final fg = bort.fg;
-    final dim = bort.dim;
+    final mid = bort.mid;
     final bg = bort.bg;
-    final signal = bort.signal;
+    final fgsignal = bort.fgsignal;
     final side = PultScope.of(context).smallSide;
     final strokeW = side * bort.kStroke;
 
     Widget divider() => Padding(
       padding: EdgeInsets.symmetric(vertical: side * 0.3),
-      child: Container(height: strokeW, color: dim),
+      child: Container(height: strokeW, color: mid),
     );
 
     final group1 = <Widget>[
@@ -356,7 +356,7 @@ class _RubkaDataState extends State<RubkaData> {
           ),
           fg: fg,
           bg: bg,
-          signal: signal,
+          signal: fgsignal,
           overrideSize: side,
         ),
       ),
@@ -372,7 +372,7 @@ class _RubkaDataState extends State<RubkaData> {
           ),
           fg: fg,
           bg: bg,
-          signal: signal,
+          signal: fgsignal,
           overrideSize: side,
         ),
       ),
@@ -386,9 +386,9 @@ class _RubkaDataState extends State<RubkaData> {
             confirm: true,
             onTap: _compacting ? null : _compress,
           ),
-          fg: _compacting ? dim : fg,
+          fg: _compacting ? mid : fg,
           bg: bg,
-          signal: signal,
+          signal: fgsignal,
           overrideSize: side,
         ),
       ),
@@ -406,7 +406,7 @@ class _RubkaDataState extends State<RubkaData> {
           ),
           fg: fg,
           bg: bg,
-          signal: signal,
+          signal: fgsignal,
           overrideSize: side,
         ),
       ),
@@ -418,7 +418,7 @@ class _RubkaDataState extends State<RubkaData> {
           spec: PultSpec(id: 'export', icon: Icons.upload, onTap: _export),
           fg: fg,
           bg: bg,
-          signal: signal,
+          signal: fgsignal,
           overrideSize: side,
         ),
       ),
@@ -429,7 +429,7 @@ class _RubkaDataState extends State<RubkaData> {
           spec: PultSpec(id: 'import', icon: Icons.download, onTap: _import),
           fg: fg,
           bg: bg,
-          signal: signal,
+          signal: fgsignal,
           overrideSize: side,
         ),
       ),
@@ -455,7 +455,7 @@ class _RubkaDataState extends State<RubkaData> {
           ),
           fg: fg,
           bg: bg,
-          signal: signal,
+          signal: fgsignal,
           overrideSize: side,
         ),
       ),
