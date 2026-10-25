@@ -12,10 +12,13 @@
 // This unifies the header across screens and prevents the name from
 // slipping under the compass.
 //
-// Background alternation. Shown blocks (including the summary)
-// alternate by order: first — dimmed (bgdim), second — normal,
-// third — dimmed, and so on. The running block takes the opposite
-// theme colors; this alternation does not apply to it.
+// Frame alternation. The shown slots (including the summary) pass
+// their visible position (parity 0..n-1) to RoutineBlockView; the
+// alternation is carried by the frame alone (see core/frame.dart).
+// The background of every non-running slot is bg — no per-position
+// dimming any more. Running slots take the opposite theme's colors
+// and the signal frame with a doubled stroke; parity does not apply
+// to them.
 //
 // Scopes. Dependencies are read from point scopes: RoutineScope
 // (the routine and its mutations), TraceScope (_hasTrace), BortScope
@@ -143,11 +146,8 @@ class _RoutineCardState extends State<RoutineCard> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ctx = _blockKeys[kind]?.currentContext;
       if (ctx != null) {
-        Scrollable.ensureVisible(
-          ctx,
-          duration: const Duration(milliseconds: 300),
-          alignment: 0.2,
-        );
+        // No smoothness: instant scroll, no animation.
+        Scrollable.ensureVisible(ctx, duration: Duration.zero, alignment: 0.2);
       }
     });
   }
@@ -422,8 +422,10 @@ class _RoutineCardState extends State<RoutineCard> {
 
     Widget blockOf(String kind, String title, {bool isNote = false}) {
       final b = isNote ? null : r.blockOf(kind);
-      final idx = shown.indexOf(kind);
-      final dimmed = idx >= 0 && idx % 2 == 0;
+      // parity = visible position in the shown order. Drives the
+      // alternation of the non-running frame (fg / mid). Ignored
+      // when the slot is running: the frame turns signal, doubled.
+      final parity = shown.indexOf(kind).clamp(0, shown.length);
       return RoutineBlockView(
         key: _blockKeys[kind],
         routine: r,
@@ -455,7 +457,7 @@ class _RoutineCardState extends State<RoutineCard> {
             : null,
         onExport: (kind == 'summary') ? () => _exportOne(r) : null,
         onToggleShowAll: () => setState(() => _showAllSlots = !_showAllSlots),
-        dimmed: dimmed,
+        parity: parity,
         scheduledActive: r.scheduledAt != null,
         onPickDate: kind == 'note' ? () => _pickSchedule(r) : null,
         onPickPlanned: kind == 'note' ? () => _pickPlanned(r) : null,

@@ -168,7 +168,7 @@ class _RubkaDataState extends State<RubkaData> {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      barrierColor: Colors.black.withValues(alpha: 0.2),
+      barrierColor: Colors.transparent,
       builder: (_) =>
           ProgressDialog(token: token, title: i18n.t('bort.compress')),
     );

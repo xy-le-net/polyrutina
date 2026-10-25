@@ -28,7 +28,12 @@ import '../core/bort_field.dart';
 import '../pults/pult_core.dart';
 
 class RubkaAppearance extends StatelessWidget {
-  const RubkaAppearance({super.key});
+  // Stable parity for the rubka block frame: the four rubka blocks
+  // (artel=0, appearance=1, interface=2, data=3) share one
+  // alternation, so the frame flips fg / mid regardless of layout.
+  final int parity;
+
+  const RubkaAppearance({super.key, this.parity = 1});
 
   // Roles in the ladder order: bgsignal → bg → mid → fg → fgsignal.
   // Matches ThemeStore's five-role set.
@@ -72,6 +77,7 @@ class RubkaAppearance extends StatelessWidget {
       gap: gap,
       strokeW: strokeW,
       radiusW: radiusW,
+      parity: parity,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

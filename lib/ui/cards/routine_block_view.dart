@@ -4,17 +4,25 @@
 // Extracted from routine_card: frame, title, time pulse, content
 // (TraceField or summary in «total»), corner pults.
 //
-// Background. The dimming (dimmed) is set from outside: background
-// alternation by the order of shown blocks, starting from dimmed.
-// The text input field is not subject to dimming: it is placed on
-// the normal background (bg), regardless of whether the block is
-// dimmed.
+// Frame. The slot passes its visible position (parity 0..n-1) and
+// whether it is running (active) to Block; Block calls borderFor to
+// decide the frame color and stroke. The former `dimmed` flag (which
+// alternated the background between bg and bgdim) is abolished: the
+// background of a non-running slot is always bort.bg, and the
+// alternation is carried by the frame alone.
+//
+// Running palette. A running slot takes the opposite theme's roles
+// via OperationalLayer.runningColors, so the running item inverts
+// against its neighbours. The Block receives the inverted quartet
+// and paints its collapse mark and title accordingly; the frame is
+// still decided by borderFor (active=true → fgsignal, doubled
+// stroke). Multiple running slots are all inverted and all signal-
+// framed; their neighbours alternate through the frame only.
 //
 // Block «note». In the top right row — four pults left to right:
-// assigned date, planned duration, show all slots, flags. Date pult
-// and duration pult moved here from the page start. The date pult
-// is dim when the routine has no flags, signal when it has; a long
-// press opens the «clear date» subpult.
+// assigned date, planned duration, show all slots, flags. The date
+// pult is fgsignal when a date is set, fg otherwise; a long press
+// opens the «clear date» subpult.
 //
 // Flags. Bit lists, keys, icons, and the subpult builder live in
 // routine_flags.dart; this widget only calls buildFlagSubs with a
@@ -56,7 +64,10 @@ class RoutineBlockView extends StatelessWidget {
   final TextEditingController? editCtrl;
   final FocusNode? editFocus;
 
-  final bool dimmed;
+  // Visible position in the shown order: 0 for the first shown slot,
+  // 1 for the second, etc. Drives the alternation between fg and mid
+  // for the non-running frame.
+  final int parity;
   final bool scheduledActive;
   final VoidCallback? onPickDate;
   final VoidCallback? onPickPlanned;
@@ -90,7 +101,7 @@ class RoutineBlockView extends StatelessWidget {
     this.onToggleCompleted,
     this.onExport,
     required this.onToggleShowAll,
-    this.dimmed = false,
+    this.parity = 0,
     this.scheduledActive = false,
     this.onPickDate,
     this.onPickPlanned,
@@ -135,7 +146,9 @@ class RoutineBlockView extends StatelessWidget {
       fg = c.fg;
       signal = c.fgsignal;
     } else {
-      bg = dimmed ? bort.bgsignal : bort.bg;
+      // Non-running: background is always bg (no per-position
+      // dimming); the frame carries the alternation.
+      bg = bort.bg;
       dim = bort.mid;
       fg = bort.fg;
       signal = bort.fgsignal;
@@ -353,9 +366,6 @@ class RoutineBlockView extends StatelessWidget {
                       ]
                     : null,
               ),
-              // Date pult follows the date itself, not the routine's
-              // flags: signal-colored when a date is set, neutral
-              // fg otherwise — the same look as the other pults.
               fg: scheduledActive ? signal : fg,
               bg: bg,
               signal: signal,
@@ -459,6 +469,7 @@ class RoutineBlockView extends StatelessWidget {
       strokeW: strokeW,
       radiusW: radiusW,
       active: running,
+      parity: parity,
       reserveBottom: showExport ? pultSide + side * 0.15 : 0,
       child: body,
     );

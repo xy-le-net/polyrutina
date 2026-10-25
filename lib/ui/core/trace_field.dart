@@ -129,12 +129,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
       if (!mounted || !_focused) return;
       final ctx = _fieldKey.currentContext;
       if (ctx == null) return;
-      Scrollable.ensureVisible(
-        ctx,
-        alignment: 0.0,
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-      );
+      Scrollable.ensureVisible(ctx, alignment: 0.0, duration: Duration.zero);
     });
   }
 

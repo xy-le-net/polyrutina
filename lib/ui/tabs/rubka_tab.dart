@@ -6,6 +6,17 @@
 // (rubka_appearance, rubka_interface, rubka_data). Here — block
 // assembly, layout, and the «artel» block body.
 //
+// Frame parity. The four blocks receive a stable parity in a fixed
+// order — artel=0, appearance=1, interface=2, data=3 — regardless
+// of whether the layout is narrow (single column) or wide (two
+// columns: artel+interface on the left, appearance+data on the
+// right). The frame alternation is therefore preserved across
+// screen sizes; what changes with the layout is the on-screen
+// arrangement of the blocks, not their parity. The frame itself is
+// decided by borderFor (core/frame.dart): active → fgsignal,
+// doubled; inactive, parity 0 → fg; inactive, parity 1 → mid. The
+// rubka blocks are never active, so parity always applies.
+//
 // Artel. The shift row is the first line — fgsignal-colored in full
 // and refreshed on every ticker beat, so the running total keeps
 // pace with the wall clock. Then: midnight field (HH:MM) — the
@@ -76,6 +87,7 @@ class RubkaTab extends StatelessWidget {
       gap: gap,
       strokeW: strokeW,
       radiusW: radiusW,
+      parity: 0,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -125,8 +137,6 @@ class RubkaTab extends StatelessWidget {
       ),
     );
 
-    const appearance = RubkaAppearance();
-
     final interface = Block(
       title: i18n.t('block.interface'),
       collapsed: !bort.blockInterface,
@@ -141,6 +151,7 @@ class RubkaTab extends StatelessWidget {
       gap: gap,
       strokeW: strokeW,
       radiusW: radiusW,
+      parity: 1,
       child: RubkaInterface(onSet: set),
     );
 
@@ -157,8 +168,14 @@ class RubkaTab extends StatelessWidget {
       gap: gap,
       strokeW: strokeW,
       radiusW: radiusW,
+      parity: 2,
       child: const RubkaData(),
     );
+
+    // RubkaAppearance owns its Block; parity 3 keeps the four rubka
+    // blocks in one stable alternation across both layouts
+    // (artel=0, appearance=1, interface=2, data=3).
+    const appearanceBlock = RubkaAppearance(parity: 3);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -173,7 +190,7 @@ class RubkaTab extends StatelessWidget {
               16,
               16,
             ),
-            children: [artel, appearance, interface, data],
+            children: [artel, appearanceBlock, interface, data],
           );
         }
 
@@ -202,7 +219,7 @@ class RubkaTab extends StatelessWidget {
             children: [
               col([artel, interface]),
               const SizedBox(width: spacing),
-              col([appearance, data]),
+              col([appearanceBlock, data]),
             ],
           ),
         );
@@ -254,10 +271,6 @@ class RubkaTab extends StatelessWidget {
   }
 
   // ─── Shift row: fgsignal-colored in full, refreshed on the ticker ───
-  // AnimatedBuilder re-reads BortScope inside the builder, so both
-  // the ticker (2 Hz) and any bort mutation (start/stop/pulse)
-  // trigger a fresh read of shiftSecondsNow. Without this, an idle
-  // running shift would sit on a stale «0м» until the next tap.
   Widget _shiftRow(BuildContext context, double side) {
     final ticker = TickerScope.of(context);
     return AnimatedBuilder(

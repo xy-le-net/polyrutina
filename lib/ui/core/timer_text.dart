@@ -86,30 +86,24 @@ class TimerText extends StatelessWidget {
           children.add(
             AnimatedBuilder(
               animation: ticker!,
-              builder: (_, __) => Opacity(
-                opacity: ticker!.colonVisible ? 1.0 : 0.0,
-                child: Text(
-                  ':',
-                  style: TextStyle(
-                    color: primary,
-                    fontFamily: 'monospace',
-                    fontSize: numberSize,
-                  ),
+              builder: (_, __) => Text(
+                ticker!.colonVisible ? ':' : ' ',
+                style: TextStyle(
+                  color: primary,
+                  fontFamily: 'monospace',
+                  fontSize: numberSize,
                 ),
               ),
             ),
           );
         } else {
           children.add(
-            Opacity(
-              opacity: colonVisible ? 1.0 : 0.0,
-              child: Text(
-                ':',
-                style: TextStyle(
-                  color: primary,
-                  fontFamily: 'monospace',
-                  fontSize: numberSize,
-                ),
+            Text(
+              colonVisible ? ':' : ' ',
+              style: TextStyle(
+                color: primary,
+                fontFamily: 'monospace',
+                fontSize: numberSize,
               ),
             ),
           );

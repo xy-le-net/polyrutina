@@ -5,11 +5,15 @@
 // (RoutinePlate). At the bottom — two pults: create/cancel (left)
 // and, in select mode, actions for the selected (center).
 //
-// Export has moved to the rubka («data» block): the routines list
-// no longer carries a report pult. The former _hasNewEntries signal
-// lamp and its _refreshExportState helper are removed with it —
-// the rubka's export pult fires on demand, regardless of the
-// journal tail.
+// Frame parity. Each plate receives a parity index computed over
+// the visible order: active routines first, top to bottom (0..n-1),
+// then completed routines (n..n+m-1). The same parity is passed in
+// narrow (single column) and wide (grid) layouts, so the frame
+// alternation is stable across screen sizes; what changes with the
+// layout is the on-screen arrangement of the plates, not their
+// parity. The plate frame itself is decided by borderFor
+// (core/frame.dart): active → fgsignal, doubled; inactive, parity 0
+// → fg; inactive, parity 1 → mid.
 //
 // Select mode: a long press on a routine enables it. Checkboxes
 // appear to the left of the block.
@@ -153,8 +157,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
   }
 
   // ─── Group deletion ───
-  // All deletions — in one transaction: either the whole batch, or
-  // nothing. Otherwise a failure mid-list would leave some routines.
   Future<void> _deleteSelected() async {
     final routineLayer = RoutineScope.of(context);
     final journal = AppScope.of(context).journal;
@@ -172,8 +174,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
   }
 
   // ─── Group completion ───
-  // Completing a routine itself stops running blocks and writes
-  // several entries; the whole batch — inside one outer transaction.
   Future<void> _completeSelected() async {
     final routineLayer = RoutineScope.of(context);
     final journal = AppScope.of(context).journal;
@@ -241,12 +241,25 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
         final groups = _sortedGroups();
 
+        // Parity map: computed once over the visible order, applied
+        // identically in narrow and wide layouts. Active first (0..n-1),
+        // then completed (n..n+m-1).
+        final parityById = <int, int>{};
+        var pi = 0;
+        for (final r in groups.active) {
+          parityById[r.id] = pi++;
+        }
+        for (final r in groups.done) {
+          parityById[r.id] = pi++;
+        }
+
         Widget plateOf(Routine r) => Padding(
           padding: const EdgeInsets.all(4),
           child: RoutinePlate(
             routine: r,
             selectMode: _selectMode,
             selected: _selected.contains(r.id),
+            parity: parityById[r.id] ?? 0,
             onTap: () {
               if (_selectMode) {
                 _toggleSelect(r.id);

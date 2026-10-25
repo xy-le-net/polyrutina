@@ -5,10 +5,18 @@
 // the routine pulse (start/pause/open) with an action subpult
 // (duplicate, mark completed, delete), and a select-mode checkbox.
 //
+// Frame. The plate's frame is computed by borderFor (core/frame.dart):
+// active — fgsignal, doubled stroke; inactive, parity 0 — fg;
+// inactive, parity 1 — mid. The former signal frame on any flagged
+// routine is abolished: flags remain visible through the icon column
+// on the left and through the signal color of the name; the frame
+// now carries the same rule as routine blocks and rubka blocks.
+//
 // Running palette. When the routine has a running block, the plate
 // takes the opposite theme's roles via OperationalLayer.runningColors
 // — the same method RoutineBlockView uses, so the two views cannot
-// drift apart on the fallback.
+// drift apart on the fallback. The frame is still decided by
+// borderFor (active=true → fgsignal, doubled stroke).
 //
 // Scopes. Dependencies are read from point scopes: BortScope (theme,
 // colors, opposite palette), I18nScope (strings), TickerScope (colon
@@ -23,6 +31,7 @@ import 'package:flutter/material.dart';
 import '../../data/routine.dart';
 import '../core/app_scope.dart';
 import '../core/format.dart';
+import '../core/frame.dart';
 import '../core/routine_flags.dart';
 import '../core/timer_text.dart';
 import '../pults/pult_core.dart';
@@ -32,6 +41,10 @@ class RoutinePlate extends StatelessWidget {
   final Routine routine;
   final bool selectMode;
   final bool selected;
+  // Visible position in the shown order (0..n-1). Drives the
+  // alternation of the non-running frame (fg / mid). Ignored when
+  // the routine is running: the frame turns signal, doubled.
+  final int parity;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
   final VoidCallback onSelectToggle;
@@ -46,6 +59,7 @@ class RoutinePlate extends StatelessWidget {
     required this.onLongPress,
     required this.onSelectToggle,
     required this.onChanged,
+    this.parity = 0,
   });
 
   @override
@@ -84,6 +98,19 @@ class RoutinePlate extends StatelessWidget {
     final strokeW = side * bort.kStroke;
     final radiusW = side * bort.kRadius;
     final framePad = side * bort.kFramePad * 0.6;
+
+    // Frame rule: one call to borderFor decides color and stroke.
+    // The active state (running block) wins over parity; parity
+    // distinguishes even and odd positions only among non-active
+    // plates. The former signal frame on flagged routines is gone.
+    final frame = borderFor(
+      parity: parity,
+      active: running,
+      strokeW: strokeW,
+      fg: textMain,
+      mid: textSoft,
+      fgsignal: accent,
+    );
 
     final IconData pulseIcon;
     final VoidCallback? pulseTap;
@@ -293,12 +320,8 @@ class RoutinePlate extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: plateBg,
-          // Frame follows flags: signal-colored when the routine
-          // carries any flag bit, neutral textSoft otherwise.
-          border: Border.all(
-            color: routine.flags != 0 ? accent : textSoft,
-            width: strokeW,
-          ),
+          // Frame follows borderFor. No more «signal on flags».
+          border: Border.all(color: frame.color, width: frame.width),
           borderRadius: BorderRadius.circular(radiusW),
         ),
         padding: EdgeInsets.all(framePad),

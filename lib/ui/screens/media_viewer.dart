@@ -34,7 +34,9 @@
 //
 // Geo view. The screenshot (if any) is stretched as the page
 // background (BoxFit.cover). The coordinates line is tap-to-copy;
-// a short SnackBar provides feedback.
+// feedback is a brief «copied» label over the coordinates, shown
+// for 1200 ms and then gone. No SnackBar (its slide-in is an
+// animation, which the project rules out).
 //
 // Scopes. BortScope (theme and colors), TraceScope (the layer used
 // for deletion), I18nScope (strings), AppScope (journal).
@@ -143,6 +145,12 @@ class _MediaViewerState extends State<MediaViewer> {
   StreamSubscription<PlayerState>? _audioStateSub;
   bool _audioPlaying = false;
 
+  // «copied» indicator. Shown while _copied is true, cleared by
+  // _copiedTimer. No animation: the label appears in full and
+  // disappears in full; the timer merely schedules the erasure.
+  bool _copied = false;
+  Timer? _copiedTimer;
+
   @override
   void initState() {
     super.initState();
@@ -153,6 +161,7 @@ class _MediaViewerState extends State<MediaViewer> {
 
   @override
   void dispose() {
+    _copiedTimer?.cancel();
     _audioStateSub?.cancel();
     _video?.dispose();
     _audio?.dispose();
@@ -174,9 +183,6 @@ class _MediaViewerState extends State<MediaViewer> {
   }
 
   // ─── Bring players in accord with the current frame ───
-  // Old ones are disposed, the needed one is created. Initialization
-  // is asynchronous; if the frame changes before it finishes, the
-  // controller is disposed and does not enter setState.
   void _syncPlayers() {
     _audioStateSub?.cancel();
     _audioStateSub = null;
@@ -266,8 +272,6 @@ class _MediaViewerState extends State<MediaViewer> {
   }
 
   // ─── Open externally ───
-  // Geo — via the geo: scheme with the web map as a fallback.
-  // File — by the system application, by type.
   Future<void> _openExternal(TraceFile f) async {
     try {
       if (f.kind == MediaKind.geo) {
@@ -291,18 +295,17 @@ class _MediaViewerState extends State<MediaViewer> {
   }
 
   // ─── Copy geo coordinates ───
-  // Tapping the «lat, lon» line copies it. Feedback — a short
-  // SnackBar.
+  // Tapping the «lat, lon» line copies it. Feedback is a brief
+  // label over the coordinates; no SnackBar (its slide-in is an
+  // animation).
   Future<void> _copyCoords(String lat, String lon) async {
     await Clipboard.setData(ClipboardData(text: '$lat, $lon'));
     if (!mounted) return;
-    final i18n = I18nScope.of(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(i18n.t('media.copied')),
-        duration: const Duration(milliseconds: 1200),
-      ),
-    );
+    _copiedTimer?.cancel();
+    setState(() => _copied = true);
+    _copiedTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _copied = false);
+    });
   }
 
   // ─── Deletion ───
@@ -525,6 +528,9 @@ class _MediaViewerState extends State<MediaViewer> {
   ];
 
   // ─── Slider for audio/video ───
+  // No overlay on the thumb: the overlay color would be a soft
+  // translucent halo, which the project rules out. Active track and
+  // thumb share the signal color; the inactive track is mid.
   Widget _sliderFor(TraceFile f, OperationalLayer bort, double side) {
     Widget slider(Duration pos, Duration dur, void Function(Duration) onSeek) {
       final maxMs = dur.inMilliseconds > 0
@@ -539,7 +545,7 @@ class _MediaViewerState extends State<MediaViewer> {
               activeTrackColor: bort.fgsignal,
               inactiveTrackColor: bort.mid,
               thumbColor: bort.fgsignal,
-              overlayColor: bort.fgsignal.withValues(alpha: 0.2),
+              overlayColor: Colors.transparent,
               trackHeight: 2,
             ),
             child: Slider(
@@ -648,27 +654,48 @@ class _MediaViewerState extends State<MediaViewer> {
             right: 0,
             bottom: side * 1.6,
             child: Center(
-              child: GestureDetector(
-                onTap: () => _copyCoords(lat, lon),
-                child: Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: side * 0.2,
-                    vertical: side * 0.1,
-                  ),
-                  decoration: BoxDecoration(
-                    color: bort.bg.withValues(alpha: 0.75),
-                    border: Border.all(color: bort.mid),
-                    borderRadius: BorderRadius.circular(side * bort.kRadius),
-                  ),
-                  child: Text(
-                    '$lat, $lon (±$acc ${i18n.t('time.m')})',
-                    style: TextStyle(
-                      color: bort.fg,
-                      fontSize: side * 0.25,
-                      fontFamily: 'monospace',
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Solid background: no translucency. The label
+                  // is drawn on bort.bg, not on a blend.
+                  GestureDetector(
+                    onTap: () => _copyCoords(lat, lon),
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: side * 0.2,
+                        vertical: side * 0.1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: bort.bg,
+                        border: Border.all(color: bort.mid),
+                        borderRadius: BorderRadius.circular(
+                          side * bort.kRadius,
+                        ),
+                      ),
+                      child: Text(
+                        '$lat, $lon (±$acc ${i18n.t('time.m')})',
+                        style: TextStyle(
+                          color: bort.fg,
+                          fontSize: side * 0.25,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  if (_copied)
+                    Padding(
+                      padding: EdgeInsets.only(top: side * 0.15),
+                      child: Text(
+                        i18n.t('media.copied'),
+                        style: TextStyle(
+                          color: bort.fgsignal,
+                          fontSize: side * 0.25,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
@@ -700,7 +727,7 @@ class _MediaViewerState extends State<MediaViewer> {
     );
   }
 
-  // ─── Video body: player + duration at the center while paused ───
+  // ─── Video body ───
   Widget _videoBody(TraceFile f, OperationalLayer bort, double side) {
     final ctrl = _video;
     if (ctrl == null || !ctrl.value.isInitialized) {

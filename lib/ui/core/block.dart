@@ -1,25 +1,39 @@
 // ═══════════════════════════════════════════════════════════════════
-// block.dart — единый блок для карточки рутины и рубки.
+// lib/ui/core/block.dart — unified block for routine cards and the
+// rubka.
 //
-// Устройство:
-//   — рамка со сглаженными углами;
-//   — заголовок слева вверху;
-//   — значок свёртки в левом верхнем углу, сигнального цвета,
-//     слегка выступает за контур (на четверть) — как ярлык;
-//   — содержимое под заголовком (скрывается при свёртке);
-//   — необязательные виджеты в углах: правый верхний (таймер)
-//     и правый нижний (пульс).
+// Structure:
+//   — frame with rounded corners;
+//   — title at the top left;
+//   — collapse mark at the top left corner, signal-colored,
+//     slightly overhanging the outline — as a label;
+//   — content under the title (hidden when collapsed);
+//   — optional widgets in the corners: top right (timer)
+//     and bottom right (pulse).
 //
-// Касание заголовка либо значка — свернуть/развернуть, ежели
-// canCollapse. Итог карточки сворачивать нельзя — значок не выводится.
+// Frame rule. The frame is computed by borderFor (core/frame.dart):
+// active — fgsignal, doubled stroke; inactive, parity 0 — fg;
+// inactive, parity 1 — mid. The background is bg for every item;
+// the former dim / normal alternation through the background is
+// abolished. The active frame wins over parity.
 //
-// Обслуживает блоки рубки: те же рамки, заголовок, сворачивание;
-// углы не используются.
+// The `dim` parameter (the secondary color used for the title and
+// the collapse mark's label) is kept, but no longer drives the
+// border.
 //
-// Прозрачность не применяется.
+// Touching the title or the mark toggles collapse when canCollapse
+// is true. The summary of a card cannot be collapsed — the mark is
+// not drawn.
+//
+// Serves the rubka blocks too: same frames, title, collapse; the
+// corners are unused there.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
+
+import 'frame.dart';
 
 class Block extends StatelessWidget {
   final String title;
@@ -28,25 +42,32 @@ class Block extends StatelessWidget {
   final bool canCollapse;
   final VoidCallback? onToggleCollapsed;
 
-  // Правые углы: необязательные виджеты.
+  // Right corners: optional widgets.
   final Widget? cornerRightTop;
   final Widget? cornerRightBottom;
 
-  // Цвета.
+  // Colors.
   final Color bg;
   final Color dim;
   final Color fg;
   final Color signal;
 
-  // Размеры.
+  // Sizes.
   final double titleSize;
   final double pad;
   final double gap;
   final double strokeW;
   final double radiusW;
-  // Активный блок (идущий) — сигнальная рамка.
+
+  // Frame state.
+  // active — the item is running (frame turns fgsignal, doubled).
+  // parity — 0 for an even position in the visible order, 1 for an
+  // odd one; decides between fg and mid for the non-active frame.
+  // Ignored when active is true.
   final bool active;
-  // Резерв снизу под пульс в углу.
+  final int parity;
+
+  // Reserve at the bottom under the corner pult.
   final double reserveBottom;
 
   const Block({
@@ -68,20 +89,34 @@ class Block extends StatelessWidget {
     required this.strokeW,
     required this.radiusW,
     this.active = false,
+    this.parity = 0,
     this.reserveBottom = 0,
   });
 
   @override
   Widget build(BuildContext context) {
     final isCollapsed = canCollapse && collapsed;
-    // Значок свёртки: сигнального цвета, чуть выступает за контур.
+    // Collapse mark: signal-colored, slightly overhanging the
+    // outline.
     final markSize = titleSize * 1.2;
+
+    // Frame rule: one call to borderFor decides color and stroke.
+    // The active state wins over parity; parity distinguishes even
+    // and odd positions only among non-active items.
+    final frame = borderFor(
+      parity: parity,
+      active: active,
+      strokeW: strokeW,
+      fg: fg,
+      mid: dim,
+      fgsignal: signal,
+    );
 
     return Container(
       margin: EdgeInsets.only(bottom: gap),
       decoration: BoxDecoration(
         color: bg,
-        border: Border.all(color: active ? fg : dim, width: strokeW),
+        border: Border.all(color: frame.color, width: frame.width),
         borderRadius: BorderRadius.circular(radiusW),
       ),
       child: Stack(
@@ -97,7 +132,7 @@ class Block extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Заголовок — кликабелен для сворачивания.
+                // Title — tappable to toggle collapse.
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: canCollapse ? onToggleCollapsed : null,
@@ -108,7 +143,7 @@ class Block extends StatelessWidget {
                       // ellipsized: pults on the right can squeeze
                       // the available width, and a two-line wrap
                       // would break the uniform height of the block
-                      // header. Ellipsis is the lesser evil here.
+                      // header.
                       Expanded(
                         child: Text(
                           title,
@@ -131,7 +166,7 @@ class Block extends StatelessWidget {
               ],
             ),
           ),
-          // Значок свёртки — левый верхний угол.
+          // Collapse mark — top left corner.
           if (canCollapse)
             Positioned(
               left: -markSize * 0.25,
@@ -154,9 +189,7 @@ class Block extends StatelessWidget {
                 ),
               ),
             ),
-          // Пульс — правый нижний угол. По тому же краю, что и
-          // верхний: right = pad (совпадает с концом паддинга,
-          // где выстроен cornerRightTop), bottom = pad.
+          // Pulse — bottom right corner.
           if (cornerRightBottom != null)
             Positioned(right: pad, bottom: pad, child: cornerRightBottom!),
         ],

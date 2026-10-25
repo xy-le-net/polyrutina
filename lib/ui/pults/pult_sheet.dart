@@ -1,8 +1,11 @@
 // ═══════════════════════════════════════════════════════════════════
 // lib/ui/pults/pult_sheet.dart — single left-side sheet of subpults.
 //
-// Every subpult panel slides in from the left. The sheet body is
+// Every subpult panel appears at the left edge. The sheet body is
 // stateless; pults inside handle their own taps and confirmation.
+// No slide, no fade: the sheet is present in full for the entire
+// transition window (transitionDuration = Duration.zero), so the
+// appearance is instantaneous.
 //
 // Closing semantics. The scope's closeSheet callback removes the
 // sheet's route SYNCHRONOUSLY via Navigator.removeRoute. This matters
@@ -25,10 +28,7 @@
 // Route tracking. The sheet's route is remembered in a module-level
 // variable (_currentSheetRoute). When a new sheet is requested while
 // a previous one is still active, ONLY that previous route is
-// removed via removeRoute — nothing below it. The earlier
-// popUntil(isFirst) guard swept away a routine card that had just
-// been pushed by openRoutine; route tracking keeps the card intact
-// and opens the next sheet above it.
+// removed via removeRoute — nothing below it.
 //
 // RawDialogRoute is used directly because DialogRoute does not
 // expose transitionDuration / transitionBuilder.
@@ -87,9 +87,9 @@ Future<void> showPultSheet({
     barrierDismissible: true,
     barrierLabel: '',
     barrierColor: Colors.transparent,
-    transitionDuration: const Duration(milliseconds: 180),
+    // No transition: the sheet is present in full at once.
+    transitionDuration: Duration.zero,
     transitionBuilder: (ctx, anim, _, __) {
-      final curved = CurvedAnimation(parent: anim, curve: Curves.easeOut);
       final body = _SheetBody(
         subs: subs,
         fg: fg,
@@ -99,28 +99,22 @@ Future<void> showPultSheet({
         state: state,
         closeSheet: closeNow,
       );
-      return SlideTransition(
-        position: Tween(
-          begin: const Offset(-1, 0),
-          end: Offset.zero,
-        ).animate(curved),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: rebuildOn == null || subsBuilder == null
-              ? body
-              : ListenableBuilder(
-                  listenable: rebuildOn,
-                  builder: (_, __) => _SheetBody(
-                    subs: subsBuilder(),
-                    fg: fg,
-                    bg: bg,
-                    signal: signal,
-                    side: side,
-                    state: state,
-                    closeSheet: closeNow,
-                  ),
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: rebuildOn == null || subsBuilder == null
+            ? body
+            : ListenableBuilder(
+                listenable: rebuildOn,
+                builder: (_, __) => _SheetBody(
+                  subs: subsBuilder(),
+                  fg: fg,
+                  bg: bg,
+                  signal: signal,
+                  side: side,
+                  state: state,
+                  closeSheet: closeNow,
                 ),
-        ),
+              ),
       );
     },
   );

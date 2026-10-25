@@ -140,7 +140,7 @@ class ReportBuilder {
       showDialog<void>(
         context: uiContext,
         barrierDismissible: false,
-        barrierColor: Colors.black.withValues(alpha: 0.2),
+        barrierColor: Colors.transparent,
         builder: (_) =>
             ProgressDialog(token: token, title: i18n.t('export.prep')),
       );

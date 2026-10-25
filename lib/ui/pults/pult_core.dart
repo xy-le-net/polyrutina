@@ -139,7 +139,6 @@ class Pult extends StatelessWidget {
   });
 
   static const double _minDot = 6.0;
-  static const Duration _confirmDuration = Duration(milliseconds: 150);
 
   void _pulseBort(BuildContext context) {
     try {
@@ -382,12 +381,7 @@ class Pult extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: () => _handleTap(context, state),
       onLongPress: () => _handleLongPress(context, state),
-      child: AnimatedScale(
-        scale: confirming ? 1.25 : 1.0,
-        duration: _confirmDuration,
-        curve: Curves.easeOut,
-        child: content,
-      ),
+      child: Transform.scale(scale: confirming ? 1.25 : 1.0, child: content),
     );
   }
 }
