@@ -3,22 +3,22 @@
 
   "themes": {
     "day": {
-      "bg": "#EFEFEF",
-      "bgsignal": "#E4E4E4",
-      "mid": "#8F8F8F",
-      "fg": "#101010",
-      "fgsignal": "#202020"
+      "bg": "#D9D3C7",
+      "bgsignal": "#FBF5E9",
+      "mid": "#7F8694",
+      "fg": "#181D27",
+      "fgsignal": "#060810"
     },
     "night": {
-      "bg": "#101010",
-      "bgsignal": "#202020",
-      "mid": "#8F8F8F",
-      "fg": "#EFEFEF",
-      "fgsignal": "#E4E4E4"
+      "bg": "#181D27",
+      "bgsignal": "#060810",
+      "mid": "#7F8694",
+      "fg": "#D9D3C7",
+      "fgsignal": "#FBF5E9"
     },
     "custom": {
-      "bg": "#1B2630",
-      "bgsignal": "#2F3D4A",
+      "bg": "#3F4D5A",
+      "bgsignal": "#071232",
       "mid": "#7A868F",
       "fg": "#B9B3A6",
       "fgsignal": "#FFCB4F"

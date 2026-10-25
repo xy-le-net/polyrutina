@@ -249,40 +249,47 @@ class ThemeStore {
   // ─── Const built-ins ───
   //
   // day — light theme. The ladder, from soft to extreme:
-  //   bg #EFEFEF, bgsignal #E4E4E4, mid #8F8F8F,
-  //   fg #101010, fgsignal #202020.
-  // fgsignal is #202020, not pure black: keeps the accent readable
-  // as a plate without the harsh extreme that dominated the old
-  // scheme.
+  //   bg #D9D3C7, bgsignal #FBF5E9, mid #7F8694,
+  //   fg #181D27, fgsignal #060810.
+  // The palette is a cool-to-warm gradient: the dark end (bgsignal,
+  // which in the light theme is the extreme) is bluish, the light
+  // end (fg, fgsignal) is creamy, mid is neutral. Saturation is
+  // kept moderate (ten to twenty percent) so the theme is soft but
+  // visibly colored; hierarchy reads by lightness alone, which
+  // keeps it legible under protanopia, deuteranopia, tritanopia,
+  // and on monochrome screens.
   static const Map<String, Color> _dayColors = {
-    'bg': Color(0xFFEFEFEF),
-    'bgsignal': Color(0xFFE4E4E4),
-    'mid': Color(0xFF8F8F8F),
-    'fg': Color(0xFF101010),
-    'fgsignal': Color(0xFF202020),
+    'bg': Color(0xFFD9D3C7),
+    'bgsignal': Color(0xFFFBF5E9),
+    'mid': Color(0xFF7F8694),
+    'fg': Color(0xFF181D27),
+    'fgsignal': Color(0xFF060810),
   };
 
   // night — exact mirror of day: bg↔fg, bgsignal↔fgsignal.
-  //   bg #101010, bgsignal #202020, mid #8F8F8F,
-  //   fg #EFEFEF, fgsignal #E4E4E4.
+  //   bg #181D27, bgsignal #060810, mid #7F8694,
+  //   fg #D9D3C7, fgsignal #FBF5E9.
+  // The same cool-to-warm gradient, inverted in lightness: the
+  // page is a deep blue, the text is creamy, the signal plate is
+  // near-black, the signal text is near-white.
   static const Map<String, Color> _nightColors = {
-    'bg': Color(0xFF101010),
-    'bgsignal': Color(0xFF202020),
-    'mid': Color(0xFF8F8F8F),
-    'fg': Color(0xFFEFEFEF),
-    'fgsignal': Color(0xFFE4E4E4),
+    'bg': Color(0xFF181D27),
+    'bgsignal': Color(0xFF060810),
+    'mid': Color(0xFF7F8694),
+    'fg': Color(0xFFD9D3C7),
+    'fgsignal': Color(0xFFFBF5E9),
   };
 
   // custom — dark theme with a yellow accent. The ladder from soft
   // to extreme:
-  //   bg #1B2630, bgsignal #2F3D4A, mid #7A868F,
+  //   bg #3F4D5A, bgsignal #071232, mid #7A868F,
   //   fg #B9B3A6, fgsignal #FFCB4F.
-  // Its mirror (invers) yields beige page, dark alternate blocks,
+  // Its mirror (invers) yields beige page, light alternate blocks,
   // dark text, dark-blue accents — a coherent light theme under
   // the same rule.
   static const Map<String, Color> _customColors = {
-    'bg': Color(0xFF1B2630),
-    'bgsignal': Color(0xFF2F3D4A),
+    'bg': Color(0xFF3F4D5A),
+    'bgsignal': Color(0xFF071232),
     'mid': Color(0xFF7A868F),
     'fg': Color(0xFFB9B3A6),
     'fgsignal': Color(0xFFFFCB4F),

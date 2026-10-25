@@ -310,7 +310,13 @@ class RoutineBlockView extends StatelessWidget {
         dim: dim,
         bg: bg,
         signal: signal,
-        fieldBg: bort.bg,
+        // Running: fg is the inverse of bg (bg of the other palette),
+        // so the input must sit on that same inverse bg — otherwise
+        // the text becomes invisible and only the IME composing
+        // underline shows through. Non-running: the input keeps the
+        // normal bg even when the block itself is dimmed (bgdim),
+        // so the field is not darkened twice.
+        fieldBg: running ? bg : bort.bg,
         side: side,
         blockTitle: title,
         routineTitle: routine.name.isEmpty
