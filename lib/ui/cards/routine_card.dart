@@ -9,8 +9,6 @@
 // Header. The AppBar is removed: the header is laid out with
 // ControlRow inside a SafeArea. The root pult (compass) sits on the
 // left; the remaining width holds the name field (BortField).
-// This unifies the header across screens and prevents the name from
-// slipping under the compass.
 //
 // Frame alternation. The shown slots (including the summary) pass
 // their visible position (parity 0..n-1) to RoutineBlockView; the
@@ -19,6 +17,14 @@
 // dimming any more. Running slots take the opposite theme's colors
 // and the signal frame with a doubled stroke; parity does not apply
 // to them.
+//
+// Scheduled date. When picking a date, the time of day is set to
+// the bort's «midnight» setting, not the system 00:00. This ties
+// the routine to the technical day.
+//
+// Planned duration. The former wheel picker (ListWheelScrollView)
+// is abolished as a graphical effect. It is replaced by a simple
+// dialog with a BortField for «dd:hh:mm» input.
 //
 // Scopes. Dependencies are read from point scopes: RoutineScope
 // (the routine and its mutations), TraceScope (_hasTrace), BortScope
@@ -37,6 +43,7 @@ import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
 import '../core/bort_field.dart';
 import '../core/control_row.dart';
+import '../core/dialog_frame.dart';
 import '../core/format.dart';
 import '../pults/pult_core.dart';
 import '../services/report.dart';
@@ -146,7 +153,6 @@ class _RoutineCardState extends State<RoutineCard> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ctx = _blockKeys[kind]?.currentContext;
       if (ctx != null) {
-        // No smoothness: instant scroll, no animation.
         Scrollable.ensureVisible(ctx, duration: Duration.zero, alignment: 0.2);
       }
     });
@@ -270,7 +276,6 @@ class _RoutineCardState extends State<RoutineCard> {
     await ReportBuilder.buildSingle(app, i18n, r.id, uiContext: context);
   }
 
-  // ─── Assigned date: clear ───
   Future<void> _clearSchedule(Routine r) async {
     final routineLayer = RoutineScope.of(context);
     final journal = AppScope.of(context).journal;
@@ -278,9 +283,11 @@ class _RoutineCardState extends State<RoutineCard> {
   }
 
   // ─── Assigned date: pick ───
+  // The time is set to the artel midnight, not 00:00.
   Future<void> _pickSchedule(Routine r) async {
     final routineLayer = RoutineScope.of(context);
     final journal = AppScope.of(context).journal;
+    final bort = BortScope.of(context);
     final now = DateTime.now();
     final initial = r.scheduledAt != null
         ? DateTime.fromMillisecondsSinceEpoch(r.scheduledAt! * 1000)
@@ -292,97 +299,90 @@ class _RoutineCardState extends State<RoutineCard> {
       lastDate: DateTime(now.year + 5),
     );
     if (picked == null) return;
+
+    // Combine picked date with artel midnight.
+    final parts = bort.midnight.split(':');
+    final hh = int.tryParse(parts.isNotEmpty ? parts[0] : '0') ?? 0;
+    final mm = int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0;
+    final withMidnight = DateTime(
+      picked.year,
+      picked.month,
+      picked.day,
+      hh,
+      mm,
+    );
+
     await routineLayer.setSchedule(
       journal,
       r.id,
-      picked.millisecondsSinceEpoch ~/ 1000,
+      withMidnight.millisecondsSinceEpoch ~/ 1000,
     );
   }
 
-  // ─── Planned duration: drum ───
+  // ─── Planned duration: simple input ───
+  // Replaces the former wheel picker with a dialog containing a
+  // BortField. The hint explains the format «dd:hh:mm».
   Future<void> _pickPlanned(Routine r) async {
     final routineLayer = RoutineScope.of(context);
     final journal = AppScope.of(context).journal;
     final i18n = I18nScope.of(context);
     final bort = BortScope.of(context);
-    final side = PultScope.of(context).smallSide;
 
-    final sec = r.plannedSeconds;
-    final curD = sec ~/ 86400;
-    final curH = (sec % 86400) ~/ 3600;
-    final curM = (sec % 3600) ~/ 60;
+    final initial = fmtPlannedTime(r.plannedSeconds);
 
-    final result = await showDialog<({int d, int h, int m})>(
+    final result = await showDialog<String>(
       context: context,
+      barrierColor: Colors.transparent,
       builder: (ctx) {
-        int d = curD;
-        int h = curH;
-        int m = curM;
-
-        Widget wheel({
-          required int max,
-          required int initial,
-          required void Function(int) onChanged,
-        }) {
-          return SizedBox(
-            width: side * 2,
-            height: side * 5,
-            child: ListWheelScrollView.useDelegate(
-              itemExtent: side * 0.8,
-              diameterRatio: 1.6,
-              perspective: 0.003,
-              physics: const FixedExtentScrollPhysics(),
-              controller: FixedExtentScrollController(initialItem: initial),
-              onSelectedItemChanged: onChanged,
-              childDelegate: ListWheelChildBuilderDelegate(
-                childCount: max + 1,
-                builder: (_, i) => Center(
-                  child: Text(
-                    i.toString().padLeft(2, '0'),
-                    style: TextStyle(
-                      color: bort.fg,
-                      fontSize: side * 0.5,
-                      fontFamily: 'monospace',
-                    ),
-                  ),
+        String currentText = initial;
+        return DialogFrame(
+          onDismiss: () => Navigator.of(ctx).pop(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                i18n.t('routine.planned_title'),
+                style: TextStyle(
+                  color: bort.fg,
+                  fontSize: PultScope.of(context).smallSide * bort.kTitle,
                 ),
               ),
-            ),
-          );
-        }
-
-        return AlertDialog(
-          backgroundColor: bort.bg,
-          title: Text(
-            i18n.t('routine.planned_title'),
-            style: TextStyle(color: bort.fg),
-          ),
-          content: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              wheel(max: 999, initial: d, onChanged: (v) => d = v),
-              Text(':', style: TextStyle(color: bort.mid)),
-              wheel(max: 23, initial: h, onChanged: (v) => h = v),
-              Text(':', style: TextStyle(color: bort.mid)),
-              wheel(max: 59, initial: m, onChanged: (v) => m = v),
+              const SizedBox(height: 12),
+              BortField(
+                initial: initial,
+                fg: bort.fg,
+                readOnly: false,
+                hint: 'дд:чч:мм',
+                onChanged: (v) => currentText = v,
+                onCommit: (v) async {
+                  Navigator.of(ctx).pop(v);
+                },
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: Text(i18n.t('common.cancel')),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(currentText),
+                    child: Text(i18n.t('common.ok')),
+                  ),
+                ],
+              ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: Text(i18n.t('common.cancel')),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop((d: d, h: h, m: m)),
-              child: Text(i18n.t('common.ok')),
-            ),
-          ],
         );
       },
     );
 
     if (result == null) return;
-    final total = result.d * 86400 + result.h * 3600 + result.m * 60;
+    final total = parsePlannedTime(result);
+    if (total == null) return;
     await routineLayer.setPlanned(journal, r.id, total);
   }
 
@@ -422,9 +422,6 @@ class _RoutineCardState extends State<RoutineCard> {
 
     Widget blockOf(String kind, String title, {bool isNote = false}) {
       final b = isNote ? null : r.blockOf(kind);
-      // parity = visible position in the shown order. Drives the
-      // alternation of the non-running frame (fg / mid). Ignored
-      // when the slot is running: the frame turns signal, doubled.
       final parity = shown.indexOf(kind).clamp(0, shown.length);
       return RoutineBlockView(
         key: _blockKeys[kind],
@@ -483,8 +480,6 @@ class _RoutineCardState extends State<RoutineCard> {
       body: SafeArea(
         child: Column(
           children: [
-            // Unified control row: root pult on the left, name field
-            // in the remaining space.
             Padding(
               padding: const EdgeInsets.only(bottom: 8, right: 12),
               child: ControlRow(

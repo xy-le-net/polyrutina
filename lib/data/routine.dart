@@ -3,8 +3,9 @@
 //
 // Routine: id, name, creation time, last action time, last
 // effective pulse time, completion-install time, scheduled date,
-// planned man-hours, five blocks, flags, completion flag, and
-// sourceKey.
+// planned man-hours, five blocks, flags, completion flag, sourceKey,
+// and fieldParents (nodes of the field graph this routine is
+// attached to).
 //
 // Block: kind, accumulated seconds, start mark, time-edited flag.
 //
@@ -33,6 +34,11 @@
 // device. Empty for routines created natively or via duplication.
 // Used by import to skip already-present routines, so re-importing
 // the same archive is idempotent.
+//
+// fieldParents. Identifiers of the field nodes (graph vertices)
+// to which this routine is attached. An empty list means the
+// routine is unattached (legacy state); the UI treats such a
+// routine as belonging to the root field node.
 //
 // timeEdited (per block). True when time was edited manually.
 // Shown underlined. Reset on block start.
@@ -134,6 +140,9 @@ class Routine {
   // same archive is idempotent.
   String sourceKey;
 
+  // Nodes of the field graph this routine is attached to.
+  List<int> fieldParents;
+
   Routine({
     required this.id,
     this.name = '',
@@ -147,7 +156,9 @@ class Routine {
     this.flags = 0,
     this.completed = false,
     this.sourceKey = '',
-  }) : lastActionAt = lastActionAt ?? createdAt;
+    List<int>? fieldParents,
+  }) : lastActionAt = lastActionAt ?? createdAt,
+       fieldParents = fieldParents ?? [];
 
   // createdAt overrides the creation moment: import supplies the
   // historical value from the archive, so a routine does not look
@@ -159,6 +170,7 @@ class Routine {
     int? at,
     String sourceKey = '',
     int? createdAt,
+    List<int>? fieldParents,
   }) {
     final t = at ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
     return Routine(
@@ -168,6 +180,7 @@ class Routine {
       lastActionAt: t,
       blocks: RoutineBlock.kinds.map((k) => RoutineBlock(kind: k)).toList(),
       sourceKey: sourceKey,
+      fieldParents: fieldParents,
     );
   }
 
@@ -202,6 +215,7 @@ class Routine {
     'flags': flags,
     'completed': completed,
     'source_key': sourceKey,
+    'field_parents': fieldParents,
     'blocks': blocks.map((b) => b.toJson()).toList(),
   };
 
@@ -242,6 +256,11 @@ class Routine {
       flags: (j['flags'] as num?)?.toInt() ?? 0,
       completed: j['completed'] as bool? ?? false,
       sourceKey: j['source_key'] as String? ?? '',
+      fieldParents:
+          (j['field_parents'] as List?)
+              ?.map((e) => (e as num).toInt())
+              .toList() ??
+          [],
       blocks: blocks,
     );
   }

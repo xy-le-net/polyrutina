@@ -1,33 +1,35 @@
 // ═══════════════════════════════════════════════════════════════════
-// app_scope.dart — контекст приложения и точечные области видимости.
+// app_scope.dart — application context and point scopes.
 //
-// AppContext — неизменный набор зависимостей и делегатов. Живёт
-// столько же, сколько приложение; пересоздаётся при смене языка
-// (и то — в пределах одного кадра).
+// AppContext — an immutable set of dependencies and delegates. Lives
+// as long as the app; recreated on language change (and even then,
+// within a single frame).
 //
-// AppScope (InheritedWidget) отдаёт AppContext. Уведомляет лишь
-// при смене самого контекста, а не при изменениях слоёв: обновления
-// UI идут чрез точечные области (см. ниже).
+// AppScope (InheritedWidget) provides AppContext. Notifies only when
+// the context itself changes, not when layers change: UI updates go
+// through point scopes (see below).
 //
-// Точечные области:
-//   BortScope    — OperationalLayer: тема, смена, время борта.
-//   RoutineScope — RoutineLayer: карточки, списки, дни.
-//   TraceScope   — TraceLayer: поля следов, чек-листы, медиа.
-//   TickerScope  — AppTicker: таймеры и мигание двоеточия.
-//   I18nScope    — словарь: строки интерфейса.
+// Point scopes:
+//   BortScope    — OperationalLayer: theme, shift, bort time.
+//   RoutineScope — RoutineLayer: cards, lists, days.
+//   TraceScope   — TraceLayer: trace fields, checklists, media.
+//   FieldScope   — FieldLayer: tree of field nodes.
+//   TickerScope  — AppTicker: timers and colon blink.
+//   I18nScope    — dictionary: interface strings.
 //
-// Каждая область — InheritedNotifier (I18n — InheritedWidget).
-// Виджет, читающий слой, зависит от соответственной области и
-// пересобирается лишь при её изменении.
+// Each scope is an InheritedNotifier (I18n is InheritedWidget).
+// A widget reading a layer depends on the corresponding scope and
+// rebuilds only when it changes.
 //
-// toggleBlockWithShift и toggleShift — делегаты AppContext: связь
-// смены и рутин чрез журнал (род actor).
+// toggleBlockWithShift and toggleShift — delegates of AppContext:
+// connection of shift and routines through the journal (actor kind).
 //
-// pulseBort — уведомить борт о действии пользователя.
+// pulseBort — notify the bort of a user action.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 
+import '../../data/field_layer.dart';
 import '../../data/i18n.dart';
 import '../../data/journal_layer.dart';
 import '../../data/journal_types.dart';
@@ -40,6 +42,7 @@ class AppContext {
   final OperationalLayer bort;
   final RoutineLayer routineLayer;
   final TraceLayer traceLayer;
+  final FieldLayer fieldLayer;
   final JournalLayer journal;
   final AppTicker ticker;
   final I18n i18n;
@@ -51,6 +54,7 @@ class AppContext {
     required this.bort,
     required this.routineLayer,
     required this.traceLayer,
+    required this.fieldLayer,
     required this.journal,
     required this.ticker,
     required this.i18n,
@@ -59,7 +63,7 @@ class AppContext {
     required this.openRoutine,
   });
 
-  // ─── Пуск блока рутины с правилом связи ───
+  // ─── Start a routine block with shift logic ───
   Future<void> toggleBlockWithShift(int routineId, String kind) async {
     final r = routineLayer.findRoutine(routineId);
     if (r == null) return;
@@ -88,7 +92,7 @@ class AppContext {
     );
   }
 
-  // ─── Смена ───
+  // ─── Shift ───
   Future<void> toggleShift() async {
     final going = !bort.onShift;
     await journal.log(
@@ -114,15 +118,15 @@ class AppContext {
     }
   }
 
-  // ─── Действие пользователя ───
+  // ─── User action ───
   void pulseBort() {
     bort.pulseBort();
   }
 }
 
-// ─── AppScope: постоянный контекст ───
-// Уведомляет токмо при смене самого AppContext (по полям). Изменения
-// слоёв сюда не доходят: обновление UI идёт чрез точечные области.
+// ─── AppScope: permanent context ───
+// Notifies only when AppContext itself changes (by fields). Layer
+// changes do not reach here: UI updates go through point scopes.
 class AppScope extends InheritedWidget {
   final AppContext appContext;
 
@@ -130,17 +134,18 @@ class AppScope extends InheritedWidget {
 
   static AppContext of(BuildContext c) {
     final scope = c.dependOnInheritedWidgetOfExactType<AppScope>();
-    assert(scope != null, 'AppScope не найден');
+    assert(scope != null, 'AppScope not found');
     return scope!.appContext;
   }
 
   @override
   bool updateShouldNotify(covariant AppScope old) {
-    // Tear-off методов в Dart стабилен: сравнение по ссылке
-    // корректно и для делегатов (refresh, reloadI18n, openRoutine).
+    // Method tear-offs in Dart are stable: reference comparison is
+    // correct even for delegates (refresh, reloadI18n, openRoutine).
     return old.appContext.bort != appContext.bort ||
         old.appContext.routineLayer != appContext.routineLayer ||
         old.appContext.traceLayer != appContext.traceLayer ||
+        old.appContext.fieldLayer != appContext.fieldLayer ||
         old.appContext.journal != appContext.journal ||
         old.appContext.ticker != appContext.ticker ||
         old.appContext.i18n != appContext.i18n ||
@@ -151,7 +156,7 @@ class AppScope extends InheritedWidget {
 }
 
 // ─── BortScope ───
-// Подписчики: тема, смена, время борта, коллапсы блоков.
+// Subscribers: theme, shift, bort time, block collapses.
 class BortScope extends InheritedNotifier<OperationalLayer> {
   const BortScope({
     super.key,
@@ -161,13 +166,13 @@ class BortScope extends InheritedNotifier<OperationalLayer> {
 
   static OperationalLayer of(BuildContext c) {
     final s = c.dependOnInheritedWidgetOfExactType<BortScope>();
-    assert(s != null, 'BortScope не найден');
+    assert(s != null, 'BortScope not found');
     return s!.notifier!;
   }
 }
 
 // ─── RoutineScope ───
-// Подписчики: RoutineCard, RoutinePlate, RoutinesTab, DaysTab.
+// Subscribers: RoutineCard, RoutinePlate, RoutinesTab, DaysTab.
 class RoutineScope extends InheritedNotifier<RoutineLayer> {
   const RoutineScope({
     super.key,
@@ -177,14 +182,14 @@ class RoutineScope extends InheritedNotifier<RoutineLayer> {
 
   static RoutineLayer of(BuildContext c) {
     final s = c.dependOnInheritedWidgetOfExactType<RoutineScope>();
-    assert(s != null, 'RoutineScope не найден');
+    assert(s != null, 'RoutineScope not found');
     return s!.notifier!;
   }
 }
 
 // ─── TraceScope ───
-// Подписчики: TraceField, ChecklistScreen, RoutineCard (по _hasTrace),
-// MediaViewer (при удалении).
+// Subscribers: TraceField, ChecklistScreen, RoutineCard (via _hasTrace),
+// MediaViewer (on deletion).
 class TraceScope extends InheritedNotifier<TraceLayer> {
   const TraceScope({
     super.key,
@@ -194,13 +199,29 @@ class TraceScope extends InheritedNotifier<TraceLayer> {
 
   static TraceLayer of(BuildContext c) {
     final s = c.dependOnInheritedWidgetOfExactType<TraceScope>();
-    assert(s != null, 'TraceScope не найден');
+    assert(s != null, 'TraceScope not found');
+    return s!.notifier!;
+  }
+}
+
+// ─── FieldScope ───
+// Subscribers: FieldTab, RoutineCard (on field attach/detach).
+class FieldScope extends InheritedNotifier<FieldLayer> {
+  const FieldScope({
+    super.key,
+    required FieldLayer fieldLayer,
+    required super.child,
+  }) : super(notifier: fieldLayer);
+
+  static FieldLayer of(BuildContext c) {
+    final s = c.dependOnInheritedWidgetOfExactType<FieldScope>();
+    assert(s != null, 'FieldScope not found');
     return s!.notifier!;
   }
 }
 
 // ─── TickerScope ───
-// Подписчики: Pulse, TimerText, RoutineCard, RoutinesTab, ShiftRow.
+// Subscribers: Pulse, TimerText, RoutineCard, RoutinesTab, ShiftRow.
 class TickerScope extends InheritedNotifier<AppTicker> {
   const TickerScope({
     super.key,
@@ -210,14 +231,14 @@ class TickerScope extends InheritedNotifier<AppTicker> {
 
   static AppTicker of(BuildContext c) {
     final s = c.dependOnInheritedWidgetOfExactType<TickerScope>();
-    assert(s != null, 'TickerScope не найден');
+    assert(s != null, 'TickerScope not found');
     return s!.notifier!;
   }
 }
 
 // ─── I18nScope ───
-// Подписчики: всё, что печатает строки. I18n меняется редко — при
-// смене языка; сие редкое событие и пересобирает подписчиков.
+// Subscribers: everything that prints strings. I18n changes rarely —
+// on language switch; this rare event rebuilds subscribers.
 class I18nScope extends InheritedWidget {
   final I18n i18n;
 
@@ -225,7 +246,7 @@ class I18nScope extends InheritedWidget {
 
   static I18n of(BuildContext c) {
     final s = c.dependOnInheritedWidgetOfExactType<I18nScope>();
-    assert(s != null, 'I18nScope не найден');
+    assert(s != null, 'I18nScope not found');
     return s!.i18n;
   }
 

@@ -2,44 +2,26 @@
 // lib/ui/services/journal_compactor.dart — journal compaction.
 //
 // Collapses the journal into a compact form: erases all entries,
-// writes routine snapshots (action "snapshot"), rewrites traces
-// with remapped trace-to-trace references, saves one monthly
-// record per registered TimeSeries (shift, bort, and any future
-// kind, all actor type), and resets the export and reread marks.
+// writes routine snapshots (action "snapshot"), writes field node
+// snapshots, rewrites traces with remapped trace-to-trace references,
+// saves one monthly record per registered TimeSeries, and resets
+// the export and reread marks.
 //
 // CompactResult. Every run returns a CompactResult carrying the
 // entry count and the database byte size, measured before and
-// after the reclaim step. The rubka compares the two and reports
-// either «journal optimal» (entriesAfter == entriesBefore and
-// bytesAfter == bytesBefore) or «dropped N entries, freed K» to
-// the user.
+// after the reclaim step.
 //
 // Order of operations:
 //   1. Capture routine snapshots in memory (ids preserved).
-//   2. Capture trace snapshots in memory (non-deleted only,
-//      with their ids).
-//   3. Capture the most recent month of daily totals from EVERY
-//      registered TimeSeries (keyed by kind).
-//   4. Single transaction: delete all, write routine snapshots,
-//      write trace entries, write trace correction entries for
-//      remapped parents/children, write one monthly record per
-//      non-empty kind.
-//   5. Reread the journal to refill layer memory.
-//   6. Reset marks (export to 0, reread to the current last id).
-//   7. Outside the transaction: PRAGMA wal_checkpoint(TRUNCATE),
-//      VACUUM, PRAGMA optimize — to actually reclaim file space.
-//      If any of these fail, the journal remains valid; only the
-//      file stays larger.
-//
-// The monthly record uses one action, period_month, with a `kind`
-// field naming the series; the consuming side (import, a future
-// replay) reads `kind` to route the days to the right TimeSeries.
-//
-// VACUUM cannot run inside a transaction (SQLite restriction);
-// splitting it out trades atomicity of the space reclamation
-// for journal integrity. WAL checkpoint before VACUUM ensures
-// the WAL is flushed and truncated, so the main file reflects
-// the compacted state.
+//   2. Capture field node snapshots in memory (ids preserved).
+//   3. Capture trace snapshots in memory (non-deleted only).
+//   4. Capture the most recent month of daily totals.
+//   5. Single transaction: delete all, write routine snapshots,
+//      write field snapshots, write trace entries, write trace
+//      correction entries for remapped parents/children.
+//   6. Reread the journal to refill layer memory.
+//   7. Reset marks.
+//   8. PRAGMA wal_checkpoint(TRUNCATE), VACUUM, PRAGMA optimize.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -51,6 +33,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../../data/field_layer.dart';
 import '../../data/journal_layer.dart';
 import '../../data/journal_types.dart';
 import '../../data/operational_layer.dart';
@@ -83,17 +66,11 @@ class CompactResult {
 
 class JournalCompactor {
   /// Compacts the journal.
-  ///
-  /// [journal] — the journal layer.
-  /// [routineLayer] — the routine layer (for snapshots).
-  /// [traceLayer] — the trace layer (for re-written traces).
-  /// [bort] — the operational layer (for the series registry and
-  /// for marks).
-  /// [onProgress] — progress callback (0..1).
   static Future<CompactResult> compact({
     required JournalLayer journal,
     required RoutineLayer routineLayer,
     required TraceLayer traceLayer,
+    required FieldLayer fieldLayer,
     required OperationalLayer bort,
     ValueChanged<double>? onProgress,
   }) async {
@@ -113,7 +90,14 @@ class JournalCompactor {
     }
     onProgress?.call(0.10);
 
-    // 2. Capture trace snapshots in memory. Deleted traces are
+    // 2. Capture field node snapshots.
+    final fieldSnapshots = <Map<String, dynamic>>[];
+    for (final n in fieldLayer.nodes.values) {
+      fieldSnapshots.add(n.toJson());
+    }
+    onProgress?.call(0.15);
+
+    // 3. Capture trace snapshots in memory. Deleted traces are
     // dropped; the rest keep their ids.
     final traceSnapshots = <Map<String, dynamic>>[];
     for (final t in traceLayer.traces.values) {
@@ -122,10 +106,7 @@ class JournalCompactor {
     }
     onProgress?.call(0.18);
 
-    // 3. Capture the most recent month of daily totals for every
-    // registered series (key -> month). Series without any recorded
-    // day yield null and are skipped in the transaction and in the
-    // prune step.
+    // 4. Capture the most recent month of daily totals.
     final months = <String, MonthTotals>{};
     for (final entry in bort.series.entries) {
       final m = entry.value.lastMonth();
@@ -133,17 +114,24 @@ class JournalCompactor {
     }
     onProgress?.call(0.25);
 
-    // 4. Single transaction.
+    // 5. Single transaction.
     await journal.transaction(() async {
       // Delete all journal entries.
       await journal.db.delete(journal.db.journal).go();
 
-      // Write routine snapshots. Each carries full routine state;
-      // the routine layer refills from it via the "snapshot" branch.
+      // Write routine snapshots.
       for (final s in routineSnapshots) {
         await journal.log(
           type: JournalType.routine,
           body: jsonEncode({'action': 'snapshot', 'routine': s}),
+        );
+      }
+
+      // Write field snapshots.
+      for (final s in fieldSnapshots) {
+        await journal.log(
+          type: JournalType.fieldNode,
+          body: jsonEncode({'action': 'create', ...s}),
         );
       }
 
@@ -160,9 +148,6 @@ class JournalCompactor {
       }
 
       // Second pass: correction entries for remapped parents/children.
-      // References to routines stay as they are (routine ids are
-      // preserved by the snapshots); references to other traces are
-      // remapped to their new ids.
       for (final t in traceSnapshots) {
         final oldId = (t['id'] as num).toInt();
         final newId = idMap[oldId]!;
@@ -190,9 +175,7 @@ class JournalCompactor {
         );
       }
 
-      // Write the monthly records — one per non-empty registered
-      // series, all actor type, all distinguished by the `kind`
-      // field in the body.
+      // Write the monthly records.
       for (final entry in months.entries) {
         final kind = entry.key;
         final m = entry.value;
@@ -210,23 +193,22 @@ class JournalCompactor {
     });
     onProgress?.call(0.55);
 
-    // Prune old history — keep only the last month, per series.
+    // Prune old history.
     for (final entry in months.entries) {
       bort.series[entry.key]?.pruneBefore(entry.value);
     }
     onProgress?.call(0.65);
 
-    // 5. Reread the journal — refill layer memory from the
-    // compacted state.
+    // 6. Reread the journal.
     await journal.reread();
     onProgress?.call(0.75);
 
-    // 6. Reset marks.
+    // 7. Reset marks.
     bort.setLastExportId(0);
     bort.setLastRereadId(await journal.lastEntryId());
     onProgress?.call(0.85);
 
-    // 7. Reclaim space — outside the transaction.
+    // 8. Reclaim space — outside the transaction.
     try {
       await journal.db.customSelect('PRAGMA wal_checkpoint(TRUNCATE)').get();
       onProgress?.call(0.90);
@@ -238,7 +220,6 @@ class JournalCompactor {
     }
     onProgress?.call(1.0);
 
-    // Snapshot the «after» numbers.
     final entriesAfter = await journal.countEntries();
     final bytesAfter = await _databaseBytes();
 
@@ -250,8 +231,7 @@ class JournalCompactor {
     );
   }
 
-  // Total on-disk size of the journal's SQLite files (main, wal,
-  // shm). Missing files count as zero.
+  // Total on-disk size of the journal's SQLite files.
   static Future<int> _databaseBytes() async {
     try {
       final dir = await getApplicationDocumentsDirectory();

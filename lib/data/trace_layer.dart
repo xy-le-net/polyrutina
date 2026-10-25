@@ -13,6 +13,7 @@
 //     "parents": [...],
 //     "children": [...],
 //     "files": [{"kind":"audio","path":"...","name":"..."}],
+//     "field_parents": [...],
 //     "deleted": true
 //   }
 //
@@ -22,6 +23,11 @@
 // trace body keeps the path. For the "geo" kind no separate json
 // file is written: coordinates (lat, lon, acc) go straight into
 // TraceFile.
+//
+// fieldParents. Identifiers of the field nodes (graph vertices) to
+// which this trace is attached. An empty list means the trace is
+// unattached (legacy state); the UI treats such a trace as belonging
+// to the root field node.
 //
 // Cache is written with a 200 ms debounce, through a .tmp file and
 // a rename. A crash mid-write cannot leave a half-written cache.
@@ -68,6 +74,7 @@ class Trace {
   List<int> parents;
   List<int> children;
   List<TraceFile> files;
+  List<int> fieldParents;
   bool deleted;
 
   Trace({
@@ -79,11 +86,13 @@ class Trace {
     List<int>? parents,
     List<int>? children,
     List<TraceFile>? files,
+    List<int>? fieldParents,
     this.deleted = false,
   }) : items = items ?? [],
        parents = parents ?? [],
        children = children ?? [],
-       files = files ?? [];
+       files = files ?? [],
+       fieldParents = fieldParents ?? [];
 
   Map<String, dynamic> toJson() => {
     'kind': kind,
@@ -93,6 +102,7 @@ class Trace {
     'parents': parents,
     'children': children,
     'files': files.map((e) => e.toJson()).toList(),
+    'field_parents': fieldParents,
     'deleted': deleted,
   };
 
@@ -113,6 +123,11 @@ class Trace {
     files:
         (j['files'] as List?)
             ?.map((e) => TraceFile.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        [],
+    fieldParents:
+        (j['field_parents'] as List?)
+            ?.map((e) => (e as num).toInt())
             .toList() ??
         [],
     deleted: j['deleted'] as bool? ?? false,
@@ -295,6 +310,11 @@ class TraceLayer extends ChangeNotifier {
               .map((x) => (x as num).toInt())
               .toList();
         }
+        if (data['field_parents'] is List) {
+          existing.fieldParents = (data['field_parents'] as List)
+              .map((x) => (x as num).toInt())
+              .toList();
+        }
         existing.deleted = data['deleted'] as bool? ?? existing.deleted;
         return;
       }
@@ -316,6 +336,16 @@ class TraceLayer extends ChangeNotifier {
     for (final t in traces.values) {
       if (t.deleted) continue;
       if (t.parents.contains(objectId)) out.add(t);
+    }
+    out.sort((a, b) => a.id.compareTo(b.id));
+    return out;
+  }
+
+  List<Trace> attachedToField(int nodeId) {
+    final out = <Trace>[];
+    for (final t in traces.values) {
+      if (t.deleted) continue;
+      if (t.fieldParents.contains(nodeId)) out.add(t);
     }
     out.sort((a, b) => a.id.compareTo(b.id));
     return out;
@@ -349,6 +379,7 @@ class TraceLayer extends ChangeNotifier {
     String slot = '',
     String text = '',
     List<int> parents = const [],
+    List<int> fieldParents = const [],
   }) async {
     final body = jsonEncode({
       'kind': TraceKind.text,
@@ -358,6 +389,7 @@ class TraceLayer extends ChangeNotifier {
       'parents': parents,
       'children': [],
       'files': [],
+      'field_parents': fieldParents,
     });
     final id = await journal.log(type: JournalType.trace, body: body);
     // Pre-insert so callers inside a journal transaction (import, in
@@ -374,6 +406,7 @@ class TraceLayer extends ChangeNotifier {
         slot: slot,
         text: text,
         parents: List<int>.from(parents),
+        fieldParents: List<int>.from(fieldParents),
       ),
     );
     _scheduleSave();
@@ -385,6 +418,7 @@ class TraceLayer extends ChangeNotifier {
     String slot = '',
     List<String> items = const [],
     List<int> parents = const [],
+    List<int> fieldParents = const [],
   }) async {
     final body = jsonEncode({
       'kind': TraceKind.checklist,
@@ -394,6 +428,7 @@ class TraceLayer extends ChangeNotifier {
       'parents': parents,
       'children': [],
       'files': [],
+      'field_parents': fieldParents,
     });
     final id = await journal.log(type: JournalType.trace, body: body);
     // Same pre-insert rationale as in createText: the importer, while
@@ -406,6 +441,7 @@ class TraceLayer extends ChangeNotifier {
         slot: slot,
         items: [for (final s in items) TraceItem(text: s, done: false)],
         parents: List<int>.from(parents),
+        fieldParents: List<int>.from(fieldParents),
       ),
     );
     _scheduleSave();
@@ -422,6 +458,7 @@ class TraceLayer extends ChangeNotifier {
       'parents': t.parents,
       'children': t.children,
       'files': t.files.map((e) => e.toJson()).toList(),
+      'field_parents': t.fieldParents,
       'deleted': t.deleted,
     };
     await journal.log(
@@ -505,6 +542,31 @@ class TraceLayer extends ChangeNotifier {
     if (t == null) return;
     t.parents = t.parents.where((x) => x != objectId).toList();
     await _updateBody(journal, traceId, t);
+  }
+
+  Future<void> attachToField(
+    JournalLayer journal,
+    int traceId,
+    int nodeId,
+  ) async {
+    final t = traces[traceId];
+    if (t == null) return;
+    if (t.fieldParents.contains(nodeId)) return;
+    t.fieldParents = [...t.fieldParents, nodeId];
+    await _updateBody(journal, traceId, t);
+    notifyListeners();
+  }
+
+  Future<void> detachFromField(
+    JournalLayer journal,
+    int traceId,
+    int nodeId,
+  ) async {
+    final t = traces[traceId];
+    if (t == null) return;
+    t.fieldParents = t.fieldParents.where((x) => x != nodeId).toList();
+    await _updateBody(journal, traceId, t);
+    notifyListeners();
   }
 
   Future<void> resetAll() async {

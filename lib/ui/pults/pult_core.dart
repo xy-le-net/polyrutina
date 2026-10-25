@@ -3,31 +3,24 @@
 // the Pult widget.
 //
 // Confirmation. A confirmable pult (confirm && onTap) does not act
-// on tap at once: the first tap grows it a quarter via AnimatedScale
-// (150 ms) without changing layout; the second tap executes. A tap
-// on another pult clears the confirming state and proceeds with that
-// pult's own logic. A tap elsewhere clears it (handled by the sheet
-// body).
+// on tap at once: the first tap enters the confirming state. The
+// former visual growth (Transform.scale) is abolished — the pult
+// merely changes its icon to confirmIcon (if provided) while
+// confirming. A second tap executes. A tap on another pult clears
+// the confirming state and proceeds with that pult's own logic.
 //
 // Confirming state lives in PultState (shared): only one pult can
 // be confirming at a time across the whole tree.
 //
 // Sheet closing. When a pult executes onTap inside a pult sheet, it
 // asks the surrounding PultSheetScope to close the sheet, unless the
-// spec stays open. Outside a sheet there is no PultSheetScope and
-// nothing happens.
+// spec stays open.
 //
 // Subpult dot. Shown only when the spec has longSubs (a long-press
-// subpult), not when it has only subsBuilder. Diameter — one fifth
-// of the pult side, doubled in the current revision; a signal-colored
-// outline is drawn around it.
+// subpult), not when it has only subsBuilder.
 //
 // Subpult reactivity. The optional rebuildOn field, when supplied
-// on a PultSpec whose subpult is open (subsBuilder or longSubs),
-// is forwarded to showPultSheet. The open sheet then rebuilds its
-// items on every notification of that Listenable, so that a
-// checkbox-style subpult (e.g. flags) reflects its new state
-// immediately.
+// on a PultSpec whose subpult is open, is forwarded to showPultSheet.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -52,8 +45,6 @@ class PultSpec {
   final VoidCallback? onLongPress;
   final bool stayOpen;
   final bool compactLabel;
-  // Optional reactive source for open subpults: when non-null, the
-  // sheet rebuilds its items on every notification.
   final Listenable? rebuildOn;
 
   const PultSpec({
@@ -103,9 +94,6 @@ class PultScope extends InheritedNotifier<PultState> {
   }
 }
 
-// ─── PultSheetScope ───
-// Provided by pult_sheet.dart around the sheet body. Pult uses it to
-// close the sheet after executing an action.
 class PultSheetScope extends InheritedWidget {
   final VoidCallback closeSheet;
 
@@ -280,12 +268,6 @@ class Pult extends StatelessWidget {
       child: core,
     );
 
-    // Subpult dot: only when longSubs present. Doubled in size. The
-    // dot's fill is signal-colored when idle and bg-colored when
-    // selected; the outline is always the exact opposite of the
-    // fill (bg for idle, signal for selected), so the dot reads as
-    // a marker in both states without depending on the surrounding
-    // block hue or the pult's core color.
     if (spec.longSubs != null) {
       final dotD = (side / 5 < _minDot ? _minDot : side / 5) * 2;
       final dotColor = selected ? iconColor : signal;
@@ -381,7 +363,7 @@ class Pult extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: () => _handleTap(context, state),
       onLongPress: () => _handleLongPress(context, state),
-      child: Transform.scale(scale: confirming ? 1.25 : 1.0, child: content),
+      child: content,
     );
   }
 }

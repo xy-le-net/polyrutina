@@ -29,20 +29,6 @@
 // kStroke, kRadius). Callers do not compute these; they supply only
 // the content and (optionally) constraints.
 //
-// Usage:
-//   showDialog<bool>(
-//     context: context,
-//     barrierColor: Colors.transparent,
-//     builder: (ctx) => DialogFrame(
-//       onDismiss: () => Navigator.of(ctx).pop(false),
-//       child: Column(...),
-//     ),
-//   );
-//
-// A caller that wants extra padding around the frame (horizontal
-// margin) passes it via margin. The default matches the former
-// dialogs (side * 1.2 on each side).
-//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -82,6 +68,10 @@ class DialogFrame extends StatelessWidget {
     final strokeW = side * bort.kStroke;
     final radius = side * bort.kRadius;
     final hMargin = margin ?? side * 1.2;
+
+    // Unfocus any active field before the frame paints to prevent
+    // the IME composing underline from leaking into the dialog.
+    FocusManager.instance.primaryFocus?.unfocus();
 
     return DefaultTextStyle.merge(
       // Neutralise inherited decoration. Explicit decoration on a

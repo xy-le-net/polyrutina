@@ -2,43 +2,28 @@
 // lib/ui/tabs/days_tab.dart — «days» tab. Month calendar.
 //
 // The routine's day is determined as follows: completedAt, otherwise
-// scheduledAt, otherwise lastPulseAt, otherwise createdAt. The
-// priority is exactly this: completion > schedule > pulse > creation.
-// One routine — exactly one day, exactly one mark.
+// scheduledAt, otherwise lastPulseAt, otherwise createdAt.
 //
 // Marks in the cell:
 //   — completed (completedAt on this day) — underlined number;
 //   — scheduled (scheduledAt on this day) — square border;
-//   — unfinished (any remaining routine on this day: not completed,
-//     not scheduled) — round border.
-// Different routines of the day bring different marks; they combine.
+//   — unfinished (any remaining routine on this day) — round border.
 //
 // Color. Each mark is colored after the routine that produced it:
-// fgsignal if that routine carries any flag bit, mid otherwise. The
-// day number is fgsignal-colored when at least one routine on that
-// day carries flags, mid otherwise. The today plate (bort.bgsignal)
-// marks «today» alone and does not alter any color. The legend at
-// the bottom is always mid — it informs, not competes with the grid.
+// fgsignal if that routine carries any flag bit, mid otherwise.
+// The today plate (bort.bgsignal) marks «today» alone and does not
+// alter any color.
 //
-// Long press on a day number creates a routine scheduled on that
-// day and opens its card immediately. Short tap opens the day
-// sub-pult with that day's routines (dismissed on a tap outside; the
-// sheet guard in pult_sheet.dart handles stale sheets).
+// Scheduling midnight. When a routine is scheduled to a specific
+// day, the time is set to the bort's «midnight» setting, not the
+// system 00:00. This ensures the routine truly belongs to that
+// technical day.
 //
-// Legend + stats. Below the calendar grid, separated by a couple of
-// text lines, sits a short legend that doubles as monthly
-// statistics: [square with count inside] word, [circle with count
-// inside] word, [count with underline] word — one item per mark
-// kind, only for kinds with a non-zero count this month. The legend
-// is left-aligned; its shapes are sized to match the calendar cells
-// (same frame side, stroke, and font as the day numbers).
-//
-// Circle stroke. Equal to the square's stroke: both marks live at
-// the same visual weight. The circle's diameter equals the square's
-// side, so the two marks read as the same size.
-//
-// Scopes. BortScope (theme), RoutineScope (the layer), I18nScope
-// (strings). AppScope is consulted for openRoutine and journal.
+// Layout. On narrow screens (under 640), the grid and the legend
+// are stacked vertically. On wide screens, they are split into two
+// columns: grid on the left, legend and stats on the right, with
+// the grid constrained to a reasonable maximum width so cells do
+// not stretch absurdly.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -76,9 +61,6 @@ class _DaysTabState extends State<DaysTab> {
     });
   }
 
-  // Priority: completed > scheduled > pulse > created. The scheduled
-  // date, when set, takes precedence over the pulse: a routine
-  // assigned to a particular day must appear on that day.
   int? _dayOf(Routine r) {
     if (r.completed && r.completedAt != null) {
       return _sameMonth(r.completedAt!);
@@ -109,8 +91,6 @@ class _DaysTabState extends State<DaysTab> {
     return _Mark.none;
   }
 
-  // Per-kind marks with their own signal flags (from the producing
-  // routine) and a global anySignal for the day number.
   ({
     bool completed,
     bool completedSignal,
@@ -210,14 +190,29 @@ class _DaysTabState extends State<DaysTab> {
       grid.add(_cell(dayNum, list, side, bort, isToday: dayNum == todayDay));
     }
 
-    final rootSide = side;
+    final gridWidget = GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 7,
+      childAspectRatio: 1,
+      children: grid,
+    );
+
+    final legendWidget = _legend(
+      side,
+      bort,
+      i18n,
+      scheduled: scheduledCount,
+      unfinished: unfinishedCount,
+      completed: completedCount,
+    );
 
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.only(bottom: 8, right: 12),
           child: ControlRow(
-            rootSide: rootSide,
+            rootSide: side,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
@@ -261,40 +256,56 @@ class _DaysTabState extends State<DaysTab> {
           ),
         ),
         Expanded(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.all(side * 0.3),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: 7,
-                  childAspectRatio: 1,
-                  children: grid,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = constraints.maxWidth > 640;
+              if (!wide) {
+                return SingleChildScrollView(
+                  padding: EdgeInsets.all(side * 0.3),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      gridWidget,
+                      SizedBox(height: side * 0.8),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: legendWidget,
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              return SingleChildScrollView(
+                padding: EdgeInsets.all(side * 0.6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 600),
+                        child: gridWidget,
+                      ),
+                    ),
+                    SizedBox(width: side * 1.0),
+                    Expanded(
+                      flex: 2,
+                      child: Align(
+                        alignment: Alignment.topLeft,
+                        child: legendWidget,
+                      ),
+                    ),
+                  ],
                 ),
-                SizedBox(height: side * 0.8),
-                _legend(
-                  side,
-                  bort,
-                  i18n,
-                  scheduled: scheduledCount,
-                  unfinished: unfinishedCount,
-                  completed: completedCount,
-                ),
-              ],
-            ),
+              );
+            },
           ),
         ),
       ],
     );
   }
 
-  // ─── Legend + stats under the calendar grid ───
-  // Always mid: the legend informs about the shapes, it does not
-  // carry signal. Left-aligned; the shapes match the calendar cells
-  // in size, stroke, and font, so the legend reads as a continuation
-  // of the grid. Wrap spacing and run spacing are equal.
   Widget _legend(
     double side,
     OperationalLayer bort,
@@ -393,14 +404,11 @@ class _DaysTabState extends State<DaysTab> {
 
     if (items.isEmpty) return const SizedBox.shrink();
 
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Wrap(
-        alignment: WrapAlignment.start,
-        spacing: gap,
-        runSpacing: gap,
-        children: items,
-      ),
+    return Wrap(
+      alignment: WrapAlignment.start,
+      spacing: gap,
+      runSpacing: gap,
+      children: items,
     );
   }
 
@@ -413,11 +421,6 @@ class _DaysTabState extends State<DaysTab> {
   }) {
     final m = _marksOf(day, routines);
 
-    // Number and underline carry independent colors: the number is
-    // fgsignal when any routine on the day has flags, mid otherwise;
-    // the underline (the completion mark) follows the color of the
-    // completed routine(s) only. Each shape (square, circle) follows
-    // its own mark's flag-bearing routine.
     final numberColor = m.anySignal ? bort.fgsignal : bort.mid;
     final underlineColor = m.completedSignal ? bort.fgsignal : bort.mid;
     final scheduledColor = m.scheduledSignal ? bort.fgsignal : bort.mid;
@@ -493,10 +496,6 @@ class _DaysTabState extends State<DaysTab> {
     );
   }
 
-  // ─── Day sub-pult ───
-  // Lists that day's routines with their status icon; flag-carrying
-  // routines render fgsignal-colored. Dismissed by the sheet guard on
-  // a tap outside or on navigation.
   void _openDay(List<Routine> routines) {
     final bort = BortScope.of(context);
     final openRoutine = AppScope.of(context).openRoutine;
@@ -519,18 +518,22 @@ class _DaysTabState extends State<DaysTab> {
     );
   }
 
-  // ─── Create a routine on this day ───
-  // Long press on the day number: create an empty routine, stamp it
-  // with scheduledAt = that day, and open its card immediately.
   Future<void> _createOnDay(int day) async {
     final app = AppScope.of(context);
     final routineLayer = RoutineScope.of(context);
     final r = await routineLayer.createRoutine(app.journal);
     final dt = DateTime(_month.year, _month.month, day);
+
+    // Use artel midnight for scheduling
+    final parts = app.bort.midnight.split(':');
+    final hh = int.tryParse(parts.isNotEmpty ? parts[0] : '0') ?? 0;
+    final mm = int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0;
+    final withMidnight = DateTime(dt.year, dt.month, dt.day, hh, mm);
+
     await routineLayer.setSchedule(
       app.journal,
       r.id,
-      dt.millisecondsSinceEpoch ~/ 1000,
+      withMidnight.millisecondsSinceEpoch ~/ 1000,
     );
     if (!mounted) return;
     await app.openRoutine(r.id);

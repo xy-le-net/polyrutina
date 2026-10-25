@@ -47,6 +47,9 @@ dependencies:
   # опознаватель устройства.
   device_info_plus: ^11.0.0
 
+  # непреложные извещения (ongoing notifications).
+  flutter_local_notifications: ^18.0.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

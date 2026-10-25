@@ -142,9 +142,6 @@ class _ShiftRowState extends State<ShiftRow> {
       );
     }
 
-    // «Ticking» — not merely onShift: after a manual time edit
-    // (setShiftTime), shiftStartedAt is nulled, the count is on hold,
-    // and the colon must not blink. The shift itself stays open.
     final bool ticking = bort.onShift && bort.shiftStartedAt != null;
 
     Widget pulse = Pulse(
@@ -153,6 +150,7 @@ class _ShiftRowState extends State<ShiftRow> {
         icon: bort.onShift ? Icons.pause : Icons.play_arrow,
         selected: bort.onShift,
         onTap: () async {
+          FocusManager.instance.primaryFocus?.unfocus();
           await app.toggleShift();
           widget.onChanged();
         },

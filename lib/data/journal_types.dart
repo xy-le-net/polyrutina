@@ -19,12 +19,22 @@ class JournalType {
   static const int timer = 2; // зарезервировано (не пишется)
   static const int actor = 3; // смена, сессия
   static const int bort = 4; // зарезервировано (не пишется)
+  static const int fieldNode = 5; // узел поля (дерево)
+  static const int template = 6; // шаблон / репертуар
 
   // Роды, что ныне пишутся.
-  static const List<int> active = [trace, routine, actor];
+  static const List<int> active = [trace, routine, actor, fieldNode, template];
 
   // Все числа подряд — для восстановления по журналу.
-  static const List<int> all = [trace, routine, timer, actor, bort];
+  static const List<int> all = [
+    trace,
+    routine,
+    timer,
+    actor,
+    bort,
+    fieldNode,
+    template,
+  ];
 }
 
 // ─── Биты поля flags ───

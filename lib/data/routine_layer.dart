@@ -29,12 +29,9 @@
 //
 // Duplication. Copied: name, flags, scheduled date, planned
 // man-hours, traces of the note, prep, closeout blocks (text and
-// checklist). Transit, work, and idle traces are not carried over.
-// The copy's sourceKey is empty (it is not an import).
-//
-// Duplication writes ONE snapshot entry. The "snapshot" branch in
-// _applyEntry replaces the routine in place. Trace copies remain
-// separate entries.
+// checklist), and fieldParents. Transit, work, and idle traces are
+// not carried over. The copy's sourceKey is empty (it is not an
+// import).
 //
 // startBlock. Pause strategy, in priority order:
 //   mutex      — pause every running block in EVERY routine;
@@ -50,6 +47,10 @@
 // lets the importer skip routines already present — re-importing
 // the same archive is idempotent.
 //
+// fieldParents. Routines are attached to the field graph via
+// fieldParents. The migration method _migrateFieldParents()
+// attaches legacy routines (with empty fieldParents) to the root node.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -62,6 +63,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'database.dart';
+import 'field_layer.dart';
 import 'journal_layer.dart';
 import 'journal_types.dart';
 import 'routine.dart';
@@ -74,8 +76,9 @@ class RoutineLayer extends ChangeNotifier {
   int? currentRoutineId;
   String? lastActiveBlockKind;
 
-  // Trace layer reference — needed for duplication.
+  // Trace and field layer references.
   TraceLayer? _traces;
+  FieldLayer? _field;
 
   File? _file;
   Timer? _saveTimer;
@@ -86,8 +89,13 @@ class RoutineLayer extends ChangeNotifier {
     return copy;
   }
 
-  Future<void> init(JournalLayer journal, TraceLayer traces) async {
+  Future<void> init(
+    JournalLayer journal,
+    TraceLayer traces,
+    FieldLayer field,
+  ) async {
     _traces = traces;
+    _field = field;
     final dir = await getApplicationDocumentsDirectory();
     _file = File(p.join(dir.path, 'routine_layer.json'));
     await _loadFromFile();
@@ -100,6 +108,24 @@ class RoutineLayer extends ChangeNotifier {
     );
 
     notifyListeners();
+  }
+
+  // ─── Migration to root field ───
+  // Attaches any routine with empty fieldParents to the root node.
+  void migrateFieldParents() {
+    final rootId = _field?.rootId;
+    if (rootId == null) return;
+    var changed = false;
+    for (final r in routines) {
+      if (r.fieldParents.isEmpty) {
+        r.fieldParents = [rootId];
+        changed = true;
+      }
+    }
+    if (changed) {
+      _scheduleSave();
+      notifyListeners();
+    }
   }
 
   @override
@@ -207,6 +233,11 @@ class RoutineLayer extends ChangeNotifier {
           // Historical creation moment from the body; e.time is
           // the current fallback for routines created natively.
           final createdAt = (data['created_at'] as num?)?.toInt();
+          final fieldParents =
+              (data['field_parents'] as List?)
+                  ?.map((x) => (x as num).toInt())
+                  .toList() ??
+              [];
           if (findRoutine(id) == null) {
             routines.add(
               Routine.create(
@@ -214,6 +245,7 @@ class RoutineLayer extends ChangeNotifier {
                 at: e.time,
                 sourceKey: sourceKey,
                 createdAt: createdAt,
+                fieldParents: fieldParents,
               ),
             );
           }
@@ -262,6 +294,24 @@ class RoutineLayer extends ChangeNotifier {
           final r = findRoutine(id);
           if (r != null) {
             r.plannedSeconds = (data['seconds'] as num?)?.toInt() ?? 0;
+            r.lastActionAt = e.time;
+          }
+          break;
+        case 'attach_field':
+          final id = (data['routine'] as num).toInt();
+          final nodeId = (data['node'] as num).toInt();
+          final r = findRoutine(id);
+          if (r != null && !r.fieldParents.contains(nodeId)) {
+            r.fieldParents.add(nodeId);
+            r.lastActionAt = e.time;
+          }
+          break;
+        case 'detach_field':
+          final id = (data['routine'] as num).toInt();
+          final nodeId = (data['node'] as num).toInt();
+          final r = findRoutine(id);
+          if (r != null) {
+            r.fieldParents.remove(nodeId);
             r.lastActionAt = e.time;
           }
           break;
@@ -322,7 +372,7 @@ class RoutineLayer extends ChangeNotifier {
 
     int? newId;
     await journal.transaction(() async {
-      final r = await createRoutine(journal);
+      final r = await createRoutine(journal, fieldParents: src.fieldParents);
       newId = r.id;
 
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -335,6 +385,7 @@ class RoutineLayer extends ChangeNotifier {
         flags: src.flags,
         scheduledAt: src.scheduledAt,
         plannedSeconds: src.plannedSeconds,
+        fieldParents: src.fieldParents,
       );
 
       await journal.log(
@@ -385,12 +436,17 @@ class RoutineLayer extends ChangeNotifier {
     JournalLayer journal, {
     String sourceKey = '',
     int? createdAt,
+    List<int>? fieldParents,
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final parentList = fieldParents ?? [];
     // created_at is written into the create entry body so that a
     // reread restores the historical creation moment (the entry's
     // own time is always «now» — journal.log stamps it that way).
-    final bodyMap = <String, dynamic>{'action': 'create'};
+    final bodyMap = <String, dynamic>{
+      'action': 'create',
+      'field_parents': parentList,
+    };
     if (sourceKey.isNotEmpty) bodyMap['source_key'] = sourceKey;
     if (createdAt != null) bodyMap['created_at'] = createdAt;
     final id = await journal.log(
@@ -398,7 +454,12 @@ class RoutineLayer extends ChangeNotifier {
       body: jsonEncode(bodyMap),
     );
     if (findRoutine(id) == null) {
-      final r = Routine.create(id, sourceKey: sourceKey, createdAt: createdAt);
+      final r = Routine.create(
+        id,
+        sourceKey: sourceKey,
+        createdAt: createdAt,
+        fieldParents: parentList,
+      );
       r.lastActionAt = now;
       routines.add(r);
     }
@@ -487,6 +548,42 @@ class RoutineLayer extends ChangeNotifier {
     await journal.log(
       type: JournalType.routine,
       body: '{"action":"set_planned","routine":$id,"seconds":$seconds}',
+    );
+    _scheduleSave();
+    notifyListeners();
+  }
+
+  Future<void> attachToField(
+    JournalLayer journal,
+    int routineId,
+    int nodeId,
+  ) async {
+    final r = findRoutine(routineId);
+    if (r == null) return;
+    if (r.fieldParents.contains(nodeId)) return;
+    r.fieldParents.add(nodeId);
+    r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await journal.log(
+      type: JournalType.routine,
+      body: '{"action":"attach_field","routine":$routineId,"node":$nodeId}',
+    );
+    _scheduleSave();
+    notifyListeners();
+  }
+
+  Future<void> detachFromField(
+    JournalLayer journal,
+    int routineId,
+    int nodeId,
+  ) async {
+    final r = findRoutine(routineId);
+    if (r == null) return;
+    if (!r.fieldParents.contains(nodeId)) return;
+    r.fieldParents.remove(nodeId);
+    r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await journal.log(
+      type: JournalType.routine,
+      body: '{"action":"detach_field","routine":$routineId,"node":$nodeId}',
     );
     _scheduleSave();
     notifyListeners();
@@ -694,6 +791,16 @@ class RoutineLayer extends ChangeNotifier {
       if (r.sourceKey == key) return r;
     }
     return null;
+  }
+
+  // ─── Lookup by field node ───
+  // Returns all routines attached to the given field node.
+  List<Routine> routinesForNode(int nodeId) {
+    final out = <Routine>[];
+    for (final r in routines) {
+      if (r.fieldParents.contains(nodeId)) out.add(r);
+    }
+    return out;
   }
 
   Future<void> resetAll() async {

@@ -10,8 +10,7 @@
 //
 // data.json has ONE shape: {"schema": 1, "routines": [...]}. This
 // holds whether the export covers a single routine, a selection, or
-// the entire journal. The importer therefore has no branch for the
-// «bare object» form; that form is abolished.
+// the entire journal.
 //
 // File names. The zip follows one template:
 //   polyrutina_<label>_<stamp>_<idx>.zip
@@ -19,29 +18,35 @@
 //   — safeFileNameOr(r.name) for a single routine;
 //   — 'all' for every routine;
 //   — 'selected' for a selection.
-// Labels are latin to keep the archive portable across sharing
-// targets; characters forbidden by the filesystem are replaced by
-// safeFileNameOr (format.dart).
 //
 // Media. Each media file carried by a routine's traces is packed
 // under its basename; duplicate names are disambiguated with a
 // numeric suffix, so an archive never holds two entries under the
 // same name.
 //
-// All types are strict: AppContext, I18n, Routine, TraceFile are
-// named explicitly; no dynamic remains.
+// Isolate. Zip compression and media reading are offloaded to a
+// background isolate (Isolate.run) to keep the UI thread responsive.
+// Progress is reported at coarse steps (prepare → isolate → save).
+//
+// Exports folder. Archives are saved into the `exports/` subfolder
+// of the application documents directory, keeping them separate
+// from media and the database.
+//
+// Focus. Any active IME composing underline is cleared by unfocusing
+// before the dialog is shown.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-
 import 'package:flutter/material.dart';
 
 import '../../data/i18n.dart';
@@ -51,6 +56,28 @@ import '../core/app_scope.dart';
 import '../core/format.dart';
 import '../core/progress_dialog.dart';
 import 'report_json.dart';
+
+// ─── Isolate helper ───
+Future<Uint8List?> _buildArchiveIsolate(Map<String, dynamic> args) async {
+  final reportBytes = args['report'] as List<int>;
+  final jsonBytes = args['json'] as List<int>;
+  final mediaList = (args['media'] as List).cast<Map<String, String>>();
+
+  final archive = Archive();
+  archive.addFile(ArchiveFile('report.txt', reportBytes.length, reportBytes));
+  archive.addFile(ArchiveFile('data.json', jsonBytes.length, jsonBytes));
+
+  for (final m in mediaList) {
+    final f = File(m['path']!);
+    if (await f.exists()) {
+      final bytes = await f.readAsBytes();
+      archive.addFile(ArchiveFile('media/${m['name']}', bytes.length, bytes));
+    }
+  }
+
+  final encoded = ZipEncoder().encode(archive);
+  return encoded != null ? Uint8List.fromList(encoded) : null;
+}
 
 class ReportBuilder {
   static String _stamp() {
@@ -128,6 +155,10 @@ class ReportBuilder {
     required String label,
     BuildContext? uiContext,
   }) async {
+    // Unfocus to remove any IME composing underline before showing
+    // the dialog.
+    FocusManager.instance.primaryFocus?.unfocus();
+
     routines.sort((a, b) {
       if (a.completed != b.completed) {
         return a.completed ? 1 : -1;
@@ -162,18 +193,12 @@ class ReportBuilder {
     if (token.cancelled) return null;
 
     report(0.05);
-    final archive = Archive();
     final reportBytes = utf8.encode(buf.toString());
-    archive.addFile(ArchiveFile('report.txt', reportBytes.length, reportBytes));
-
-    // ONE shape for data.json: always the wrapper with a routines
-    // list, regardless of how many routines are being exported.
     final jsonObj = <String, dynamic>{
       'schema': ReportJson.schemaVersion,
       'routines': [for (final r in routines) ReportJson.buildRoutine(app, r)],
     };
     final jsonBytes = utf8.encode(jsonEncode(jsonObj));
-    archive.addFile(ArchiveFile('data.json', jsonBytes.length, jsonBytes));
     if (token.cancelled) return null;
 
     final mediaFiles = <({String name, File file})>[];
@@ -203,30 +228,37 @@ class ReportBuilder {
     }
     if (token.cancelled) return null;
 
-    if (mediaFiles.isNotEmpty) {
-      for (var i = 0; i < mediaFiles.length; i++) {
-        if (token.cancelled) return null;
-        final m = mediaFiles[i];
-        final bytes = await m.file.readAsBytes();
-        archive.addFile(ArchiveFile('media/${m.name}', bytes.length, bytes));
-        report(0.1 + 0.7 * ((i + 1) / mediaFiles.length));
-      }
+    final mediaList = <Map<String, String>>[];
+    for (final m in mediaFiles) {
+      mediaList.add({'name': m.name, 'path': m.file.path});
+    }
+
+    report(0.2);
+    Uint8List? zipBytes;
+    try {
+      zipBytes = await Isolate.run(
+        () => _buildArchiveIsolate({
+          'report': reportBytes,
+          'json': jsonBytes,
+          'media': mediaList,
+        }),
+      );
+    } catch (_) {
+      zipBytes = null;
     }
     if (token.cancelled) return null;
+    if (zipBytes == null) return null;
 
     report(0.85);
     final dir = await getApplicationDocumentsDirectory();
+    final exportsDir = Directory(p.join(dir.path, 'exports'));
+    if (!await exportsDir.exists()) await exportsDir.create(recursive: true);
+
     final idx = app.bort.nextExportIndex(objectKey);
     final stamp = _stamp();
-    // One naming template for every case: polyrutina_<label>_<stamp>_<idx>.zip.
-    // label is already filesystem-safe ('all', 'selected', or
-    // safeFileNameOr(r.name) for a single routine).
     final name = 'polyrutina_${label}_${stamp}_$idx.zip';
 
-    final zipFile = File(p.join(dir.path, name));
-    final zipBytes = ZipEncoder().encode(archive);
-    if (token.cancelled) return null;
-    if (zipBytes == null) return null;
+    final zipFile = File(p.join(exportsDir.path, name));
     await zipFile.writeAsBytes(zipBytes, flush: true);
 
     report(0.98);

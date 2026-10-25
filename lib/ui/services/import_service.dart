@@ -9,9 +9,7 @@
 // data.json shape. ONE shape is accepted:
 //   {"schema": 1, "routines": [ ... ]}
 // The former «bare object» form is abolished — the exporter no
-// longer writes it, and the importer no longer reads it. An archive
-// written under the old form will be ignored; that is the chosen
-// policy, not an accident.
+// longer writes it, and the importer no longer reads it.
 //
 // Deduplication. The source key of each parsed routine is
 // «deviceId/firstRun/routineId» of the exporting device; the routine
@@ -21,30 +19,20 @@
 //
 // Historical state. The archive carries created_at, completed_at,
 // scheduled_at, last_pulse_at, and planned_seconds. Per-field
-// setters cover the first (createRoutine(createdAt: ...)), the
-// third (setSchedule), and the fifth (setPlanned); the remaining
-// two — completed_at and last_pulse_at — have no dedicated setters
-// because they are normally set by the completion and pulse flows.
-// After the setters run, _applyParsed patches those two in memory
-// and writes ONE «snapshot» entry (RoutineLayer.writeSnapshot), so
-// a reread restores the historical timestamps.
+// setters cover the first, the third, and the fifth; the remaining
+// two are patched in memory and written via a single «snapshot».
 //
 // Media orphan prevention. Media files are copied into media/ ONLY
 // for routines that are actually going to be imported, and under
-// fresh monotone names (via nextMediaIndex), so the archive's raw
-// names never collide across imports. If the transaction fails,
-// every file written during the attempt is removed; the trace
-// layer's pre-insert (see trace_layer.dart) ensures each file is
-// attached immediately, so no orphan file survives a success.
+// fresh monotone names (via nextMediaIndex). If the transaction fails,
+// every file written during the attempt is removed.
 //
-// Per-zip granularity. Each archive is processed in its own
-// transaction; a failure in one archive rolls back only its own
-// routine and media, leaving other archives untouched. The
-// aggregate ImportResult sums across all archives.
+// Field attachment. Imported routines are automatically attached to
+// the root field node, so they appear in the «field» tab immediately.
 //
-// ImportResult. Aggregated counters — routines, media files, bytes,
-// skipped routines — plus the sentinel flags cancelled (user
-// dismissed the system sheet) and empty (nothing was imported).
+// Progress. onProgress callback is provided for the progress dialog.
+// The import reads and writes files, which is fast but can take a
+// moment on large archives; progress is reported coarsely.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -54,6 +42,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -93,7 +82,10 @@ class ImportResult {
 }
 
 // ─── Public entry: pick archives and import ───
-Future<ImportResult> importFromPicker({required AppContext app}) async {
+Future<ImportResult> importFromPicker({
+  required AppContext app,
+  ValueChanged<double>? onProgress,
+}) async {
   final picked = await FilePicker.platform.pickFiles(
     type: FileType.custom,
     allowedExtensions: ['zip'],
@@ -104,14 +96,20 @@ Future<ImportResult> importFromPicker({required AppContext app}) async {
   }
 
   var total = const ImportResult();
-  for (final f in picked.files) {
+  for (var i = 0; i < picked.files.length; i++) {
+    final f = picked.files[i];
     if (f.path == null) continue;
+
+    // Report progress per archive.
+    onProgress?.call(i / picked.files.length);
+
     try {
       total = total.merge(await _importZip(app, f.path!));
     } catch (_) {
       // A single corrupt archive must not abort the whole session.
     }
   }
+  onProgress?.call(1.0);
   return total;
 }
 
@@ -126,9 +124,7 @@ Future<ImportResult> _importZip(AppContext app, String path) async {
   final dataStr = utf8.decode(dataFile.content as List<int>);
   final Object? decoded = jsonDecode(dataStr);
 
-  // ONE accepted shape: the wrapper object. A bare object (the
-  // abolished form) is rejected — the exporter no longer writes
-  // it, and the importer no longer reads it.
+  // ONE accepted shape: the wrapper object.
   final list = <Map<String, dynamic>>[];
   if (decoded is Map) {
     final routines = decoded['routines'];
@@ -238,14 +234,16 @@ Future<void> _applyParsed(
   final TraceLayer traceLayer = app.traceLayer;
   final JournalLayer journal = app.journal;
 
-  // Imported routines carry their historical creation moment from
-  // the archive; without it, an old routine would look as if it had
-  // just been created at the instant of import. A zero from the
-  // schema is treated as «absent» and falls back to now.
+  // Attach imported routines to the root field node so they appear
+  // in the field tree immediately.
+  final rootId = app.fieldLayer.rootId;
+  final fieldParents = rootId != null ? [rootId] : <int>[];
+
   final r = await routineLayer.createRoutine(
     journal,
     sourceKey: p.key,
     createdAt: p.createdAt > 0 ? p.createdAt : null,
+    fieldParents: fieldParents,
   );
   if (p.name.isNotEmpty) {
     await routineLayer.renameRoutine(journal, r.id, p.name);
@@ -325,10 +323,6 @@ Future<void> _applyParsed(
     }
   }
 
-  // Patch the two historical timestamps that have no dedicated
-  // setters (setCompleted stamps completedAt with «now»; lastPulseAt
-  // is only advanced by startBlock/pauseBlock), then write ONE
-  // snapshot entry so a reread restores them.
   final live = routineLayer.findRoutine(r.id);
   if (live != null) {
     if (p.lastPulseAt != null) live.lastPulseAt = p.lastPulseAt;

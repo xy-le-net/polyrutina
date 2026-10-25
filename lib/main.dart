@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════
 // main.dart — entry point and governor.
 //
-// Startup order: journal (init without subscription), bort, layers,
-// dictionary. Then — journal.start().
+// Startup order: journal (init without subscription), bort, trace,
+// field, routine, dictionary. Then — journal.start().
 //
 // Default tab — «routines». The «field» and «artel» tabs are hidden
 // by default; their display is toggled in the rubka («artel» block).
@@ -14,46 +14,36 @@
 // midnight every thirty seconds.
 //
 // Lifecycle. Departure (paused, detached, inactive): stop the bort
-// timer, immediately save layers. Return (resumed): re-read the
-// system brightness and re-resolve the theme.
+// timer, immediately save layers (bort, routine, trace, field).
+// Return (resumed): re-read the system brightness, re-resolve the
+// theme, and consume any pending actions from notifications.
 //
 // Tabs. Touching the «routines» tab always leads to the routine
-// list: if the card is open, popUntil the first route. The field
-// and artel tabs are stubs while hidden.
+// list: if the card is open, popUntil the first route.
 //
-// Sheet guard. _sheetOpen prevents subpults from stacking: while a
-// sheet is open, further sheet requests are ignored.
+// Field migration. During init, after the field layer is ready, the
+// root node is created (if missing) and legacy routines/traces are
+// attached to it.
+//
+// Notifications. The NotificationService is initialized on startup.
+// NotificationManager is instantiated to observe the ticker and
+// update ongoing notifications. When the app resumes, it checks for
+// a pending action (e.g. the user tapped "stop" on an ongoing
+// notification while the app was in the background) and applies the
+// corresponding stop operation.
 //
 // System back. PopScope.canPop is always FALSE: the handler owns
 // the outcome. _handleBack closes the card if one is open, or
 // switches to the routines tab if another tab is active; on the
-// routines tab with no card it absorbs the press — the app does
-// not close from the back button. Closing is left to the OS
-// gestures (home, recents), so a stray back tap on the list can
-// never quit the app.
-//
-// _openedRoutineId. BOTH the entry and the exit of _openedRoutineId
-// go through setState, so the tab body and any derived UI track the
-// true state at every frame. The former bare setState(() {})
-// followed by a bare field assignment left the field update outside
-// the rebuild, which is what originally caused the «back button
-// quits the app» defect together with the PopScope that could pop
-// on its own.
+// routines tab with no card it absorbs the press.
 //
 // Root pult — hardcoded in the top-left corner. Touch opens the
 // single left-side sheet of subpults (pult_sheet.dart) with tab
-// kinds. PultLayer is removed.
+// kinds.
 //
-// Scopes and listeners. Five point scopes (BortScope, RoutineScope,
-// TraceScope, TickerScope, I18nScope) wrap the navigator tree. All
-// inner views obtain their dependencies from them and rebuild only
-// on the relevant layer. Consequently, main no longer listens to
-// the routine, trace, or journal layers. The bort listener remains,
-// but it is filtered: setState fires only when the MaterialApp or
-// tab bar actually needs to re-read bort state — theme name, scale,
-// tab visibility, system brightness, and the five color roles.
-// Everything else (shift transitions, midnight, block collapse) is
-// consumed by widgets under BortScope without touching main.
+// Scopes and listeners. Six point scopes (BortScope, RoutineScope,
+// TraceScope, FieldScope, TickerScope, I18nScope) wrap the
+// navigator tree.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -62,6 +52,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'data/database.dart';
+import 'data/field_layer.dart';
 import 'data/i18n.dart';
 import 'data/journal_layer.dart';
 import 'data/operational_layer.dart';
@@ -74,7 +65,10 @@ import 'ui/core/control_row.dart';
 import 'ui/pults/pult_core.dart';
 import 'ui/pults/pult_sheet.dart';
 import 'ui/pults/root_pult.dart';
+import 'ui/services/notification_manager.dart';
+import 'ui/services/notification_service.dart';
 import 'ui/tabs/days_tab.dart';
+import 'ui/tabs/field_tab.dart';
 import 'ui/tabs/routines_tab.dart';
 import 'ui/tabs/rubka_tab.dart';
 import 'ui/tabs/stub_tab.dart';
@@ -94,7 +88,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   late final OperationalLayer _bort;
   late final RoutineLayer _routineLayer;
   late final TraceLayer _traceLayer;
+  late final FieldLayer _fieldLayer;
   late final AppTicker _ticker;
+  late final NotificationManager _notificationManager;
   final _pultState = PultState();
   final _navigatorKey = GlobalKey<NavigatorState>();
 
@@ -106,9 +102,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   VoidCallback? _onTickerTick;
 
-  // Signature of bort fields that feed MaterialApp (theme colors,
-  // scale, system brightness) or the tab bar (showFieldTab,
-  // showArtelTab). Unchanged signature — no setState.
   String _bortSignature = '';
 
   static const List<RootTabItem> _allTabs = [
@@ -133,11 +126,13 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    NotificationService.init();
     _db = AppDb();
     _journal = JournalLayer(_db);
     _bort = OperationalLayer();
-    _routineLayer = RoutineLayer();
     _traceLayer = TraceLayer();
+    _fieldLayer = FieldLayer();
+    _routineLayer = RoutineLayer();
     _ticker = AppTicker();
 
     _onTickerTick = () => _bort.tickBort();
@@ -147,13 +142,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _init();
   }
 
-  // ─── Bort signature ───
-  // Everything MaterialApp reads at build time, plus what the tab
-  // bar needs. Color hex strings are computed here so that any
-  // change to bg/bgdim/dim/fg/signal (custom theme edits, system
-  // brightness switch) triggers a rebuild. The language is part of
-  // the signature too: switching it triggers the dictionary reload
-  // in _onBortChanged below.
   String _computeBortSignature() {
     return '${_bort.themeName}|'
         '${_bort.scale.toStringAsFixed(4)}|'
@@ -172,11 +160,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     final s = _computeBortSignature();
     if (s == _bortSignature) return;
     _bortSignature = s;
-    // Language switch: re-read the dictionary. Without this, the
-    // interface would keep the previous strings until restart,
-    // since the language is not otherwise a MaterialApp build
-    // input. Fire-and-forget: _reloadI18n does its own setState
-    // when the load completes.
     if (_i18n != null && _i18n!.lang != _bort.lang) {
       _reloadI18n();
     }
@@ -188,13 +171,23 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
         WidgetsBinding.instance.platformDispatcher.platformBrightness;
     await _journal.init();
     await _bort.init(systemBrightness);
-    await _routineLayer.init(_journal, _traceLayer);
     await _traceLayer.init(_journal);
+    await _fieldLayer.init(_journal);
+    await _fieldLayer.createRootIfNeeded(_journal);
+    await _routineLayer.init(_journal, _traceLayer, _fieldLayer);
+    _routineLayer.migrateFieldParents();
     _i18n = await I18n.load(_bort.lang);
     _journal.start();
     _bort.setLastRereadId(await _journal.lastEntryId());
     _tab = 1;
     _bortSignature = _computeBortSignature();
+
+    _notificationManager = NotificationManager(
+      bort: _bort,
+      routineLayer: _routineLayer,
+      ticker: _ticker,
+    );
+
     if (mounted) setState(() {});
   }
 
@@ -207,16 +200,53 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     if (mounted) setState(() {});
   }
 
+  Future<void> _handlePendingNotificationAction() async {
+    final action = await NotificationService.consumePendingAction();
+    if (action == null) return;
+
+    if (action == 'stop_shift' && _bort.onShift) {
+      await _journal.log(
+        type: 3, // actor
+        body: '{"action":"shift_stop"}',
+      );
+      _bort.stopShift();
+      for (final r in _routineLayer.routines) {
+        for (final b in r.blocks) {
+          if (b.isRunning) {
+            await _routineLayer.pauseBlock(_journal, r.id, b.kind);
+          }
+        }
+      }
+    } else if (action == 'stop_routine') {
+      final rId = _routineLayer.currentRoutineId;
+      if (rId != null) {
+        final r = _routineLayer.findRoutine(rId);
+        if (r != null) {
+          for (final b in r.blocks) {
+            if (b.isRunning) {
+              await _routineLayer.pauseBlock(_journal, rId, b.kind);
+            }
+          }
+        }
+      }
+    }
+
+    await NotificationService.cancelAll();
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     if (_onTickerTick != null) {
       _ticker.removeListener(_onTickerTick!);
     }
+    _notificationManager.dispose();
     _bort.removeListener(_onBortChanged);
     _bort.dispose();
     _routineLayer.dispose();
     _traceLayer.dispose();
+    _fieldLayer.dispose();
     _journal.dispose();
     _ticker.dispose();
     _db.close();
@@ -233,10 +263,12 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       _bort.saveNow();
       _routineLayer.saveNow();
       _traceLayer.saveNow();
+      _fieldLayer.saveNow();
       return;
     }
     if (state == AppLifecycleState.resumed) {
       _refreshSystemBrightness();
+      _handlePendingNotificationAction();
     }
   }
 
@@ -253,10 +285,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   Future<void> _switchTab(int i) async {
     _bort.pulseBort();
-
-    // Pop the card (if open) once, before any branch: both the
-    // «routines» path and the others need the same first action,
-    // and the former code duplicated the popUntil call.
     if (_openedRoutineId != null) {
       _navigatorKey.currentState?.popUntil((r) => r.isFirst);
     }
@@ -264,10 +292,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   }
 
   Future<void> _openRoutine(int id) async {
-    // setState wraps BOTH the entry and the exit of _openedRoutineId
-    // so the tab body and derived UI track the true state at every
-    // frame. The former bare setState(() {}) left the field updates
-    // outside the rebuild.
     setState(() => _openedRoutineId = id);
     await _navigatorKey.currentState?.push(
       MaterialPageRoute(builder: (_) => RoutineCard(routineId: id)),
@@ -333,7 +357,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   Widget _tabBody() {
     switch (_tab) {
       case 0:
-        return const StubTab();
+        return const FieldTab();
       case 1:
         return const RoutinesTab();
       case 2:
@@ -346,13 +370,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     }
   }
 
-  // ─── Back handler ───
-  // Always reached when PopScope reports canPop == false, i.e. on
-  // every back press. Two outcomes are actionable — close the card,
-  // or switch to the routines tab. Otherwise (already on the
-  // routines tab, no card) the press is absorbed and nothing
-  // happens: the app does not close from the back button, which is
-  // the confirmed intent.
   void _handleBack() {
     if (_openedRoutineId != null) {
       _navigatorKey.currentState?.popUntil((r) => r.isFirst);
@@ -362,7 +379,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       setState(() => _tab = 1);
       return;
     }
-    // Absorb. Nothing to do — the press has no visible effect.
   }
 
   @override
@@ -388,6 +404,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       bort: _bort,
       routineLayer: _routineLayer,
       traceLayer: _traceLayer,
+      fieldLayer: _fieldLayer,
       journal: _journal,
       ticker: _ticker,
       i18n: _i18n!,
@@ -451,52 +468,44 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
               routineLayer: _routineLayer,
               child: TraceScope(
                 traceLayer: _traceLayer,
-                child: TickerScope(
-                  ticker: _ticker,
-                  child: I18nScope(
-                    i18n: _i18n!,
-                    child: PultScope(
-                      state: _pultState,
-                      child: MediaQuery(
-                        data: MediaQuery.of(
-                          context,
-                        ).copyWith(textScaler: TextScaler.linear(_bort.scale)),
-                        // The status bar area is inside the SafeArea's
-                        // padding, i.e. OUTSIDE its child. Without an
-                        // explicit paint there, on Android's
-                        // edge-to-edge (where statusBarColor is
-                        // ignored) the icons end up over an unpainted
-                        // layer and can vanish on the light palette.
-                        // ColoredBox paints bort.bg behind everything;
-                        // AnnotatedRegion applies the icon style to
-                        // this subtree rather than relying on the
-                        // global SystemChrome call, which a route or
-                        // an AppBar can silently override.
-                        child: AnnotatedRegion<SystemUiOverlayStyle>(
-                          value: _overlayStyle(
-                            _effectiveBrightness(systemBrightness),
+                child: FieldScope(
+                  fieldLayer: _fieldLayer,
+                  child: TickerScope(
+                    ticker: _ticker,
+                    child: I18nScope(
+                      i18n: _i18n!,
+                      child: PultScope(
+                        state: _pultState,
+                        child: MediaQuery(
+                          data: MediaQuery.of(context).copyWith(
+                            textScaler: TextScaler.linear(_bort.scale),
                           ),
-                          child: ColoredBox(
-                            color: _bort.bg,
-                            child: Listener(
-                              behavior: HitTestBehavior.translucent,
-                              onPointerDown: (_) => _bort.pulseBort(),
-                              child: SafeArea(
-                                child: Stack(
-                                  children: [
-                                    child ?? const SizedBox.shrink(),
-                                    Positioned(
-                                      left: _rootPad,
-                                      top: _rootPad,
-                                      child: RootPult(
-                                        side: rootSide,
-                                        fg: _bort.fg,
-                                        bg: _bort.bg,
-                                        signal: _bort.fgsignal,
-                                        onOpen: _openTabsSheet,
+                          child: AnnotatedRegion<SystemUiOverlayStyle>(
+                            value: _overlayStyle(
+                              _effectiveBrightness(systemBrightness),
+                            ),
+                            child: ColoredBox(
+                              color: _bort.bg,
+                              child: Listener(
+                                behavior: HitTestBehavior.translucent,
+                                onPointerDown: (_) => _bort.pulseBort(),
+                                child: SafeArea(
+                                  child: Stack(
+                                    children: [
+                                      child ?? const SizedBox.shrink(),
+                                      Positioned(
+                                        left: _rootPad,
+                                        top: _rootPad,
+                                        child: RootPult(
+                                          side: rootSide,
+                                          fg: _bort.fg,
+                                          bg: _bort.bg,
+                                          signal: _bort.fgsignal,
+                                          onOpen: _openTabsSheet,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
