@@ -36,11 +36,13 @@
 // _applyEntry replaces the routine in place. Trace copies remain
 // separate entries.
 //
-// startBlock. Guarantees that only one block is active across the
-// whole app: it pauses every running block in every routine before
-// starting the target, regardless of currentRoutineId. This fixes
-// the case where currentRoutineId was lost after a restart, yet a
-// routine's block was still marked as running.
+// startBlock. Pause strategy, in priority order:
+//   mutex      — pause every running block in EVERY routine;
+//   mutexSlots — pause every other running block of THIS routine;
+//   neither    — nothing is paused.
+// mutex implies mutexSlots: the global pause already covers the
+// same routine. The two flags come from the operational layer and
+// are passed through AppContext; the routine layer merely obeys.
 //
 // sourceKey. createRoutine accepts an optional sourceKey; when
 // non-empty it is written into the create entry body (so a reread
@@ -553,15 +555,15 @@ class RoutineLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // mutex: when true (the default), starting the target pauses every
-  // other running block across the whole app. When false, blocks are
-  // independent and may run concurrently. Pausing never mutexes — a
-  // running block stops on its own.
+  // toggleBlock. Starting obeys the two flags: mutex (global pause)
+  // and mutexSlots (same-routine pause). Pausing never mutexes —
+  // a running block stops on its own.
   Future<void> toggleBlock(
     JournalLayer journal,
     int routineId,
     String kind, {
     bool mutex = true,
+    bool mutexSlots = true,
   }) async {
     final r = findRoutine(routineId);
     if (r == null) return;
@@ -570,19 +572,29 @@ class RoutineLayer extends ChangeNotifier {
     if (b.isRunning) {
       await pauseBlock(journal, routineId, kind);
     } else {
-      await startBlock(journal, routineId, kind, mutex: mutex);
+      await startBlock(
+        journal,
+        routineId,
+        kind,
+        mutex: mutex,
+        mutexSlots: mutexSlots,
+      );
     }
   }
 
   // ─── Block start ───
-  // Pauses EVERY running block in EVERY routine, then starts the
-  // target. This guarantees a single active block across the whole
-  // app, even if currentRoutineId was lost after a restart.
+  // Pause strategy, in priority order:
+  //   mutex      — pause every running block in EVERY routine;
+  //   mutexSlots — pause every other running block of THIS routine;
+  //   neither    — nothing is paused.
+  // mutex implies mutexSlots: the global pause already covers the
+  // same routine.
   Future<void> startBlock(
     JournalLayer journal,
     int routineId,
     String kind, {
     bool mutex = true,
+    bool mutexSlots = true,
   }) async {
     final r = findRoutine(routineId);
     if (r == null) return;
@@ -590,8 +602,6 @@ class RoutineLayer extends ChangeNotifier {
     await journal.transaction(() async {
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
-      // Mutex branch: pause every other running block across all
-      // routines. When mutex is off, other blocks keep running.
       if (mutex) {
         for (final other in routines) {
           for (final b in other.blocks) {
@@ -604,6 +614,18 @@ class RoutineLayer extends ChangeNotifier {
                     '"block":"${b.kind}","at":$now}',
               );
             }
+          }
+        }
+      } else if (mutexSlots) {
+        for (final b in r.blocks) {
+          if (b.kind != kind && b.isRunning) {
+            b.pause(at: now);
+            await journal.log(
+              type: JournalType.routine,
+              body:
+                  '{"action":"pause_block","routine":$routineId,'
+                  '"block":"${b.kind}","at":$now}',
+            );
           }
         }
       }

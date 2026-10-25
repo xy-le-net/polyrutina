@@ -84,6 +84,7 @@ class AppContext {
       routineId,
       kind,
       mutex: bort.mutexRoutines,
+      mutexSlots: bort.mutexSlots,
     );
   }
 

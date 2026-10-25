@@ -6,6 +6,13 @@
 //   data.json — the routine(s) as a whole;
 //   media/<name> — media files, matched by name against the traces.
 //
+// data.json shape. ONE shape is accepted:
+//   {"schema": 1, "routines": [ ... ]}
+// The former «bare object» form is abolished — the exporter no
+// longer writes it, and the importer no longer reads it. An archive
+// written under the old form will be ignored; that is the chosen
+// policy, not an accident.
+//
 // Deduplication. The source key of each parsed routine is
 // «deviceId/firstRun/routineId» of the exporting device; the routine
 // layer stores it as Routine.sourceKey, so re-importing the same
@@ -119,19 +126,16 @@ Future<ImportResult> _importZip(AppContext app, String path) async {
   final dataStr = utf8.decode(dataFile.content as List<int>);
   final Object? decoded = jsonDecode(dataStr);
 
+  // ONE accepted shape: the wrapper object. A bare object (the
+  // abolished form) is rejected — the exporter no longer writes
+  // it, and the importer no longer reads it.
   final list = <Map<String, dynamic>>[];
-  if (decoded is List) {
-    for (final Object? e in decoded) {
-      if (e is Map) list.add(Map<String, dynamic>.from(e));
-    }
-  } else if (decoded is Map) {
+  if (decoded is Map) {
     final routines = decoded['routines'];
     if (routines is List) {
       for (final Object? e in routines) {
         if (e is Map) list.add(Map<String, dynamic>.from(e));
       }
-    } else {
-      list.add(Map<String, dynamic>.from(decoded));
     }
   }
   if (list.isEmpty) return const ImportResult();

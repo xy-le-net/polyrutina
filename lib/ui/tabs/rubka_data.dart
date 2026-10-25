@@ -23,15 +23,16 @@
 //       import page is removed.
 //
 //   Group 2 — other:
-//     — bort: today's active time from the technical midnight
-//       (the bort counter has no journal relation and is read
-//       straight from the bort file);
+//     — bort: today's active time, shown as a signal-colored
+//       underlined link (mirroring the shift row in artel); a tap
+//       opens the bort history dialog, which reads from the same
+//       TimeSeries used for the shift;
 //     — reset: caches and defaults to the initial state (pult
 //       grow-in, then showConfirm).
 //
 // Shift. The shift row lives in the «artel» block of the rubka
-// (rubka_tab.dart), not here. The dialog itself is unchanged —
-// action_dialog.dart — but this block no longer opens it.
+// (rubka_tab.dart), not here. The dialog itself (showTimeHistory,
+// key: 'shift') is shared.
 //
 // Reread. The former _canReread gate is gone: rereading is safe at
 // any time (it resets layer memory and replays the journal), so the
@@ -57,6 +58,7 @@ import '../core/format.dart';
 import '../core/notice_dialog.dart';
 import '../core/progress_dialog.dart';
 import '../pults/pult_core.dart';
+import '../services/action_dialog.dart';
 import '../services/import_service.dart';
 import '../services/journal_compactor.dart';
 import '../services/report.dart';
@@ -436,12 +438,17 @@ class _RubkaDataState extends State<RubkaData> {
     ];
 
     final group2 = <Widget>[
-      _valueRow(
-        i18n.t('bort.bort'),
-        bort.bortTime <= 0
+      // Bort time — signal-colored, underlined, tappable, exactly
+      // like the shift row in artel. Tap opens the bort history
+      // dialog, which reads from the same TimeSeries used for the
+      // shift (registered under key 'bort').
+      _linkRow(
+        label: i18n.t('bort.bort'),
+        value: bort.bortTime <= 0
             ? '0${i18n.t('time.m')}'
             : fmtTime(bort.bortTime, i18n.t),
-        fg,
+        fgsignal: fgsignal,
+        onTap: () => showTimeHistory(context, key: 'bort'),
       ),
       _pultRow(
         label: i18n.t('bort.reset'),
@@ -495,6 +502,50 @@ class _RubkaDataState extends State<RubkaData> {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: row,
+    );
+  }
+
+  // ─── Link row ───
+  // Signal-colored, underlined, tappable — matches the shift row in
+  // the artel block so the two time counters read as one family.
+  Widget _linkRow({
+    required String label,
+    required String value,
+    required Color fgsignal,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 140,
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: fgsignal,
+                  decoration: TextDecoration.underline,
+                  decorationColor: fgsignal,
+                ),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                value,
+                style: TextStyle(
+                  color: fgsignal,
+                  fontFamily: 'monospace',
+                  decoration: TextDecoration.underline,
+                  decorationColor: fgsignal,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

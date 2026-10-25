@@ -2,11 +2,13 @@
 // operational_layer.dart — operational layer ("bort").
 //
 // Facade over modules: ThemeStore, BortTime, DraftsStore, InstallStore,
-// BortFile, ShiftHistory.
+// BortFile, TimeSeries (registered instances: shift, bort).
 //
-// ShiftHistory records daily shift totals into shift_history.json;
-// the monthly record (one per month, actor type) is written by the
-// journal compactor.
+// TimeSeries. One class, N instances — the shift and bort histories
+// both store {year: {month: {day: seconds}}} in their own JSON file
+// (shift_history.json, bort_history.json) and are accessed via the
+// `series` registry. The monthly journal record (one per month per
+// kind, actor type) is written by the journal compactor.
 //
 // nextMediaIndex() proxies InstallStore.nextMediaIndex() so that UI
 // does not depend on InstallStore directly.
@@ -20,9 +22,14 @@
 // mutexRoutines. When true (the default), starting a routine block
 // pauses every other running block across the whole app — only one
 // block is active at a time. When false, blocks are independent and
-// may run concurrently. The switch is read by AppContext when it
-// delegates to RoutineLayer.toggleBlock / startBlock; the routine
-// layer itself carries no opinion on the matter.
+// may run concurrently.
+//
+// mutexSlots. When true (the default) and mutexRoutines is false,
+// starting a routine block pauses every other running block of the
+// SAME routine — only one slot per routine is active at a time,
+// while different routines may still run in parallel. Ignored when
+// mutexRoutines is true: the global pause already covers the same
+// routine.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -42,15 +49,19 @@ import 'drafts_store.dart';
 import 'install_store.dart';
 import 'theme_store.dart';
 
-// ─── ShiftHistory ───
-class ShiftHistory {
+// ─── TimeSeries ───
+// One class for any monthly totals (shift, bort, etc.). The
+// instances differ only in their file name; the shape and the
+// methods are identical, so the dialog and the compactor can treat
+// them alike.
+class TimeSeries {
   // {year: {month: {day: seconds}}}
   final Map<int, Map<int, Map<int, int>>> _data = {};
   File? _file;
 
-  Future<void> init() async {
+  Future<void> init(String fileName) async {
     final dir = await getApplicationDocumentsDirectory();
-    _file = File(p.join(dir.path, 'shift_history.json'));
+    _file = File(p.join(dir.path, fileName));
     await _load();
   }
 
@@ -83,10 +94,9 @@ class ShiftHistory {
     } catch (_) {}
   }
 
-  // Shift history is written atomically: a crash mid-write leaves
-  // either the old shift_history.json or the new one whole, never a
-  // torn file. Shared with BortFile and the other caches via
-  // atomicWriteJson.
+  // Written atomically: a crash mid-write leaves either the old
+  // file or the new one whole, never a torn file. Shared with
+  // BortFile and the other caches via atomicWriteJson.
   Future<void> _save() async {
     final target = _file;
     if (target == null) return;
@@ -112,7 +122,7 @@ class ShiftHistory {
     _save();
   }
 
-  MonthShift? lastMonth() {
+  MonthTotals? lastMonth() {
     int? bestY;
     int? bestM;
     for (final ye in _data.entries) {
@@ -128,7 +138,7 @@ class ShiftHistory {
     }
     if (bestY == null || bestM == null) return null;
     final dayMap = _data[bestY]![bestM]!;
-    return MonthShift(
+    return MonthTotals(
       year: bestY,
       month: bestM,
       days: dayMap.map((k, v) => MapEntry(k.toString(), v)),
@@ -136,9 +146,9 @@ class ShiftHistory {
   }
 
   // Read the recorded totals for an arbitrary (year, month). Used by
-  // the shift-history dialog when the user navigates to a month other
-  // than the most recent one. Returns an empty map when the month has
-  // no recorded days.
+  // the history dialog when the user navigates to a month other
+  // than the most recent one. Returns an empty map when the month
+  // has no recorded days.
   Map<int, int> daysFor(int year, int month) {
     final out = <int, int>{};
     final months = _data[year];
@@ -151,7 +161,7 @@ class ShiftHistory {
     return out;
   }
 
-  void pruneBefore(MonthShift keep) {
+  void pruneBefore(MonthTotals keep) {
     _data.removeWhere((y, months) {
       if (y < keep.year) return true;
       if (y > keep.year) return false;
@@ -167,11 +177,11 @@ class ShiftHistory {
   }
 }
 
-class MonthShift {
+class MonthTotals {
   final int year;
   final int month;
   final Map<String, int> days;
-  MonthShift({required this.year, required this.month, required this.days});
+  MonthTotals({required this.year, required this.month, required this.days});
 }
 
 // ─── OperationalLayer ───
@@ -181,7 +191,10 @@ class OperationalLayer extends ChangeNotifier {
   final DraftsStore _draftsStore = DraftsStore();
   final InstallStore _install = InstallStore();
   final BortFile _file = BortFile();
-  final ShiftHistory _shiftHistory = ShiftHistory();
+
+  // Registry of registered time series (shift, bort). New kinds are
+  // added by initializing a new TimeSeries under a new key.
+  final Map<String, TimeSeries> series = {};
 
   Color get bg => _themes.bg;
   Color get bgsignal => _themes.bgsignal;
@@ -204,7 +217,8 @@ class OperationalLayer extends ChangeNotifier {
   int get firstRunUnixSec => _install.firstRunUnixSec;
   String get deviceId => _install.deviceId;
 
-  ShiftHistory get shiftHistory => _shiftHistory;
+  TimeSeries get shiftHistory => series['shift']!;
+  TimeSeries get bortHistory => series['bort']!;
 
   int nextMediaIndex() => _install.nextMediaIndex();
 
@@ -220,6 +234,12 @@ class OperationalLayer extends ChangeNotifier {
   // When true, starting a routine block pauses every other running
   // block across the app. When false, blocks run independently.
   bool mutexRoutines = true;
+
+  // When true (and mutexRoutines is false), starting a routine
+  // block pauses every other running block of the SAME routine.
+  // Ignored when mutexRoutines is true: the global pause already
+  // covers the same routine.
+  bool mutexSlots = true;
 
   bool showFieldTab = false;
   bool showArtelTab = false;
@@ -258,7 +278,13 @@ class OperationalLayer extends ChangeNotifier {
     _themes.setSystemBrightness(system);
     await _file.init();
     await _install.init();
-    await _shiftHistory.init();
+
+    // Register the time series.
+    series['shift'] = TimeSeries();
+    await series['shift']!.init('shift_history.json');
+    series['bort'] = TimeSeries();
+    await series['bort']!.init('bort_history.json');
+
     await _loadDefaults();
     await _loadFromFile();
     _themes.ensureThemes();
@@ -268,6 +294,7 @@ class OperationalLayer extends ChangeNotifier {
     final newMid = _bortTime.checkMidnight();
     if (newMid > 0) {
       _recordShiftDay(newMid, oldPrev);
+      _recordBortDay(newMid, oldPrev);
       totalShiftSeconds = 0;
       if (onShift && shiftStartedAt != null && shiftStartedAt! < newMid) {
         shiftStartedAt = newMid;
@@ -300,25 +327,37 @@ class OperationalLayer extends ChangeNotifier {
       if (running > 86400) running = 86400;
       if (running > 0) {
         final dt = DateTime.fromMillisecondsSinceEpoch(prevDayStart * 1000);
-        _shiftHistory.addDay(dt.year, dt.month, dt.day, running);
+        shiftHistory.addDay(dt.year, dt.month, dt.day, running);
       }
     } else {
-      // A gap of more than a day: the app was not opened at the
-      // previous midnight. Preserve the accumulated total rather
-      // than dropping it: attribute it to the last known midnight
-      // (oldPrev), capped at 24 hours. The running portion (from
-      // prevDayStart) is attributed to its own day separately.
       if (totalShiftSeconds > 0 && oldPrev > 0) {
         final capped = totalShiftSeconds > 86400 ? 86400 : totalShiftSeconds;
         final dt = DateTime.fromMillisecondsSinceEpoch(oldPrev * 1000);
-        _shiftHistory.addDay(dt.year, dt.month, dt.day, capped);
+        shiftHistory.addDay(dt.year, dt.month, dt.day, capped);
       }
       if (running > 0) {
         final capped = running > 86400 ? 86400 : running;
         final dt = DateTime.fromMillisecondsSinceEpoch(prevDayStart * 1000);
-        _shiftHistory.addDay(dt.year, dt.month, dt.day, capped);
+        shiftHistory.addDay(dt.year, dt.month, dt.day, capped);
       }
     }
+  }
+
+  // ─── Bort day recording ───
+  // BortTime.checkMidnight moves the just-ended day's accumulated
+  // bortTime into `yesterday` and resets the counter. That
+  // `yesterday` is the total to record; the day it belongs to is
+  // prevDayStart, unless a gap of more than a day has passed, in
+  // which case it is attributed to the last known midnight's day
+  // (same policy as the shift).
+  void _recordBortDay(int curMid, int oldPrev) {
+    final yesterday = _bortTime.yesterday;
+    if (yesterday <= 0) return;
+    final capped = yesterday > 86400 ? 86400 : yesterday;
+    final skipped = oldPrev > 0 && curMid - oldPrev > 86400;
+    final at = skipped && oldPrev > 0 ? oldPrev : (curMid - 86400);
+    final dt = DateTime.fromMillisecondsSinceEpoch(at * 1000);
+    bortHistory.addDay(dt.year, dt.month, dt.day, capped);
   }
 
   Future<void> _loadDefaults() async {
@@ -338,6 +377,7 @@ class OperationalLayer extends ChangeNotifier {
       blockInterface = data['block_interface'] as bool? ?? blockInterface;
       blockData = data['block_data'] as bool? ?? blockData;
       mutexRoutines = data['mutex_routines'] as bool? ?? mutexRoutines;
+      mutexSlots = data['mutex_slots'] as bool? ?? mutexSlots;
       showFieldTab = data['show_field_tab'] as bool? ?? showFieldTab;
       showArtelTab = data['show_artel_tab'] as bool? ?? showArtelTab;
       selectedType = (data['selected_type'] as num?)?.toInt() ?? selectedType;
@@ -382,6 +422,7 @@ class OperationalLayer extends ChangeNotifier {
     blockInterface = data['block_interface'] as bool? ?? blockInterface;
     blockData = data['block_data'] as bool? ?? blockData;
     mutexRoutines = data['mutex_routines'] as bool? ?? mutexRoutines;
+    mutexSlots = data['mutex_slots'] as bool? ?? mutexSlots;
     showFieldTab = data['show_field_tab'] as bool? ?? showFieldTab;
     showArtelTab = data['show_artel_tab'] as bool? ?? showArtelTab;
     selectedType = (data['selected_type'] as num?)?.toInt() ?? selectedType;
@@ -567,6 +608,7 @@ class OperationalLayer extends ChangeNotifier {
       final newMid = _bortTime.checkMidnight();
       if (newMid > 0) {
         _recordShiftDay(newMid, oldPrev);
+        _recordBortDay(newMid, oldPrev);
         totalShiftSeconds = 0;
         if (onShift && shiftStartedAt != null && shiftStartedAt! < newMid) {
           shiftStartedAt = newMid;
@@ -596,13 +638,15 @@ class OperationalLayer extends ChangeNotifier {
     // journal.reread() on the caller's side.
     _draftsStore.reset();
     _bortTime.reset();
-    _shiftHistory.reset();
+    shiftHistory.reset();
+    bortHistory.reset();
     collapsedBlocks = {};
     exportCounters = {};
     defaultSlots = {'work'};
     showFieldTab = false;
     showArtelTab = false;
     mutexRoutines = true;
+    mutexSlots = true;
     lastExportId = 0;
     lastRereadId = 0;
     await _loadDefaults();
@@ -733,6 +777,9 @@ class OperationalLayer extends ChangeNotifier {
       case 'mutex_routines':
         mutexRoutines = _parseBool(value) ?? mutexRoutines;
         break;
+      case 'mutex_slots':
+        mutexSlots = _parseBool(value) ?? mutexSlots;
+        break;
       case 'selected_type':
         selectedType = int.tryParse(value) ?? selectedType;
         break;
@@ -811,6 +858,7 @@ class OperationalLayer extends ChangeNotifier {
       'block_interface': blockInterface,
       'block_data': blockData,
       'mutex_routines': mutexRoutines,
+      'mutex_slots': mutexSlots,
       'show_field_tab': showFieldTab,
       'show_artel_tab': showArtelTab,
       'selected_type': selectedType,
@@ -861,6 +909,7 @@ class OperationalLayer extends ChangeNotifier {
     out['block_interface'] = blockInterface.toString();
     out['block_data'] = blockData.toString();
     out['mutex_routines'] = mutexRoutines.toString();
+    out['mutex_slots'] = mutexSlots.toString();
     out['show_field_tab'] = showFieldTab.toString();
     out['show_artel_tab'] = showArtelTab.toString();
     out['midnight'] = _bortTime.midnight;

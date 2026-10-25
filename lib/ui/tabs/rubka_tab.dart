@@ -9,8 +9,11 @@
 // Artel. The shift row is the first line — fgsignal-colored in full
 // and refreshed on every ticker beat, so the running total keeps
 // pace with the wall clock. Then: midnight field (HH:MM) — the
-// start of the technical day; routine mutex checkbox; two
-// checkboxes for tab visibility («field» and «artel»).
+// start of the technical day. Under «взаимоисключение» — two
+// checkboxes: «рутины» (global pause of every other block) and
+// «слоты» (same-routine pause, ignored when «рутины» is on). Under
+// «блоки» — two checkboxes for tab visibility («поле» and
+// «артель»).
 //
 // Layout.
 //   Narrow screen (under 640): blocks in a single column, top down.
@@ -80,6 +83,7 @@ class RubkaTab extends StatelessWidget {
           // full, refreshed by the ticker so the number ticks.
           _shiftRow(context, side),
           _midnightRow(context, fg, side),
+          _sectionHeader(i18n.t('bort.mutex'), mid, side),
           _tabTickRow(
             context,
             'mutex_routines',
@@ -89,6 +93,16 @@ class RubkaTab extends StatelessWidget {
             fgsignal,
             side,
           ),
+          _tabTickRow(
+            context,
+            'mutex_slots',
+            i18n.t('bort.mutex_slots'),
+            fg,
+            bg,
+            fgsignal,
+            side,
+          ),
+          _sectionHeader(i18n.t('bort.blocks'), mid, side),
           _tabTickRow(
             context,
             'show_field_tab',
@@ -226,6 +240,19 @@ class RubkaTab extends StatelessWidget {
     );
   }
 
+  // ─── Section header ───
+  // A plain label above a group of checkboxes. Left without a pult
+  // of its own — it names the group, not a value.
+  Widget _sectionHeader(String label, Color mid, double side) {
+    return Padding(
+      padding: EdgeInsets.only(top: side * 0.2, bottom: side * 0.05),
+      child: Text(
+        label,
+        style: TextStyle(color: mid, fontSize: side * 0.35),
+      ),
+    );
+  }
+
   // ─── Shift row: fgsignal-colored in full, refreshed on the ticker ───
   // AnimatedBuilder re-reads BortScope inside the builder, so both
   // the ticker (2 Hz) and any bort mutation (start/stop/pulse)
@@ -242,7 +269,7 @@ class RubkaTab extends StatelessWidget {
         final value = sec <= 0 ? '0${i18n.t('time.m')}' : fmtTime(sec, i18n.t);
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: () => showShiftHistory(context),
+          onTap: () => showTimeHistory(context, key: 'shift'),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Row(

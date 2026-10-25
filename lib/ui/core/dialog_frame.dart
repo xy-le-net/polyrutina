@@ -2,14 +2,27 @@
 // lib/ui/core/dialog_frame.dart — common dialog frame.
 //
 // The unified frame for every in-app dialog: confirm, notice,
-// progress, and shift history. Shape follows the blocks — bg fill,
-// dim border, kRadius corners, kFramePad inset — so dialogs read as
-// floating blocks over the page.
+// progress, and the time-history viewers. Shape follows the
+// blocks — bg fill, mid border, kRadius corners, kFramePad inset —
+// so dialogs read as floating blocks over the page.
 //
 // Outside the frame — dismiss (tap on the barrier). Inside the
 // frame — absorb (the inner GestureDetector swallows the tap), so
 // touching text or empty space inside does not close the dialog by
 // accident.
+//
+// Text-style isolation. The dialog is wrapped in
+// DefaultTextStyle.merge with decoration: TextDecoration.none.
+// Without it, the frame inherits the text style from the context
+// that opened it — and when that context carries an active
+// composing underline (observed when a single routine is exported
+// from the card: the field's IME composing underline leaks into
+// every Text in the dialog), every label and every word in the
+// dialog is drawn with that underline. LinkText and any other
+// element that sets its own decoration explicitly still wins,
+// because TextStyle.decoration on the child overrides the merged
+// default. The leak is therefore closed without altering the
+// look of any dialog opened from a clean context.
 //
 // Geometry. Diameters, pad, stroke, and radius are derived from the
 // small pult side (PultScope) and bort coefficients (kFramePad,
@@ -70,24 +83,29 @@ class DialogFrame extends StatelessWidget {
     final radius = side * bort.kRadius;
     final hMargin = margin ?? side * 1.2;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onDismiss,
-      child: Center(
-        child: GestureDetector(
-          onTap: () {},
-          child: Container(
-            margin: EdgeInsets.symmetric(horizontal: hMargin),
-            constraints: maxHeight == null
-                ? null
-                : BoxConstraints(maxHeight: maxHeight!),
-            decoration: BoxDecoration(
-              color: bort.bg,
-              border: Border.all(color: bort.mid, width: strokeW),
-              borderRadius: BorderRadius.circular(radius),
+    return DefaultTextStyle.merge(
+      // Neutralise inherited decoration. Explicit decoration on a
+      // child (LinkText's underline, for example) still wins.
+      style: const TextStyle(decoration: TextDecoration.none),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onDismiss,
+        child: Center(
+          child: GestureDetector(
+            onTap: () {},
+            child: Container(
+              margin: EdgeInsets.symmetric(horizontal: hMargin),
+              constraints: maxHeight == null
+                  ? null
+                  : BoxConstraints(maxHeight: maxHeight!),
+              decoration: BoxDecoration(
+                color: bort.bg,
+                border: Border.all(color: bort.mid, width: strokeW),
+                borderRadius: BorderRadius.circular(radius),
+              ),
+              padding: EdgeInsets.all(pad),
+              child: child,
             ),
-            padding: EdgeInsets.all(pad),
-            child: child,
           ),
         ),
       ),

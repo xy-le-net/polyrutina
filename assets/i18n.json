@@ -73,7 +73,10 @@
     "bort.default_slots": "слоты",
     "bort.show_field_tab": "поле",
     "bort.show_artel_tab": "артель",
-    "bort.mutex_routines": "взаимоисключение рутин",
+    "bort.mutex": "взаимоисключение",
+    "bort.mutex_routines": "рутины",
+    "bort.mutex_slots": "слоты",
+    "bort.blocks": "блоки",
 
     "bort.k_pult": "размер пульта",
     "bort.k_pult_small": "малый пульт",
@@ -235,7 +238,10 @@
     "bort.default_slots": "slots",
     "bort.show_field_tab": "field",
     "bort.show_artel_tab": "artel",
-    "bort.mutex_routines": "routine mutex",
+    "bort.mutex": "mutex",
+    "bort.mutex_routines": "routines",
+    "bort.mutex_slots": "slots",
+    "bort.blocks": "blocks",
 
     "bort.k_pult": "pult size",
     "bort.k_pult_small": "small pult",

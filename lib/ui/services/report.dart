@@ -8,11 +8,25 @@
 //
 // The archive contains report.txt, data.json, and media/.
 //
-// File names. Forbidden characters (backslash, slash, colon,
-// asterisk, question mark, quote, angle brackets, pipe) are
-// replaced by safeFileNameOr (format.dart) — the shared
-// implementation used across the app. Empty results fall back to
-// «noname» inside safeFileNameOr.
+// data.json has ONE shape: {"schema": 1, "routines": [...]}. This
+// holds whether the export covers a single routine, a selection, or
+// the entire journal. The importer therefore has no branch for the
+// «bare object» form; that form is abolished.
+//
+// File names. The zip follows one template:
+//   polyrutina_<label>_<stamp>_<idx>.zip
+// where <label> is:
+//   — safeFileNameOr(r.name) for a single routine;
+//   — 'all' for every routine;
+//   — 'selected' for a selection.
+// Labels are latin to keep the archive portable across sharing
+// targets; characters forbidden by the filesystem are replaced by
+// safeFileNameOr (format.dart).
+//
+// Media. Each media file carried by a routine's traces is packed
+// under its basename; duplicate names are disambiguated with a
+// numeric suffix, so an archive never holds two entries under the
+// same name.
 //
 // All types are strict: AppContext, I18n, Routine, TraceFile are
 // named explicitly; no dynamic remains.
@@ -61,6 +75,7 @@ class ReportBuilder {
       i18n,
       routines,
       objectKey: 'all',
+      label: 'all',
       uiContext: uiContext,
     );
   }
@@ -78,7 +93,7 @@ class ReportBuilder {
       i18n,
       [r],
       objectKey: 'routine_$routineId',
-      routineLabel: safeFileNameOr(r.name),
+      label: safeFileNameOr(r.name),
       uiContext: uiContext,
     );
   }
@@ -100,6 +115,7 @@ class ReportBuilder {
       i18n,
       routines,
       objectKey: 'selected',
+      label: 'selected',
       uiContext: uiContext,
     );
   }
@@ -109,7 +125,7 @@ class ReportBuilder {
     I18n i18n,
     List<Routine> routines, {
     required String objectKey,
-    String? routineLabel,
+    required String label,
     BuildContext? uiContext,
   }) async {
     routines.sort((a, b) {
@@ -150,14 +166,12 @@ class ReportBuilder {
     final reportBytes = utf8.encode(buf.toString());
     archive.addFile(ArchiveFile('report.txt', reportBytes.length, reportBytes));
 
-    final jsonObj = routines.length == 1
-        ? ReportJson.buildRoutine(app, routines.first)
-        : {
-            'schema': ReportJson.schemaVersion,
-            'routines': [
-              for (final r in routines) ReportJson.buildRoutine(app, r),
-            ],
-          };
+    // ONE shape for data.json: always the wrapper with a routines
+    // list, regardless of how many routines are being exported.
+    final jsonObj = <String, dynamic>{
+      'schema': ReportJson.schemaVersion,
+      'routines': [for (final r in routines) ReportJson.buildRoutine(app, r)],
+    };
     final jsonBytes = utf8.encode(jsonEncode(jsonObj));
     archive.addFile(ArchiveFile('data.json', jsonBytes.length, jsonBytes));
     if (token.cancelled) return null;
@@ -204,9 +218,10 @@ class ReportBuilder {
     final dir = await getApplicationDocumentsDirectory();
     final idx = app.bort.nextExportIndex(objectKey);
     final stamp = _stamp();
-    final name = routineLabel == null
-        ? 'polyrutina_${stamp}_$idx.zip'
-        : 'polyrutina_${routineLabel}_${stamp}_$idx.zip';
+    // One naming template for every case: polyrutina_<label>_<stamp>_<idx>.zip.
+    // label is already filesystem-safe ('all', 'selected', or
+    // safeFileNameOr(r.name) for a single routine).
+    final name = 'polyrutina_${label}_${stamp}_$idx.zip';
 
     final zipFile = File(p.join(dir.path, name));
     final zipBytes = ZipEncoder().encode(archive);

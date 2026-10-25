@@ -1,13 +1,23 @@
 // ═══════════════════════════════════════════════════════════════════
-// lib/ui/services/action_dialog.dart — shift history viewer.
+// lib/ui/services/action_dialog.dart — time history viewer.
 //
-// Shows monthly shift totals: a month switcher at the top, the
-// month total, and a per-day list («mon 12: 2h 7m»). A share pult
-// exports the month as text.
+// One dialog for any registered TimeSeries (shift, bort, and future
+// kinds). Kinds differ in three points — the label key, the share
+// flag, and the live-value callback — captured in a small
+// descriptor map below. Everything else (month switcher, day
+// list, total) is common.
 //
-// Data comes from ShiftHistory (shift_history.json). Days are the
-// daily shift totals recorded at midnight; empty months show a
-// placeholder.
+// Descriptor placement. The map lives here, next to the dialog,
+// because all three fields are presentation concerns (label,
+// whether to offer share, live value for today). Adding a new
+// series is one entry here and one line in OperationalLayer.init
+// (registering the TimeSeries under the new key).
+//
+// Live value. Today's running total is not written to the series
+// until midnight; the dialog merges it when the current month is
+// shown, so today's cell is not stuck at zero while the count
+// runs. For the shift the live value is shiftSecondsNow; for the
+// bort it is bortTime.
 //
 // Frame geometry lives in DialogFrame: bg fill, mid border,
 // kRadius corners, kFramePad inset. The frame dismisses on a tap
@@ -15,8 +25,9 @@
 // cap is kept at side * 12 so the day list cannot overflow the
 // screen.
 //
-// Weekday key. The former local copy of _weekdayKey has been
-// removed; the shared weekdayKey from format.dart is used.
+// The field on the widget is named seriesKey, not key, because
+// Widget already declares `key`; naming the field `key` would
+// shadow it.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -24,35 +35,69 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../../data/i18n.dart';
+import '../../data/operational_layer.dart';
 import '../core/app_scope.dart';
 import '../core/dialog_frame.dart';
 import '../core/format.dart';
 import '../core/link_text.dart';
 import '../pults/pult_core.dart';
 
-Future<void> showShiftHistory(BuildContext context) async {
+// ─── Per-kind descriptor ───
+// One entry per registered TimeSeries key. The three fields cover
+// every difference between kinds: how to label the total, whether
+// the share pult is offered, and how to obtain today's live value.
+class _SeriesUi {
+  final String labelKey;
+  final bool share;
+  final int Function(OperationalLayer bort) liveToday;
+
+  const _SeriesUi({
+    required this.labelKey,
+    required this.share,
+    required this.liveToday,
+  });
+}
+
+int _liveShift(OperationalLayer bort) => bort.shiftSecondsNow;
+int _liveBort(OperationalLayer bort) => bort.bortTime;
+
+// Registered kinds. New kinds land here; the registry in
+// OperationalLayer.init must register the matching TimeSeries.
+const Map<String, _SeriesUi> _ui = {
+  'shift': _SeriesUi(
+    labelKey: 'bort.shift',
+    share: true,
+    liveToday: _liveShift,
+  ),
+  'bort': _SeriesUi(labelKey: 'bort.bort', share: false, liveToday: _liveBort),
+};
+
+Future<void> showTimeHistory(
+  BuildContext context, {
+  required String key,
+}) async {
   final side = PultScope.of(context).smallSide;
 
   await showDialog<void>(
     context: context,
     barrierColor: Colors.transparent,
     builder: (ctx) {
-      return _ShiftHistoryDialog(side: side);
+      return _TimeHistoryDialog(side: side, seriesKey: key);
     },
   );
 }
 
-class _ShiftHistoryDialog extends StatefulWidget {
+class _TimeHistoryDialog extends StatefulWidget {
   final double side;
+  final String seriesKey;
 
-  const _ShiftHistoryDialog({required this.side});
+  const _TimeHistoryDialog({required this.side, required this.seriesKey});
 
   @override
-  State<_ShiftHistoryDialog> createState() => _ShiftHistoryDialogState();
+  State<_TimeHistoryDialog> createState() => _TimeHistoryDialogState();
 }
 
-class _ShiftHistoryDialogState extends State<_ShiftHistoryDialog> {
+class _TimeHistoryDialogState extends State<_TimeHistoryDialog> {
   late int _year;
   late int _month;
 
@@ -81,15 +126,16 @@ class _ShiftHistoryDialogState extends State<_ShiftHistoryDialog> {
     });
   }
 
-  Map<int, int> _daysFor(AppContext app) {
-    final history = app.bort.shiftHistory;
-    final out = history.daysFor(_year, _month);
-    // Today's live shift is not written to the history until
+  Map<int, int> _daysFor(AppContext app, _SeriesUi ui) {
+    final series = app.bort.series[widget.seriesKey];
+    if (series == null) return <int, int>{};
+    final out = series.daysFor(_year, _month);
+    // Today's live value is not written to the series until
     // midnight; merge it when the dialog shows the current month,
-    // so today's cell is not stuck at zero while the shift runs.
+    // so today's cell is not stuck at zero while the count runs.
     final now = DateTime.now();
     if (_year == now.year && _month == now.month) {
-      final live = app.bort.shiftSecondsNow;
+      final live = ui.liveToday(app.bort);
       if (live > 0) out[now.day] = live;
     }
     return out;
@@ -97,7 +143,7 @@ class _ShiftHistoryDialogState extends State<_ShiftHistoryDialog> {
 
   String _monthTitle() => '$_year.${_month.toString().padLeft(2, '0')}';
 
-  Future<void> _share(AppContext app, Map<int, int> days) async {
+  Future<void> _share(AppContext app, _SeriesUi ui, Map<int, int> days) async {
     final i18n = app.i18n;
     final buf = StringBuffer();
     buf.writeln(_monthTitle());
@@ -111,7 +157,7 @@ class _ShiftHistoryDialogState extends State<_ShiftHistoryDialog> {
       buf.writeln('${i18n.t(wd)} $d: ${fmtTime(sec, i18n.t)}');
     }
     buf.writeln();
-    buf.writeln('${i18n.t('bort.shift')}: ${fmtTime(total, i18n.t)}');
+    buf.writeln('${i18n.t(ui.labelKey)}: ${fmtTime(total, i18n.t)}');
     try {
       await Share.share(buf.toString(), subject: _monthTitle());
     } catch (_) {}
@@ -123,7 +169,19 @@ class _ShiftHistoryDialogState extends State<_ShiftHistoryDialog> {
     final bort = app.bort;
     final i18n = app.i18n;
     final side = widget.side;
-    final days = _daysFor(app);
+
+    final ui = _ui[widget.seriesKey];
+    if (ui == null) {
+      // Unknown series key — nothing to show. A dialog renders an
+      // empty frame so the caller sees a clear no-op rather than a
+      // crash.
+      return DialogFrame(
+        onDismiss: () => Navigator.of(context).pop(),
+        child: Text('—', style: TextStyle(color: bort.mid)),
+      );
+    }
+
+    final days = _daysFor(app, ui);
     final keys = days.keys.toList()..sort();
     var total = 0;
     for (final d in keys) {
@@ -141,7 +199,7 @@ class _ShiftHistoryDialogState extends State<_ShiftHistoryDialog> {
             children: [
               Pult(
                 spec: PultSpec(
-                  id: 'shift_prev',
+                  id: '${widget.seriesKey}_prev',
                   icon: Icons.chevron_left,
                   onTap: () => _shift(-1),
                 ),
@@ -163,7 +221,7 @@ class _ShiftHistoryDialogState extends State<_ShiftHistoryDialog> {
               ),
               Pult(
                 spec: PultSpec(
-                  id: 'shift_next',
+                  id: '${widget.seriesKey}_next',
                   icon: Icons.chevron_right,
                   onTap: () => _shift(1),
                 ),
@@ -176,7 +234,7 @@ class _ShiftHistoryDialogState extends State<_ShiftHistoryDialog> {
           ),
           SizedBox(height: side * bort.kFramePad * 0.5),
           Text(
-            '${i18n.t('bort.shift')}: ${fmtTime(total, i18n.t)}',
+            '${i18n.t(ui.labelKey)}: ${fmtTime(total, i18n.t)}',
             style: TextStyle(color: bort.fgsignal, fontSize: side * bort.kName),
           ),
           SizedBox(height: side * bort.kFramePad * 0.5),
@@ -195,8 +253,8 @@ class _ShiftHistoryDialogState extends State<_ShiftHistoryDialog> {
                         Padding(
                           padding: EdgeInsets.symmetric(vertical: side * 0.05),
                           child: Text(
-                            '${_weekdayLabel(i18n, d)} $d: '
-                            '${fmtTime(days[d]!, i18n.t)}',
+                            '${i18n.t(weekdayKey(DateTime(_year, _month, d).weekday))} '
+                            '$d: ${fmtTime(days[d]!, i18n.t)}',
                             style: TextStyle(
                               color: bort.fg,
                               fontSize: side * bort.kNumberSmall,
@@ -211,18 +269,23 @@ class _ShiftHistoryDialogState extends State<_ShiftHistoryDialog> {
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              Pult(
-                spec: PultSpec(
-                  id: 'shift_share',
-                  icon: Icons.ios_share,
-                  onTap: keys.isEmpty ? null : () => _share(app, days),
+              // Share is only offered for kinds that opted in (the
+              // shift, per the project's rules; the bort history is
+              // read-only).
+              if (ui.share) ...[
+                Pult(
+                  spec: PultSpec(
+                    id: '${widget.seriesKey}_share',
+                    icon: Icons.ios_share,
+                    onTap: keys.isEmpty ? null : () => _share(app, ui, days),
+                  ),
+                  fg: keys.isEmpty ? bort.mid : bort.fg,
+                  bg: bort.bg,
+                  signal: bort.fgsignal,
+                  overrideSize: side * bort.kPultSmall,
                 ),
-                fg: keys.isEmpty ? bort.mid : bort.fg,
-                bg: bort.bg,
-                signal: bort.fgsignal,
-                overrideSize: side * bort.kPultSmall,
-              ),
-              SizedBox(width: side * 0.3),
+                SizedBox(width: side * 0.3),
+              ],
               LinkText(
                 text: i18n.t('common.ok'),
                 color: bort.fgsignal,
@@ -234,10 +297,5 @@ class _ShiftHistoryDialogState extends State<_ShiftHistoryDialog> {
         ],
       ),
     );
-  }
-
-  String _weekdayLabel(I18n i18n, int day) {
-    final dt = DateTime(_year, _month, day);
-    return i18n.t(weekdayKey(dt.weekday));
   }
 }
