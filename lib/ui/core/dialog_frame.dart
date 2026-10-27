@@ -2,32 +2,16 @@
 // lib/ui/core/dialog_frame.dart — common dialog frame.
 //
 // The unified frame for every in-app dialog: confirm, notice,
-// progress, and the time-history viewers. Shape follows the
-// blocks — bg fill, mid border, kRadius corners, kFramePad inset —
-// so dialogs read as floating blocks over the page.
-//
-// Outside the frame — dismiss (tap on the barrier). Inside the
-// frame — absorb (the inner GestureDetector swallows the tap), so
-// touching text or empty space inside does not close the dialog by
-// accident.
+// progress, and the time-history viewers.
 //
 // Text-style isolation. The dialog is wrapped in
 // DefaultTextStyle.merge with decoration: TextDecoration.none.
-// Without it, the frame inherits the text style from the context
-// that opened it — and when that context carries an active
-// composing underline (observed when a single routine is exported
-// from the card: the field's IME composing underline leaks into
-// every Text in the dialog), every label and every word in the
-// dialog is drawn with that underline. LinkText and any other
-// element that sets its own decoration explicitly still wins,
-// because TextStyle.decoration on the child overrides the merged
-// default. The leak is therefore closed without altering the
-// look of any dialog opened from a clean context.
+// Additionally, FocusManager.instance.primaryFocus?.unfocus() is
+// called in the build method to forcefully remove the IME composing
+// underline before the dialog paints.
 //
 // Geometry. Diameters, pad, stroke, and radius are derived from the
-// small pult side (PultScope) and bort coefficients (kFramePad,
-// kStroke, kRadius). Callers do not compute these; they supply only
-// the content and (optionally) constraints.
+// small pult side (PultScope) and bort coefficients.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -38,17 +22,9 @@ import '../pults/pult_core.dart';
 import 'app_scope.dart';
 
 class DialogFrame extends StatelessWidget {
-  // Dismissal callback — runs on a tap outside the frame.
   final VoidCallback onDismiss;
-
-  // Dialog body — the caller's column.
   final Widget child;
-
-  // Optional horizontal margin around the frame.
   final double? margin;
-
-  // Optional height cap; when null, the frame is as tall as its
-  // content (bounded by the screen).
   final double? maxHeight;
 
   const DialogFrame({

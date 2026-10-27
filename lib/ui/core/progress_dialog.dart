@@ -3,28 +3,17 @@
 //
 // Frame geometry lives in DialogFrame: bg fill, dim border,
 // kRadius corners, kFramePad inset. Inside — title, circular
-// progress with a percentage at the center, and a cancel word
-// (signal-colored).
+// progress with a percentage at the center, and a text prompt.
 //
-// The frame does not dismiss on a tap outside: a progress dialog
-// must not vanish by accident. DialogFrame is called with a
-// no-op onDismiss, which absorbs the touch without closing.
+// No cancel button. The app might freeze during heavy synchronous
+// operations (though we try to avoid it), so a cancel button that
+// doesn't actually abort the work is deceptive. Instead, the user
+// is shown a polite message: 'common.wait' (e.g. "please wait").
 //
 // Progress. The value runs from 0.0 to 1.0. Percentages are shown
 // as integers (no decimals). The ring is drawn with the standard
 // CircularProgressIndicator at `value`; the arc is signal-colored,
 // the track is dim.
-//
-// Cancel. Tapping the «cancel» word sets the token's cancelled
-// flag; the dialog closes; the caller must then abandon the
-// unfinished work.
-//
-// Usage:
-//   final token = ProgressToken();
-//   showDialog(..., builder: (_) => ProgressDialog(token: token));
-//   // during work: token.report(0.3);
-//   // on completion: Navigator.pop(context);
-//   // if token.cancelled — abort the work.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -34,7 +23,6 @@ import 'package:flutter/material.dart';
 import '../pults/pult_core.dart';
 import 'app_scope.dart';
 import 'dialog_frame.dart';
-import 'link_text.dart';
 
 class ProgressToken extends ChangeNotifier {
   double _value = 0;
@@ -77,8 +65,7 @@ class ProgressDialog extends StatelessWidget {
     final circleSize = side * 2.4;
 
     return DialogFrame(
-      // A progress dialog does not dismiss on an outside tap:
-      // the no-op absorbs the touch without closing.
+      // The frame does not dismiss on an outside tap.
       onDismiss: () {},
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -123,19 +110,14 @@ class ProgressDialog extends StatelessWidget {
             },
           ),
           SizedBox(height: pad),
-          // The «cancel» word — signal-colored, underlined.
-          LinkText(
-            text: i18n.t('export.cancel'),
-            color: bort.fgsignal,
-            fontSize: side * bort.kName,
-            padding: EdgeInsets.symmetric(
-              horizontal: side * 0.2,
-              vertical: side * 0.1,
+          // Polite waiting message instead of a deceptive cancel button.
+          Text(
+            i18n.t('common.wait'),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: bort.mid,
+              fontSize: side * bort.kName * 0.8,
             ),
-            onTap: () {
-              token.cancel();
-              Navigator.of(context).pop();
-            },
           ),
         ],
       ),

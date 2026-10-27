@@ -5,25 +5,18 @@
 // scheduledAt, otherwise lastPulseAt, otherwise createdAt.
 //
 // Marks in the cell:
-//   — completed (completedAt on this day) — underlined number;
-//   — scheduled (scheduledAt on this day) — square border;
-//   — unfinished (any remaining routine on this day) — round border.
-//
-// Color. Each mark is colored after the routine that produced it:
-// fgsignal if that routine carries any flag bit, mid otherwise.
-// The today plate (bort.bgsignal) marks «today» alone and does not
-// alter any color.
+//   — completed — underlined number;
+//   — scheduled — square border;
+//   — unfinished — round border.
 //
 // Scheduling midnight. When a routine is scheduled to a specific
-// day, the time is set to the bort's «midnight» setting, not the
-// system 00:00. This ensures the routine truly belongs to that
-// technical day.
+// day, the time is set to the bort's «midnight» setting.
 //
-// Layout. On narrow screens (under 640), the grid and the legend
-// are stacked vertically. On wide screens, they are split into two
-// columns: grid on the left, legend and stats on the right, with
-// the grid constrained to a reasonable maximum width so cells do
-// not stretch absurdly.
+// Layout. On narrow screens, the grid and the legend are stacked
+// vertically. On wide screens, they are split into two columns.
+// Crucially, the grid's width is constrained based on the available
+// HEIGHT (at most 6 rows), ensuring the entire month fits on the
+// screen without vertical scrolling even in landscape mode.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -259,6 +252,17 @@ class _DaysTabState extends State<DaysTab> {
           child: LayoutBuilder(
             builder: (context, constraints) {
               final wide = constraints.maxWidth > 640;
+
+              // In wide layout, constrain grid width based on available height
+              // so that 6 rows fit without vertical scrolling.
+              double maxGridWidth = 600.0;
+              if (wide) {
+                final availableHeight =
+                    constraints.maxHeight - 40; // padding margin
+                final maxCellSize = availableHeight / 6;
+                maxGridWidth = (maxCellSize * 7).clamp(200.0, 600.0);
+              }
+
               if (!wide) {
                 return SingleChildScrollView(
                   padding: EdgeInsets.all(side * 0.3),
@@ -281,16 +285,9 @@ class _DaysTabState extends State<DaysTab> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      flex: 3,
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 600),
-                        child: gridWidget,
-                      ),
-                    ),
+                    SizedBox(width: maxGridWidth, child: gridWidget),
                     SizedBox(width: side * 1.0),
                     Expanded(
-                      flex: 2,
                       child: Align(
                         alignment: Alignment.topLeft,
                         child: legendWidget,
@@ -524,7 +521,6 @@ class _DaysTabState extends State<DaysTab> {
     final r = await routineLayer.createRoutine(app.journal);
     final dt = DateTime(_month.year, _month.month, day);
 
-    // Use artel midnight for scheduling
     final parts = app.bort.midnight.split(':');
     final hh = int.tryParse(parts.isNotEmpty ? parts[0] : '0') ?? 0;
     final mm = int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0;

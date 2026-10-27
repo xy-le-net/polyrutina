@@ -2,38 +2,18 @@
 // lib/ui/services/report.dart — routines report and zip packing.
 //
 // The report is textual and human-readable. Each routine is a
-// section: completion mark, name, state, creation date, blocks with
-// time, text trace, geo coordinates, checklist, and an attached
-// media line.
+// section: completion mark, name, state, creation date, scheduled
+// date, blocks with time, all traces (text, checklists, geo, files).
 //
 // The archive contains report.txt, data.json, and media/.
 //
-// data.json has ONE shape: {"schema": 1, "routines": [...]}. This
-// holds whether the export covers a single routine, a selection, or
-// the entire journal.
+// data.json has ONE shape: {"schema": 1, "routines": [...]}.
 //
 // File names. The zip follows one template:
-//   polyrutina_<label>_<stamp>_<idx>.zip
-// where <label> is:
-//   — safeFileNameOr(r.name) for a single routine;
-//   — 'all' for every routine;
-//   — 'selected' for a selection.
-//
-// Media. Each media file carried by a routine's traces is packed
-// under its basename; duplicate names are disambiguated with a
-// numeric suffix, so an archive never holds two entries under the
-// same name.
+//   polyrutina_<label>_<stamp>_<idx>_<deviceId>_<firstRun>.zip
 //
 // Isolate. Zip compression and media reading are offloaded to a
 // background isolate (Isolate.run) to keep the UI thread responsive.
-// Progress is reported at coarse steps (prepare → isolate → save).
-//
-// Exports folder. Archives are saved into the `exports/` subfolder
-// of the application documents directory, keeping them separate
-// from media and the database.
-//
-// Focus. Any active IME composing underline is cleared by unfocusing
-// before the dialog is shown.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -155,8 +135,6 @@ class ReportBuilder {
     required String label,
     BuildContext? uiContext,
   }) async {
-    // Unfocus to remove any IME composing underline before showing
-    // the dialog.
     FocusManager.instance.primaryFocus?.unfocus();
 
     routines.sort((a, b) {
@@ -256,7 +234,10 @@ class ReportBuilder {
 
     final idx = app.bort.nextExportIndex(objectKey);
     final stamp = _stamp();
-    final name = 'polyrutina_${label}_${stamp}_$idx.zip';
+
+    // Append deviceId and firstRun to the filename
+    final name =
+        'polyrutina_${label}_${stamp}_${idx}_${app.bort.deviceId}_${app.bort.firstRunUnixSec}.zip';
 
     final zipFile = File(p.join(exportsDir.path, name));
     await zipFile.writeAsBytes(zipBytes, flush: true);
@@ -293,31 +274,47 @@ class ReportBuilder {
 
     buf.writeln('$mark $name');
     buf.writeln('   ($stateText)');
-    buf.writeln('   ${fmtDateFull(r.createdAt, i18n.t)}');
+    buf.writeln(
+      '   ${i18n.t('routine.block.note')}: ${fmtDateFull(r.createdAt, i18n.t)}',
+    );
+
+    if (r.scheduledAt != null) {
+      buf.writeln(
+        '   ${i18n.t('routine.planned_title')}: ${fmtDateFull(r.scheduledAt!, i18n.t)}',
+      );
+    }
     buf.writeln();
 
-    for (final kind in RoutineBlock.kinds) {
+    // Iterate over 'note' plus standard block kinds
+    final slots = ['note', ...RoutineBlock.kinds];
+
+    for (final kind in slots) {
       final b = r.blockOf(kind);
-      if (b == null) continue;
-      final sec = b.accumulatorSeconds;
+      final sec = b?.accumulatorSeconds ?? 0;
       final title = i18n.t('routine.block.$kind');
 
-      final text = _textOf(app, r.id, kind);
-      final attached = _attachedLine(app, r.id, kind, i18n);
-      final t = app.traceLayer.findFirstByKindSlot(
-        r.id,
-        TraceKind.checklist,
-        kind,
-      );
-      final hasChecklist =
-          t != null && t.items.any((it) => it.text.trim().isNotEmpty);
+      // Gather all traces for this slot
+      final traces =
+          app.traceLayer.traces.values
+              .where(
+                (t) => !t.deleted && t.parents.contains(r.id) && t.slot == kind,
+              )
+              .toList()
+            ..sort((a, b) => a.id.compareTo(b.id));
 
-      final empty =
-          sec == 0 &&
-          (text == null || text.trim().isEmpty) &&
-          attached == null &&
-          !hasChecklist;
-      if (empty) continue;
+      // Check if there's any content
+      bool hasContent = sec > 0;
+      for (final t in traces) {
+        if (t.kind == TraceKind.text && t.text.trim().isNotEmpty)
+          hasContent = true;
+        if (t.files.isNotEmpty) hasContent = true;
+        if (t.kind == TraceKind.checklist &&
+            t.items.any((it) => it.text.trim().isNotEmpty))
+          hasContent = true;
+      }
+
+      if (!hasContent && kind != 'note') continue;
+      if (!hasContent && kind == 'note' && traces.isEmpty) continue;
 
       if (sec > 0) {
         buf.writeln('   $title: ${fmtTime(sec, i18n.t)}');
@@ -325,90 +322,62 @@ class ReportBuilder {
         buf.writeln('   $title');
       }
 
-      if (text != null) {
-        for (final line in text.split('\n')) {
-          buf.writeln('      $line');
+      // Print all texts
+      for (final t in traces) {
+        if (t.kind == TraceKind.text && t.text.trim().isNotEmpty) {
+          for (final line in t.text.split('\n')) {
+            buf.writeln('      $line');
+          }
         }
       }
 
-      if (attached != null) buf.writeln('      $attached');
+      // Attached media summary
+      final allFiles = traces.expand((t) => t.files).toList();
+      if (allFiles.isNotEmpty) {
+        final counts = <String, int>{};
+        for (final f in allFiles) {
+          counts[f.kind] = (counts[f.kind] ?? 0) + 1;
+        }
+        final parts = <String>[];
+        const order = [
+          MediaKind.audio,
+          MediaKind.photo,
+          MediaKind.video,
+          MediaKind.geo,
+          MediaKind.file,
+        ];
+        for (final k in order) {
+          final n = counts[k];
+          if (n == null) continue;
+          parts.add('$n ${i18n.t('media.$k')}');
+        }
+        if (parts.isNotEmpty) {
+          buf.writeln(
+            '      ${i18n.t('media.attached')}: ${parts.join(', ')}.',
+          );
+        }
+      }
 
-      final geoFiles = _geoFilesOf(app, r.id, kind);
-      for (final g in geoFiles) {
+      // Geo coordinates
+      for (final g in allFiles.where((f) => f.kind == MediaKind.geo)) {
         final lat = g.lat?.toStringAsFixed(6) ?? '?';
         final lon = g.lon?.toStringAsFixed(6) ?? '?';
         final acc = g.acc?.toStringAsFixed(1) ?? '?';
         buf.writeln('      $lat, $lon (±$acc ${i18n.t('time.m')})');
       }
 
-      if (t != null) {
-        for (final it in t.items) {
-          final s = it.text;
-          if (s.trim().isEmpty) continue;
-          final m = it.done ? '✓' : '○';
-          buf.writeln('      $m $s');
+      // Checklists (all of them)
+      for (final t in traces) {
+        if (t.kind == TraceKind.checklist) {
+          for (final it in t.items) {
+            if (it.text.trim().isEmpty) continue;
+            final m = it.done ? '✓' : '○';
+            buf.writeln('      $m ${it.text}');
+          }
         }
       }
 
       buf.writeln();
     }
-  }
-
-  static String? _textOf(AppContext app, int routineId, String slot) {
-    final t = app.traceLayer.findFirstByKindSlot(
-      routineId,
-      TraceKind.text,
-      slot,
-    );
-    if (t == null) return null;
-    final s = t.text;
-    return s.isEmpty ? null : s;
-  }
-
-  static List<TraceFile> _geoFilesOf(
-    AppContext app,
-    int routineId,
-    String slot,
-  ) {
-    final t = app.traceLayer.findFirstByKindSlot(
-      routineId,
-      TraceKind.text,
-      slot,
-    );
-    if (t == null) return const [];
-    return t.files.where((f) => f.kind == MediaKind.geo).toList();
-  }
-
-  static String? _attachedLine(
-    AppContext app,
-    int routineId,
-    String slot,
-    I18n i18n,
-  ) {
-    final t = app.traceLayer.findFirstByKindSlot(
-      routineId,
-      TraceKind.text,
-      slot,
-    );
-    if (t == null || t.files.isEmpty) return null;
-    final counts = <String, int>{};
-    for (final f in t.files) {
-      counts[f.kind] = (counts[f.kind] ?? 0) + 1;
-    }
-    final parts = <String>[];
-    const order = [
-      MediaKind.audio,
-      MediaKind.photo,
-      MediaKind.video,
-      MediaKind.geo,
-      MediaKind.file,
-    ];
-    for (final k in order) {
-      final n = counts[k];
-      if (n == null) continue;
-      parts.add('$n ${i18n.t('media.$k')}');
-    }
-    if (parts.isEmpty) return null;
-    return '${i18n.t('media.attached')}: ${parts.join(', ')}.';
   }
 }

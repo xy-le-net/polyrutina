@@ -42,7 +42,7 @@
     "routine.summary": "итог",
     "routine.clear_date": "снять дату",
     "routine.planned_hint": "план",
-    "routine.planned_title": "срок: д:ч:м",
+    "routine.planned_title": "срок",
 
     "block.artel": "артель",
     "block.appearance": "оформление",
@@ -128,6 +128,11 @@
 
     "hint.time": "дд:чч:мм:сс",
     "hint.planned": "дд:чч:мм",
+
+    "size.b": "Б",
+    "size.kb": "КБ",
+    "size.mb": "МБ",
+    "size.gb": "ГБ",
 
     "import.cancelled": "импорт отменён",
     "import.empty": "ничего не импортировано",
@@ -229,7 +234,7 @@
     "routine.summary": "total",
     "routine.clear_date": "clear date",
     "routine.planned_hint": "plan",
-    "routine.planned_title": "due: d:h:m",
+    "routine.planned_title": "due",
 
     "block.artel": "artel",
     "block.appearance": "appearance",
@@ -315,6 +320,11 @@
 
     "hint.time": "dd:hh:mm:ss",
     "hint.planned": "dd:hh:mm",
+
+    "size.b": "B",
+    "size.kb": "KB",
+    "size.mb": "MB",
+    "size.gb": "GB",
 
     "import.cancelled": "import cancelled",
     "import.empty": "nothing imported",

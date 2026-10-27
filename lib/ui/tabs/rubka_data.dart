@@ -57,22 +57,22 @@ class _RubkaDataState extends State<RubkaData> {
   bool _sizeLoaded = false;
   bool _compacting = false;
 
-  String _fmtSize(int bytes) {
-    if (bytes <= 0) return '0';
-    if (bytes < 1024) return '$bytes';
+  String _fmtSize(int bytes, Translate t) {
+    if (bytes <= 0) return '0 ${t('size.b')}';
+    if (bytes < 1024) return '$bytes ${t('size.b')}';
     final kb = bytes / 1024;
     if (kb < 1024) {
       final v = kb.round();
-      return '${v < 1 ? 1 : v} КБ';
+      return '${v < 1 ? 1 : v} ${t('size.kb')}';
     }
     final mb = kb / 1024;
     if (mb < 1024) {
       final v = mb.round();
-      return '${v < 1 ? 1 : v} МБ';
+      return '${v < 1 ? 1 : v} ${t('size.mb')}';
     }
     final gb = mb / 1024;
     final v = gb.round();
-    return '${v < 1 ? 1 : v} ГБ';
+    return '${v < 1 ? 1 : v} ${t('size.gb')}';
   }
 
   Future<void> _refreshSize() async {
@@ -203,7 +203,7 @@ class _RubkaDataState extends State<RubkaData> {
         context,
         title: '${i18n.t('compact.done_prefix')} ${result.entriesDropped}',
         subtitle:
-            '${i18n.t('compact.freed_prefix')} ${_fmtSize(result.bytesFreed)}',
+            '${i18n.t('compact.freed_prefix')} ${_fmtSize(result.bytesFreed, i18n.t)}',
       );
     }
   }
@@ -284,8 +284,8 @@ class _RubkaDataState extends State<RubkaData> {
     final title = '${i18n.t('import.summary')}: ${parts.join(', ')}';
     final subtitle = result.skipped > 0
         ? '${i18n.t('import.skipped_prefix')} ${result.skipped} · '
-              '${i18n.t('import.freed_prefix')} ${_fmtSize(result.bytes)}'
-        : '${i18n.t('import.freed_prefix')} ${_fmtSize(result.bytes)}';
+              '${i18n.t('import.freed_prefix')} ${_fmtSize(result.bytes, i18n.t)}'
+        : '${i18n.t('import.freed_prefix')} ${_fmtSize(result.bytes, i18n.t)}';
     await showNotice(context, title: title, subtitle: subtitle);
   }
 
@@ -365,7 +365,8 @@ class _RubkaDataState extends State<RubkaData> {
       await showNotice(
         context,
         title: '${i18n.t('bort.shake_done_prefix')} $removed',
-        subtitle: '${i18n.t('bort.shake_freed_prefix')} ${_fmtSize(freed)}',
+        subtitle:
+            '${i18n.t('bort.shake_freed_prefix')} ${_fmtSize(freed, i18n.t)}',
       );
     }
   }
@@ -393,7 +394,7 @@ class _RubkaDataState extends State<RubkaData> {
     );
 
     final group1 = <Widget>[
-      _valueRow(i18n.t('bort.journal'), _fmtSize(_journalBytes), fg),
+      _valueRow(i18n.t('bort.journal'), _fmtSize(_journalBytes, i18n.t), fg),
       _pultRow(
         label: i18n.t('bort.reload'),
         fg: fg,
@@ -443,7 +444,7 @@ class _RubkaDataState extends State<RubkaData> {
         ),
       ),
       divider(),
-      _valueRow(i18n.t('bort.media'), _fmtSize(_mediaBytes), fg),
+      _valueRow(i18n.t('bort.media'), _fmtSize(_mediaBytes, i18n.t), fg),
       _pultRow(
         label: i18n.t('bort.shake'),
         fg: fg,
@@ -462,7 +463,7 @@ class _RubkaDataState extends State<RubkaData> {
       ),
       divider(),
       _pultRow(
-        label: '${i18n.t('bort.export')} (${_fmtSize(_exportsBytes)})',
+        label: '${i18n.t('bort.export')} (${_fmtSize(_exportsBytes, i18n.t)})',
         fg: fg,
         pult: Pult(
           spec: PultSpec(

@@ -3,24 +3,15 @@
 // the Pult widget.
 //
 // Confirmation. A confirmable pult (confirm && onTap) does not act
-// on tap at once: the first tap enters the confirming state. The
-// former visual growth (Transform.scale) is abolished — the pult
-// merely changes its icon to confirmIcon (if provided) while
-// confirming. A second tap executes. A tap on another pult clears
-// the confirming state and proceeds with that pult's own logic.
+// on tap at once: the first tap grows it via AnimatedScale (only the
+// core, not the label) to indicate the need for a second tap.
 //
-// Confirming state lives in PultState (shared): only one pult can
-// be confirming at a time across the whole tree.
+// Icons. The size of the icons is increased by a third (compared to
+// the former 0.45/0.60). Numeric reflections (centerText) retain
+// their previous size to avoid breaking the layout.
 //
-// Sheet closing. When a pult executes onTap inside a pult sheet, it
-// asks the surrounding PultSheetScope to close the sheet, unless the
-// spec stays open.
-//
-// Subpult dot. Shown only when the spec has longSubs (a long-press
-// subpult), not when it has only subsBuilder.
-//
-// Subpult reactivity. The optional rebuildOn field, when supplied
-// on a PultSpec whose subpult is open, is forwarded to showPultSheet.
+// Labels. The `labelsButtons` setting dictates whether labels are
+// shown. By default, they are.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -204,6 +195,7 @@ class Pult extends StatelessWidget {
     final state = PultScope.of(context);
     final side = overrideSize ?? state.side;
     final confirming = state.confirmingId == spec.id;
+    final bort = BortScope.of(context);
 
     final selected = spec.selected;
     final coreColor = selected ? signal : fg;
@@ -214,10 +206,17 @@ class Pult extends StatelessWidget {
     final rInner = side * 0.14;
     final rCore = side * 0.10;
 
-    final iconSize = selected ? side * 0.60 : side * 0.45;
+    // Icon size increased by a third (former 0.45 and 0.60).
+    final baseIconSize = selected ? side * 0.80 : side * 0.60;
+
     final hasCenter = spec.centerText != null;
     final centerLen = spec.centerText?.length ?? 0;
-    final centerSize = centerLen <= 1 ? iconSize : iconSize * (1.6 / centerLen);
+
+    // Numeric reflection retains its former size (0.45 or 0.60)
+    final numBaseSize = selected ? side * 0.60 : side * 0.45;
+    final centerSize = centerLen <= 1
+        ? numBaseSize
+        : numBaseSize * (1.6 / centerLen);
 
     final effectiveIcon = (confirming && spec.confirmIcon != null)
         ? spec.confirmIcon!
@@ -245,7 +244,7 @@ class Pult extends StatelessWidget {
                   ),
                 ),
               )
-            : Icon(effectiveIcon, color: iconColor, size: iconSize),
+            : Icon(effectiveIcon, color: iconColor, size: baseIconSize),
       ),
     );
 
@@ -293,13 +292,20 @@ class Pult extends StatelessWidget {
       );
     }
 
+    // Apply scale ONLY to the core, preserving label size and layout
+    Widget scaledCore = AnimatedScale(
+      scale: confirming ? 1.25 : 1.0,
+      duration: const Duration(milliseconds: 150),
+      child: core,
+    );
+
     Widget content;
     final screenW = MediaQuery.of(context).size.width;
     final maxLabelW = screenW - side - 32;
-    final hasLabel = spec.label != null;
+    final hasLabel = spec.label != null && bort.labelsButtons;
 
     if (!hasLabel || maxLabelW < side * 1.5) {
-      content = core;
+      content = scaledCore;
     } else {
       final labelStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
         fontSize: side * 0.4,
@@ -355,7 +361,7 @@ class Pult extends StatelessWidget {
 
       content = Row(
         mainAxisSize: MainAxisSize.min,
-        children: [core, labelWidget],
+        children: [scaledCore, labelWidget],
       );
     }
 
