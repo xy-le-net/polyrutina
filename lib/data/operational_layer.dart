@@ -5,31 +5,24 @@
 // BortFile, TimeSeries (registered instances: shift, bort).
 //
 // TimeSeries. One class, N instances — the shift and bort histories
-// both store {year: {month: {day: seconds}}} in their own JSON file
-// (shift_history.json, bort_history.json) and are accessed via the
-// `series` registry. The monthly journal record (one per month per
-// kind, actor type) is written by the journal compactor.
+// both store {fieldId: {year: {month: {day: seconds}}}} in their own
+// JSON file (shift_history.json, bort_history.json) and are accessed
+// via the `series` registry.
+//
+// Shift per field. The concept of "shift" is now independent for
+// every field (root node). The OperationalLayer holds a map of
+// FieldShiftState keyed by fieldId. The global BortTime remains
+// unified (bort time is not split per field).
+//
+// Map scale. The `mapScale` property (default 40) represents the
+// number of meters to fit into the smaller side of the map view.
+//
+// Auto-start shift. The `autoStartShift` flag (default true) controls
+// whether starting a routine block automatically starts the shift
+// for the associated field.
 //
 // nextMediaIndex() proxies InstallStore.nextMediaIndex() so that UI
 // does not depend on InstallStore directly.
-//
-// set vs setSilent. Both apply a setting and schedule a save. set
-// notifies listeners — use it when the UI should re-read the value
-// immediately. setSilent skips the notification — use it when the
-// change affects state read on the next frame anyway, or when the
-// caller orchestrates its own refresh.
-//
-// mutexRoutines. When true (the default), starting a routine block
-// pauses every other running block across the whole app — only one
-// block is active at a time. When false, blocks are independent and
-// may run concurrently.
-//
-// mutexSlots. When true (the default) and mutexRoutines is false,
-// starting a routine block pauses every other running block of the
-// SAME routine — only one slot per routine is active at a time,
-// while different routines may still run in parallel. Ignored when
-// mutexRoutines is true: the global pause already covers the same
-// routine.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -51,12 +44,10 @@ import 'theme_store.dart';
 
 // ─── TimeSeries ───
 // One class for any monthly totals (shift, bort, etc.). The
-// instances differ only in their file name; the shape and the
-// methods are identical, so the dialog and the compactor can treat
-// them alike.
+// instances differ only in their file name.
 class TimeSeries {
-  // {year: {month: {day: seconds}}}
-  final Map<int, Map<int, Map<int, int>>> _data = {};
+  // {fieldId: {year: {month: {day: seconds}}}}
+  final Map<int, Map<int, Map<int, Map<int, int>>>> _data = {};
   File? _file;
 
   Future<void> init(String fileName) async {
@@ -70,62 +61,74 @@ class TimeSeries {
     try {
       final raw = await _file!.readAsString();
       final data = jsonDecode(raw) as Map<String, dynamic>;
-      for (final yKey in data.keys) {
-        final y = int.tryParse(yKey);
-        if (y == null) continue;
-        final months = data[yKey];
-        if (months is! Map) continue;
-        for (final mKey in months.keys) {
-          final m = int.tryParse(mKey.toString());
-          if (m == null) continue;
-          final days = months[mKey];
-          if (days is! Map) continue;
-          final dayMap = <int, int>{};
-          for (final dKey in days.keys) {
-            final d = int.tryParse(dKey.toString());
-            if (d == null) continue;
-            final v = (days[dKey] as num?)?.toInt() ?? 0;
-            if (v > 0) dayMap[d] = v;
+      for (final fKey in data.keys) {
+        final fId = int.tryParse(fKey) ?? 0;
+        final years = data[fKey];
+        if (years is! Map) continue;
+        for (final yKey in years.keys) {
+          final y = int.tryParse(yKey.toString());
+          if (y == null) continue;
+          final months = years[yKey];
+          if (months is! Map) continue;
+          for (final mKey in months.keys) {
+            final m = int.tryParse(mKey.toString());
+            if (m == null) continue;
+            final days = months[mKey];
+            if (days is! Map) continue;
+            final dayMap = <int, int>{};
+            for (final dKey in days.keys) {
+              final d = int.tryParse(dKey.toString());
+              if (d == null) continue;
+              final v = (days[dKey] as num?)?.toInt() ?? 0;
+              if (v > 0) dayMap[d] = v;
+            }
+            if (dayMap.isEmpty) continue;
+            _data.putIfAbsent(fId, () => {}).putIfAbsent(y, () => {})[m] =
+                dayMap;
           }
-          if (dayMap.isEmpty) continue;
-          _data.putIfAbsent(y, () => {})[m] = dayMap;
         }
       }
     } catch (_) {}
   }
 
-  // Written atomically: a crash mid-write leaves either the old
-  // file or the new one whole, never a torn file. Shared with
-  // BortFile and the other caches via atomicWriteJson.
   Future<void> _save() async {
     final target = _file;
     if (target == null) return;
     final out = <String, dynamic>{};
-    for (final ye in _data.entries) {
-      final months = <String, dynamic>{};
-      for (final me in ye.value.entries) {
-        final days = <String, int>{};
-        for (final de in me.value.entries) {
-          if (de.value > 0) days[de.key.toString()] = de.value;
+    for (final fe in _data.entries) {
+      final fOut = <String, dynamic>{};
+      for (final ye in fe.value.entries) {
+        final months = <String, dynamic>{};
+        for (final me in ye.value.entries) {
+          final days = <String, int>{};
+          for (final de in me.value.entries) {
+            if (de.value > 0) days[de.key.toString()] = de.value;
+          }
+          if (days.isNotEmpty) months[me.key.toString()] = days;
         }
-        if (days.isNotEmpty) months[me.key.toString()] = days;
+        if (months.isNotEmpty) fOut[ye.key.toString()] = months;
       }
-      if (months.isNotEmpty) out[ye.key.toString()] = months;
+      if (fOut.isNotEmpty) out[fe.key.toString()] = fOut;
     }
     await atomicWriteJson(target, out);
   }
 
-  void addDay(int year, int month, int day, int seconds) {
+  void addDay(int fieldId, int year, int month, int day, int seconds) {
     if (seconds <= 0) return;
-    _data.putIfAbsent(year, () => {}).putIfAbsent(month, () => {})[day] =
+    _data
+            .putIfAbsent(fieldId, () => {})
+            .putIfAbsent(year, () => {})
+            .putIfAbsent(month, () => {})[day] =
         seconds;
     _save();
   }
 
-  MonthTotals? lastMonth() {
+  MonthTotals? lastMonth(int fieldId) {
+    final fData = _data[fieldId];
+    if (fData == null) return null;
     int? bestY;
     int? bestM;
-    for (final ye in _data.entries) {
+    for (final ye in fData.entries) {
       for (final me in ye.value.entries) {
         if (me.value.isEmpty) continue;
         if (bestY == null ||
@@ -137,7 +140,7 @@ class TimeSeries {
       }
     }
     if (bestY == null || bestM == null) return null;
-    final dayMap = _data[bestY]![bestM]!;
+    final dayMap = fData[bestY]![bestM]!;
     return MonthTotals(
       year: bestY,
       month: bestM,
@@ -145,13 +148,11 @@ class TimeSeries {
     );
   }
 
-  // Read the recorded totals for an arbitrary (year, month). Used by
-  // the history dialog when the user navigates to a month other
-  // than the most recent one. Returns an empty map when the month
-  // has no recorded days.
-  Map<int, int> daysFor(int year, int month) {
+  Map<int, int> daysFor(int fieldId, int year, int month) {
     final out = <int, int>{};
-    final months = _data[year];
+    final fData = _data[fieldId];
+    if (fData == null) return out;
+    final months = fData[year];
     if (months == null) return out;
     final days = months[month];
     if (days == null) return out;
@@ -161,8 +162,10 @@ class TimeSeries {
     return out;
   }
 
-  void pruneBefore(MonthTotals keep) {
-    _data.removeWhere((y, months) {
+  void pruneBefore(int fieldId, MonthTotals keep) {
+    final fData = _data[fieldId];
+    if (fData == null) return;
+    fData.removeWhere((y, months) {
       if (y < keep.year) return true;
       if (y > keep.year) return false;
       months.removeWhere((m, _) => m < keep.month);
@@ -184,6 +187,28 @@ class MonthTotals {
   MonthTotals({required this.year, required this.month, required this.days});
 }
 
+// ─── FieldShiftState ───
+class FieldShiftState {
+  bool onShift = false;
+  int totalShiftSeconds = 0;
+  int? shiftStartedAt;
+  bool shiftEdited = false;
+
+  Map<String, dynamic> toJson() => {
+    'on_shift': onShift,
+    'total_shift_seconds': totalShiftSeconds,
+    'shift_started_at': shiftStartedAt,
+    'shift_edited': shiftEdited,
+  };
+
+  void loadJson(Map<String, dynamic> j) {
+    onShift = j['on_shift'] as bool? ?? false;
+    totalShiftSeconds = (j['total_shift_seconds'] as num?)?.toInt() ?? 0;
+    shiftStartedAt = (j['shift_started_at'] as num?)?.toInt();
+    shiftEdited = j['shift_edited'] as bool? ?? false;
+  }
+}
+
 // ─── OperationalLayer ───
 class OperationalLayer extends ChangeNotifier {
   final ThemeStore _themes = ThemeStore();
@@ -192,9 +217,11 @@ class OperationalLayer extends ChangeNotifier {
   final InstallStore _install = InstallStore();
   final BortFile _file = BortFile();
 
-  // Registry of registered time series (shift, bort). New kinds are
-  // added by initializing a new TimeSeries under a new key.
+  // Registry of registered time series (shift, bort).
   final Map<String, TimeSeries> series = {};
+
+  // State of shifts per field (root node ID).
+  final Map<int, FieldShiftState> shifts = {};
 
   Color get bg => _themes.bg;
   Color get bgsignal => _themes.bgsignal;
@@ -231,14 +258,13 @@ class OperationalLayer extends ChangeNotifier {
   bool blockInterface = false;
   bool blockData = false;
 
-  // When true, starting a routine block pauses every other running
-  // block across the app. When false, blocks run independently.
-  bool mutexRoutines = true;
+  // Map scale (meters per smaller side)
+  int mapScale = 40;
 
-  // When true (and mutexRoutines is false), starting a routine
-  // block pauses every other running block of the SAME routine.
-  // Ignored when mutexRoutines is true: the global pause already
-  // covers the same routine.
+  // Auto-start shift when starting a routine
+  bool autoStartShift = true;
+
+  bool mutexRoutines = true;
   bool mutexSlots = true;
 
   bool showFieldTab = false;
@@ -265,21 +291,23 @@ class OperationalLayer extends ChangeNotifier {
   double kRadius = 0.3;
   double kStroke = 0.015;
 
-  bool onShift = false;
-  int totalShiftSeconds = 0;
-  int? shiftStartedAt;
-  bool shiftEdited = false;
-
   int _lastMidnightCheck = 0;
 
   OperationalLayer();
+
+  FieldShiftState shiftFor(int fieldId) =>
+      shifts.putIfAbsent(fieldId, () => FieldShiftState());
+
+  bool onShift(int fieldId) => shiftFor(fieldId).onShift;
+  int totalShiftSeconds(int fieldId) => shiftFor(fieldId).totalShiftSeconds;
+  int? shiftStartedAt(int fieldId) => shiftFor(fieldId).shiftStartedAt;
+  bool shiftEdited(int fieldId) => shiftFor(fieldId).shiftEdited;
 
   Future<void> init(Brightness system) async {
     _themes.setSystemBrightness(system);
     await _file.init();
     await _install.init();
 
-    // Register the time series.
     series['shift'] = TimeSeries();
     await series['shift']!.init('shift_history.json');
     series['bort'] = TimeSeries();
@@ -293,13 +321,19 @@ class OperationalLayer extends ChangeNotifier {
     final oldPrev = _bortTime.prevMidnight;
     final newMid = _bortTime.checkMidnight();
     if (newMid > 0) {
-      _recordShiftDay(newMid, oldPrev);
-      _recordBortDay(newMid, oldPrev);
-      totalShiftSeconds = 0;
-      if (onShift && shiftStartedAt != null && shiftStartedAt! < newMid) {
-        shiftStartedAt = newMid;
+      for (final fId in shifts.keys) {
+        _recordShiftDay(fId, newMid, oldPrev);
       }
-      shiftEdited = false;
+      _recordBortDay(newMid, oldPrev);
+      for (final s in shifts.values) {
+        s.totalShiftSeconds = 0;
+        if (s.onShift &&
+            s.shiftStartedAt != null &&
+            s.shiftStartedAt! < newMid) {
+          s.shiftStartedAt = newMid;
+        }
+        s.shiftEdited = false;
+      }
     }
     await _saveToFile();
     notifyListeners();
@@ -312,44 +346,41 @@ class OperationalLayer extends ChangeNotifier {
   }
 
   // ─── Shift day recording ───
-  void _recordShiftDay(int curMid, int oldPrev) {
+  void _recordShiftDay(int fieldId, int curMid, int oldPrev) {
+    final s = shiftFor(fieldId);
     final prevDayStart = curMid - 86400;
     int running = 0;
-    if (onShift && shiftStartedAt != null) {
-      final start = shiftStartedAt! > prevDayStart
-          ? shiftStartedAt!
+    if (s.onShift && s.shiftStartedAt != null) {
+      final start = s.shiftStartedAt! > prevDayStart
+          ? s.shiftStartedAt!
           : prevDayStart;
       if (start < curMid) running = curMid - start;
     }
     final skipped = oldPrev > 0 && curMid - oldPrev > 86400;
     if (!skipped) {
-      running += totalShiftSeconds;
+      running += s.totalShiftSeconds;
       if (running > 86400) running = 86400;
       if (running > 0) {
         final dt = DateTime.fromMillisecondsSinceEpoch(prevDayStart * 1000);
-        shiftHistory.addDay(dt.year, dt.month, dt.day, running);
+        shiftHistory.addDay(fieldId, dt.year, dt.month, dt.day, running);
       }
     } else {
-      if (totalShiftSeconds > 0 && oldPrev > 0) {
-        final capped = totalShiftSeconds > 86400 ? 86400 : totalShiftSeconds;
+      if (s.totalShiftSeconds > 0 && oldPrev > 0) {
+        final capped = s.totalShiftSeconds > 86400
+            ? 86400
+            : s.totalShiftSeconds;
         final dt = DateTime.fromMillisecondsSinceEpoch(oldPrev * 1000);
-        shiftHistory.addDay(dt.year, dt.month, dt.day, capped);
+        shiftHistory.addDay(fieldId, dt.year, dt.month, dt.day, capped);
       }
       if (running > 0) {
         final capped = running > 86400 ? 86400 : running;
         final dt = DateTime.fromMillisecondsSinceEpoch(prevDayStart * 1000);
-        shiftHistory.addDay(dt.year, dt.month, dt.day, capped);
+        shiftHistory.addDay(fieldId, dt.year, dt.month, dt.day, capped);
       }
     }
   }
 
   // ─── Bort day recording ───
-  // BortTime.checkMidnight moves the just-ended day's accumulated
-  // bortTime into `yesterday` and resets the counter. That
-  // `yesterday` is the total to record; the day it belongs to is
-  // prevDayStart, unless a gap of more than a day has passed, in
-  // which case it is attributed to the last known midnight's day
-  // (same policy as the shift).
   void _recordBortDay(int curMid, int oldPrev) {
     final yesterday = _bortTime.yesterday;
     if (yesterday <= 0) return;
@@ -357,7 +388,7 @@ class OperationalLayer extends ChangeNotifier {
     final skipped = oldPrev > 0 && curMid - oldPrev > 86400;
     final at = skipped && oldPrev > 0 ? oldPrev : (curMid - 86400);
     final dt = DateTime.fromMillisecondsSinceEpoch(at * 1000);
-    bortHistory.addDay(dt.year, dt.month, dt.day, capped);
+    bortHistory.addDay(0, dt.year, dt.month, dt.day, capped);
   }
 
   Future<void> _loadDefaults() async {
@@ -384,6 +415,9 @@ class OperationalLayer extends ChangeNotifier {
       selectedFlags =
           (data['selected_flags'] as num?)?.toInt() ?? selectedFlags;
       _bortTime.midnight = data['midnight'] as String? ?? _bortTime.midnight;
+
+      mapScale = (data['map_scale'] as num?)?.toInt() ?? mapScale;
+      autoStartShift = data['auto_start_shift'] as bool? ?? autoStartShift;
 
       final ds = data['default_slots'];
       if (ds is List) {
@@ -431,17 +465,29 @@ class OperationalLayer extends ChangeNotifier {
     _bortTime.loadJson(data);
     _draftsStore.loadJson(data);
 
+    mapScale = (data['map_scale'] as num?)?.toInt() ?? mapScale;
+    autoStartShift = data['auto_start_shift'] as bool? ?? autoStartShift;
+
+    final sData = data['shifts'];
+    if (sData is Map) {
+      shifts.clear();
+      for (final k in sData.keys) {
+        final fId = int.tryParse(k.toString());
+        if (fId == null) continue;
+        final v = sData[k];
+        if (v is Map) {
+          final state = FieldShiftState();
+          state.loadJson(Map<String, dynamic>.from(v));
+          shifts[fId] = state;
+        }
+      }
+    }
+
     final ds = data['default_slots'];
     if (ds is List) {
       defaultSlots = ds.map((e) => e.toString()).toSet();
     }
 
-    onShift = data['on_shift'] as bool? ?? onShift;
-    totalShiftSeconds =
-        (data['total_shift_seconds'] as num?)?.toInt() ?? totalShiftSeconds;
-    shiftStartedAt =
-        (data['shift_started_at'] as num?)?.toInt() ?? shiftStartedAt;
-    shiftEdited = data['shift_edited'] as bool? ?? shiftEdited;
     lastExportId = (data['last_export_id'] as num?)?.toInt() ?? lastExportId;
     lastRereadId = (data['last_reread_id'] as num?)?.toInt() ?? lastRereadId;
 
@@ -497,11 +543,6 @@ class OperationalLayer extends ChangeNotifier {
   String oppositeThemeName() => _themes.oppositeName();
   Map<String, Color>? colorsForOpposite() => _themes.colorsForOpposite();
 
-  // ─── Running palette ───
-  // Colors for a routine block or plate that is currently running:
-  // the opposite theme's roles, so the running item inverts against
-  // its neighbours, with a defensive fallback to the
-  // fgsignal/bg pair.
   ({Color bg, Color mid, Color fg, Color fgsignal}) runningColors() {
     final opp = colorsForOpposite();
     if (opp != null) {
@@ -515,9 +556,6 @@ class OperationalLayer extends ChangeNotifier {
     return (bg: fgsignal, mid: mid, fg: bg, fgsignal: bg);
   }
 
-  // ─── Block collapse ───
-  // Default expanded: note, work. Default collapsed: prep, transit,
-  // idle, closeout, summary. The set holds the COLLAPSED kinds.
   bool isBlockCollapsed(int routineId, String kind) {
     final set = collapsedBlocks[routineId];
     if (set == null) {
@@ -607,22 +645,29 @@ class OperationalLayer extends ChangeNotifier {
       final oldPrev = _bortTime.prevMidnight;
       final newMid = _bortTime.checkMidnight();
       if (newMid > 0) {
-        _recordShiftDay(newMid, oldPrev);
-        _recordBortDay(newMid, oldPrev);
-        totalShiftSeconds = 0;
-        if (onShift && shiftStartedAt != null && shiftStartedAt! < newMid) {
-          shiftStartedAt = newMid;
+        for (final fId in shifts.keys) {
+          _recordShiftDay(fId, newMid, oldPrev);
         }
-        shiftEdited = false;
+        _recordBortDay(newMid, oldPrev);
+        for (final s in shifts.values) {
+          s.totalShiftSeconds = 0;
+          if (s.onShift &&
+              s.shiftStartedAt != null &&
+              s.shiftStartedAt! < newMid) {
+            s.shiftStartedAt = newMid;
+          }
+          s.shiftEdited = false;
+        }
         notifyListeners();
       }
     }
   }
 
-  void setShiftTime(int seconds) {
-    totalShiftSeconds = seconds;
-    shiftStartedAt = null;
-    shiftEdited = seconds > 0;
+  void setShiftTime(int fieldId, int seconds) {
+    final s = shiftFor(fieldId);
+    s.totalShiftSeconds = seconds;
+    s.shiftStartedAt = null;
+    s.shiftEdited = seconds > 0;
     _scheduleSave();
     notifyListeners();
   }
@@ -631,15 +676,13 @@ class OperationalLayer extends ChangeNotifier {
     await _file.delete();
     _themes.themes = {};
     _themes.themeName = 'system';
-    // Shift state is deliberately kept: a cache reset must not stop
-    // the running shift. The shift is not replayed from the journal
-    // (there is no layer for the actor kind), so wiping it here would
-    // make it impossible to restore. Routines are restored by
-    // journal.reread() on the caller's side.
     _draftsStore.reset();
     _bortTime.reset();
     shiftHistory.reset();
     bortHistory.reset();
+    shifts.clear();
+    mapScale = 40;
+    autoStartShift = true;
     collapsedBlocks = {};
     exportCounters = {};
     defaultSlots = {'work'};
@@ -659,17 +702,12 @@ class OperationalLayer extends ChangeNotifier {
     await _file.writeNow(_buildFileMap);
   }
 
-  // ─── Setters ───
-  // set — apply, schedule a save, notify listeners.
   void set(String key, String value) {
     _apply(key, value);
     _scheduleSave();
     notifyListeners();
   }
 
-  // setSilent — same, but no notifyListeners. Used when the caller
-  // orchestrates its own refresh, or when the value is read on the
-  // next frame anyway.
   void setSilent(String key, String value) {
     _apply(key, value);
     _scheduleSave();
@@ -704,34 +742,37 @@ class OperationalLayer extends ChangeNotifier {
       DraftsStore.traceKey(objectId, slot);
 
   // ─── Shift ───
-  void startShift() {
-    if (onShift) return;
+  void startShift(int fieldId) {
+    final s = shiftFor(fieldId);
+    if (s.onShift) return;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    onShift = true;
-    shiftStartedAt = now;
-    shiftEdited = false;
+    s.onShift = true;
+    s.shiftStartedAt = now;
+    s.shiftEdited = false;
     _scheduleSave();
     notifyListeners();
   }
 
-  void stopShift() {
-    if (!onShift) return;
+  void stopShift(int fieldId) {
+    final s = shiftFor(fieldId);
+    if (!s.onShift) return;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    if (shiftStartedAt != null) {
-      totalShiftSeconds += now - shiftStartedAt!;
+    if (s.shiftStartedAt != null) {
+      s.totalShiftSeconds += now - s.shiftStartedAt!;
     }
-    onShift = false;
-    shiftStartedAt = null;
+    s.onShift = false;
+    s.shiftStartedAt = null;
     _scheduleSave();
     notifyListeners();
   }
 
-  int get shiftSecondsNow {
-    final base = totalShiftSeconds;
-    if (shiftStartedAt == null) return base;
+  int shiftSecondsNow(int fieldId) {
+    final s = shiftFor(fieldId);
+    final base = s.totalShiftSeconds;
+    if (s.shiftStartedAt == null) return base;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final dayStart = _bortTime.lastMidnightBefore(DateTime.now());
-    final start = shiftStartedAt! > dayStart ? shiftStartedAt! : dayStart;
+    final start = s.shiftStartedAt! > dayStart ? s.shiftStartedAt! : dayStart;
     if (start >= now) return base;
     return base + (now - start);
   }
@@ -788,6 +829,12 @@ class OperationalLayer extends ChangeNotifier {
         break;
       case 'midnight':
         _bortTime.midnight = value;
+        break;
+      case 'map_scale':
+        mapScale = int.tryParse(value) ?? mapScale;
+        break;
+      case 'auto_start_shift':
+        autoStartShift = _parseBool(value) ?? autoStartShift;
         break;
       case 'k_pult':
         kPult = double.tryParse(value) ?? kPult;
@@ -846,6 +893,10 @@ class OperationalLayer extends ChangeNotifier {
     for (final d in exportCounters.entries) {
       ecOut[d.key] = Map<String, int>.from(d.value);
     }
+    final sOut = <String, dynamic>{};
+    for (final e in shifts.entries) {
+      sOut[e.key.toString()] = e.value.toJson();
+    }
     return <String, dynamic>{
       'themes': _themes.toJson(),
       'theme': _themes.themeName,
@@ -864,11 +915,9 @@ class OperationalLayer extends ChangeNotifier {
       'selected_type': selectedType,
       'selected_flags': selectedFlags,
       'midnight': _bortTime.midnight,
+      'map_scale': mapScale,
+      'auto_start_shift': autoStartShift,
       'default_slots': defaultSlots.toList(),
-      'on_shift': onShift,
-      'total_shift_seconds': totalShiftSeconds,
-      'shift_started_at': shiftStartedAt,
-      'shift_edited': shiftEdited,
       'last_export_id': lastExportId,
       'last_reread_id': lastRereadId,
       'k_pult': kPult,
@@ -883,6 +932,7 @@ class OperationalLayer extends ChangeNotifier {
       'k_stroke': kStroke,
       'collapsed_blocks': cbOut,
       'export_counters': ecOut,
+      'shifts': sOut,
       ..._bortTime.toJson(),
       ..._draftsStore.toJson(),
     };
@@ -913,6 +963,8 @@ class OperationalLayer extends ChangeNotifier {
     out['show_field_tab'] = showFieldTab.toString();
     out['show_artel_tab'] = showArtelTab.toString();
     out['midnight'] = _bortTime.midnight;
+    out['map_scale'] = mapScale.toString();
+    out['auto_start_shift'] = autoStartShift.toString();
     out['k_pult'] = kPult.toStringAsFixed(4);
     out['k_pult_small'] = kPultSmall.toStringAsFixed(4);
     out['k_block_gap'] = kBlockGap.toStringAsFixed(4);
@@ -933,6 +985,8 @@ class OperationalLayer extends ChangeNotifier {
     'labels_buttons': 'bool',
     'mutex_routines': 'bool',
     'midnight': 'string',
+    'map_scale': 'string',
+    'auto_start_shift': 'bool',
     'k_pult': 'string',
     'k_pult_small': 'string',
     'k_block_gap': 'string',

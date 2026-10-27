@@ -2,31 +2,28 @@
 // app_scope.dart — application context and point scopes.
 //
 // AppContext — an immutable set of dependencies and delegates. Lives
-// as long as the app; recreated on language change (and even then,
-// within a single frame).
+// as long as the app; recreated on language change.
 //
 // AppScope (InheritedWidget) provides AppContext. Notifies only when
-// the context itself changes, not when layers change: UI updates go
-// through point scopes (see below).
+// the context itself changes.
 //
 // Point scopes:
 //   BortScope    — OperationalLayer: theme, shift, bort time.
 //   RoutineScope — RoutineLayer: cards, lists, days.
 //   TraceScope   — TraceLayer: trace fields, checklists, media.
-//   FieldScope   — FieldLayer: tree of field nodes.
+//   FieldScope   — FieldLayer: tree of field nodes, active field.
 //   TickerScope  — AppTicker: timers and colon blink.
 //   I18nScope    — dictionary: interface strings.
 //
-// Each scope is an InheritedNotifier (I18n is InheritedWidget).
-// A widget reading a layer depends on the corresponding scope and
-// rebuilds only when it changes.
+// Field awareness. Shift and block toggles now require a fieldId
+// (the root node of the field they belong to). The AppContext
+// methods accept this ID to correctly route the shift start/stop
+// and log it to the journal.
 //
-// toggleBlockWithShift and toggleShift — delegates of AppContext:
-// connection of shift and routines through the journal (actor kind).
-//
-// pulseBort — notify the bort of a user action.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
+import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../data/field_layer.dart';
@@ -64,7 +61,11 @@ class AppContext {
   });
 
   // ─── Start a routine block with shift logic ───
-  Future<void> toggleBlockWithShift(int routineId, String kind) async {
+  Future<void> toggleBlockWithShift(
+    int fieldId,
+    int routineId,
+    String kind,
+  ) async {
     final r = routineLayer.findRoutine(routineId);
     if (r == null) return;
     final b = r.blockOf(kind);
@@ -72,17 +73,16 @@ class AppContext {
 
     final going = !b.isRunning;
 
-    if (going && !bort.onShift) {
+    // Auto-start shift only if enabled and not already running for
+    // this specific field.
+    if (going && bort.autoStartShift && !bort.onShift(fieldId)) {
       await journal.log(
         type: JournalType.actor,
-        body: '{"action":"shift_start"}',
+        body: jsonEncode({'action': 'shift_start', 'field_id': fieldId}),
       );
-      bort.startShift();
+      bort.startShift(fieldId);
     }
 
-    // The mutex flag lives in the operational layer; the routine
-    // layer merely obeys. When mutex is off, other blocks keep
-    // running.
     await routineLayer.toggleBlock(
       journal,
       routineId,
@@ -93,23 +93,25 @@ class AppContext {
   }
 
   // ─── Shift ───
-  Future<void> toggleShift() async {
-    final going = !bort.onShift;
+  Future<void> toggleShift(int fieldId) async {
+    final going = !bort.onShift(fieldId);
     await journal.log(
       type: JournalType.actor,
-      body: '{"action":"${going ? 'shift_start' : 'shift_stop'}"}',
+      body: jsonEncode({
+        'action': going ? 'shift_start' : 'shift_stop',
+        'field_id': fieldId,
+      }),
     );
     if (going) {
-      bort.startShift();
+      bort.startShift(fieldId);
       return;
     }
-    bort.stopShift();
-    // Walk every routine, not only the current one: with routine
-    // mutex off, several blocks may be running at once, and all of
-    // them must stop when the shift stops. The routine layer is the
-    // single source of truth for which blocks are running; the bort
-    // keeps no parallel list.
+    bort.stopShift(fieldId);
+
+    // Walk every routine, but only pause those attached to the
+    // field whose shift is stopping.
     for (final r in routineLayer.routines) {
+      if (!r.fieldParents.contains(fieldId)) continue;
       for (final b in r.blocks) {
         if (b.isRunning) {
           await routineLayer.pauseBlock(journal, r.id, b.kind);
@@ -125,8 +127,6 @@ class AppContext {
 }
 
 // ─── AppScope: permanent context ───
-// Notifies only when AppContext itself changes (by fields). Layer
-// changes do not reach here: UI updates go through point scopes.
 class AppScope extends InheritedWidget {
   final AppContext appContext;
 
@@ -140,8 +140,6 @@ class AppScope extends InheritedWidget {
 
   @override
   bool updateShouldNotify(covariant AppScope old) {
-    // Method tear-offs in Dart are stable: reference comparison is
-    // correct even for delegates (refresh, reloadI18n, openRoutine).
     return old.appContext.bort != appContext.bort ||
         old.appContext.routineLayer != appContext.routineLayer ||
         old.appContext.traceLayer != appContext.traceLayer ||
@@ -156,7 +154,6 @@ class AppScope extends InheritedWidget {
 }
 
 // ─── BortScope ───
-// Subscribers: theme, shift, bort time, block collapses.
 class BortScope extends InheritedNotifier<OperationalLayer> {
   const BortScope({
     super.key,
@@ -172,7 +169,6 @@ class BortScope extends InheritedNotifier<OperationalLayer> {
 }
 
 // ─── RoutineScope ───
-// Subscribers: RoutineCard, RoutinePlate, RoutinesTab, DaysTab.
 class RoutineScope extends InheritedNotifier<RoutineLayer> {
   const RoutineScope({
     super.key,
@@ -188,8 +184,6 @@ class RoutineScope extends InheritedNotifier<RoutineLayer> {
 }
 
 // ─── TraceScope ───
-// Subscribers: TraceField, ChecklistScreen, RoutineCard (via _hasTrace),
-// MediaViewer (on deletion).
 class TraceScope extends InheritedNotifier<TraceLayer> {
   const TraceScope({
     super.key,
@@ -205,7 +199,8 @@ class TraceScope extends InheritedNotifier<TraceLayer> {
 }
 
 // ─── FieldScope ───
-// Subscribers: FieldTab, RoutineCard (on field attach/detach).
+// Subscribers: FieldTab, RoutineCard (on field attach/detach),
+// and anything tracking the active field.
 class FieldScope extends InheritedNotifier<FieldLayer> {
   const FieldScope({
     super.key,
@@ -221,7 +216,6 @@ class FieldScope extends InheritedNotifier<FieldLayer> {
 }
 
 // ─── TickerScope ───
-// Subscribers: Pulse, TimerText, RoutineCard, RoutinesTab, ShiftRow.
 class TickerScope extends InheritedNotifier<AppTicker> {
   const TickerScope({
     super.key,
@@ -237,8 +231,6 @@ class TickerScope extends InheritedNotifier<AppTicker> {
 }
 
 // ─── I18nScope ───
-// Subscribers: everything that prints strings. I18n changes rarely —
-// on language switch; this rare event rebuilds subscribers.
 class I18nScope extends InheritedWidget {
   final I18n i18n;
 

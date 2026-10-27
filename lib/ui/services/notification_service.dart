@@ -1,22 +1,24 @@
 // ═══════════════════════════════════════════════════════════════════
 // notification_service.dart — ongoing notifications.
 //
-// Shows ongoing, non-dismissible notifications when a routine or
-// shift is started. Updates them periodically (once per minute, or
-// per second in the first minute) and removes them when the work
-// stops.
+// Shows ongoing notifications when a routine or shift is started.
+// Uses the system's Chronometer (usesChronometer: true) to keep
+// the elapsed time ticking even when the app is in the background
+// or killed, saving battery.
 //
-// Background actions. The "stop" button in the notification invokes
-// a background isolate. Since accessing the database from a
-// background isolate can cause lock contention and requires
-// bootstrapping Drift, the background handler simply writes a
-// pending action flag to a file. The main application reads this
-// file on resume and applies the corresponding stop action.
+// Payload. Each notification carries a payload ('routine_<id>' or
+// 'shift_<fieldId>') used by the app to route the tap to the
+// correct screen. When the body is tapped, payloadNotifier is
+// triggered for main.dart to listen.
+//
+// Background actions. The "stop" button writes the action to a file
+// (pending_action.json). The main application reads this file on
+// resume and applies the stop.
 //
 // iOS limitation. Live Activities (the only way to have
 // non-dismissible, constantly updating notifications on iOS)
 // require native Swift code. On iOS, this falls back to standard
-// notifications, which the user can dismiss.
+// notifications.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -33,11 +35,13 @@ class NotificationService {
   static final _plugin = FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
 
+  // Used to route taps on the body of the notification to the app.
+  static final ValueNotifier<String?> payloadNotifier = ValueNotifier(null);
+
   static const String _channelId = 'polyrutina_ongoing';
   static const String _channelName = 'Ongoing Work';
   static const String _channelDesc = 'Shows running routines and shifts';
 
-  // Fixed IDs for the two possible ongoing notifications.
   static const int _routineId = 1001;
   static const int _shiftId = 1002;
 
@@ -64,7 +68,6 @@ class NotificationService {
       onDidReceiveBackgroundNotificationResponse: _onBackgroundResponse,
     );
 
-    // Request permissions for Android 13+
     if (defaultTargetPlatform == TargetPlatform.android) {
       await _plugin
           .resolvePlatformSpecificImplementation<
@@ -78,20 +81,19 @@ class NotificationService {
 
   // ─── Show routine notification ───
   static Future<void> showRoutine({
-    required String routineName,
+    required int routineId,
+    required String title,
     required String blockTitle,
     required int elapsedSec,
     required int totalSec,
     required String lang,
+    required String labelRunning,
+    required String labelTotal,
   }) async {
     if (!_initialized) await init();
 
-    final String title = routineName.isEmpty ? '—' : routineName;
-    final String blockStr = blockTitle;
-    final String elapsedStr = _fmt(elapsedSec);
-    final String totalStr = _fmt(totalSec);
-
-    final body = '$blockStr · $elapsedStr\nИтого: $totalStr';
+    final body = '$blockTitle $labelRunning\n$labelTotal: ${_fmt(totalSec)}';
+    final when = DateTime.now().millisecondsSinceEpoch - (elapsedSec * 1000);
 
     final androidDetails = AndroidNotificationDetails(
       _channelId,
@@ -101,7 +103,10 @@ class NotificationService {
       priority: Priority.low,
       ongoing: true,
       autoCancel: false,
-      showWhen: false,
+      showWhen: true,
+      when: when,
+      usesChronometer: true,
+      chronometerCountDown: false,
       onlyAlertOnce: true,
       actions: [
         AndroidNotificationAction(
@@ -124,22 +129,28 @@ class NotificationService {
       iOS: iosDetails,
     );
 
-    await _plugin.show(_routineId, title, body, details);
+    await _plugin.show(
+      _routineId,
+      title,
+      body,
+      details,
+      payload: 'routine_$routineId',
+    );
   }
 
   // ─── Show shift notification ───
   static Future<void> showShift({
-    required int sinceLastSec,
+    required int fieldId,
+    required String title,
+    required int elapsedSec,
     required int totalSec,
     required String lang,
+    required String labelTotal,
   }) async {
     if (!_initialized) await init();
 
-    final String title = lang == 'ru' ? 'Смена' : 'Shift';
-    final String sinceStr = _fmt(sinceLastSec);
-    final String totalStr = _fmt(totalSec);
-
-    final body = 'С последнего: $sinceStr\nВсего: $totalStr';
+    final body = '$labelTotal: ${_fmt(totalSec)}';
+    final when = DateTime.now().millisecondsSinceEpoch - (elapsedSec * 1000);
 
     final androidDetails = AndroidNotificationDetails(
       _channelId,
@@ -149,7 +160,10 @@ class NotificationService {
       priority: Priority.low,
       ongoing: true,
       autoCancel: false,
-      showWhen: false,
+      showWhen: true,
+      when: when,
+      usesChronometer: true,
+      chronometerCountDown: false,
       onlyAlertOnce: true,
       actions: [
         AndroidNotificationAction(
@@ -172,10 +186,15 @@ class NotificationService {
       iOS: iosDetails,
     );
 
-    await _plugin.show(_shiftId, title, body, details);
+    await _plugin.show(
+      _shiftId,
+      title,
+      body,
+      details,
+      payload: 'shift_$fieldId',
+    );
   }
 
-  // ─── Cancel notifications ───
   static Future<void> cancelRoutine() async {
     if (!_initialized) await init();
     await _plugin.cancel(_routineId);
@@ -191,7 +210,6 @@ class NotificationService {
     await _plugin.cancelAll();
   }
 
-  // ─── Helper: format time ───
   static String _fmt(int sec) {
     if (sec < 0) sec = 0;
     final d = sec ~/ 86400;
@@ -206,32 +224,28 @@ class NotificationService {
 
   // ─── Action handlers ───
   static void _onNotificationResponse(NotificationResponse response) {
-    // The app is in the foreground and the user tapped an action.
-    // We can handle it directly here if we had access to the layers,
-    // but since NotificationService is a static utility without
-    // references to AppContext, we route this through the same file
-    // mechanism as the background response, or rely on the app
-    // resuming. For simplicity, the payload is ignored and the app
-    // handles the resume.
+    // If the body is tapped (no actionId), notify the app to route.
+    if (response.actionId == null && response.payload != null) {
+      payloadNotifier.value = response.payload;
+    }
   }
 
   @pragma('vm:entry-point')
   static void _onBackgroundResponse(NotificationResponse response) async {
     final actionId = response.actionId;
-    if (actionId == null) return;
+    final payload = response.payload;
+    if (actionId == null || payload == null) return;
 
-    // Write the pending action to a file. The main app will read it
-    // upon resuming and perform the corresponding stop action.
     try {
       final dir = await getApplicationDocumentsDirectory();
       final file = File(p.join(dir.path, 'pending_action.json'));
-      await file.writeAsString(jsonEncode({'action': actionId}));
+      await file.writeAsString(
+        jsonEncode({'action': actionId, 'payload': payload}),
+      );
     } catch (_) {}
   }
 
-  // ─── Read pending action on resume ───
-  // Called from main.dart when the app resumes.
-  static Future<String?> consumePendingAction() async {
+  static Future<Map<String, String>?> consumePendingAction() async {
     try {
       final dir = await getApplicationDocumentsDirectory();
       final file = File(p.join(dir.path, 'pending_action.json'));
@@ -239,7 +253,10 @@ class NotificationService {
       final raw = await file.readAsString();
       await file.delete();
       final data = jsonDecode(raw) as Map<String, dynamic>;
-      return data['action'] as String?;
+      return {
+        'action': data['action'] as String? ?? '',
+        'payload': data['payload'] as String? ?? '',
+      };
     } catch (_) {
       return null;
     }

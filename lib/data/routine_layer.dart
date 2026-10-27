@@ -24,32 +24,12 @@
 // lastPulseAt. Advanced on block start and stop. Other actions
 // (rename, flag change, plan edit) leave it alone.
 //
-// Scheduled date and planned man-hours. Edited in the card; stored
-// as Unix seconds and seconds respectively.
+// lastBlockKind. Saved on block start. Used by the list to resume
+// the most recently worked-on slot.
 //
-// Duplication. Copied: name, flags, scheduled date, planned
-// man-hours, traces of the note, prep, closeout blocks (text and
-// checklist), and fieldParents. Transit, work, and idle traces are
-// not carried over. The copy's sourceKey is empty (it is not an
-// import).
-//
-// startBlock. Pause strategy, in priority order:
-//   mutex      — pause every running block in EVERY routine;
-//   mutexSlots — pause every other running block of THIS routine;
-//   neither    — nothing is paused.
-// mutex implies mutexSlots: the global pause already covers the
-// same routine. The two flags come from the operational layer and
-// are passed through AppContext; the routine layer merely obeys.
-//
-// sourceKey. createRoutine accepts an optional sourceKey; when
-// non-empty it is written into the create entry body (so a reread
-// restores it) and into the in-memory routine. findRoutineBySourceKey
-// lets the importer skip routines already present — re-importing
-// the same archive is idempotent.
-//
-// fieldParents. Routines are attached to the field graph via
-// fieldParents. The migration method _migrateFieldParents()
-// attaches legacy routines (with empty fieldParents) to the root node.
+// Field attachment. createRoutine accepts optional fieldParents.
+// If none are provided, the routine is automatically attached to
+// the currently active field (or the root if no field is active).
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -140,11 +120,6 @@ class RoutineLayer extends ChangeNotifier {
     try {
       final raw = await _file!.readAsString();
       final data = jsonDecode(raw) as Map<String, dynamic>;
-      // Lenient reload: a single damaged record is skipped, the rest
-      // load as usual. Routine.fromJson throws FormatException when
-      // the mandatory fields (id, created_at) are missing, and any
-      // other unexpected shape is caught here as well. Without this
-      // guard, one bad entry would wipe the whole cache.
       final r = data['routines'];
       if (r is List) {
         final loaded = <Routine>[];
@@ -230,8 +205,6 @@ class RoutineLayer extends ChangeNotifier {
           final bodyId = (data['routine'] as num?)?.toInt();
           final id = bodyId ?? e.id;
           final sourceKey = data['source_key'] as String? ?? '';
-          // Historical creation moment from the body; e.time is
-          // the current fallback for routines created natively.
           final createdAt = (data['created_at'] as num?)?.toInt();
           final fieldParents =
               (data['field_parents'] as List?)
@@ -324,6 +297,7 @@ class RoutineLayer extends ChangeNotifier {
             r.blockOf(kind)?.start(at: at);
             r.lastActionAt = at;
             r.lastPulseAt = at;
+            r.lastBlockKind = kind;
             r.completed = false;
             r.completedAt = null;
             currentRoutineId = id;
@@ -439,10 +413,16 @@ class RoutineLayer extends ChangeNotifier {
     List<int>? fieldParents,
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final parentList = fieldParents ?? [];
-    // created_at is written into the create entry body so that a
-    // reread restores the historical creation moment (the entry's
-    // own time is always «now» — journal.log stamps it that way).
+
+    // Auto-attach to active field or root if no parents provided.
+    List<int> parentList = fieldParents ?? [];
+    if (parentList.isEmpty) {
+      final active = _field?.activeFieldId;
+      final root = _field?.rootId;
+      final target = active ?? root;
+      if (target != null) parentList = [target];
+    }
+
     final bodyMap = <String, dynamic>{
       'action': 'create',
       'field_parents': parentList,
@@ -469,15 +449,6 @@ class RoutineLayer extends ChangeNotifier {
   }
 
   // ─── Snapshot ───
-  // Writes the routine's full in-memory state as one «snapshot»
-  // entry. The _applyEntry handler replaces the routine in place on
-  // reread, so every field — including those without dedicated
-  // setters (lastPulseAt, completedAt) — is restored as-is. Used by
-  // the importer after the per-field setters have been applied: it
-  // is cheaper to patch the remaining historical timestamps in the
-  // in-memory routine and snapshot once than to add a setter for
-  // each. Mirrors the same «snapshot» mechanism used by
-  // duplicateRoutine.
   Future<void> writeSnapshot(JournalLayer journal, Routine r) async {
     await journal.log(
       type: JournalType.routine,
@@ -652,9 +623,6 @@ class RoutineLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // toggleBlock. Starting obeys the two flags: mutex (global pause)
-  // and mutexSlots (same-routine pause). Pausing never mutexes —
-  // a running block stops on its own.
   Future<void> toggleBlock(
     JournalLayer journal,
     int routineId,
@@ -679,13 +647,6 @@ class RoutineLayer extends ChangeNotifier {
     }
   }
 
-  // ─── Block start ───
-  // Pause strategy, in priority order:
-  //   mutex      — pause every running block in EVERY routine;
-  //   mutexSlots — pause every other running block of THIS routine;
-  //   neither    — nothing is paused.
-  // mutex implies mutexSlots: the global pause already covers the
-  // same routine.
   Future<void> startBlock(
     JournalLayer journal,
     int routineId,
@@ -739,6 +700,7 @@ class RoutineLayer extends ChangeNotifier {
       }
       r.lastActionAt = now;
       r.lastPulseAt = now;
+      r.lastBlockKind = kind;
       r.completed = false;
       r.completedAt = null;
       currentRoutineId = routineId;
@@ -781,10 +743,6 @@ class RoutineLayer extends ChangeNotifier {
     return null;
   }
 
-  // ─── Lookup by source key ───
-  // Returns the routine whose sourceKey equals the given value, or
-  // null. The importer uses this to skip routines that are already
-  // present, so re-importing the same archive is idempotent.
   Routine? findRoutineBySourceKey(String key) {
     if (key.isEmpty) return null;
     for (final r in routines) {

@@ -1,27 +1,13 @@
 // ═══════════════════════════════════════════════════════════════════
 // lib/ui/tabs/routine_plate.dart — one routine tile in the list.
 //
-// Extracted from routines_tab. Contains: frame, name, date, timer,
-// the routine pulse (start/pause/open) with an action subpult
-// (duplicate, mark completed, delete), and a select-mode checkbox.
+// Frame. Computed by borderFor (core/frame.dart).
 //
-// Frame. The plate's frame is computed by borderFor (core/frame.dart):
-// active — fgsignal, doubled stroke; inactive, parity 0 — fg;
-// inactive, parity 1 — mid. The former signal frame on any flagged
-// routine is abolished: flags remain visible through the icon column
-// on the left and through the signal color of the name; the frame
-// now carries the same rule as routine blocks and rubka blocks.
+// Running palette. When running, uses the opposite theme.
 //
-// Running palette. When the routine has a running block, the plate
-// takes the opposite theme's roles via OperationalLayer.runningColors
-// — the same method RoutineBlockView uses, so the two views cannot
-// drift apart on the fallback. The frame is still decided by
-// borderFor (active=true → fgsignal, doubled stroke).
-//
-// Scopes. Dependencies are read from point scopes: BortScope (theme,
-// colors, opposite palette), I18nScope (strings), TickerScope (colon
-// blink), RoutineScope (layer mutations). AppScope is consulted only
-// for the journal and for toggleBlockWithShift (an AppContext method).
+// Resume. The "play" button starts the last worked-on block
+// (routine.lastBlockKind), falling back to "work" if none exists.
+// It uses the active field's ID to correctly associate the shift.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -41,9 +27,6 @@ class RoutinePlate extends StatelessWidget {
   final Routine routine;
   final bool selectMode;
   final bool selected;
-  // Visible position in the shown order (0..n-1). Drives the
-  // alternation of the non-running frame (fg / mid). Ignored when
-  // the routine is running: the frame turns signal, doubled.
   final int parity;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
@@ -69,6 +52,8 @@ class RoutinePlate extends StatelessWidget {
     final ticker = TickerScope.of(context);
     final routineLayer = RoutineScope.of(context);
     final app = AppScope.of(context);
+    final fieldId =
+        FieldScope.of(context).activeFieldId ?? FieldScope.of(context).rootId;
     final side = PultScope.of(context).smallSide;
     final running = routine.runningBlock != null;
 
@@ -77,8 +62,6 @@ class RoutinePlate extends StatelessWidget {
     final Color textSoft;
     final Color accent;
     if (running) {
-      // Running palette — from the shared OperationalLayer method,
-      // the same as RoutineBlockView.
       final c = bort.runningColors();
       plateBg = c.bg;
       textMain = c.fg;
@@ -99,10 +82,6 @@ class RoutinePlate extends StatelessWidget {
     final radiusW = side * bort.kRadius;
     final framePad = side * bort.kFramePad * 0.6;
 
-    // Frame rule: one call to borderFor decides color and stroke.
-    // The active state (running block) wins over parity; parity
-    // distinguishes even and odd positions only among non-active
-    // plates. The former signal frame on flagged routines is gone.
     final frame = borderFor(
       parity: parity,
       active: running,
@@ -130,8 +109,11 @@ class RoutinePlate extends StatelessWidget {
     } else {
       pulseIcon = Icons.play_arrow;
       pulseTap = () async {
-        await app.toggleBlockWithShift(routine.id, RoutineBlock.work);
-        onChanged();
+        if (fieldId != null) {
+          final kind = routine.lastBlockKind ?? RoutineBlock.work;
+          await app.toggleBlockWithShift(fieldId, routine.id, kind);
+          onChanged();
+        }
       };
     }
 
@@ -186,10 +168,6 @@ class RoutinePlate extends StatelessWidget {
       overrideSize: pultSide,
     );
 
-    // Flags sit in a vertical column on the left strip of the plate,
-    // occupying its full height. Glyphs share one inverted plate
-    // (accent background, plate-colored glyphs, no frame) and are
-    // enlarged by a quarter against the former inline size.
     final Widget? flagsColumn = routine.flags == 0
         ? null
         : Container(
@@ -219,9 +197,6 @@ class RoutinePlate extends StatelessWidget {
             ),
           );
 
-    // IntrinsicHeight + stretch lets the flags column occupy the
-    // plate's full height while the middle column keeps its natural
-    // size; everything else is centered by Align.
     final body = IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -265,9 +240,6 @@ class RoutinePlate extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
                   if (routine.scheduledAt != null)
-                    // Assigned date — rectangular frame, uniformly
-                    // with the «days» tab calendar (there the mark is
-                    // a square).
                     Container(
                       padding: EdgeInsets.symmetric(
                         horizontal: dateSize * 0.3,
@@ -291,7 +263,6 @@ class RoutinePlate extends StatelessWidget {
               ),
             ),
           ),
-          // Routine time — placed to the left of the pult.
           if (routine.totalSeconds > 0) ...[
             SizedBox(width: side * 0.15),
             Center(
@@ -320,7 +291,6 @@ class RoutinePlate extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: plateBg,
-          // Frame follows borderFor. No more «signal on flags».
           border: Border.all(color: frame.color, width: frame.width),
           borderRadius: BorderRadius.circular(radiusW),
         ),

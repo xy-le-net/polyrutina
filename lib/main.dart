@@ -1,49 +1,20 @@
 // ═══════════════════════════════════════════════════════════════════
 // main.dart — entry point and governor.
 //
-// Startup order: journal (init without subscription), bort, trace,
-// field, routine, dictionary. Then — journal.start().
+// Startup order: journal, bort, trace, field (with root creation),
+// routine, dictionary, notification manager. Then — journal.start().
 //
-// Default tab — «routines». The «field» and «artel» tabs are hidden
-// by default; their display is toggled in the rubka («artel» block).
+// Notification routing. When the user taps the body of a notification,
+// NotificationService.payloadNotifier is triggered. main.dart listens
+// and switches to the routines tab, optionally opening the routine
+// card. When the user presses the "stop" button in the notification,
+// the action is saved to a file by the background isolate; main.dart
+// reads it on resume via consumePendingAction and stops the shift
+// or routine.
 //
-// User action. A Listener around the tree catches touches — the
-// bort receives a signal (pulseBort).
-//
-// Bort time. Subscription to the ticker: the bort ticks and checks
-// midnight every thirty seconds.
-//
-// Lifecycle. Departure (paused, detached, inactive): stop the bort
-// timer, immediately save layers (bort, routine, trace, field).
-// Return (resumed): re-read the system brightness, re-resolve the
-// theme, and consume any pending actions from notifications.
-//
-// Tabs. Touching the «routines» tab always leads to the routine
-// list: if the card is open, popUntil the first route.
-//
-// Field migration. During init, after the field layer is ready, the
-// root node is created (if missing) and legacy routines/traces are
-// attached to it.
-//
-// Notifications. The NotificationService is initialized on startup.
-// NotificationManager is instantiated to observe the ticker and
-// update ongoing notifications. When the app resumes, it checks for
-// a pending action (e.g. the user tapped "stop" on an ongoing
-// notification while the app was in the background) and applies the
-// corresponding stop operation.
-//
-// System back. PopScope.canPop is always FALSE: the handler owns
-// the outcome. _handleBack closes the card if one is open, or
-// switches to the routines tab if another tab is active; on the
-// routines tab with no card it absorbs the press.
-//
-// Root pult — hardcoded in the top-left corner. Touch opens the
-// single left-side sheet of subpults (pult_sheet.dart) with tab
-// kinds.
-//
-// Scopes and listeners. Six point scopes (BortScope, RoutineScope,
-// TraceScope, FieldScope, TickerScope, I18nScope) wrap the
-// navigator tree.
+// Per-field shifts. The AppContext delegates now require the fieldId
+// to properly target the correct shift. The ShiftRow reads the
+// active field automatically.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -55,6 +26,7 @@ import 'data/database.dart';
 import 'data/field_layer.dart';
 import 'data/i18n.dart';
 import 'data/journal_layer.dart';
+import 'data/journal_types.dart';
 import 'data/operational_layer.dart';
 import 'data/routine_layer.dart';
 import 'data/ticker.dart';
@@ -90,7 +62,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   late final TraceLayer _traceLayer;
   late final FieldLayer _fieldLayer;
   late final AppTicker _ticker;
-  late final NotificationManager _notificationManager;
+  NotificationManager? _notificationManager;
   final _pultState = PultState();
   final _navigatorKey = GlobalKey<NavigatorState>();
 
@@ -126,7 +98,10 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    NotificationService.init();
+    NotificationService.init().then((_) {
+      NotificationService.payloadNotifier.addListener(_onNotificationTap);
+    });
+
     _db = AppDb();
     _journal = JournalLayer(_db);
     _bort = OperationalLayer();
@@ -185,7 +160,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _notificationManager = NotificationManager(
       bort: _bort,
       routineLayer: _routineLayer,
+      fieldLayer: _fieldLayer,
       ticker: _ticker,
+      i18n: _i18n!,
     );
 
     if (mounted) setState(() {});
@@ -193,32 +170,68 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   Future<void> _reloadI18n() async {
     final i18n = await I18n.load(_bort.lang);
-    if (mounted) setState(() => _i18n = i18n);
+    if (mounted) {
+      setState(() {
+        _i18n = i18n;
+        // Recreate manager with new i18n
+        _notificationManager?.dispose();
+        _notificationManager = NotificationManager(
+          bort: _bort,
+          routineLayer: _routineLayer,
+          fieldLayer: _fieldLayer,
+          ticker: _ticker,
+          i18n: i18n,
+        );
+      });
+    }
   }
 
   Future<void> _refreshAll() async {
     if (mounted) setState(() {});
   }
 
-  Future<void> _handlePendingNotificationAction() async {
-    final action = await NotificationService.consumePendingAction();
-    if (action == null) return;
+  void _onNotificationTap() {
+    final payload = NotificationService.payloadNotifier.value;
+    if (payload == null) return;
+    NotificationService.payloadNotifier.value = null;
 
-    if (action == 'stop_shift' && _bort.onShift) {
-      await _journal.log(
-        type: 3, // actor
-        body: '{"action":"shift_stop"}',
-      );
-      _bort.stopShift();
-      for (final r in _routineLayer.routines) {
-        for (final b in r.blocks) {
-          if (b.isRunning) {
-            await _routineLayer.pauseBlock(_journal, r.id, b.kind);
+    if (payload.startsWith('shift_')) {
+      _switchTab(1);
+    } else if (payload.startsWith('routine_')) {
+      final idStr = payload.split('_').last;
+      final rId = int.tryParse(idStr);
+      if (rId != null) {
+        _switchTab(1).then((_) => _openRoutine(rId));
+      }
+    }
+  }
+
+  Future<void> _handlePendingNotificationAction() async {
+    final data = await NotificationService.consumePendingAction();
+    if (data == null) return;
+
+    final action = data['action'];
+    final payload = data['payload'] ?? '';
+
+    if (action == 'stop_shift' && payload.startsWith('shift_')) {
+      final fId = int.tryParse(payload.split('_').last);
+      if (fId != null && _bort.onShift(fId)) {
+        await _journal.log(
+          type: JournalType.actor,
+          body: '{"action":"shift_stop","field_id":$fId}',
+        );
+        _bort.stopShift(fId);
+        for (final r in _routineLayer.routines) {
+          if (!r.fieldParents.contains(fId)) continue;
+          for (final b in r.blocks) {
+            if (b.isRunning) {
+              await _routineLayer.pauseBlock(_journal, r.id, b.kind);
+            }
           }
         }
       }
-    } else if (action == 'stop_routine') {
-      final rId = _routineLayer.currentRoutineId;
+    } else if (action == 'stop_routine' && payload.startsWith('routine_')) {
+      final rId = int.tryParse(payload.split('_').last);
       if (rId != null) {
         final r = _routineLayer.findRoutine(rId);
         if (r != null) {
@@ -238,10 +251,11 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    NotificationService.payloadNotifier.removeListener(_onNotificationTap);
     if (_onTickerTick != null) {
       _ticker.removeListener(_onTickerTick!);
     }
-    _notificationManager.dispose();
+    _notificationManager?.dispose();
     _bort.removeListener(_onBortChanged);
     _bort.dispose();
     _routineLayer.dispose();

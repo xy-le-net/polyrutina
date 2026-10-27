@@ -4,8 +4,8 @@
 // Routine: id, name, creation time, last action time, last
 // effective pulse time, completion-install time, scheduled date,
 // planned man-hours, five blocks, flags, completion flag, sourceKey,
-// and fieldParents (nodes of the field graph this routine is
-// attached to).
+// fieldParents (nodes of the field graph this routine is attached to),
+// and lastBlockKind.
 //
 // Block: kind, accumulated seconds, start mark, time-edited flag.
 //
@@ -39,6 +39,10 @@
 // to which this routine is attached. An empty list means the
 // routine is unattached (legacy state); the UI treats such a
 // routine as belonging to the root field node.
+//
+// lastBlockKind. The kind of the most recently active block.
+// Used by the "play" button in the routine list to resume the
+// last worked-on slot rather than blindly starting "work".
 //
 // timeEdited (per block). True when time was edited manually.
 // Shown underlined. Reset on block start.
@@ -133,15 +137,14 @@ class Routine {
   int flags;
   bool completed;
 
-  // Identifier of the source routine this one was imported from:
-  // «deviceId/firstRun/routineId» of the exporting device. Empty
-  // for routines created natively or via duplication. Used by
-  // import to skip already-present routines, so re-importing the
-  // same archive is idempotent.
+  // Identifier of the source routine this one was imported from.
   String sourceKey;
 
   // Nodes of the field graph this routine is attached to.
   List<int> fieldParents;
+
+  // The kind of the most recently active block (for resuming).
+  String? lastBlockKind;
 
   Routine({
     required this.id,
@@ -157,6 +160,7 @@ class Routine {
     this.completed = false,
     this.sourceKey = '',
     List<int>? fieldParents,
+    this.lastBlockKind,
   }) : lastActionAt = lastActionAt ?? createdAt,
        fieldParents = fieldParents ?? [];
 
@@ -216,6 +220,7 @@ class Routine {
     'completed': completed,
     'source_key': sourceKey,
     'field_parents': fieldParents,
+    'last_block_kind': lastBlockKind,
     'blocks': blocks.map((b) => b.toJson()).toList(),
   };
 
@@ -261,6 +266,7 @@ class Routine {
               ?.map((e) => (e as num).toInt())
               .toList() ??
           [],
+      lastBlockKind: j['last_block_kind'] as String?,
       blocks: blocks,
     );
   }

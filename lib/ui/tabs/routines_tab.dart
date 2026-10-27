@@ -1,33 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════
 // lib/ui/tabs/routines_tab.dart — routines tab.
 //
-// Above — the shift row (ShiftRow). Below — the list of routines
-// (RoutinePlate). At the bottom — two pults: create/cancel (left)
-// and, in select mode, actions for the selected (center).
-//
-// Frame parity. Each plate receives a parity index computed over
-// the visible order: active routines first, top to bottom (0..n-1),
-// then completed routines (n..n+m-1). The same parity is passed in
-// narrow (single column) and wide (grid) layouts, so the frame
-// alternation is stable across screen sizes; what changes with the
-// layout is the on-screen arrangement of the plates, not their
-// parity. The plate frame itself is decided by borderFor
-// (core/frame.dart): active → fgsignal, doubled; inactive, parity 0
-// → fg; inactive, parity 1 → mid.
-//
-// Select mode: a long press on a routine enables it. Checkboxes
-// appear to the left of the block.
-//
-// Wide screen (mosaic). Active ones — in a grid. The «completed»
-// band spans the full width with hairline dividers. Then — the
-// completed ones, also in a grid.
-//
-// The timer repaints on a visible-unit change.
-//
-// Scopes. Dependencies are read from point scopes: RoutineScope
-// (the layer), BortScope (theme and shift state), I18nScope
-// (strings), TickerScope (playback cadence). AppScope is consulted
-// only for the journal and for openRoutine.
+// Field awareness. The shift check now looks at the active field's
+// shift state (bort.onShift(activeFieldId)).
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -73,9 +48,13 @@ class _RoutinesTabState extends State<RoutinesTab> {
     if (!mounted) return;
     final routineLayer = RoutineScope.of(context);
     final bort = BortScope.of(context);
+    final fieldId = FieldScope.of(context).activeFieldId;
+
+    if (fieldId == null) return;
+
     final anyRunning =
         routineLayer.routines.any((r) => r.runningBlock != null) ||
-        bort.onShift;
+        bort.onShift(fieldId);
     if (!anyRunning) return;
 
     final sec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -89,7 +68,9 @@ class _RoutinesTabState extends State<RoutinesTab> {
         break;
       }
     }
-    if (bort.onShift && bort.shiftSecondsNow < 60) subMinute = true;
+    if (bort.onShift(fieldId) && bort.shiftSecondsNow(fieldId) < 60) {
+      subMinute = true;
+    }
 
     if (subMinute) {
       if (sec != _lastSecond) {
@@ -156,7 +137,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
     return false;
   }
 
-  // ─── Group deletion ───
   Future<void> _deleteSelected() async {
     final routineLayer = RoutineScope.of(context);
     final journal = AppScope.of(context).journal;
@@ -173,7 +153,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
     _exitSelectMode();
   }
 
-  // ─── Group completion ───
   Future<void> _completeSelected() async {
     final routineLayer = RoutineScope.of(context);
     final journal = AppScope.of(context).journal;
@@ -241,9 +220,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
         final groups = _sortedGroups();
 
-        // Parity map: computed once over the visible order, applied
-        // identically in narrow and wide layouts. Active first (0..n-1),
-        // then completed (n..n+m-1).
         final parityById = <int, int>{};
         var pi = 0;
         for (final r in groups.active) {

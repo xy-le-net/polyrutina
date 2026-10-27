@@ -23,10 +23,6 @@
 //     — reset: caches and defaults to the initial state (progress +
 //       confirm).
 //
-// Scopes. In build, bort and i18n come from BortScope and I18nScope;
-// the imperative methods take journal, routineLayer, traceLayer,
-// fieldLayer from AppScope.
-//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 

@@ -4,14 +4,13 @@
 // Extracted from routines_tab. Contains: the shift pulse
 // (start/pause), the time label, and time editing on long press.
 //
+// Field awareness. The shift is now per-field. This row reads the
+// activeFieldId from FieldScope and displays the shift state (and
+// elapsed time) for that specific field. Toggling the shift affects
+// only the active field.
+//
 // Time edit: «dd:hh:mm:ss»; Enter or the confirm pult saves.
 // A long press on the shift pulse opens the field.
-//
-// Scopes. Dependencies are read from point scopes: BortScope (shift
-// state, theme, colors), I18nScope (strings), TickerScope (colon
-// blink). AppScope is consulted only for the journal and for
-// toggleShift (an AppContext method that spans the journal and the
-// routine layer).
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -65,7 +64,7 @@ class _ShiftRowState extends State<ShiftRow> {
     _focus = null;
   }
 
-  Future<void> _confirm() async {
+  Future<void> _confirm(int fieldId) async {
     final bort = BortScope.of(context);
     final journal = AppScope.of(context).journal;
     final sec = parseEditable(_ctrl?.text ?? '');
@@ -73,15 +72,15 @@ class _ShiftRowState extends State<ShiftRow> {
       _cancel();
       return;
     }
-    if (sec == bort.shiftSecondsNow) {
+    if (sec == bort.shiftSecondsNow(fieldId)) {
       _cancel();
       return;
     }
     await journal.log(
       type: JournalType.actor,
-      body: '{"action":"shift_edit","seconds":$sec}',
+      body: '{"action":"shift_edit","field_id":$fieldId,"seconds":$sec}',
     );
-    bort.setShiftTime(sec);
+    bort.setShiftTime(fieldId, sec);
     if (mounted) setState(() => _editing = false);
     _ctrl?.dispose();
     _focus?.dispose();
@@ -96,11 +95,16 @@ class _ShiftRowState extends State<ShiftRow> {
     final i18n = I18nScope.of(context);
     final ticker = TickerScope.of(context);
     final app = AppScope.of(context);
+    final fieldId = FieldScope.of(context).activeFieldId;
     final side = PultScope.of(context).smallSide;
     final fg = bort.fg;
     final dim = bort.mid;
     final bg = bort.bg;
     final signal = bort.fgsignal;
+
+    if (fieldId == null) {
+      return const SizedBox.shrink();
+    }
 
     if (_editing) {
       return Padding(
@@ -122,7 +126,7 @@ class _ShiftRowState extends State<ShiftRow> {
                   border: const OutlineInputBorder(),
                   contentPadding: EdgeInsets.all(side * 0.1),
                 ),
-                onSubmitted: (_) => _confirm(),
+                onSubmitted: (_) => _confirm(fieldId),
               ),
             ),
             SizedBox(width: side * 0.1),
@@ -130,7 +134,7 @@ class _ShiftRowState extends State<ShiftRow> {
               spec: PultSpec(
                 id: 'shift_confirm',
                 icon: Icons.check,
-                onTap: _confirm,
+                onTap: () => _confirm(fieldId),
               ),
               fg: fg,
               bg: bg,
@@ -142,21 +146,22 @@ class _ShiftRowState extends State<ShiftRow> {
       );
     }
 
-    final bool ticking = bort.onShift && bort.shiftStartedAt != null;
+    final bool ticking =
+        bort.onShift(fieldId) && bort.shiftStartedAt(fieldId) != null;
 
     Widget pulse = Pulse(
       spec: PultSpec(
         id: 'shift',
-        icon: bort.onShift ? Icons.pause : Icons.play_arrow,
-        selected: bort.onShift,
+        icon: bort.onShift(fieldId) ? Icons.pause : Icons.play_arrow,
+        selected: bort.onShift(fieldId),
         onTap: () async {
           FocusManager.instance.primaryFocus?.unfocus();
-          await app.toggleShift();
+          await app.toggleShift(fieldId);
           widget.onChanged();
         },
-        onLongPress: () => _startEdit(bort.shiftSecondsNow),
+        onLongPress: () => _startEdit(bort.shiftSecondsNow(fieldId)),
       ),
-      seconds: bort.shiftSecondsNow,
+      seconds: bort.shiftSecondsNow(fieldId),
       running: ticking,
       fg: fg,
       dim: dim,
@@ -168,7 +173,8 @@ class _ShiftRowState extends State<ShiftRow> {
       t: i18n.t,
       ticker: ticker,
     );
-    if (bort.shiftEdited) {
+
+    if (bort.shiftEdited(fieldId)) {
       pulse = Container(
         decoration: BoxDecoration(
           border: Border(
@@ -178,6 +184,7 @@ class _ShiftRowState extends State<ShiftRow> {
         child: pulse,
       );
     }
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 8, 12, 4),
       child: Align(alignment: Alignment.centerRight, child: pulse),

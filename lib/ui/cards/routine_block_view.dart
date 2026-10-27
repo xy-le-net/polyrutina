@@ -4,34 +4,11 @@
 // Extracted from routine_card: frame, title, time pulse, content
 // (TraceField or summary in «total»), corner pults.
 //
-// Frame. The slot passes its visible position (parity 0..n-1) and
-// whether it is running (active) to Block; Block calls borderFor to
-// decide the frame color and stroke. The former `dimmed` flag (which
-// alternated the background between bg and bgdim) is abolished: the
-// background of a non-running slot is always bort.bg, and the
-// alternation is carried by the frame alone.
+// Field awareness. The toggleBlockWithShift call now requires the
+// active field's ID to properly associate the shift.
 //
-// Running palette. A running slot takes the opposite theme's roles
-// via OperationalLayer.runningColors, so the running item inverts
-// against its neighbours. The Block receives the inverted quartet
-// and paints its collapse mark and title accordingly; the frame is
-// still decided by borderFor (active=true → fgsignal, doubled
-// stroke). Multiple running slots are all inverted and all signal-
-// framed; their neighbours alternate through the frame only.
-//
-// Block «note». In the top right row — four pults left to right:
-// assigned date, planned duration, show all slots, flags. The date
-// pult is fgsignal when a date is set, fg otherwise; a long press
-// opens the «clear date» subpult.
-//
-// Flags. Bit lists, keys, icons, and the subpult builder live in
-// routine_flags.dart; this widget only calls buildFlagSubs with a
-// toggle closure.
-//
-// Scopes. Dependencies are read from point scopes: BortScope (theme
-// and colors), I18nScope (strings), TickerScope (colon blink), and
-// RoutineScope (setFlags). AppScope is consulted only for
-// toggleBlockWithShift (an AppContext method) and for the journal.
+// Move routine. The summary block now features a "move" pult (next
+// to export) to change the routine's field attachment.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -64,9 +41,6 @@ class RoutineBlockView extends StatelessWidget {
   final TextEditingController? editCtrl;
   final FocusNode? editFocus;
 
-  // Visible position in the shown order: 0 for the first shown slot,
-  // 1 for the second, etc. Drives the alternation between fg and mid
-  // for the non-running frame.
   final int parity;
   final bool scheduledActive;
   final VoidCallback? onPickDate;
@@ -78,6 +52,7 @@ class RoutineBlockView extends StatelessWidget {
   final VoidCallback? onConfirmEdit;
   final VoidCallback? onToggleCompleted;
   final VoidCallback? onExport;
+  final VoidCallback? onMove;
   final VoidCallback onToggleShowAll;
 
   const RoutineBlockView({
@@ -100,6 +75,7 @@ class RoutineBlockView extends StatelessWidget {
     this.onConfirmEdit,
     this.onToggleCompleted,
     this.onExport,
+    this.onMove,
     required this.onToggleShowAll,
     this.parity = 0,
     this.scheduledActive = false,
@@ -131,23 +107,20 @@ class RoutineBlockView extends StatelessWidget {
     final i18n = I18nScope.of(context);
     final colonVisible = TickerScope.of(context).colonVisible;
     final side = PultScope.of(context).smallSide;
+    final fieldId =
+        FieldScope.of(context).activeFieldId ?? FieldScope.of(context).rootId;
 
     final Color bg;
     final Color dim;
     final Color fg;
     final Color signal;
     if (running) {
-      // Running palette — from the shared OperationalLayer method
-      // (runningColors), so that this block and RoutinePlate cannot
-      // drift apart on the opposite-theme fallback.
       final c = bort.runningColors();
       bg = c.bg;
       dim = c.mid;
       fg = c.fg;
       signal = c.fgsignal;
     } else {
-      // Non-running: background is always bg (no per-position
-      // dimming); the frame carries the alternation.
       bg = bort.bg;
       dim = bort.mid;
       fg = bort.fg;
@@ -178,7 +151,7 @@ class RoutineBlockView extends StatelessWidget {
                 style: TextStyle(color: fg, fontSize: numberSize),
                 decoration: InputDecoration(
                   isDense: true,
-                  hintText: 'дд:чч:мм:сс',
+                  hintText: i18n.t('hint.time'),
                   hintStyle: TextStyle(color: dim, fontSize: numberSize * 0.7),
                   border: OutlineInputBorder(
                     borderSide: BorderSide(color: dim),
@@ -209,8 +182,13 @@ class RoutineBlockView extends StatelessWidget {
             id: 'block_$kind',
             icon: _blockIcon(kind),
             selected: running,
-            onTap: () =>
-                AppScope.of(context).toggleBlockWithShift(routine.id, kind),
+            onTap: () {
+              if (fieldId != null) {
+                AppScope.of(
+                  context,
+                ).toggleBlockWithShift(fieldId, routine.id, kind);
+              }
+            },
             onLongPress: onStartEdit,
           ),
           seconds: seconds,
@@ -323,12 +301,6 @@ class RoutineBlockView extends StatelessWidget {
         dim: dim,
         bg: bg,
         signal: signal,
-        // Running: fg is the inverse of bg (bg of the other palette),
-        // so the input must sit on that same inverse bg — otherwise
-        // the text becomes invisible and only the IME composing
-        // underline shows through. Non-running: the input keeps the
-        // normal bg even when the block itself is dimmed (bgdim),
-        // so the field is not darkened twice.
         fieldBg: running ? bg : bort.bg,
         side: side,
         blockTitle: title,
@@ -340,7 +312,7 @@ class RoutineBlockView extends StatelessWidget {
 
     final bool canCollapse = kind != 'summary';
     final bool showFlags = kind == 'note';
-    final bool showExport = kind == 'summary';
+    final bool showSummaryPults = kind == 'summary';
 
     Widget? topRight = cornerTop;
 
@@ -402,10 +374,6 @@ class RoutineBlockView extends StatelessWidget {
           id: 'flags_${routine.id}',
           icon: Icons.flag,
           selected: hasFlags,
-          // The layer itself drives the open subpult: on each flags
-          // mutation, RoutineScope notifies listeners, and the sheet
-          // regenerates its items with the up-to-date «selected»
-          // states. Without this, the checkmark would lag by one tap.
           rebuildOn: RoutineScope.of(context),
           subsBuilder: () => buildFlagSubs(
             flags: routine.flags,
@@ -438,17 +406,37 @@ class RoutineBlockView extends StatelessWidget {
     }
 
     Widget? cornerBottom;
-    if (showExport) {
-      cornerBottom = Pult(
-        spec: PultSpec(
-          id: 'export_${routine.id}',
-          icon: Icons.ios_share,
-          onTap: onExport,
-        ),
-        fg: fg,
-        bg: bg,
-        signal: signal,
-        overrideSize: pultSide,
+    if (showSummaryPults) {
+      cornerBottom = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (onMove != null) ...[
+            Pult(
+              spec: PultSpec(
+                id: 'move_${routine.id}',
+                icon: Icons.drive_file_move,
+                onTap: onMove,
+              ),
+              fg: fg,
+              bg: bg,
+              signal: signal,
+              overrideSize: pultSide,
+            ),
+            SizedBox(width: side * 0.15),
+          ],
+          if (onExport != null)
+            Pult(
+              spec: PultSpec(
+                id: 'export_${routine.id}',
+                icon: Icons.ios_share,
+                onTap: onExport,
+              ),
+              fg: fg,
+              bg: bg,
+              signal: signal,
+              overrideSize: pultSide,
+            ),
+        ],
       );
     }
 
@@ -470,7 +458,7 @@ class RoutineBlockView extends StatelessWidget {
       radiusW: radiusW,
       active: running,
       parity: parity,
-      reserveBottom: showExport ? pultSide + side * 0.15 : 0,
+      reserveBottom: showSummaryPults ? pultSide + side * 0.15 : 0,
       child: body,
     );
   }

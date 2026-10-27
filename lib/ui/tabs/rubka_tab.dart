@@ -1,39 +1,19 @@
 // ═══════════════════════════════════════════════════════════════════
 // lib/ui/tabs/rubka_tab.dart — rubka tab.
 //
-// Four blocks: artel, appearance, interface, data. Appearance,
-// interface, and data are extracted into separate widgets
-// (rubka_appearance, rubka_interface, rubka_data). Here — block
-// assembly, layout, and the «artel» block body.
-//
-// Frame parity. The four blocks receive a stable parity in a fixed
-// order — artel=0, appearance=1, interface=2, data=3 — regardless
-// of whether the layout is narrow (single column) or wide (two
-// columns: artel+interface on the left, appearance+data on the
-// right). The frame alternation is therefore preserved across
-// screen sizes; what changes with the layout is the on-screen
-// arrangement of the blocks, not their parity. The frame itself is
-// decided by borderFor (core/frame.dart): active → fgsignal,
-// doubled; inactive, parity 0 → fg; inactive, parity 1 → mid. The
-// rubka blocks are never active, so parity always applies.
+// Four blocks: artel, appearance, interface, data.
 //
 // Artel. The shift row is the first line — fgsignal-colored in full
-// and refreshed on every ticker beat, so the running total keeps
-// pace with the wall clock. Then: midnight field (HH:MM) — the
-// start of the technical day. Under «взаимоисключение» — two
-// checkboxes: «рутины» (global pause of every other block) and
-// «слоты» (same-routine pause, ignored when «рутины» is on). Under
-// «блоки» — two checkboxes for tab visibility («поле» and
-// «артель»).
+// and refreshed on every ticker beat. It now reads the active field's
+// shift state (via FieldScope). Then: midnight field (HH:MM) and map
+// scale field (meters). Under «взаимоисключение» — three checkboxes:
+// «рутины» (global pause), «слоты» (same-routine pause), and
+// «смена» (auto-start shift on routine start). Under «блоки» — two
+// checkboxes for tab visibility («поле» and «артель»).
 //
-// Layout.
-//   Narrow screen (under 640): blocks in a single column, top down.
-//   Wide screen: two equal-width columns; blocks butt together
-//   without vertical gaps. Columns: left — artel, interface;
-//   right — appearance, data.
-//
-// Scopes. BortScope and I18nScope for the rubka itself;
-// TickerScope for the shift row's live refresh.
+// Layout. Narrow: single column. Wide: two columns (artel+interface
+// on the left, appearance+data on the right) with chessboard frame
+// parity.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -91,10 +71,9 @@ class RubkaTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Shift row — first line of the block, fgsignal-colored in
-          // full, refreshed by the ticker so the number ticks.
           _shiftRow(context, side),
           _midnightRow(context, fg, side),
+          _mapScaleRow(context, fg, side),
           _sectionHeader(i18n.t('bort.mutex'), mid, side),
           _tabTickRow(
             context,
@@ -109,6 +88,15 @@ class RubkaTab extends StatelessWidget {
             context,
             'mutex_slots',
             i18n.t('bort.mutex_slots'),
+            fg,
+            bg,
+            fgsignal,
+            side,
+          ),
+          _tabTickRow(
+            context,
+            'auto_start_shift',
+            i18n.t('bort.auto_start_shift'),
             fg,
             bg,
             fgsignal,
@@ -172,9 +160,6 @@ class RubkaTab extends StatelessWidget {
       child: const RubkaData(),
     );
 
-    // RubkaAppearance owns its Block; parity 3 keeps the four rubka
-    // blocks in one stable alternation across both layouts
-    // (artel=0, appearance=1, interface=2, data=3).
     const appearanceBlock = RubkaAppearance(parity: 3);
 
     return LayoutBuilder(
@@ -190,7 +175,13 @@ class RubkaTab extends StatelessWidget {
               16,
               16,
             ),
-            children: [artel, appearanceBlock, interface, data],
+            children: [
+              // Enforce strict alternation in a single column
+              BlockWrapper(parity: 0, child: artel),
+              const BlockWrapper(parity: 1, child: appearanceBlock),
+              BlockWrapper(parity: 2, child: interface),
+              BlockWrapper(parity: 3, child: data),
+            ],
           );
         }
 
@@ -217,9 +208,16 @@ class RubkaTab extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              col([artel, interface]),
+              // Chessboard parity: (row + col) % 2
+              col([
+                BlockWrapper(parity: 0, child: artel),
+                BlockWrapper(parity: 1, child: interface),
+              ]),
               const SizedBox(width: spacing),
-              col([appearanceBlock, data]),
+              col([
+                const BlockWrapper(parity: 1, child: appearanceBlock),
+                BlockWrapper(parity: 0, child: data),
+              ]),
             ],
           ),
         );
@@ -227,7 +225,6 @@ class RubkaTab extends StatelessWidget {
     );
   }
 
-  // ─── Midnight: the start of the technical day ───
   Widget _midnightRow(BuildContext context, Color fg, double side) {
     final bort = BortScope.of(context);
     final i18n = I18nScope.of(context);
@@ -257,9 +254,36 @@ class RubkaTab extends StatelessWidget {
     );
   }
 
-  // ─── Section header ───
-  // A plain label above a group of checkboxes. Left without a pult
-  // of its own — it names the group, not a value.
+  Widget _mapScaleRow(BuildContext context, Color fg, double side) {
+    final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 140,
+            child: Text(i18n.t('bort.map_scale'), style: TextStyle(color: fg)),
+          ),
+          Expanded(
+            child: BortField(
+              initial: bort.mapScale.toString(),
+              fg: fg,
+              readOnly: false,
+              onCommit: (v) async {
+                final val = int.tryParse(v);
+                if (val != null && val > 0) {
+                  bort.setInt('map_scale', val);
+                }
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _sectionHeader(String label, Color mid, double side) {
     return Padding(
       padding: EdgeInsets.only(top: side * 0.2, bottom: side * 0.05),
@@ -270,7 +294,6 @@ class RubkaTab extends StatelessWidget {
     );
   }
 
-  // ─── Shift row: fgsignal-colored in full, refreshed on the ticker ───
   Widget _shiftRow(BuildContext context, double side) {
     final ticker = TickerScope.of(context);
     return AnimatedBuilder(
@@ -278,11 +301,15 @@ class RubkaTab extends StatelessWidget {
       builder: (context, _) {
         final bort = BortScope.of(context);
         final i18n = I18nScope.of(context);
-        final sec = bort.shiftSecondsNow;
+        final fieldId = FieldScope.of(context).activeFieldId;
+        if (fieldId == null) return const SizedBox.shrink();
+
+        final sec = bort.shiftSecondsNow(fieldId);
         final value = sec <= 0 ? '0${i18n.t('time.m')}' : fmtTime(sec, i18n.t);
+
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: () => showTimeHistory(context, key: 'shift'),
+          onTap: () => showTimeHistory(context, key: 'shift', fieldId: fieldId),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Row(
@@ -317,7 +344,6 @@ class RubkaTab extends StatelessWidget {
     );
   }
 
-  // ─── Checkbox (binary) ───
   Widget _tabTickRow(
     BuildContext context,
     String key,
@@ -350,5 +376,43 @@ class RubkaTab extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+// Helper to override parity for strict alternation
+class BlockWrapper extends StatelessWidget {
+  final int parity;
+  final Widget child;
+  const BlockWrapper({super.key, required this.parity, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    if (child is Block) {
+      final b = child as Block;
+      return Block(
+        title: b.title,
+        collapsed: b.collapsed,
+        canCollapse: b.canCollapse,
+        onToggleCollapsed: b.onToggleCollapsed,
+        cornerRightTop: b.cornerRightTop,
+        cornerRightBottom: b.cornerRightBottom,
+        bg: b.bg,
+        dim: b.dim,
+        fg: b.fg,
+        signal: b.signal,
+        titleSize: b.titleSize,
+        pad: b.pad,
+        gap: b.gap,
+        strokeW: b.strokeW,
+        radiusW: b.radiusW,
+        active: b.active,
+        parity: parity,
+        reserveBottom: b.reserveBottom,
+        child: b.child,
+      );
+    } else if (child is RubkaAppearance) {
+      return RubkaAppearance(parity: parity);
+    }
+    return child;
   }
 }

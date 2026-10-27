@@ -3,34 +3,14 @@
 //
 // Slots are built by RoutineBlockView (routine_block_view.dart).
 // Here — card state: name editing, block time editing, show/hide
-// slots, collapse, auto-scroll to the active slot, completion,
-// export, date picking and clearing, planned duration picking.
+// slots, collapse, auto-scroll, completion, export, move to field.
 //
-// Header. The AppBar is removed: the header is laid out with
-// ControlRow inside a SafeArea. The root pult (compass) sits on the
-// left; the remaining width holds the name field (BortField).
+// Scheduled date. Uses the bort's «midnight» setting.
 //
-// Frame alternation. The shown slots (including the summary) pass
-// their visible position (parity 0..n-1) to RoutineBlockView; the
-// alternation is carried by the frame alone (see core/frame.dart).
-// The background of every non-running slot is bg — no per-position
-// dimming any more. Running slots take the opposite theme's colors
-// and the signal frame with a doubled stroke; parity does not apply
-// to them.
+// Move routine. Added a pult in the summary block to move the routine
+// to a different field (node) via a pult sheet.
 //
-// Scheduled date. When picking a date, the time of day is set to
-// the bort's «midnight» setting, not the system 00:00. This ties
-// the routine to the technical day.
-//
-// Planned duration. The former wheel picker (ListWheelScrollView)
-// is abolished as a graphical effect. It is replaced by a simple
-// dialog with a BortField for «dd:hh:mm» input.
-//
-// Scopes. Dependencies are read from point scopes: RoutineScope
-// (the routine and its mutations), TraceScope (_hasTrace), BortScope
-// (theme, default slots), TickerScope (playback cadence), I18nScope
-// (strings). AppScope is consulted only for the journal and for the
-// ReportBuilder call, which still receives the full AppContext.
+// Scopes. RoutineScope, TraceScope, BortScope, TickerScope, I18nScope.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -46,6 +26,7 @@ import '../core/control_row.dart';
 import '../core/dialog_frame.dart';
 import '../core/format.dart';
 import '../pults/pult_core.dart';
+import '../pults/pult_sheet.dart';
 import '../services/report.dart';
 import 'routine_block_view.dart';
 
@@ -282,8 +263,6 @@ class _RoutineCardState extends State<RoutineCard> {
     await routineLayer.setSchedule(journal, r.id, null);
   }
 
-  // ─── Assigned date: pick ───
-  // The time is set to the artel midnight, not 00:00.
   Future<void> _pickSchedule(Routine r) async {
     final routineLayer = RoutineScope.of(context);
     final journal = AppScope.of(context).journal;
@@ -300,7 +279,6 @@ class _RoutineCardState extends State<RoutineCard> {
     );
     if (picked == null) return;
 
-    // Combine picked date with artel midnight.
     final parts = bort.midnight.split(':');
     final hh = int.tryParse(parts.isNotEmpty ? parts[0] : '0') ?? 0;
     final mm = int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0;
@@ -319,9 +297,6 @@ class _RoutineCardState extends State<RoutineCard> {
     );
   }
 
-  // ─── Planned duration: simple input ───
-  // Replaces the former wheel picker with a dialog containing a
-  // BortField. The hint explains the format «dd:hh:mm».
   Future<void> _pickPlanned(Routine r) async {
     final routineLayer = RoutineScope.of(context);
     final journal = AppScope.of(context).journal;
@@ -353,7 +328,7 @@ class _RoutineCardState extends State<RoutineCard> {
                 initial: initial,
                 fg: bort.fg,
                 readOnly: false,
-                hint: 'дд:чч:мм',
+                hint: i18n.t('hint.planned'),
                 onChanged: (v) => currentText = v,
                 onCommit: (v) async {
                   Navigator.of(ctx).pop(v);
@@ -384,6 +359,47 @@ class _RoutineCardState extends State<RoutineCard> {
     final total = parsePlannedTime(result);
     if (total == null) return;
     await routineLayer.setPlanned(journal, r.id, total);
+  }
+
+  Future<void> _moveRoutine(Routine r) async {
+    final app = AppScope.of(context);
+    final bort = app.bort;
+    final currentFieldId = FieldScope.of(context).activeFieldId;
+
+    // Find available fields (roots) or all nodes
+    final nodes = app.fieldLayer.nodes.values.where((n) => n.isRoot).toList();
+
+    if (nodes.isEmpty) return;
+
+    showPultSheet(
+      context: context,
+      subs: [
+        for (final n in nodes)
+          PultSpec(
+            id: 'move_${r.id}_${n.id}',
+            icon: Icons.layers,
+            label: n.name,
+            selected: currentFieldId == n.id,
+            onTap: () async {
+              if (currentFieldId != null && currentFieldId != n.id) {
+                await app.routineLayer.detachFromField(
+                  app.journal,
+                  r.id,
+                  currentFieldId,
+                );
+              }
+              if (currentFieldId != n.id) {
+                await app.routineLayer.attachToField(app.journal, r.id, n.id);
+                app.fieldLayer.setActiveField(n.id);
+              }
+            },
+          ),
+      ],
+      fg: bort.fg,
+      bg: bort.bg,
+      signal: bort.fgsignal,
+      side: PultScope.of(context).smallSide,
+    );
   }
 
   @override
@@ -453,6 +469,7 @@ class _RoutineCardState extends State<RoutineCard> {
             ? () => _toggleCompleted(r)
             : null,
         onExport: (kind == 'summary') ? () => _exportOne(r) : null,
+        onMove: (kind == 'summary') ? () => _moveRoutine(r) : null,
         onToggleShowAll: () => setState(() => _showAllSlots = !_showAllSlots),
         parity: parity,
         scheduledActive: r.scheduledAt != null,

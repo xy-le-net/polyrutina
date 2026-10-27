@@ -4,30 +4,12 @@
 // One dialog for any registered TimeSeries (shift, bort, and future
 // kinds). Kinds differ in three points — the label key, the share
 // flag, and the live-value callback — captured in a small
-// descriptor map below. Everything else (month switcher, day
-// list, total) is common.
+// descriptor map below.
 //
-// Descriptor placement. The map lives here, next to the dialog,
-// because all three fields are presentation concerns (label,
-// whether to offer share, live value for today). Adding a new
-// series is one entry here and one line in OperationalLayer.init
-// (registering the TimeSeries under the new key).
-//
-// Live value. Today's running total is not written to the series
-// until midnight; the dialog merges it when the current month is
-// shown, so today's cell is not stuck at zero while the count
-// runs. For the shift the live value is shiftSecondsNow; for the
-// bort it is bortTime.
-//
-// Frame geometry lives in DialogFrame: bg fill, mid border,
-// kRadius corners, kFramePad inset. The frame dismisses on a tap
-// outside; the inner content absorbs touches. The optional height
-// cap is kept at side * 12 so the day list cannot overflow the
-// screen.
-//
-// The field on the widget is named seriesKey, not key, because
-// Widget already declares `key`; naming the field `key` would
-// shadow it.
+// Field awareness. Shifts are now per-field. The dialog accepts a
+// fieldId (default 0 for the bort, or the active field's ID for
+// the shift) and passes it to the TimeSeries to fetch the correct
+// data.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -42,14 +24,10 @@ import '../core/format.dart';
 import '../core/link_text.dart';
 import '../pults/pult_core.dart';
 
-// ─── Per-kind descriptor ───
-// One entry per registered TimeSeries key. The three fields cover
-// every difference between kinds: how to label the total, whether
-// the share pult is offered, and how to obtain today's live value.
 class _SeriesUi {
   final String labelKey;
   final bool share;
-  final int Function(OperationalLayer bort) liveToday;
+  final int Function(OperationalLayer bort, int fieldId) liveToday;
 
   const _SeriesUi({
     required this.labelKey,
@@ -58,11 +36,10 @@ class _SeriesUi {
   });
 }
 
-int _liveShift(OperationalLayer bort) => bort.shiftSecondsNow;
-int _liveBort(OperationalLayer bort) => bort.bortTime;
+int _liveShift(OperationalLayer bort, int fieldId) =>
+    bort.shiftSecondsNow(fieldId);
+int _liveBort(OperationalLayer bort, int fieldId) => bort.bortTime;
 
-// Registered kinds. New kinds land here; the registry in
-// OperationalLayer.init must register the matching TimeSeries.
 const Map<String, _SeriesUi> _ui = {
   'shift': _SeriesUi(
     labelKey: 'bort.shift',
@@ -75,6 +52,7 @@ const Map<String, _SeriesUi> _ui = {
 Future<void> showTimeHistory(
   BuildContext context, {
   required String key,
+  int fieldId = 0,
 }) async {
   final side = PultScope.of(context).smallSide;
 
@@ -82,7 +60,7 @@ Future<void> showTimeHistory(
     context: context,
     barrierColor: Colors.transparent,
     builder: (ctx) {
-      return _TimeHistoryDialog(side: side, seriesKey: key);
+      return _TimeHistoryDialog(side: side, seriesKey: key, fieldId: fieldId);
     },
   );
 }
@@ -90,8 +68,13 @@ Future<void> showTimeHistory(
 class _TimeHistoryDialog extends StatefulWidget {
   final double side;
   final String seriesKey;
+  final int fieldId;
 
-  const _TimeHistoryDialog({required this.side, required this.seriesKey});
+  const _TimeHistoryDialog({
+    required this.side,
+    required this.seriesKey,
+    required this.fieldId,
+  });
 
   @override
   State<_TimeHistoryDialog> createState() => _TimeHistoryDialogState();
@@ -129,13 +112,11 @@ class _TimeHistoryDialogState extends State<_TimeHistoryDialog> {
   Map<int, int> _daysFor(AppContext app, _SeriesUi ui) {
     final series = app.bort.series[widget.seriesKey];
     if (series == null) return <int, int>{};
-    final out = series.daysFor(_year, _month);
-    // Today's live value is not written to the series until
-    // midnight; merge it when the dialog shows the current month,
-    // so today's cell is not stuck at zero while the count runs.
+    final out = series.daysFor(widget.fieldId, _year, _month);
+
     final now = DateTime.now();
     if (_year == now.year && _month == now.month) {
-      final live = ui.liveToday(app.bort);
+      final live = ui.liveToday(app.bort, widget.fieldId);
       if (live > 0) out[now.day] = live;
     }
     return out;
@@ -172,9 +153,6 @@ class _TimeHistoryDialogState extends State<_TimeHistoryDialog> {
 
     final ui = _ui[widget.seriesKey];
     if (ui == null) {
-      // Unknown series key — nothing to show. A dialog renders an
-      // empty frame so the caller sees a clear no-op rather than a
-      // crash.
       return DialogFrame(
         onDismiss: () => Navigator.of(context).pop(),
         child: Text('—', style: TextStyle(color: bort.mid)),
@@ -269,9 +247,6 @@ class _TimeHistoryDialogState extends State<_TimeHistoryDialog> {
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              // Share is only offered for kinds that opted in (the
-              // shift, per the project's rules; the bort history is
-              // read-only).
               if (ui.share) ...[
                 Pult(
                   spec: PultSpec(

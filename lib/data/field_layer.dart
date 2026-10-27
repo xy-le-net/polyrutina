@@ -1,17 +1,14 @@
 // ═══════════════════════════════════════════════════════════════════
 // field_layer.dart — field layer (graph of nodes).
 //
-// Holds the tree/graph of field nodes. The root node is created on
-// first run.
+// Holds the tree/graph of field nodes. The default root node (buffer)
+// is created on first run and cannot be deleted. User-created root
+// nodes represent separate fields (e.g. construction sites) and can
+// be switched between.
 //
-// Registered in JournalLayer for the fieldNode kind (type 5).
-//
-// Nodes form a directed acyclic graph (DAG). A node can have multiple
-// parents. Deleting a node can either "shake" its children to its
-// parents (default) or "burn" them recursively.
-//
-// Cache is written with a 200 ms debounce, through a .tmp file and
-// a rename. A crash mid-write cannot leave a half-written cache.
+// activeFieldId. The ID of the field currently being viewed.
+// Determines which shift is displayed and which field new routines
+// are attached to.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -71,7 +68,8 @@ class FieldNode {
 
 class FieldLayer extends ChangeNotifier {
   final Map<int, FieldNode> nodes = {};
-  int? rootId;
+  int? rootId; // The ID of the default buffer root (field).
+  int? activeFieldId; // The currently active field (root node ID).
 
   File? _file;
   Timer? _saveTimer;
@@ -102,6 +100,7 @@ class FieldLayer extends ChangeNotifier {
     try {
       final raw = await _file!.readAsString();
       final data = jsonDecode(raw) as Map<String, dynamic>;
+      activeFieldId = (data['active_field_id'] as num?)?.toInt();
       final list = data['nodes'];
       if (list is List) {
         for (final e in list) {
@@ -127,6 +126,7 @@ class FieldLayer extends ChangeNotifier {
     final target = _file;
     if (target == null) return;
     final data = <String, dynamic>{
+      'active_field_id': activeFieldId,
       'nodes': nodes.values.map((n) => n.toJson()).toList(),
     };
     final tmp = File('${target.path}.tmp');
@@ -146,6 +146,13 @@ class FieldLayer extends ChangeNotifier {
     await _saveToFile();
   }
 
+  void setActiveField(int id) {
+    if (activeFieldId == id) return;
+    activeFieldId = id;
+    _scheduleSave();
+    notifyListeners();
+  }
+
   void _applyEntry(JournalData e) {
     try {
       final data = jsonDecode(e.body) as Map<String, dynamic>;
@@ -155,6 +162,7 @@ class FieldLayer extends ChangeNotifier {
         case 'reset':
           nodes.clear();
           rootId = null;
+          activeFieldId = null;
           break;
         case 'create':
           final bodyId = (data['id'] as num?)?.toInt();
@@ -178,7 +186,10 @@ class FieldLayer extends ChangeNotifier {
               nodes[pId]?.children.add(id);
             }
           }
-          if (isRoot) rootId = id;
+          if (isRoot && rootId == null) {
+            rootId = id;
+            activeFieldId ??= id;
+          }
           break;
         case 'rename':
           final id = (data['id'] as num).toInt();
@@ -216,6 +227,9 @@ class FieldLayer extends ChangeNotifier {
             for (final cId in node.children) {
               nodes[cId]?.parents.remove(id);
             }
+            if (activeFieldId == id) {
+              activeFieldId = rootId;
+            }
           }
           break;
       }
@@ -225,6 +239,7 @@ class FieldLayer extends ChangeNotifier {
   void _resetMemory() {
     nodes.clear();
     rootId = null;
+    activeFieldId = null;
     notifyListeners();
   }
 
@@ -232,18 +247,39 @@ class FieldLayer extends ChangeNotifier {
 
   Future<FieldNode> createRootIfNeeded(JournalLayer journal) async {
     if (rootId != null && nodes.containsKey(rootId)) {
+      activeFieldId ??= rootId;
       return nodes[rootId]!;
     }
 
     final id = await journal.log(
       type: JournalType.fieldNode,
-      body: jsonEncode({'action': 'create', 'name': 'Корень', 'is_root': true}),
+      body: jsonEncode({
+        'action': 'create',
+        'name': 'Поле', // Default buffer name
+        'is_root': true,
+      }),
     );
 
     if (!nodes.containsKey(id)) {
-      final n = FieldNode(id: id, name: 'Корень', isRoot: true);
+      final n = FieldNode(id: id, name: 'Поле', isRoot: true);
       nodes[id] = n;
       rootId = id;
+      activeFieldId = id;
+      _scheduleSave();
+      notifyListeners();
+    }
+    return nodes[id]!;
+  }
+
+  Future<FieldNode> createField(JournalLayer journal, String name) async {
+    final id = await journal.log(
+      type: JournalType.fieldNode,
+      body: jsonEncode({'action': 'create', 'name': name, 'is_root': true}),
+    );
+    if (!nodes.containsKey(id)) {
+      final n = FieldNode(id: id, name: name, isRoot: true);
+      nodes[id] = n;
+      activeFieldId = id;
       _scheduleSave();
       notifyListeners();
     }
@@ -275,7 +311,7 @@ class FieldLayer extends ChangeNotifier {
 
   Future<void> renameNode(JournalLayer journal, int id, String name) async {
     final n = nodes[id];
-    if (n == null) return;
+    if (n == null || n.isRoot) return; // Root name is fixed
     n.name = name;
     await journal.log(
       type: JournalType.fieldNode,
@@ -344,7 +380,7 @@ class FieldLayer extends ChangeNotifier {
     bool burn = false,
   }) async {
     final node = nodes[id];
-    if (node == null || node.isRoot) return;
+    if (node == null || node.isRoot) return; // Cannot delete roots
 
     if (burn) {
       // Recursively delete children
@@ -355,8 +391,15 @@ class FieldLayer extends ChangeNotifier {
     } else {
       // Shake children to parents
       for (final cId in node.children) {
-        for (final pId in node.parents) {
-          await attachNode(journal, cId, pId);
+        if (node.parents.isEmpty) {
+          // If the node had no parents, shake children to the default root
+          if (rootId != null && rootId != id) {
+            await attachNode(journal, cId, rootId!);
+          }
+        } else {
+          for (final pId in node.parents) {
+            await attachNode(journal, cId, pId);
+          }
         }
       }
     }

@@ -68,6 +68,7 @@
     "bort.lang": "язык",
     "bort.labels_buttons": "подписи",
     "bort.midnight": "полночь",
+    "bort.map_scale": "масштаб карт",
     "bort.shift": "смена",
     "bort.bort": "борт",
     "bort.default_slots": "слоты",
@@ -76,6 +77,7 @@
     "bort.mutex": "взаимоисключение",
     "bort.mutex_routines": "рутины",
     "bort.mutex_slots": "слоты",
+    "bort.auto_start_shift": "смена",
     "bort.blocks": "блоки",
 
     "bort.k_pult": "размер пульта",
@@ -110,12 +112,22 @@
     "bort.select": "выбрать",
     "bort.deselect": "снять выделение",
 
+    "field.root": "поле",
     "field.new_field": "новое поле",
     "field.new_node": "новая ветвь",
     "field.attach_routine": "прикрепить",
     "field.shake": "стряхнуть",
     "field.burn": "сжечь",
     "field.burn_confirm": "сжечь ветвь и всё содержимое?",
+    "field.move_routine": "переместить",
+    "field.link_routine": "связать",
+    "field.detach_routine": "отвязать",
+
+    "notif.running": "выполняется",
+    "notif.total": "всего",
+
+    "hint.time": "дд:чч:мм:сс",
+    "hint.planned": "дд:чч:мм",
 
     "import.cancelled": "импорт отменён",
     "import.empty": "ничего не импортировано",
@@ -131,6 +143,7 @@
 
     "common.ok": "ок",
     "common.cancel": "отмена",
+    "common.wait": "простите, придётся подождать",
     "export.prep": "подготовка архива",
     "export.cancel": "отмена",
 
@@ -242,6 +255,7 @@
     "bort.lang": "language",
     "bort.labels_buttons": "labels",
     "bort.midnight": "midnight",
+    "bort.map_scale": "map scale",
     "bort.shift": "shift",
     "bort.bort": "board",
     "bort.default_slots": "slots",
@@ -250,6 +264,7 @@
     "bort.mutex": "mutex",
     "bort.mutex_routines": "routines",
     "bort.mutex_slots": "slots",
+    "bort.auto_start_shift": "shift",
     "bort.blocks": "blocks",
 
     "bort.k_pult": "pult size",
@@ -284,12 +299,22 @@
     "bort.select": "select",
     "bort.deselect": "deselect",
 
+    "field.root": "field",
     "field.new_field": "new field",
     "field.new_node": "new branch",
     "field.attach_routine": "attach",
     "field.shake": "shake",
     "field.burn": "burn",
     "field.burn_confirm": "burn branch and all content?",
+    "field.move_routine": "move",
+    "field.link_routine": "link",
+    "field.detach_routine": "detach",
+
+    "notif.running": "running",
+    "notif.total": "total",
+
+    "hint.time": "dd:hh:mm:ss",
+    "hint.planned": "dd:hh:mm",
 
     "import.cancelled": "import cancelled",
     "import.empty": "nothing imported",
@@ -305,6 +330,7 @@
 
     "common.ok": "ok",
     "common.cancel": "cancel",
+    "common.wait": "please wait, this may take a moment",
     "export.prep": "preparing archive",
     "export.cancel": "cancel",
 
