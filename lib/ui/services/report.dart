@@ -305,12 +305,16 @@ class ReportBuilder {
       // Check if there's any content
       bool hasContent = sec > 0;
       for (final t in traces) {
-        if (t.kind == TraceKind.text && t.text.trim().isNotEmpty)
+        if (t.kind == TraceKind.text && t.text.trim().isNotEmpty) {
           hasContent = true;
-        if (t.files.isNotEmpty) hasContent = true;
+        }
+        if (t.files.isNotEmpty) {
+          hasContent = true;
+        }
         if (t.kind == TraceKind.checklist &&
-            t.items.any((it) => it.text.trim().isNotEmpty))
+            t.items.any((it) => it.text.trim().isNotEmpty)) {
           hasContent = true;
+        }
       }
 
       if (!hasContent && kind != 'note') continue;
