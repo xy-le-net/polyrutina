@@ -77,7 +77,7 @@
     "bort.mutex": "взаимоисключение",
     "bort.mutex_routines": "рутины",
     "bort.mutex_slots": "слоты",
-    "bort.auto_start_shift": "смена",
+    "bort.mutex_shift": "смена",
     "bort.blocks": "блоки",
 
     "bort.k_pult": "размер пульта",
@@ -112,7 +112,7 @@
     "bort.select": "выбрать",
     "bort.deselect": "снять выделение",
 
-    "field.root": "поле",
+    "field.root": "Поле",
     "field.new_field": "новое поле",
     "field.new_node": "новая ветвь",
     "field.attach_routine": "прикрепить",
@@ -125,6 +125,7 @@
 
     "notif.running": "выполняется",
     "notif.total": "всего",
+    "notif.stop": "остановить",
 
     "hint.time": "дд:чч:мм:сс",
     "hint.planned": "дд:чч:мм",
@@ -269,7 +270,7 @@
     "bort.mutex": "mutex",
     "bort.mutex_routines": "routines",
     "bort.mutex_slots": "slots",
-    "bort.auto_start_shift": "shift",
+    "bort.mutex_shift": "shift",
     "bort.blocks": "blocks",
 
     "bort.k_pult": "pult size",
@@ -304,7 +305,7 @@
     "bort.select": "select",
     "bort.deselect": "deselect",
 
-    "field.root": "field",
+    "field.root": "Field",
     "field.new_field": "new field",
     "field.new_node": "new branch",
     "field.attach_routine": "attach",
@@ -317,6 +318,7 @@
 
     "notif.running": "running",
     "notif.total": "total",
+    "notif.stop": "stop",
 
     "hint.time": "dd:hh:mm:ss",
     "hint.planned": "dd:hh:mm",

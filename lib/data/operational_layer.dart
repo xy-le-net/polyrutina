@@ -17,9 +17,10 @@
 // Map scale. The `mapScale` property (default 40) represents the
 // number of meters to fit into the smaller side of the map view.
 //
-// Auto-start shift. The `autoStartShift` flag (default true) controls
-// whether starting a routine block automatically starts the shift
-// for the associated field.
+// Mutex shift. The `mutexShift` flag (default true) dictates whether
+// routines and the shift are isolated from each other (true) or
+// linked (false: starting a routine starts the shift, stopping the
+// shift stops routines).
 //
 // nextMediaIndex() proxies InstallStore.nextMediaIndex() so that UI
 // does not depend on InstallStore directly.
@@ -40,6 +41,7 @@ import 'bort_file.dart';
 import 'bort_time.dart';
 import 'drafts_store.dart';
 import 'install_store.dart';
+import 'json_io.dart';
 import 'theme_store.dart';
 
 // ─── TimeSeries ───
@@ -261,8 +263,8 @@ class OperationalLayer extends ChangeNotifier {
   // Map scale (meters per smaller side)
   int mapScale = 40;
 
-  // Auto-start shift when starting a routine
-  bool autoStartShift = true;
+  // Mutex shift (true = isolated, false = linked)
+  bool mutexShift = true;
 
   bool mutexRoutines = true;
   bool mutexSlots = true;
@@ -417,7 +419,7 @@ class OperationalLayer extends ChangeNotifier {
       _bortTime.midnight = data['midnight'] as String? ?? _bortTime.midnight;
 
       mapScale = (data['map_scale'] as num?)?.toInt() ?? mapScale;
-      autoStartShift = data['auto_start_shift'] as bool? ?? autoStartShift;
+      mutexShift = data['mutex_shift'] as bool? ?? mutexShift;
 
       final ds = data['default_slots'];
       if (ds is List) {
@@ -466,7 +468,7 @@ class OperationalLayer extends ChangeNotifier {
     _draftsStore.loadJson(data);
 
     mapScale = (data['map_scale'] as num?)?.toInt() ?? mapScale;
-    autoStartShift = data['auto_start_shift'] as bool? ?? autoStartShift;
+    mutexShift = data['mutex_shift'] as bool? ?? mutexShift;
 
     final sData = data['shifts'];
     if (sData is Map) {
@@ -682,7 +684,7 @@ class OperationalLayer extends ChangeNotifier {
     bortHistory.reset();
     shifts.clear();
     mapScale = 40;
-    autoStartShift = true;
+    mutexShift = true;
     collapsedBlocks = {};
     exportCounters = {};
     defaultSlots = {'work'};
@@ -833,8 +835,8 @@ class OperationalLayer extends ChangeNotifier {
       case 'map_scale':
         mapScale = int.tryParse(value) ?? mapScale;
         break;
-      case 'auto_start_shift':
-        autoStartShift = _parseBool(value) ?? autoStartShift;
+      case 'mutex_shift':
+        mutexShift = _parseBool(value) ?? mutexShift;
         break;
       case 'k_pult':
         kPult = double.tryParse(value) ?? kPult;
@@ -916,7 +918,7 @@ class OperationalLayer extends ChangeNotifier {
       'selected_flags': selectedFlags,
       'midnight': _bortTime.midnight,
       'map_scale': mapScale,
-      'auto_start_shift': autoStartShift,
+      'mutex_shift': mutexShift,
       'default_slots': defaultSlots.toList(),
       'last_export_id': lastExportId,
       'last_reread_id': lastRereadId,
@@ -964,7 +966,7 @@ class OperationalLayer extends ChangeNotifier {
     out['show_artel_tab'] = showArtelTab.toString();
     out['midnight'] = _bortTime.midnight;
     out['map_scale'] = mapScale.toString();
-    out['auto_start_shift'] = autoStartShift.toString();
+    out['mutex_shift'] = mutexShift.toString();
     out['k_pult'] = kPult.toStringAsFixed(4);
     out['k_pult_small'] = kPultSmall.toStringAsFixed(4);
     out['k_block_gap'] = kBlockGap.toStringAsFixed(4);
@@ -986,7 +988,7 @@ class OperationalLayer extends ChangeNotifier {
     'mutex_routines': 'bool',
     'midnight': 'string',
     'map_scale': 'string',
-    'auto_start_shift': 'bool',
+    'mutex_shift': 'bool',
     'k_pult': 'string',
     'k_pult_small': 'string',
     'k_block_gap': 'string',

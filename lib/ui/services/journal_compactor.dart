@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════
-// lib/ui/services/journal_compactor.dart — journal compaction.
+// journal_compactor.dart — journal compaction.
 //
 // Collapses the journal into a compact form: erases all entries,
 // writes routine snapshots (action "snapshot"), writes field node

@@ -15,10 +15,9 @@
 //   TickerScope  — AppTicker: timers and colon blink.
 //   I18nScope    — dictionary: interface strings.
 //
-// Field awareness. Shift and block toggles now require a fieldId
-// (the root node of the field they belong to). The AppContext
-// methods accept this ID to correctly route the shift start/stop
-// and log it to the journal.
+// Mutex Shift. When mutexShift is true, routines and shift are
+// isolated. When false, starting a routine starts the shift, and
+// stopping the shift pauses all routines in that field's subtree.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -73,9 +72,9 @@ class AppContext {
 
     final going = !b.isRunning;
 
-    // Auto-start shift only if enabled and not already running for
-    // this specific field.
-    if (going && bort.autoStartShift && !bort.onShift(fieldId)) {
+    // Auto-start shift only if linked (mutexShift == false) and
+    // the shift is not already running for this field.
+    if (going && !bort.mutexShift && !bort.onShift(fieldId)) {
       await journal.log(
         type: JournalType.actor,
         body: jsonEncode({'action': 'shift_start', 'field_id': fieldId}),
@@ -108,16 +107,37 @@ class AppContext {
     }
     bort.stopShift(fieldId);
 
-    // Walk every routine, but only pause those attached to the
-    // field whose shift is stopping.
+    // If isolated (mutexShift == true), do not touch routines.
+    if (bort.mutexShift) return;
+
+    // Otherwise, pause every routine in this field's subtree.
     for (final r in routineLayer.routines) {
-      if (!r.fieldParents.contains(fieldId)) continue;
+      bool inField = false;
+      for (final pId in r.fieldParents) {
+        if (_isNodeDescendant(pId, fieldId)) {
+          inField = true;
+          break;
+        }
+      }
+      if (!inField) continue;
+
       for (final b in r.blocks) {
         if (b.isRunning) {
           await routineLayer.pauseBlock(journal, r.id, b.kind);
         }
       }
     }
+  }
+
+  // ─── Helper: descendant check ───
+  bool _isNodeDescendant(int nodeId, int ancestorId) {
+    if (nodeId == ancestorId) return true;
+    final node = fieldLayer.nodes[nodeId];
+    if (node == null) return false;
+    for (final p in node.parents) {
+      if (_isNodeDescendant(p, ancestorId)) return true;
+    }
+    return false;
   }
 
   // ─── User action ───
@@ -199,8 +219,6 @@ class TraceScope extends InheritedNotifier<TraceLayer> {
 }
 
 // ─── FieldScope ───
-// Subscribers: FieldTab, RoutineCard (on field attach/detach),
-// and anything tracking the active field.
 class FieldScope extends InheritedNotifier<FieldLayer> {
   const FieldScope({
     super.key,

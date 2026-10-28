@@ -10,11 +10,9 @@
 // the routine card permanently.
 //
 // Scopes. Dependencies are read from point scopes: BortScope (scale,
-// language, labels, default slots) and I18nScope (strings). The
-// former AppScope reading did not subscribe to bort notifications
-// (AppScope.updateShouldNotify compares only the appContext fields,
-// which do not change on bort mutations), so edits inside this block
-// did not immediately rebuild the surrounding UI.
+// language, labels, default slots) and I18nScope (strings). Using
+// BortScope ensures that any change within this block or elsewhere
+// immediately rebuilds the surrounding UI.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════

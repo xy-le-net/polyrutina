@@ -14,9 +14,14 @@
 // Old install.json files lack the field; they load with zero, and
 // the first call to nextMediaIndex() writes one.
 //
-// Atomic write. The target file is never written in place: data
-// goes to <name>.tmp first, which is then renamed onto the target.
-// A crash mid-write cannot leave a half-written install.json.
+// Atomic write. Delegated to json_io.dart, which writes to <name>.tmp
+// and renames onto the target. A crash mid-write cannot leave a
+// half-written install.json.
+//
+// Serialized save. Previous versions fired _save() without awaiting,
+// which could lead to two concurrent writes racing for the same
+// target file. Now writes are serialized via _saveQueue, ensuring
+// the last write always wins.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -29,12 +34,15 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'json_io.dart';
+
 class InstallStore {
   int firstRunUnixSec = 0;
   String deviceId = '';
   int mediaCounter = 0;
 
   File? _file;
+  Future<void> _saveQueue = Future.value();
 
   // ─── Startup: read or create ───
   Future<void> init() async {
@@ -64,33 +72,35 @@ class InstallStore {
 
   // ─── Next media index ───
   // Monotone: every call returns a new value greater than the
-  // previous one. The value is persisted at once, so that a crash
-  // does not cause the same index to be reused after a restart.
+  // previous one. The value is persisted, so that a crash does not
+  // cause the same index to be reused after a restart. The actual
+  // write is queued to prevent race conditions.
   int nextMediaIndex() {
     mediaCounter++;
-    _save();
+    _queueSave();
     return mediaCounter;
   }
 
+  void _queueSave() {
+    final snapshot = _buildData();
+    _saveQueue = _saveQueue.then((_) => _writeData(snapshot));
+  }
+
   Future<void> _save() async {
+    final snapshot = _buildData();
+    await _writeData(snapshot);
+  }
+
+  Map<String, dynamic> _buildData() => {
+    'first_run_unix_sec': firstRunUnixSec,
+    'device_id': deviceId,
+    'media_counter': mediaCounter,
+  };
+
+  Future<void> _writeData(Map<String, dynamic> data) async {
     final target = _file;
     if (target == null) return;
-    final tmp = File('${target.path}.tmp');
-    try {
-      await tmp.writeAsString(
-        jsonEncode({
-          'first_run_unix_sec': firstRunUnixSec,
-          'device_id': deviceId,
-          'media_counter': mediaCounter,
-        }),
-        flush: true,
-      );
-      await tmp.rename(target.path);
-    } catch (_) {
-      try {
-        if (await tmp.exists()) await tmp.delete();
-      } catch (_) {}
-    }
+    await atomicWriteJson(target, data);
   }
 
   static Future<String> _readSystemDeviceId() async {

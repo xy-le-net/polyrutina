@@ -13,6 +13,11 @@
 // Labels. The `labelsButtons` setting dictates whether labels are
 // shown. By default, they are.
 //
+// Error handling. Actions executed via onTap are wrapped in a
+// try-catch block. While this only catches synchronous errors, it
+// prevents a direct synchronous exception from breaking the event
+// loop and crashing the UI.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -131,7 +136,11 @@ class Pult extends StatelessWidget {
     if (scope != null && !spec.stayOpen) {
       scope.closeSheet();
     }
-    spec.onTap?.call();
+    try {
+      spec.onTap?.call();
+    } catch (_) {
+      // Swallow synchronous errors to prevent app crashes.
+    }
   }
 
   void _handleTap(BuildContext context, PultState state) {
@@ -187,7 +196,11 @@ class Pult extends StatelessWidget {
       );
       return;
     }
-    spec.onLongPress?.call();
+    try {
+      spec.onLongPress?.call();
+    } catch (_) {
+      // Swallow synchronous errors to prevent app crashes.
+    }
   }
 
   @override

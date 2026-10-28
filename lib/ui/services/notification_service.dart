@@ -15,6 +15,10 @@
 // (pending_action.json). The main application reads this file on
 // resume and applies the stop.
 //
+// Localization. Time units and the stop label are resolved through
+// the Translate function (i18n.t) and format.dart, ensuring uniform
+// units across the UI and notifications.
+//
 // iOS limitation. Live Activities (the only way to have
 // non-dismissible, constantly updating notifications on iOS)
 // require native Swift code. On iOS, this falls back to standard
@@ -30,6 +34,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+
+import '../core/format.dart';
 
 class NotificationService {
   static final _plugin = FlutterLocalNotificationsPlugin();
@@ -86,13 +92,14 @@ class NotificationService {
     required String blockTitle,
     required int elapsedSec,
     required int totalSec,
-    required String lang,
+    required Translate t,
     required String labelRunning,
     required String labelTotal,
   }) async {
     if (!_initialized) await init();
 
-    final body = '$blockTitle $labelRunning\n$labelTotal: ${_fmt(totalSec)}';
+    final body =
+        '$blockTitle $labelRunning\n$labelTotal: ${fmtTime(totalSec, t)}';
     final when = DateTime.now().millisecondsSinceEpoch - (elapsedSec * 1000);
 
     final androidDetails = AndroidNotificationDetails(
@@ -111,7 +118,7 @@ class NotificationService {
       actions: [
         AndroidNotificationAction(
           'stop_routine',
-          lang == 'ru' ? 'Остановить' : 'Stop',
+          t('notif.stop'),
           showsUserInterface: true,
           cancelNotification: true,
         ),
@@ -144,12 +151,12 @@ class NotificationService {
     required String title,
     required int elapsedSec,
     required int totalSec,
-    required String lang,
+    required Translate t,
     required String labelTotal,
   }) async {
     if (!_initialized) await init();
 
-    final body = '$labelTotal: ${_fmt(totalSec)}';
+    final body = '$labelTotal: ${fmtTime(totalSec, t)}';
     final when = DateTime.now().millisecondsSinceEpoch - (elapsedSec * 1000);
 
     final androidDetails = AndroidNotificationDetails(
@@ -168,7 +175,7 @@ class NotificationService {
       actions: [
         AndroidNotificationAction(
           'stop_shift',
-          lang == 'ru' ? 'Остановить' : 'Stop',
+          t('notif.stop'),
           showsUserInterface: true,
           cancelNotification: true,
         ),
@@ -208,18 +215,6 @@ class NotificationService {
   static Future<void> cancelAll() async {
     if (!_initialized) await init();
     await _plugin.cancelAll();
-  }
-
-  static String _fmt(int sec) {
-    if (sec < 0) sec = 0;
-    final d = sec ~/ 86400;
-    final h = (sec % 86400) ~/ 3600;
-    final m = (sec % 3600) ~/ 60;
-    final s = sec % 60;
-    String two(int n) => n.toString().padLeft(2, '0');
-    if (d > 0) return '$dд ${two(h)}ч ${two(m)}м';
-    if (h > 0) return '$hч ${two(m)}м';
-    return '$mм ${two(s)}с';
   }
 
   // ─── Action handlers ───

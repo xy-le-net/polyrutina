@@ -9,8 +9,9 @@
 // elapsed time) for that specific field. Toggling the shift affects
 // only the active field.
 //
-// Time edit: «dd:hh:mm:ss»; Enter or the confirm pult saves.
-// A long press on the shift pulse opens the field.
+// Time edit: uses the localized hint from i18n ('hint.time');
+// Enter or the confirm pult saves. A long press on the shift pulse
+// opens the field.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -121,7 +122,7 @@ class _ShiftRowState extends State<ShiftRow> {
                 style: TextStyle(color: fg, fontSize: side * 0.4),
                 decoration: InputDecoration(
                   isDense: true,
-                  hintText: 'дд:чч:мм:сс',
+                  hintText: i18n.t('hint.time'),
                   hintStyle: TextStyle(color: dim),
                   border: const OutlineInputBorder(),
                   contentPadding: EdgeInsets.all(side * 0.1),

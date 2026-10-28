@@ -4,11 +4,8 @@
 // Path, reading, deferred writing of operational_layer.json. Fields
 // are taken and put by the layer itself: this module knows only Map.
 //
-// Atomic write. The target file is never written in place: data
-// goes to <name>.tmp first, which is then renamed onto the target.
-// On POSIX, rename within a single filesystem is atomic, so a crash
-// mid-write cannot leave a half-written target — either the old
-// file survives or the new one appears whole.
+// Atomic write. Delegated to json_io.dart, which writes to <name>.tmp
+// and renames onto the target. See json_io.dart for details.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -20,25 +17,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-// ─── Atomic JSON write ───
-// Shared helper for every cache file that keeps its state as JSON.
-// The target is never written in place: data goes to <name>.tmp
-// first, which is then renamed onto the target. On POSIX, rename
-// within a single filesystem is atomic, so a crash mid-write cannot
-// leave a half-written target — either the old file survives or the
-// new one appears whole. On failure, the stray .tmp is removed and
-// the original target stays intact.
-Future<void> atomicWriteJson(File target, Map<String, dynamic> data) async {
-  final tmp = File('${target.path}.tmp');
-  try {
-    await tmp.writeAsString(jsonEncode(data), flush: true);
-    await tmp.rename(target.path);
-  } catch (_) {
-    try {
-      if (await tmp.exists()) await tmp.delete();
-    } catch (_) {}
-  }
-}
+import 'json_io.dart';
 
 class BortFile {
   File? _file;

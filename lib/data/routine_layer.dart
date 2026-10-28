@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════
-// lib/data/routine_layer.dart — routine layer.
+// routine_layer.dart — routine layer.
 //
 // Holds the list of routines and their blocks.
 //
@@ -13,7 +13,14 @@
 // Cache. Written with a 200 ms debounce. currentRoutineId is
 // reconstructed on startup from the first running block, so that
 // after a restart the app knows which routine is active. Cache
-// writes go through a .tmp file and a rename.
+// writes go through json_io.dart (atomic).
+//
+// Indexes. To avoid linear scans, three indexes are maintained:
+//   _sourceKeyToId  — maps source keys to routine IDs (for import).
+//   _nodeToRoutines — maps field node IDs to sets of routine IDs.
+//   _runningRoutineIds — set of IDs of routines with an active block.
+// These are updated incrementally during _applyEntry, and fully
+// rebuilt on load, reset, or direct structural mutations.
 //
 // Completion. Setting it stops the running block and records
 // completedAt; clearing it removes completedAt.
@@ -46,6 +53,7 @@ import 'database.dart';
 import 'field_layer.dart';
 import 'journal_layer.dart';
 import 'journal_types.dart';
+import 'json_io.dart';
 import 'routine.dart';
 import 'trace_layer.dart';
 
@@ -62,6 +70,11 @@ class RoutineLayer extends ChangeNotifier {
 
   File? _file;
   Timer? _saveTimer;
+
+  // ─── Indexes ───
+  final Map<String, int> _sourceKeyToId = {};
+  final Map<int, Set<int>> _nodeToRoutines = {};
+  final Set<int> _runningRoutineIds = {};
 
   List<Routine> get routinesNewestFirst {
     final copy = List<Routine>.from(routines);
@@ -103,6 +116,7 @@ class RoutineLayer extends ChangeNotifier {
       }
     }
     if (changed) {
+      _rebuildIndexes();
       _scheduleSave();
       notifyListeners();
     }
@@ -112,6 +126,24 @@ class RoutineLayer extends ChangeNotifier {
   void dispose() {
     _saveTimer?.cancel();
     super.dispose();
+  }
+
+  // ─── Index Maintenance ───
+  void _rebuildIndexes() {
+    _sourceKeyToId.clear();
+    _nodeToRoutines.clear();
+    _runningRoutineIds.clear();
+    for (final r in routines) {
+      if (r.sourceKey.isNotEmpty) {
+        _sourceKeyToId[r.sourceKey] = r.id;
+      }
+      for (final pId in r.fieldParents) {
+        _nodeToRoutines.putIfAbsent(pId, () => {}).add(r.id);
+      }
+      if (r.runningBlock != null) {
+        _runningRoutineIds.add(r.id);
+      }
+    }
   }
 
   // ─── Cache ───
@@ -142,6 +174,7 @@ class RoutineLayer extends ChangeNotifier {
           break;
         }
       }
+      _rebuildIndexes();
     } catch (_) {}
   }
 
@@ -159,15 +192,7 @@ class RoutineLayer extends ChangeNotifier {
       'routines': routines.map((r) => r.toJson()).toList(),
       'last_active_block_kind': lastActiveBlockKind,
     };
-    final tmp = File('${target.path}.tmp');
-    try {
-      await tmp.writeAsString(jsonEncode(data), flush: true);
-      await tmp.rename(target.path);
-    } catch (_) {
-      try {
-        if (await tmp.exists()) await tmp.delete();
-      } catch (_) {}
-    }
+    await atomicWriteJson(target, data);
   }
 
   Future<void> saveNow() async {
@@ -186,6 +211,7 @@ class RoutineLayer extends ChangeNotifier {
           routines = [];
           currentRoutineId = null;
           lastActiveBlockKind = null;
+          _rebuildIndexes();
           break;
         case 'snapshot':
           final raw = data['routine'];
@@ -198,6 +224,7 @@ class RoutineLayer extends ChangeNotifier {
               } else {
                 routines.add(r);
               }
+              _rebuildIndexes();
             } catch (_) {}
           }
           break;
@@ -221,6 +248,7 @@ class RoutineLayer extends ChangeNotifier {
                 fieldParents: fieldParents,
               ),
             );
+            _rebuildIndexes();
           }
           break;
         case 'rename':
@@ -235,6 +263,7 @@ class RoutineLayer extends ChangeNotifier {
           final id = (data['routine'] as num).toInt();
           routines.removeWhere((r) => r.id == id);
           if (currentRoutineId == id) currentRoutineId = null;
+          _rebuildIndexes();
           break;
         case 'flags':
           final id = (data['routine'] as num).toInt();
@@ -252,6 +281,7 @@ class RoutineLayer extends ChangeNotifier {
             r.completed = v;
             r.completedAt = v ? e.time : null;
             r.lastActionAt = e.time;
+            if (v) _runningRoutineIds.remove(id);
           }
           break;
         case 'set_schedule':
@@ -277,6 +307,7 @@ class RoutineLayer extends ChangeNotifier {
           if (r != null && !r.fieldParents.contains(nodeId)) {
             r.fieldParents.add(nodeId);
             r.lastActionAt = e.time;
+            _nodeToRoutines.putIfAbsent(nodeId, () => {}).add(id);
           }
           break;
         case 'detach_field':
@@ -286,6 +317,7 @@ class RoutineLayer extends ChangeNotifier {
           if (r != null) {
             r.fieldParents.remove(nodeId);
             r.lastActionAt = e.time;
+            _nodeToRoutines[nodeId]?.remove(id);
           }
           break;
         case 'start_block':
@@ -302,6 +334,7 @@ class RoutineLayer extends ChangeNotifier {
             r.completedAt = null;
             currentRoutineId = id;
             lastActiveBlockKind = kind;
+            _runningRoutineIds.add(id);
           }
           break;
         case 'pause_block':
@@ -313,8 +346,9 @@ class RoutineLayer extends ChangeNotifier {
             r.blockOf(kind)?.pause(at: at);
             r.lastActionAt = at;
             r.lastPulseAt = at;
-            if (r.runningBlock == null && currentRoutineId == id) {
-              currentRoutineId = null;
+            if (r.runningBlock == null) {
+              _runningRoutineIds.remove(id);
+              if (currentRoutineId == id) currentRoutineId = null;
             }
           }
           break;
@@ -336,6 +370,7 @@ class RoutineLayer extends ChangeNotifier {
     routines = [];
     currentRoutineId = null;
     lastActiveBlockKind = null;
+    _rebuildIndexes();
     notifyListeners();
   }
 
@@ -442,6 +477,7 @@ class RoutineLayer extends ChangeNotifier {
       );
       r.lastActionAt = now;
       routines.add(r);
+      _rebuildIndexes();
     }
     _scheduleSave();
     notifyListeners();
@@ -475,6 +511,7 @@ class RoutineLayer extends ChangeNotifier {
   Future<void> deleteRoutine(JournalLayer journal, int id) async {
     routines.removeWhere((r) => r.id == id);
     if (currentRoutineId == id) currentRoutineId = null;
+    _rebuildIndexes();
     await journal.log(
       type: JournalType.routine,
       body: '{"action":"delete","routine":$id}',
@@ -533,6 +570,7 @@ class RoutineLayer extends ChangeNotifier {
     if (r == null) return;
     if (r.fieldParents.contains(nodeId)) return;
     r.fieldParents.add(nodeId);
+    _nodeToRoutines.putIfAbsent(nodeId, () => {}).add(routineId);
     r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     await journal.log(
       type: JournalType.routine,
@@ -551,6 +589,7 @@ class RoutineLayer extends ChangeNotifier {
     if (r == null) return;
     if (!r.fieldParents.contains(nodeId)) return;
     r.fieldParents.remove(nodeId);
+    _nodeToRoutines[nodeId]?.remove(routineId);
     r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     await journal.log(
       type: JournalType.routine,
@@ -583,6 +622,7 @@ class RoutineLayer extends ChangeNotifier {
         r.completed = true;
         r.completedAt = now;
         r.lastActionAt = now;
+        _runningRoutineIds.remove(id);
         await journal.log(
           type: JournalType.routine,
           body: '{"action":"complete","routine":$id,"value":true}',
@@ -661,7 +701,10 @@ class RoutineLayer extends ChangeNotifier {
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
       if (mutex) {
-        for (final other in routines) {
+        final idsToPause = List<int>.from(_runningRoutineIds);
+        for (final otherId in idsToPause) {
+          final other = findRoutine(otherId);
+          if (other == null) continue;
           for (final b in other.blocks) {
             if (b.isRunning) {
               b.pause(at: now);
@@ -674,6 +717,7 @@ class RoutineLayer extends ChangeNotifier {
             }
           }
         }
+        _runningRoutineIds.clear();
       } else if (mutexSlots) {
         for (final b in r.blocks) {
           if (b.kind != kind && b.isRunning) {
@@ -691,6 +735,7 @@ class RoutineLayer extends ChangeNotifier {
       final target = r.blockOf(kind);
       if (target != null && !target.isRunning) {
         target.start(at: now);
+        _runningRoutineIds.add(routineId);
         await journal.log(
           type: JournalType.routine,
           body:
@@ -723,8 +768,9 @@ class RoutineLayer extends ChangeNotifier {
     b.pause(at: now);
     r.lastActionAt = now;
     r.lastPulseAt = now;
-    if (r.runningBlock == null && currentRoutineId == routineId) {
-      currentRoutineId = null;
+    if (r.runningBlock == null) {
+      _runningRoutineIds.remove(routineId);
+      if (currentRoutineId == routineId) currentRoutineId = null;
     }
     await journal.log(
       type: JournalType.routine,
@@ -745,20 +791,16 @@ class RoutineLayer extends ChangeNotifier {
 
   Routine? findRoutineBySourceKey(String key) {
     if (key.isEmpty) return null;
-    for (final r in routines) {
-      if (r.sourceKey == key) return r;
-    }
-    return null;
+    final id = _sourceKeyToId[key];
+    return id != null ? findRoutine(id) : null;
   }
 
   // ─── Lookup by field node ───
   // Returns all routines attached to the given field node.
   List<Routine> routinesForNode(int nodeId) {
-    final out = <Routine>[];
-    for (final r in routines) {
-      if (r.fieldParents.contains(nodeId)) out.add(r);
-    }
-    return out;
+    final ids = _nodeToRoutines[nodeId];
+    if (ids == null) return [];
+    return ids.map((id) => findRoutine(id)).whereType<Routine>().toList();
   }
 
   Future<void> resetAll() async {
@@ -768,6 +810,7 @@ class RoutineLayer extends ChangeNotifier {
     routines = [];
     currentRoutineId = null;
     lastActiveBlockKind = null;
+    _rebuildIndexes();
     await _saveToFile();
     notifyListeners();
   }

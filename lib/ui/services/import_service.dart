@@ -11,6 +11,13 @@
 // The former «bare object» form is abolished — the exporter no
 // longer writes it, and the importer no longer reads it.
 //
+// Streaming extraction. To avoid Out-Of-Memory (OOM) errors on large
+// archives, the zip is processed via InputFileStream and
+// OutputFileStream (from archive_io.dart). Files are never fully
+// loaded into Dart's heap. data.json is streamed to a temp file,
+// read, and deleted. Media files are streamed directly to their
+// targets.
+//
 // Deduplication. The source key of each parsed routine is
 // «deviceId/firstRun/routineId» of the exporting device; the routine
 // layer stores it as Routine.sourceKey, so re-importing the same
@@ -30,17 +37,13 @@
 // Field attachment. Imported routines are automatically attached to
 // the root field node, so they appear in the «field» tab immediately.
 //
-// Progress. onProgress callback is provided for the progress dialog.
-// The import reads and writes files, which is fast but can take a
-// moment on large archives; progress is reported coarsely.
-//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:archive/archive.dart';
+import 'package:archive/archive_io.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
@@ -115,105 +118,124 @@ Future<ImportResult> importFromPicker({
 
 // ─── One archive ───
 Future<ImportResult> _importZip(AppContext app, String path) async {
-  final bytes = await File(path).readAsBytes();
-  final archive = ZipDecoder().decodeBytes(bytes);
-
-  final dataFile = archive.findFile('data.json');
-  if (dataFile == null) return const ImportResult();
-
-  final dataStr = utf8.decode(dataFile.content as List<int>);
-  final Object? decoded = jsonDecode(dataStr);
-
-  // ONE accepted shape: the wrapper object.
-  final list = <Map<String, dynamic>>[];
-  if (decoded is Map) {
-    final routines = decoded['routines'];
-    if (routines is List) {
-      for (final Object? e in routines) {
-        if (e is Map) list.add(Map<String, dynamic>.from(e));
-      }
-    }
-  }
-  if (list.isEmpty) return const ImportResult();
-
-  // Phase 1: parse and skip already-present routines.
-  final toImport = <ParsedRoutine>[];
-  var skipped = 0;
-  for (final raw in list) {
-    final parsed = ReportJson.parseRoutine(raw);
-    if (parsed == null) continue;
-    if (app.routineLayer.findRoutineBySourceKey(parsed.key) != null) {
-      skipped++;
-      continue;
-    }
-    toImport.add(parsed);
-  }
-  if (toImport.isEmpty) return ImportResult(skipped: skipped);
-
-  // Phase 2: extract media — only the files referenced by the
-  // routines we are about to import.
-  final needed = <String>{};
-  for (final r in toImport) {
-    for (final t in r.traces) {
-      for (final f in t.files) {
-        if (f.kind == MediaKind.geo) continue;
-        if (f.name.isNotEmpty) needed.add(f.name);
-      }
-    }
-  }
-
-  final dir = await getApplicationDocumentsDirectory();
-  final mediaDir = Directory(p.join(dir.path, 'media'));
-  if (!await mediaDir.exists()) await mediaDir.create(recursive: true);
-
-  final written = <String>[];
-  final extracted = <String, String>{};
-  var mediaBytes = 0;
+  final input = InputFileStream(path);
   try {
-    for (final file in archive.files) {
-      if (!file.isFile) continue;
-      if (!file.name.startsWith('media/')) continue;
-      final rel = file.name.substring('media/'.length);
-      final baseName = p.basename(rel);
-      if (!needed.contains(baseName)) continue;
+    final archive = ZipDecoder().decodeBuffer(input);
 
-      final idx = app.bort.nextMediaIndex();
-      final ext = p.extension(baseName);
-      final safe = safeFileName(
-        'media_${idx}_${app.bort.deviceId}_${app.bort.firstRunUnixSec}$ext',
-      );
-      final target = File(p.join(mediaDir.path, safe));
-      await target.writeAsBytes(file.content as List<int>, flush: true);
-      written.add(target.path);
-      extracted[baseName] = target.path;
-      mediaBytes += await target.length();
-    }
-  } catch (_) {
-    await _rollback(written);
-    return ImportResult(skipped: skipped);
-  }
+    final dataFile = archive.findFile('data.json');
+    if (dataFile == null) return const ImportResult();
 
-  // Phase 3: apply in a single transaction; roll back media on
-  // failure so that no orphan file survives.
-  var imported = 0;
-  try {
-    await app.journal.transaction(() async {
-      for (final parsed in toImport) {
-        await _applyParsed(app, parsed, extracted);
+    // Extract data.json to a temporary file to avoid loading it
+    // entirely into memory as a dynamic stream object.
+    final tempDir = await getTemporaryDirectory();
+    final tempDataFile = File(p.join(tempDir.path, 'temp_import_data.json'));
+    final out = OutputFileStream(tempDataFile.path);
+    dataFile.writeContent(out);
+    out.close();
+
+    final dataStr = await tempDataFile.readAsString();
+    await tempDataFile.delete();
+
+    final Object? decoded = jsonDecode(dataStr);
+
+    // ONE accepted shape: the wrapper object.
+    final list = <Map<String, dynamic>>[];
+    if (decoded is Map) {
+      final routines = decoded['routines'];
+      if (routines is List) {
+        for (final Object? e in routines) {
+          if (e is Map) list.add(Map<String, dynamic>.from(e));
+        }
       }
-    });
-    imported = toImport.length;
-  } catch (_) {
-    await _rollback(written);
-    return ImportResult(skipped: skipped);
-  }
+    }
+    if (list.isEmpty) return const ImportResult();
 
-  return ImportResult(
-    routines: imported,
-    media: extracted.length,
-    bytes: mediaBytes,
-    skipped: skipped,
-  );
+    // Phase 1: parse and skip already-present routines.
+    final toImport = <ParsedRoutine>[];
+    var skipped = 0;
+    for (final raw in list) {
+      final parsed = ReportJson.parseRoutine(raw);
+      if (parsed == null) continue;
+      if (app.routineLayer.findRoutineBySourceKey(parsed.key) != null) {
+        skipped++;
+        continue;
+      }
+      toImport.add(parsed);
+    }
+    if (toImport.isEmpty) return ImportResult(skipped: skipped);
+
+    // Phase 2: extract media — only the files referenced by the
+    // routines we are about to import.
+    final needed = <String>{};
+    for (final r in toImport) {
+      for (final t in r.traces) {
+        for (final f in t.files) {
+          if (f.kind == MediaKind.geo) continue;
+          if (f.name.isNotEmpty) needed.add(f.name);
+        }
+      }
+    }
+
+    final dir = await getApplicationDocumentsDirectory();
+    final mediaDir = Directory(p.join(dir.path, 'media'));
+    if (!await mediaDir.exists()) await mediaDir.create(recursive: true);
+
+    final written = <String>[];
+    final extracted = <String, String>{};
+    var mediaBytes = 0;
+    try {
+      for (final file in archive.files) {
+        if (!file.isFile) continue;
+        if (!file.name.startsWith('media/')) continue;
+        final rel = file.name.substring('media/'.length);
+        final baseName = p.basename(rel);
+        if (!needed.contains(baseName)) continue;
+
+        final idx = app.bort.nextMediaIndex();
+        final ext = p.extension(baseName);
+        final safe = safeFileName(
+          'media_${idx}_${app.bort.deviceId}_${app.bort.firstRunUnixSec}$ext',
+        );
+        final target = File(p.join(mediaDir.path, safe));
+
+        // Stream directly to the target file.
+        final fileOut = OutputFileStream(target.path);
+        file.writeContent(fileOut);
+        fileOut.close();
+
+        written.add(target.path);
+        extracted[baseName] = target.path;
+        mediaBytes += await target.length();
+      }
+    } catch (_) {
+      await _rollback(written);
+      return ImportResult(skipped: skipped);
+    }
+
+    // Phase 3: apply in a single transaction; roll back media on
+    // failure so that no orphan file survives.
+    var imported = 0;
+    try {
+      await app.journal.transaction(() async {
+        for (final parsed in toImport) {
+          await _applyParsed(app, parsed, extracted);
+        }
+      });
+      imported = toImport.length;
+    } catch (_) {
+      await _rollback(written);
+      return ImportResult(skipped: skipped);
+    }
+
+    return ImportResult(
+      routines: imported,
+      media: extracted.length,
+      bytes: mediaBytes,
+      skipped: skipped,
+    );
+  } finally {
+    input.close();
+  }
 }
 
 Future<void> _rollback(List<String> written) async {

@@ -5,7 +5,9 @@
 // Here — card state: name editing, block time editing, show/hide
 // slots, collapse, auto-scroll, completion, export, move to field.
 //
-// Scheduled date. Uses the bort's «midnight» setting.
+// Scheduled date. Uses a custom DialogFrame for date picking,
+// ensuring visual consistency across the app (no Material
+// showDatePicker).
 //
 // Move routine. Added a pult in the summary block to move the routine
 // to a different field (node) via a pult sheet.
@@ -266,17 +268,28 @@ class _RoutineCardState extends State<RoutineCard> {
   Future<void> _pickSchedule(Routine r) async {
     final routineLayer = RoutineScope.of(context);
     final journal = AppScope.of(context).journal;
+    final i18n = I18nScope.of(context);
     final bort = BortScope.of(context);
+
     final now = DateTime.now();
     final initial = r.scheduledAt != null
         ? DateTime.fromMillisecondsSinceEpoch(r.scheduledAt! * 1000)
         : now;
-    final picked = await showDatePicker(
+
+    final picked = await showDialog<DateTime>(
       context: context,
-      initialDate: initial,
-      firstDate: DateTime(now.year - 5),
-      lastDate: DateTime(now.year + 5),
+      barrierColor: Colors.transparent,
+      builder: (ctx) {
+        return _DatePickerDialog(
+          initialDate: initial,
+          firstDate: DateTime(now.year - 5),
+          lastDate: DateTime(now.year + 5),
+          i18n: i18n,
+          bort: bort,
+        );
+      },
     );
+
     if (picked == null) return;
 
     final parts = bort.midnight.split(':');
@@ -532,6 +545,164 @@ class _RoutineCardState extends State<RoutineCard> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─── Custom Date Picker Dialog ───
+class _DatePickerDialog extends StatefulWidget {
+  final DateTime initialDate;
+  final DateTime firstDate;
+  final DateTime lastDate;
+  final dynamic i18n;
+  final dynamic bort;
+
+  const _DatePickerDialog({
+    required this.initialDate,
+    required this.firstDate,
+    required this.lastDate,
+    required this.i18n,
+    required this.bort,
+  });
+
+  @override
+  State<_DatePickerDialog> createState() => _DatePickerDialogState();
+}
+
+class _DatePickerDialogState extends State<_DatePickerDialog> {
+  late DateTime _currentMonth;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentMonth = DateTime(
+      widget.initialDate.year,
+      widget.initialDate.month,
+      1,
+    );
+  }
+
+  void _shiftMonth(int delta) {
+    setState(() {
+      _currentMonth = DateTime(
+        _currentMonth.year,
+        _currentMonth.month + delta,
+        1,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final i18n = widget.i18n;
+    final bort = widget.bort;
+    final side = PultScope.of(context).smallSide;
+
+    final firstWeekday = _currentMonth.weekday;
+    final daysInMonth = DateTime(
+      _currentMonth.year,
+      _currentMonth.month + 1,
+      0,
+    ).day;
+    final totalCells = (((firstWeekday - 1) + daysInMonth + 6) ~/ 7) * 7;
+
+    final grid = <Widget>[];
+    for (var i = 0; i < totalCells; i++) {
+      final dayNum = i - (firstWeekday - 1) + 1;
+      if (dayNum < 1 || dayNum > daysInMonth) {
+        grid.add(const SizedBox.shrink());
+        continue;
+      }
+      final date = DateTime(_currentMonth.year, _currentMonth.month, dayNum);
+      final isSelected =
+          date.year == widget.initialDate.year &&
+          date.month == widget.initialDate.month &&
+          date.day == widget.initialDate.day;
+
+      final isValid =
+          !date.isBefore(widget.firstDate) && !date.isAfter(widget.lastDate);
+
+      grid.add(
+        GestureDetector(
+          onTap: isValid ? () => Navigator.of(context).pop(date) : null,
+          child: Container(
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: isSelected ? bort.fgsignal : Colors.transparent,
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              '$dayNum',
+              style: TextStyle(
+                color: isValid ? (isSelected ? bort.bg : bort.fg) : bort.mid,
+                fontSize: side * 0.4,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return DialogFrame(
+      onDismiss: () => Navigator.of(context).pop(),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Pult(
+                spec: PultSpec(
+                  id: 'prev_month',
+                  icon: Icons.chevron_left,
+                  onTap: () => _shiftMonth(-1),
+                ),
+                fg: bort.fg,
+                bg: bort.bg,
+                signal: bort.fgsignal,
+                overrideSize: side * bort.kPultSmall,
+              ),
+              Text(
+                '${_currentMonth.year}.${_currentMonth.month.toString().padLeft(2, '0')}',
+                style: TextStyle(color: bort.fg, fontSize: side * bort.kName),
+              ),
+              Pult(
+                spec: PultSpec(
+                  id: 'next_month',
+                  icon: Icons.chevron_right,
+                  onTap: () => _shiftMonth(1),
+                ),
+                fg: bort.fg,
+                bg: bort.bg,
+                signal: bort.fgsignal,
+                overrideSize: side * bort.kPultSmall,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: side * 7,
+            child: GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 7,
+              childAspectRatio: 1,
+              children: grid,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                i18n.t('common.cancel'),
+                style: TextStyle(color: bort.mid),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -39,9 +39,9 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import 'bort_file.dart';
 import 'database.dart';
 import 'journal_types.dart';
+import 'json_io.dart';
 
 typedef ApplyFn = void Function(JournalData entry);
 typedef ResetFn = void Function();
@@ -188,20 +188,6 @@ class JournalLayer extends ChangeNotifier {
   }
 
   // ─── Read ───
-  Future<List<JournalData>> recent({int limit = 50}) {
-    return (db.select(db.journal)
-          ..orderBy([(t) => OrderingTerm.desc(t.id)])
-          ..limit(limit))
-        .get();
-  }
-
-  Stream<List<JournalData>> watchRecent({int limit = 50}) {
-    return (db.select(db.journal)
-          ..orderBy([(t) => OrderingTerm.desc(t.id)])
-          ..limit(limit))
-        .watch();
-  }
-
   Stream<List<JournalData>> watchAll() {
     return (db.select(
       db.journal,
@@ -308,6 +294,12 @@ class JournalLayer extends ChangeNotifier {
     });
   }
 
+  Future<void> saveNow() async {
+    _saveTimer?.cancel();
+    _saveTimer = null;
+    await _saveStateNow();
+  }
+
   Future<void> _loadState() async {
     if (_stateFile == null || !await _stateFile!.exists()) return;
     try {
@@ -323,10 +315,6 @@ class JournalLayer extends ChangeNotifier {
     } catch (_) {}
   }
 
-  // Marks are written atomically: a crash mid-write leaves either
-  // the old journal_layer.json or the new one whole, never a torn
-  // file. Shared with BortFile and the other caches via
-  // atomicWriteJson.
   Future<void> _saveStateNow() async {
     if (_stateFile == null) return;
     final data = {'layers': _layers.map((k, v) => MapEntry(k, v.lastId))};

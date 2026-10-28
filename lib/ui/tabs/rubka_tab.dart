@@ -1,15 +1,17 @@
 // ═══════════════════════════════════════════════════════════════════
-// lib/ui/tabs/rubka_tab.dart — rubka tab.
+// rubka_tab.dart — rubka tab.
 //
 // Four blocks: artel, appearance, interface, data.
 //
 // Artel. The shift row is the first line — fgsignal-colored in full
 // and refreshed on every ticker beat. It now reads the active field's
 // shift state (via FieldScope). Then: midnight field (HH:MM) and map
-// scale field (meters). Under «взаимоисключение» — three checkboxes:
-// «рутины» (global pause), «слоты» (same-routine pause), and
-// «смена» (auto-start shift on routine start). Under «блоки» — two
-// checkboxes for tab visibility («поле» and «артель»).
+// scale field (meters). Under «mutex» — three checkboxes:
+// «routines» (global pause), «slots» (same-routine pause), and
+// «shift» (mutex shift: if checked, routines and shift are isolated;
+// if unchecked, starting a routine starts the shift, and stopping
+// the shift stops routines). Under «blocks» — two checkboxes for
+// tab visibility («field» and «artel»).
 //
 // Layout. Narrow: single column. Wide: two columns (artel+interface
 // on the left, appearance+data on the right) with chessboard frame
@@ -95,8 +97,8 @@ class RubkaTab extends StatelessWidget {
           ),
           _tabTickRow(
             context,
-            'auto_start_shift',
-            i18n.t('bort.auto_start_shift'),
+            'mutex_shift',
+            i18n.t('bort.mutex_shift'),
             fg,
             bg,
             fgsignal,
@@ -390,7 +392,9 @@ class BlockWrapper extends StatelessWidget {
     if (child is Block) {
       final b = child as Block;
       return Block(
+        key: b.key,
         title: b.title,
+        headerWidget: b.headerWidget,
         collapsed: b.collapsed,
         canCollapse: b.canCollapse,
         onToggleCollapsed: b.onToggleCollapsed,

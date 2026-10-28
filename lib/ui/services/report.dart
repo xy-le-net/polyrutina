@@ -7,10 +7,13 @@
 //
 // The archive contains report.txt, data.json, and media/.
 //
-// data.json has ONE shape: {"schema": 1, "routines": [...]}.
+// Streaming. To avoid OOM on large archives, the zip is built using
+// ZipFileEncoder (from archive_io.dart), which streams data directly
+// to the target file. The entire archive is never held in memory.
 //
-// File names. The zip follows one template:
-//   polyrutina_<label>_<stamp>_<idx>_<deviceId>_<firstRun>.zip
+// Filename truncation. The label part of the archive name is capped
+// at fifty characters to prevent filesystem limits from rejecting
+// the export.
 //
 // Isolate. Zip compression and media reading are offloaded to a
 // background isolate (Isolate.run) to keep the UI thread responsive.
@@ -21,13 +24,12 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
-import 'dart:typed_data';
 
-import 'package:archive/archive.dart';
+import 'package:archive/archive_io.dart';
+import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:flutter/material.dart';
 
 import '../../data/i18n.dart';
 import '../../data/routine.dart';
@@ -38,25 +40,32 @@ import '../core/progress_dialog.dart';
 import 'report_json.dart';
 
 // ─── Isolate helper ───
-Future<Uint8List?> _buildArchiveIsolate(Map<String, dynamic> args) async {
+Future<void> _buildArchiveIsolate(Map<String, dynamic> args) async {
+  final outputPath = args['output_path'] as String;
   final reportBytes = args['report'] as List<int>;
   final jsonBytes = args['json'] as List<int>;
   final mediaList = (args['media'] as List).cast<Map<String, String>>();
 
-  final archive = Archive();
-  archive.addFile(ArchiveFile('report.txt', reportBytes.length, reportBytes));
-  archive.addFile(ArchiveFile('data.json', jsonBytes.length, jsonBytes));
+  final encoder = ZipFileEncoder();
+  encoder.create(outputPath);
 
-  for (final m in mediaList) {
-    final f = File(m['path']!);
-    if (await f.exists()) {
-      final bytes = await f.readAsBytes();
-      archive.addFile(ArchiveFile('media/${m['name']}', bytes.length, bytes));
+  try {
+    encoder.addArchiveFile(
+      ArchiveFile('report.txt', reportBytes.length, reportBytes),
+    );
+    encoder.addArchiveFile(
+      ArchiveFile('data.json', jsonBytes.length, jsonBytes),
+    );
+
+    for (final m in mediaList) {
+      final f = File(m['path']!);
+      if (await f.exists()) {
+        await encoder.addFile(f, 'media/${m['name']}');
+      }
     }
+  } finally {
+    await encoder.close();
   }
-
-  final encoded = ZipEncoder().encode(archive);
-  return encoded != null ? Uint8List.fromList(encoded) : null;
 }
 
 class ReportBuilder {
@@ -212,22 +221,7 @@ class ReportBuilder {
     }
 
     report(0.2);
-    Uint8List? zipBytes;
-    try {
-      zipBytes = await Isolate.run(
-        () => _buildArchiveIsolate({
-          'report': reportBytes,
-          'json': jsonBytes,
-          'media': mediaList,
-        }),
-      );
-    } catch (_) {
-      zipBytes = null;
-    }
-    if (token.cancelled) return null;
-    if (zipBytes == null) return null;
 
-    report(0.85);
     final dir = await getApplicationDocumentsDirectory();
     final exportsDir = Directory(p.join(dir.path, 'exports'));
     if (!await exportsDir.exists()) await exportsDir.create(recursive: true);
@@ -235,12 +229,38 @@ class ReportBuilder {
     final idx = app.bort.nextExportIndex(objectKey);
     final stamp = _stamp();
 
-    // Append deviceId and firstRun to the filename
+    // Truncate the label to avoid filesystem limits.
+    final safeLabel = label.length > 50 ? label.substring(0, 50) : label;
     final name =
-        'polyrutina_${label}_${stamp}_${idx}_${app.bort.deviceId}_${app.bort.firstRunUnixSec}.zip';
+        'polyrutina_${safeLabel}_${stamp}_${idx}_${app.bort.deviceId}_${app.bort.firstRunUnixSec}.zip';
 
     final zipFile = File(p.join(exportsDir.path, name));
-    await zipFile.writeAsBytes(zipBytes, flush: true);
+
+    try {
+      await Isolate.run(
+        () => _buildArchiveIsolate({
+          'output_path': zipFile.path,
+          'report': reportBytes,
+          'json': jsonBytes,
+          'media': mediaList,
+        }),
+      );
+    } catch (_) {
+      try {
+        if (await zipFile.exists()) await zipFile.delete();
+      } catch (_) {}
+      if (uiContext != null && uiContext.mounted) {
+        Navigator.of(uiContext).pop();
+      }
+      return null;
+    }
+
+    if (token.cancelled) {
+      try {
+        if (await zipFile.exists()) await zipFile.delete();
+      } catch (_) {}
+      return null;
+    }
 
     report(0.98);
     final lastId = await app.journal.lastEntryId();
@@ -250,8 +270,6 @@ class ReportBuilder {
     if (uiContext != null && uiContext.mounted) {
       Navigator.of(uiContext).pop();
     }
-
-    if (token.cancelled) return null;
 
     try {
       await Share.shareXFiles([XFile(zipFile.path)], subject: name);

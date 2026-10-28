@@ -10,6 +10,15 @@
 // Determines which shift is displayed and which field new routines
 // are attached to.
 //
+// Renaming. All nodes, including roots, can be renamed.
+//
+// Deletion. Deleting a node with children is a multi-step operation.
+// The children are re-attached to the node's parents (or to the
+// default root). This is wrapped in a single journal transaction to
+// avoid multiple pumps and intermediate states.
+//
+// Atomic write. Delegated to json_io.dart.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -24,6 +33,7 @@ import 'package:path_provider/path_provider.dart';
 import 'database.dart';
 import 'journal_layer.dart';
 import 'journal_types.dart';
+import 'json_io.dart';
 
 class FieldNode {
   final int id;
@@ -129,15 +139,7 @@ class FieldLayer extends ChangeNotifier {
       'active_field_id': activeFieldId,
       'nodes': nodes.values.map((n) => n.toJson()).toList(),
     };
-    final tmp = File('${target.path}.tmp');
-    try {
-      await tmp.writeAsString(jsonEncode(data), flush: true);
-      await tmp.rename(target.path);
-    } catch (_) {
-      try {
-        if (await tmp.exists()) await tmp.delete();
-      } catch (_) {}
-    }
+    await atomicWriteJson(target, data);
   }
 
   Future<void> saveNow() async {
@@ -245,7 +247,10 @@ class FieldLayer extends ChangeNotifier {
 
   // ─── Mutations ───
 
-  Future<FieldNode> createRootIfNeeded(JournalLayer journal) async {
+  Future<FieldNode> createRootIfNeeded(
+    JournalLayer journal, {
+    String name = 'Field',
+  }) async {
     if (rootId != null && nodes.containsKey(rootId)) {
       activeFieldId ??= rootId;
       return nodes[rootId]!;
@@ -253,15 +258,11 @@ class FieldLayer extends ChangeNotifier {
 
     final id = await journal.log(
       type: JournalType.fieldNode,
-      body: jsonEncode({
-        'action': 'create',
-        'name': 'Поле', // Default buffer name
-        'is_root': true,
-      }),
+      body: jsonEncode({'action': 'create', 'name': name, 'is_root': true}),
     );
 
     if (!nodes.containsKey(id)) {
-      final n = FieldNode(id: id, name: 'Поле', isRoot: true);
+      final n = FieldNode(id: id, name: name, isRoot: true);
       nodes[id] = n;
       rootId = id;
       activeFieldId = id;
@@ -311,7 +312,7 @@ class FieldLayer extends ChangeNotifier {
 
   Future<void> renameNode(JournalLayer journal, int id, String name) async {
     final n = nodes[id];
-    if (n == null || n.isRoot) return; // Root name is fixed
+    if (n == null) return;
     n.name = name;
     await journal.log(
       type: JournalType.fieldNode,
@@ -382,41 +383,44 @@ class FieldLayer extends ChangeNotifier {
     final node = nodes[id];
     if (node == null || node.isRoot) return; // Cannot delete roots
 
-    if (burn) {
-      // Recursively delete children
-      final children = List<int>.from(node.children);
-      for (final cId in children) {
-        await deleteNode(journal, cId, burn: true);
-      }
-    } else {
-      // Shake children to parents
-      for (final cId in node.children) {
-        if (node.parents.isEmpty) {
-          // If the node had no parents, shake children to the default root
-          if (rootId != null && rootId != id) {
-            await attachNode(journal, cId, rootId!);
-          }
-        } else {
-          for (final pId in node.parents) {
-            await attachNode(journal, cId, pId);
+    await journal.transaction(() async {
+      if (burn) {
+        // Recursively delete children
+        final children = List<int>.from(node.children);
+        for (final cId in children) {
+          await deleteNode(journal, cId, burn: true);
+        }
+      } else {
+        // Shake children to parents
+        for (final cId in node.children) {
+          if (node.parents.isEmpty) {
+            // If the node had no parents, shake children to the default root
+            if (rootId != null && rootId != id) {
+              await attachNode(journal, cId, rootId!);
+            }
+          } else {
+            for (final pId in node.parents) {
+              await attachNode(journal, cId, pId);
+            }
           }
         }
       }
-    }
 
-    // Delete this node
-    nodes.remove(id);
-    for (final pId in node.parents) {
-      nodes[pId]?.children.remove(id);
-    }
-    for (final cId in node.children) {
-      nodes[cId]?.parents.remove(id);
-    }
+      // Delete this node
+      nodes.remove(id);
+      for (final pId in node.parents) {
+        nodes[pId]?.children.remove(id);
+      }
+      for (final cId in node.children) {
+        nodes[cId]?.parents.remove(id);
+      }
 
-    await journal.log(
-      type: JournalType.fieldNode,
-      body: jsonEncode({'action': 'delete', 'id': id}),
-    );
+      await journal.log(
+        type: JournalType.fieldNode,
+        body: jsonEncode({'action': 'delete', 'id': id}),
+      );
+    });
+
     _scheduleSave();
     notifyListeners();
   }
