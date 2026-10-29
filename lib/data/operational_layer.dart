@@ -9,21 +9,20 @@
 // JSON file (shift_history.json, bort_history.json) and are accessed
 // via the `series` registry.
 //
-// Shift per field. The concept of "shift" is now independent for
-// every field (root node). The OperationalLayer holds a map of
+// Shift per field. The concept of "shift" is independent for every
+// field (root node). The OperationalLayer holds a map of
 // FieldShiftState keyed by fieldId. The global BortTime remains
 // unified (bort time is not split per field).
 //
+// Mutex shift. The `mutexShift` flag (default true) dictates the
+// relationship between routines and shifts:
+//   — if true, they are independent (stopping a shift does not stop
+//     routines, and starting a routine does not start a shift);
+//   — if false, they are linked (starting a routine starts the shift,
+//     stopping the shift pauses all routines in its subtree).
+//
 // Map scale. The `mapScale` property (default 40) represents the
 // number of meters to fit into the smaller side of the map view.
-//
-// Mutex shift. The `mutexShift` flag (default true) dictates whether
-// routines and the shift are isolated from each other (true) or
-// linked (false: starting a routine starts the shift, stopping the
-// shift stops routines).
-//
-// nextMediaIndex() proxies InstallStore.nextMediaIndex() so that UI
-// does not depend on InstallStore directly.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -37,11 +36,11 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'atomic_json.dart';
 import 'bort_file.dart';
 import 'bort_time.dart';
 import 'drafts_store.dart';
 import 'install_store.dart';
-import 'json_io.dart';
 import 'theme_store.dart';
 
 // ─── TimeSeries ───
@@ -263,7 +262,7 @@ class OperationalLayer extends ChangeNotifier {
   // Map scale (meters per smaller side)
   int mapScale = 40;
 
-  // Mutex shift (true = isolated, false = linked)
+  // Mutex shift flag (true = independent, false = linked).
   bool mutexShift = true;
 
   bool mutexRoutines = true;
@@ -823,6 +822,9 @@ class OperationalLayer extends ChangeNotifier {
       case 'mutex_slots':
         mutexSlots = _parseBool(value) ?? mutexSlots;
         break;
+      case 'mutex_shift':
+        mutexShift = _parseBool(value) ?? mutexShift;
+        break;
       case 'selected_type':
         selectedType = int.tryParse(value) ?? selectedType;
         break;
@@ -834,9 +836,6 @@ class OperationalLayer extends ChangeNotifier {
         break;
       case 'map_scale':
         mapScale = int.tryParse(value) ?? mapScale;
-        break;
-      case 'mutex_shift':
-        mutexShift = _parseBool(value) ?? mutexShift;
         break;
       case 'k_pult':
         kPult = double.tryParse(value) ?? kPult;

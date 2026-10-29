@@ -6,16 +6,18 @@
 // Artel. The shift row is the first line — fgsignal-colored in full
 // and refreshed on every ticker beat. It now reads the active field's
 // shift state (via FieldScope). Then: midnight field (HH:MM) and map
-// scale field (meters). Under «mutex» — three checkboxes:
-// «routines» (global pause), «slots» (same-routine pause), and
-// «shift» (mutex shift: if checked, routines and shift are isolated;
-// if unchecked, starting a routine starts the shift, and stopping
-// the shift stops routines). Under «blocks» — two checkboxes for
-// tab visibility («field» and «artel»).
+// scale field (meters). Under «взаимоисключение» — three checkboxes:
+// «рутины» (global pause), «слоты» (same-routine pause), and
+// «смена» (mutex shift: if true, routines and shift are independent;
+// if false, they are linked). Under «блоки» — two checkboxes for tab
+// visibility («поле» and «артель»).
 //
 // Layout. Narrow: single column. Wide: two columns (artel+interface
 // on the left, appearance+data on the right) with chessboard frame
 // parity.
+//
+// BlockWrapper. Preserves the original key of the Block widget to
+// avoid losing state during rebuilds.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -178,7 +180,6 @@ class RubkaTab extends StatelessWidget {
               16,
             ),
             children: [
-              // Enforce strict alternation in a single column
               BlockWrapper(parity: 0, child: artel),
               const BlockWrapper(parity: 1, child: appearanceBlock),
               BlockWrapper(parity: 2, child: interface),
@@ -210,7 +211,6 @@ class RubkaTab extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Chessboard parity: (row + col) % 2
               col([
                 BlockWrapper(parity: 0, child: artel),
                 BlockWrapper(parity: 1, child: interface),
@@ -394,7 +394,6 @@ class BlockWrapper extends StatelessWidget {
       return Block(
         key: b.key,
         title: b.title,
-        headerWidget: b.headerWidget,
         collapsed: b.collapsed,
         canCollapse: b.canCollapse,
         onToggleCollapsed: b.onToggleCollapsed,

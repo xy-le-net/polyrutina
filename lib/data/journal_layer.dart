@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════
-// journal_layer.dart — журнальный слой.
+// journal_layer.dart — journal layer.
 //
 // The single keeper of the database and the entry body format.
 //
@@ -23,9 +23,11 @@
 // approach was O(n) in the journal size; this one is O(k) in the
 // matched rows.
 //
-// The journal's size is not measured here: the rubka reads the bort
-// files directly. The service "local" flag for bort-side records is
-// not set here: the bit JournalFlag.fromServer serves that purpose.
+// Dead code removal. Methods recent and watchRecent were removed
+// as they had no callers in the codebase.
+//
+// Immediate save. saveNow() forces the state to be flushed to disk,
+// used by the main application when going to background.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -39,9 +41,9 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'atomic_json.dart';
 import 'database.dart';
 import 'journal_types.dart';
-import 'json_io.dart';
 
 typedef ApplyFn = void Function(JournalData entry);
 typedef ResetFn = void Function();
@@ -294,6 +296,9 @@ class JournalLayer extends ChangeNotifier {
     });
   }
 
+  // Forces an immediate write of the mark state. Called by the main
+  // application when going to background, ensuring that the marks
+  // are persisted before the process might be killed.
   Future<void> saveNow() async {
     _saveTimer?.cancel();
     _saveTimer = null;
@@ -315,6 +320,10 @@ class JournalLayer extends ChangeNotifier {
     } catch (_) {}
   }
 
+  // Marks are written atomically: a crash mid-write leaves either
+  // the old journal_layer.json or the new one whole, never a torn
+  // file. Shared with BortFile and the other caches via
+  // atomicWriteJson.
   Future<void> _saveStateNow() async {
     if (_stateFile == null) return;
     final data = {'layers': _layers.map((k, v) => MapEntry(k, v.lastId))};

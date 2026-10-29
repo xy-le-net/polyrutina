@@ -4,8 +4,9 @@
 // Path, reading, deferred writing of operational_layer.json. Fields
 // are taken and put by the layer itself: this module knows only Map.
 //
-// Atomic write. Delegated to json_io.dart, which writes to <name>.tmp
-// and renames onto the target. See json_io.dart for details.
+// Atomic write. The target file is never written in place: data
+// goes to <name>.tmp first, which is then renamed onto the target.
+// The shared helper atomicWriteJson is used for this purpose.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -17,7 +18,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import 'json_io.dart';
+import 'atomic_json.dart';
 
 class BortFile {
   File? _file;

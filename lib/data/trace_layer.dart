@@ -18,26 +18,17 @@
 //   }
 //
 // slot — routine block kind. kind — display form (text | checklist).
-// Media live in files: a list of {kind (audio, photo, video, geo,
-// file), path, name}. Files are copied into the application; the
-// trace body keeps the path. For the "geo" kind no separate json
-// file is written: coordinates (lat, lon, acc) go straight into
-// TraceFile.
 //
-// fieldParents. Identifiers of the field nodes (graph vertices) to
-// which this trace is attached. An empty list means the trace is
-// unattached (legacy state); the UI treats such a trace as belonging
-// to the root field node.
+// Indices. To avoid O(N) lookups on every UI frame (TraceField
+// rebuilds, RoutineCard checks), a _traceIndex is maintained:
+//   Map<int parentId, Map<String "kind:slot", int traceId>>.
+// It caches the minimum ID found for a given parent, kind, and slot.
+// A fallback linear scan is performed if the index is stale (e.g.,
+// a trace was deleted or detached).
 //
-// Cache. Written with a 200 ms debounce, through a .tmp file and
-// a rename (json_io.dart). A crash mid-write cannot leave a
-// half-written cache.
-//
-// Index. A map _kindSlotIndex is maintained to accelerate
-// findFirstByKindSlot lookups, mapping «parentId|kind|slot» to the
-// minimal trace ID. The index is rebuilt on load, reset, and after
-// deletions/detachments; updated incrementally on creation, attach,
-// and corrections.
+// Schema. The cache file includes a 'schema' version field. If the
+// loaded schema is older, the cache is discarded and rebuilt from
+// the journal.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -50,10 +41,10 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'atomic_json.dart';
 import 'database.dart';
 import 'journal_layer.dart';
 import 'journal_types.dart';
-import 'json_io.dart';
 
 // ─── Trace display form ───
 class TraceKind {
@@ -178,8 +169,6 @@ class TraceFile {
   String path;
   String name;
 
-  // For the "geo" kind: coordinates and accuracy go straight into
-  // the trace body — no separate json file is needed.
   double? lat;
   double? lon;
   double? acc;
@@ -213,33 +202,15 @@ class TraceFile {
 }
 
 class TraceLayer extends ChangeNotifier {
+  static const int _schemaVersion = 1;
+
   final Map<int, Trace> traces = {};
+
+  // Index: parentId -> "kind:slot" -> minimum trace ID
+  final Map<int, Map<String, int>> _traceIndex = {};
 
   File? _file;
   Timer? _saveTimer;
-
-  // ─── Index ───
-  final Map<String, int> _kindSlotIndex = {};
-
-  String _indexKey(int parentId, String kind, String slot) =>
-      '$parentId|$kind|$slot';
-
-  void _indexTrace(Trace t) {
-    if (t.deleted) return;
-    for (final pId in t.parents) {
-      final key = _indexKey(pId, t.kind, t.slot);
-      if (!_kindSlotIndex.containsKey(key) || t.id < _kindSlotIndex[key]!) {
-        _kindSlotIndex[key] = t.id;
-      }
-    }
-  }
-
-  void _rebuildIndex() {
-    _kindSlotIndex.clear();
-    for (final t in traces.values) {
-      _indexTrace(t);
-    }
-  }
 
   Future<void> init(JournalLayer journal) async {
     final dir = await getApplicationDocumentsDirectory();
@@ -262,11 +233,43 @@ class TraceLayer extends ChangeNotifier {
     super.dispose();
   }
 
+  // ─── Index maintenance ───
+  void _rebuildIndices() {
+    _traceIndex.clear();
+    for (final t in traces.values) {
+      if (t.deleted) continue;
+      for (final pId in t.parents) {
+        final key = '${t.kind}:${t.slot}';
+        final existingId = _traceIndex[pId]?[key];
+        if (existingId == null || t.id < existingId) {
+          _traceIndex.putIfAbsent(pId, () => {})[key] = t.id;
+        }
+      }
+    }
+  }
+
+  void _updateIndexForTrace(Trace t) {
+    if (t.deleted) return;
+    for (final pId in t.parents) {
+      final key = '${t.kind}:${t.slot}';
+      final existingId = _traceIndex[pId]?[key];
+      if (existingId == null || t.id < existingId) {
+        _traceIndex.putIfAbsent(pId, () => {})[key] = t.id;
+      }
+    }
+  }
+
   Future<void> _loadFromFile() async {
     if (_file == null || !await _file!.exists()) return;
     try {
       final raw = await _file!.readAsString();
       final data = jsonDecode(raw) as Map<String, dynamic>;
+
+      final schema = (data['schema'] as num?)?.toInt() ?? 0;
+      if (schema < _schemaVersion) {
+        return; // Rely on journal reread
+      }
+
       final list = data['traces'];
       if (list is List) {
         for (final e in list) {
@@ -275,7 +278,7 @@ class TraceLayer extends ChangeNotifier {
           traces[id] = Trace.fromJson(id, m);
         }
       }
-      _rebuildIndex();
+      _rebuildIndices();
     } catch (_) {}
   }
 
@@ -290,6 +293,7 @@ class TraceLayer extends ChangeNotifier {
     final target = _file;
     if (target == null) return;
     final data = <String, dynamic>{
+      'schema': _schemaVersion,
       'traces': traces.values.map((t) => {'id': t.id, ...t.toJson()}).toList(),
     };
     await atomicWriteJson(target, data);
@@ -340,20 +344,20 @@ class TraceLayer extends ChangeNotifier {
               .toList();
         }
         existing.deleted = data['deleted'] as bool? ?? existing.deleted;
-        _indexTrace(existing);
+        _updateIndexForTrace(existing);
         return;
       }
 
       if (traces.containsKey(e.id)) return;
-      final newTrace = Trace.fromJson(e.id, data);
-      traces[e.id] = newTrace;
-      _indexTrace(newTrace);
+      final t = Trace.fromJson(e.id, data);
+      traces[e.id] = t;
+      _updateIndexForTrace(t);
     } catch (_) {}
   }
 
   void _resetMemory() {
     traces.clear();
-    _rebuildIndex();
+    _traceIndex.clear();
     notifyListeners();
   }
 
@@ -380,23 +384,22 @@ class TraceLayer extends ChangeNotifier {
   }
 
   Trace? findFirstBySlot(int objectId, String slot) {
-    Trace? found;
-    for (final t in traces.values) {
-      if (t.deleted) continue;
-      if (t.slot != slot) continue;
-      if (!t.parents.contains(objectId)) continue;
-      if (found == null || t.id < found.id) found = t;
-    }
-    return found;
+    return findFirstByKindSlot(objectId, TraceKind.text, slot) ??
+        findFirstByKindSlot(objectId, TraceKind.checklist, slot);
   }
 
   Trace? findFirstByKindSlot(int objectId, String kind, String slot) {
-    final indexId = _kindSlotIndex[_indexKey(objectId, kind, slot)];
-    if (indexId != null) {
-      final t = traces[indexId];
-      if (t != null && !t.deleted) return t;
+    final key = '$kind:$slot';
+    final id = _traceIndex[objectId]?[key];
+
+    if (id != null) {
+      final t = traces[id];
+      if (t != null && !t.deleted && t.parents.contains(objectId)) {
+        return t;
+      }
     }
-    // Fallback to linear scan if index is stale, and repair it.
+
+    // Fallback if index is stale or missing
     Trace? found;
     for (final t in traces.values) {
       if (t.deleted) continue;
@@ -406,7 +409,7 @@ class TraceLayer extends ChangeNotifier {
       if (found == null || t.id < found.id) found = t;
     }
     if (found != null) {
-      _kindSlotIndex[_indexKey(objectId, kind, slot)] = found.id;
+      _traceIndex.putIfAbsent(objectId, () => {})[key] = found.id;
     }
     return found;
   }
@@ -429,24 +432,17 @@ class TraceLayer extends ChangeNotifier {
       'field_parents': fieldParents,
     });
     final id = await journal.log(type: JournalType.trace, body: body);
-    // Pre-insert so callers inside a journal transaction (import, in
-    // particular) can find this trace immediately, before the journal
-    // pumps. Without this, attachFile right after createText during a
-    // transaction sees an empty traces map and silently returns,
-    // leaving the file on disk unattached — the orphaned media.
-    // _applyEntry skips entries already present in the map, so no
-    // double-insert occurs when the pump eventually runs.
-    final t = traces.putIfAbsent(
-      id,
-      () => Trace(
-        id: id,
-        slot: slot,
-        text: text,
-        parents: List<int>.from(parents),
-        fieldParents: List<int>.from(fieldParents),
-      ),
+
+    final t = Trace(
+      id: id,
+      slot: slot,
+      text: text,
+      parents: List<int>.from(parents),
+      fieldParents: List<int>.from(fieldParents),
     );
-    _indexTrace(t);
+    traces.putIfAbsent(id, () => t);
+    _updateIndexForTrace(t);
+
     _scheduleSave();
     return id;
   }
@@ -469,20 +465,18 @@ class TraceLayer extends ChangeNotifier {
       'field_parents': fieldParents,
     });
     final id = await journal.log(type: JournalType.trace, body: body);
-    // Same pre-insert rationale as in createText: the importer, while
-    // inside a transaction, must see this checklist immediately.
-    final t = traces.putIfAbsent(
-      id,
-      () => Trace(
-        id: id,
-        kind: TraceKind.checklist,
-        slot: slot,
-        items: [for (final s in items) TraceItem(text: s, done: false)],
-        parents: List<int>.from(parents),
-        fieldParents: List<int>.from(fieldParents),
-      ),
+
+    final t = Trace(
+      id: id,
+      kind: TraceKind.checklist,
+      slot: slot,
+      items: [for (final s in items) TraceItem(text: s, done: false)],
+      parents: List<int>.from(parents),
+      fieldParents: List<int>.from(fieldParents),
     );
-    _indexTrace(t);
+    traces.putIfAbsent(id, () => t);
+    _updateIndexForTrace(t);
+
     _scheduleSave();
     return id;
   }
@@ -505,6 +499,7 @@ class TraceLayer extends ChangeNotifier {
       body: jsonEncode(body),
       flags: JournalFlag.correction,
     );
+    _updateIndexForTrace(t);
     _scheduleSave();
   }
 
@@ -565,8 +560,8 @@ class TraceLayer extends ChangeNotifier {
     final t = traces[traceId];
     if (t == null) return;
     t.deleted = true;
-    _rebuildIndex();
     await _updateBody(journal, traceId, t);
+    // Index will fallback and find the next available trace or none.
   }
 
   Future<void> attach(JournalLayer journal, int traceId, int objectId) async {
@@ -574,7 +569,6 @@ class TraceLayer extends ChangeNotifier {
     if (t == null) return;
     if (t.parents.contains(objectId)) return;
     t.parents = [...t.parents, objectId];
-    _indexTrace(t);
     await _updateBody(journal, traceId, t);
   }
 
@@ -582,7 +576,6 @@ class TraceLayer extends ChangeNotifier {
     final t = traces[traceId];
     if (t == null) return;
     t.parents = t.parents.where((x) => x != objectId).toList();
-    _rebuildIndex();
     await _updateBody(journal, traceId, t);
   }
 
@@ -616,7 +609,7 @@ class TraceLayer extends ChangeNotifier {
       await _file!.delete();
     }
     traces.clear();
-    _rebuildIndex();
+    _traceIndex.clear();
     await _saveToFile();
     notifyListeners();
   }

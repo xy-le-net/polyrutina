@@ -9,9 +9,8 @@
 // elapsed time) for that specific field. Toggling the shift affects
 // only the active field.
 //
-// Time edit: uses the localized hint from i18n ('hint.time');
-// Enter or the confirm pult saves. A long press on the shift pulse
-// opens the field.
+// Time edit: «dd:hh:mm:ss»; Enter or the confirm pult saves.
+// A long press on the shift pulse opens the field.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════

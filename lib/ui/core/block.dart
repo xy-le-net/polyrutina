@@ -1,27 +1,29 @@
 // ═══════════════════════════════════════════════════════════════════
-// lib/ui/core/block.dart — unified block for routine cards, the
-// rubka, and field branches.
+// block.dart — unified block for routine cards and the rubka.
 //
 // Structure:
 //   — frame with rounded corners;
-//   — title (or a custom header widget) at the top left;
+//   — title at the top left (either a string or a custom widget);
 //   — collapse mark at the top left corner, signal-colored,
 //     slightly overhanging the outline — as a label;
 //   — content under the title (hidden when collapsed);
 //   — optional widgets in the corners: top right (timer)
 //     and bottom right (pulse).
 //
-// Header Widget. To accommodate field nodes (which require an
-// inline editable BortField instead of plain text), the block
-// accepts an optional headerWidget. If provided, it replaces the
-// standard text title, preserving all collapse and layout logic.
-//
 // Frame rule. The frame is computed by borderFor (core/frame.dart):
 // active — fgsignal, doubled stroke; inactive, parity 0 — fg;
-// inactive, parity 1 — mid. The background is bg for every item.
+// inactive, parity 1 — mid. The background is bg for every item;
+// the former dim / normal alternation through the background is
+// abolished. The active frame wins over parity.
 //
-// Touching the title/header or the mark toggles collapse when
-// canCollapse is true.
+// Custom title. The `titleWidget` parameter allows injecting a widget
+// (such as an inline text field) into the title area. If provided,
+// it replaces the default Text widget, bounded by the same available
+// width (Expanded) to prevent overflow and layout breaking.
+//
+// Touching the title or the mark toggles collapse when canCollapse
+// is true. The summary of a card cannot be collapsed — the mark is
+// not drawn.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -32,7 +34,7 @@ import 'frame.dart';
 
 class Block extends StatelessWidget {
   final String title;
-  final Widget? headerWidget;
+  final Widget? titleWidget;
   final Widget? child;
   final bool collapsed;
   final bool canCollapse;
@@ -56,6 +58,10 @@ class Block extends StatelessWidget {
   final double radiusW;
 
   // Frame state.
+  // active — the item is running (frame turns fgsignal, doubled).
+  // parity — 0 for an even position in the visible order, 1 for an
+  // odd one; decides between fg and mid for the non-active frame.
+  // Ignored when active is true.
   final bool active;
   final int parity;
 
@@ -65,7 +71,7 @@ class Block extends StatelessWidget {
   const Block({
     super.key,
     required this.title,
-    this.headerWidget,
+    this.titleWidget,
     this.child,
     this.collapsed = false,
     this.canCollapse = true,
@@ -89,8 +95,13 @@ class Block extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isCollapsed = canCollapse && collapsed;
+    // Collapse mark: signal-colored, slightly overhanging the
+    // outline.
     final markSize = titleSize * 1.2;
 
+    // Frame rule: one call to borderFor decides color and stroke.
+    // The active state wins over parity; parity distinguishes even
+    // and odd positions only among non-active items.
     final frame = borderFor(
       parity: parity,
       active: active,
@@ -99,16 +110,6 @@ class Block extends StatelessWidget {
       mid: dim,
       fgsignal: signal,
     );
-
-    // Use provided header widget, or fallback to default text title.
-    final Widget effectiveHeader =
-        headerWidget ??
-        Text(
-          title,
-          style: TextStyle(color: dim, fontSize: titleSize),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        );
 
     return Container(
       margin: EdgeInsets.only(bottom: gap),
@@ -130,14 +131,30 @@ class Block extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header row — tappable to toggle collapse.
+                // Title — tappable to toggle collapse.
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: canCollapse ? onToggleCollapsed : null,
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(child: effectiveHeader),
+                      // The title is capped at a single line and
+                      // ellipsized: pults on the right can squeeze
+                      // the available width, and a two-line wrap
+                      // would break the uniform height of the block
+                      // header. If a custom widget is provided, it
+                      // takes the place of the text and manages its
+                      // own overflow.
+                      Expanded(
+                        child:
+                            titleWidget ??
+                            Text(
+                              title,
+                              style: TextStyle(color: dim, fontSize: titleSize),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                      ),
                       if (cornerRightTop != null) ...[
                         const SizedBox(width: 8),
                         cornerRightTop!,

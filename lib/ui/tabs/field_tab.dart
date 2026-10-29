@@ -1,25 +1,25 @@
 // ═══════════════════════════════════════════════════════════════════
-// lib/ui/tabs/field_tab.dart — «field» tab. Hierarchical tree of
-// field nodes.
+// field_tab.dart — «field» tab. Hierarchical tree of field nodes.
 //
-// The active field (root node) serves as the entry point. By default,
-// legacy routines and traces are attached to the first root node.
+// The active field (root node) serves as the entry point.
 //
-// Multiple fields. A field is a graph sharing a common root.
+// Tree rendering. The graph is rendered as a list of nested Block
+// widgets, giving each node a unified frame identical to routine
+// slots and rubka blocks. The nesting is visually represented by
+// the natural indentation of the Block margins.
 //
-// Tree rendering. The graph is rendered as an expandable list.
-// Nodes are rendered recursively using the unified Block widget,
-// which provides consistent framing (identical to routine blocks
-// and rubka sections). The inline BortField is used within the
-// Block's headerWidget to allow renaming on the fly.
+// Title. The node name is displayed via a custom _NodeTitle widget.
+// Tapping the name switches it to an edit mode (TextField). On
+// submit or focus loss, the name is committed. This avoids layout
+// breakage and text overflow while keeping the frame intact.
 //
-// Actions. On a routine attached to a node, a long press reveals
-// "move" (detach from this node, attach to another) and "link"
-// (attach to an additional node). "Duplicate" and "delete" are
-// reserved for the routine's body, not its field position.
-// On a branch node, the action pult provides "add child", "attach
-// routine", "shake" (detach children to parents and delete this),
-// and "burn" (recursively delete all children and this node).
+// Actions. The "..." pult on the right provides a subpult for the
+// node:
+//   — add child branch;
+//   — attach a routine;
+//   — shake (detach the node, moving its children to its parents);
+//   — burn (delete the node and all its children).
+// Root nodes cannot be deleted (shake and burn are hidden for them).
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -28,7 +28,6 @@ import 'package:flutter/material.dart';
 
 import '../core/app_scope.dart';
 import '../core/block.dart';
-import '../core/bort_field.dart';
 import '../core/confirm_dialog.dart';
 import '../core/control_row.dart';
 import '../pults/pult_core.dart';
@@ -66,6 +65,44 @@ class _FieldTabState extends State<FieldTab> {
     if (mounted) {
       setState(() => _expandedNodes.add(parentId));
     }
+  }
+
+  Future<void> _deleteNode(int id) async {
+    final app = AppScope.of(context);
+    final i18n = app.i18n;
+
+    await showPultSheet(
+      context: context,
+      subs: [
+        PultSpec(
+          id: 'shake',
+          icon: Icons.alt_route,
+          label: i18n.t('field.shake'),
+          onTap: () => app.fieldLayer.deleteNode(app.journal, id, burn: false),
+        ),
+        PultSpec(
+          id: 'burn',
+          icon: Icons.local_fire_department,
+          label: i18n.t('field.burn'),
+          confirm: true,
+          onTap: () async {
+            final ok = await showConfirm(
+              context,
+              title: i18n.t('field.burn_confirm'),
+              confirmLabel: i18n.t('bort.delete'),
+              cancelLabel: i18n.t('common.cancel'),
+            );
+            if (ok) {
+              await app.fieldLayer.deleteNode(app.journal, id, burn: true);
+            }
+          },
+        ),
+      ],
+      fg: app.bort.fg,
+      bg: app.bort.bg,
+      signal: app.bort.fgsignal,
+      side: PultScope.of(context).smallSide,
+    );
   }
 
   void _attachRoutine(int nodeId) {
@@ -201,17 +238,35 @@ class _FieldTabState extends State<FieldTab> {
             rootSide: side,
             child: Row(
               children: [
-                Pult(
-                  spec: PultSpec(
-                    id: 'field_active',
-                    icon: Icons.layers,
-                    label: activeRoot.name,
-                    onLongPress: () => _openFieldSwitcher(activeId),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Pult(
+                        spec: PultSpec(
+                          id: 'field_active',
+                          icon: Icons.layers,
+                          label: activeRoot.name,
+                          onLongPress: () => _openFieldSwitcher(activeId),
+                        ),
+                        fg: bort.fg,
+                        bg: bort.bg,
+                        signal: bort.fgsignal,
+                        overrideSize: side,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          activeRoot.name,
+                          style: TextStyle(
+                            color: bort.fg,
+                            fontSize: side * 0.5,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
-                  fg: bort.fg,
-                  bg: bort.bg,
-                  signal: bort.fgsignal,
-                  overrideSize: side,
                 ),
               ],
             ),
@@ -352,98 +407,161 @@ class _FieldTabState extends State<FieldTab> {
       }
     }
 
-    final Widget headerWidget = BortField(
-      initial: node.name,
-      fg: bort.fg,
-      readOnly: false,
-      showBorder: false,
-      onCommit: (v) =>
-          fieldLayer.renameNode(AppScope.of(context).journal, nodeId, v),
-    );
-
-    return Padding(
-      padding: EdgeInsets.only(left: depth == 0 ? 0 : 16, top: 4),
-      child: Block(
-        title: '',
-        headerWidget: headerWidget,
-        collapsed: !isExpanded,
-        canCollapse: hasChildren,
-        onToggleCollapsed: () => _toggleExpand(nodeId),
-        cornerRightTop: Pult(
-          spec: PultSpec(
-            id: 'node_actions_$nodeId',
-            icon: Icons.more_horiz,
-            onTap: null,
-            longSubs: () => [
-              PultSpec(
-                id: 'add_child_$nodeId',
-                icon: Icons.add,
-                label: i18n.t('field.new_node'),
-                onTap: () => _createChildNode(nodeId),
-              ),
-              PultSpec(
-                id: 'attach_$nodeId',
-                icon: Icons.link,
-                label: i18n.t('field.attach_routine'),
-                onTap: () => _attachRoutine(nodeId),
-              ),
-              if (!node.isRoot) ...[
-                PultSpec(
-                  id: 'shake_$nodeId',
-                  icon: Icons.alt_route,
-                  label: i18n.t('field.shake'),
-                  confirm: true,
-                  onTap: () => fieldLayer.deleteNode(
-                    AppScope.of(context).journal,
-                    nodeId,
-                    burn: false,
-                  ),
-                ),
-                PultSpec(
-                  id: 'burn_$nodeId',
-                  icon: Icons.local_fire_department,
-                  label: i18n.t('field.burn'),
-                  onTap: () async {
-                    final app = AppScope.of(context);
-                    final ok = await showConfirm(
-                      context,
-                      title: i18n.t('field.burn_confirm'),
-                      confirmLabel: i18n.t('bort.delete'),
-                      cancelLabel: i18n.t('common.cancel'),
-                    );
-                    if (ok) {
-                      await app.fieldLayer.deleteNode(
-                        app.journal,
-                        nodeId,
-                        burn: true,
-                      );
-                    }
-                  },
-                ),
-              ],
-            ],
-          ),
-          fg: bort.fg,
-          bg: bort.bg,
-          signal: bort.fgsignal,
-          overrideSize: pultSide,
-        ),
-        bg: bort.bg,
-        dim: bort.mid,
+    return Block(
+      title: node.name,
+      titleWidget: _NodeTitle(
+        initial: node.name,
         fg: bort.fg,
+        fontSize: side * 0.5,
+        onCommit: (v) =>
+            fieldLayer.renameNode(AppScope.of(context).journal, nodeId, v),
+      ),
+      collapsed: !isExpanded,
+      canCollapse: hasChildren,
+      onToggleCollapsed: () => _toggleExpand(nodeId),
+      bg: bort.bg,
+      dim: bort.mid,
+      fg: bort.fg,
+      signal: bort.fgsignal,
+      titleSize: side * bort.kTitle,
+      pad: side * bort.kFramePad,
+      gap: side * bort.kBlockGap,
+      strokeW: side * bort.kStroke,
+      radiusW: side * bort.kRadius,
+      parity: depth % 2,
+      cornerRightTop: Pult(
+        spec: PultSpec(
+          id: 'node_actions_$nodeId',
+          icon: Icons.more_horiz,
+          onTap: null,
+          longSubs: () => [
+            PultSpec(
+              id: 'add_child_$nodeId',
+              icon: Icons.add,
+              label: i18n.t('field.new_node'),
+              onTap: () => _createChildNode(nodeId),
+            ),
+            PultSpec(
+              id: 'attach_$nodeId',
+              icon: Icons.link,
+              label: i18n.t('field.attach_routine'),
+              onTap: () => _attachRoutine(nodeId),
+            ),
+            if (!node.isRoot)
+              PultSpec(
+                id: 'del_$nodeId',
+                icon: Icons.delete_outline,
+                label: i18n.t('bort.delete'),
+                confirm: true,
+                onTap: () => _deleteNode(nodeId),
+              ),
+          ],
+        ),
+        fg: bort.fg,
+        bg: bort.bg,
         signal: bort.fgsignal,
-        titleSize: side * 0.5,
-        pad: side * bort.kFramePad,
-        gap: side * bort.kBlockGap,
-        strokeW: side * bort.kStroke,
-        radiusW: side * bort.kRadius,
-        parity: depth % 2,
-        child: isExpanded && childrenWidgets.isNotEmpty
-            ? Column(
+        overrideSize: pultSide,
+      ),
+      child: childrenWidgets.isEmpty
+          ? null
+          : Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: childrenWidgets,
-              )
-            : null,
+              ),
+            ),
+    );
+  }
+}
+
+// ─── Node title (tap to edit) ───
+// Prevents layout breakage and text overflow. Displays a Text widget
+// normally, and switches to a TextField on tap.
+class _NodeTitle extends StatefulWidget {
+  final String initial;
+  final Color fg;
+  final double fontSize;
+  final Future<void> Function(String value) onCommit;
+
+  const _NodeTitle({
+    required this.initial,
+    required this.fg,
+    required this.fontSize,
+    required this.onCommit,
+  });
+
+  @override
+  State<_NodeTitle> createState() => _NodeTitleState();
+}
+
+class _NodeTitleState extends State<_NodeTitle> {
+  late final TextEditingController _ctrl;
+  final _focus = FocusNode();
+  bool _editing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.initial);
+    _focus.addListener(() {
+      if (!_focus.hasFocus && _editing) {
+        _commit();
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _NodeTitle oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initial != widget.initial && !_editing) {
+      _ctrl.text = widget.initial;
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _commit() async {
+    if (!_editing) return;
+    setState(() => _editing = false);
+    final v = _ctrl.text.trim();
+    if (v != widget.initial && v.isNotEmpty) {
+      await widget.onCommit(v);
+    } else {
+      _ctrl.text = widget.initial;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_editing) {
+      return TextField(
+        controller: _ctrl,
+        focusNode: _focus,
+        autofocus: true,
+        style: TextStyle(color: widget.fg, fontSize: widget.fontSize),
+        decoration: const InputDecoration(
+          isDense: true,
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.zero,
+        ),
+        onSubmitted: (_) => _commit(),
+      );
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _editing = true),
+      child: Text(
+        widget.initial,
+        style: TextStyle(color: widget.fg, fontSize: widget.fontSize),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }

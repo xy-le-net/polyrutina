@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════
-// lib/ui/tabs/days_tab.dart — «days» tab. Month calendar.
+// days_tab.dart — «days» tab. Month calendar.
 //
 // The routine's day is determined as follows: completedAt, otherwise
 // scheduledAt, otherwise lastPulseAt, otherwise createdAt.
@@ -8,6 +8,10 @@
 //   — completed — underlined number;
 //   — scheduled — square border;
 //   — unfinished — round border.
+//
+// Legend. Always displayed row-by-row (Column) regardless of screen
+// orientation. Each legend item is clickable and opens a pult sheet
+// listing the corresponding routines for the current month.
 //
 // Scheduling midnight. When a routine is scheduled to a specific
 // day, the time is set to the bort's «midnight» setting.
@@ -133,6 +137,30 @@ class _DaysTabState extends State<DaysTab> {
     );
   }
 
+  void _showLegendSheet(List<Routine> routines) {
+    if (routines.isEmpty) return;
+    final bort = BortScope.of(context);
+    final openRoutine = AppScope.of(context).openRoutine;
+
+    showPultSheet(
+      context: context,
+      subs: [
+        for (final r in routines)
+          PultSpec(
+            id: 'r_${r.id}',
+            icon: _statusIcon(r),
+            label: r.name.isEmpty ? '—' : r.name,
+            selected: r.flags != 0,
+            onTap: () => openRoutine(r.id),
+          ),
+      ],
+      fg: bort.fg,
+      bg: bort.bg,
+      signal: bort.fgsignal,
+      side: PultScope.of(context).smallSide,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final bort = BortScope.of(context);
@@ -141,22 +169,23 @@ class _DaysTabState extends State<DaysTab> {
     final side = PultScope.of(context).smallSide;
 
     final cells = <int, List<Routine>>{};
-    var scheduledCount = 0;
-    var unfinishedCount = 0;
-    var completedCount = 0;
+    final scheduledRoutines = <Routine>[];
+    final unfinishedRoutines = <Routine>[];
+    final completedRoutines = <Routine>[];
+
     for (final r in routineLayer.routines) {
       final day = _dayOf(r);
       if (day == null) continue;
       cells.putIfAbsent(day, () => []).add(r);
       switch (_markOfRoutine(r, day)) {
         case _Mark.scheduled:
-          scheduledCount++;
+          scheduledRoutines.add(r);
           break;
         case _Mark.unfinished:
-          unfinishedCount++;
+          unfinishedRoutines.add(r);
           break;
         case _Mark.completed:
-          completedCount++;
+          completedRoutines.add(r);
           break;
         case _Mark.none:
           break;
@@ -195,9 +224,9 @@ class _DaysTabState extends State<DaysTab> {
       side,
       bort,
       i18n,
-      scheduled: scheduledCount,
-      unfinished: unfinishedCount,
-      completed: completedCount,
+      scheduled: scheduledRoutines,
+      unfinished: unfinishedRoutines,
+      completed: completedRoutines,
     );
 
     return Column(
@@ -253,8 +282,6 @@ class _DaysTabState extends State<DaysTab> {
             builder: (context, constraints) {
               final wide = constraints.maxWidth > 640;
 
-              // In wide layout, constrain grid width based on available height
-              // so that 6 rows fit without vertical scrolling.
               double maxGridWidth = 600.0;
               if (wide) {
                 final availableHeight =
@@ -307,9 +334,9 @@ class _DaysTabState extends State<DaysTab> {
     double side,
     OperationalLayer bort,
     I18n i18n, {
-    required int scheduled,
-    required int unfinished,
-    required int completed,
+    required List<Routine> scheduled,
+    required List<Routine> unfinished,
+    required List<Routine> completed,
   }) {
     final color = bort.mid;
     final itemSize = side * 0.9;
@@ -317,39 +344,43 @@ class _DaysTabState extends State<DaysTab> {
     final fontSize = side * 0.4;
     final gap = side * 0.3;
 
-    Widget item(Widget mark, int count, String label) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: itemSize,
-            height: itemSize,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                mark,
-                Text(
-                  '$count',
-                  style: TextStyle(
-                    color: color,
-                    fontSize: fontSize,
-                    height: 1.0,
+    Widget item(Widget mark, int count, String label, List<Routine> routines) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _showLegendSheet(routines),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: itemSize,
+              height: itemSize,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  mark,
+                  Text(
+                    '$count',
+                    style: TextStyle(
+                      color: color,
+                      fontSize: fontSize,
+                      height: 1.0,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          SizedBox(width: side * 0.1),
-          Text(
-            label,
-            style: TextStyle(color: color, fontSize: fontSize),
-          ),
-        ],
+            SizedBox(width: side * 0.1),
+            Text(
+              label,
+              style: TextStyle(color: color, fontSize: fontSize),
+            ),
+          ],
+        ),
       );
     }
 
     final items = <Widget>[];
-    if (scheduled > 0) {
+    if (scheduled.isNotEmpty) {
       items.add(
         item(
           Positioned.fill(
@@ -360,12 +391,13 @@ class _DaysTabState extends State<DaysTab> {
               ),
             ),
           ),
-          scheduled,
+          scheduled.length,
           i18n.t('days.legend.scheduled'),
+          scheduled,
         ),
       );
     }
-    if (unfinished > 0) {
+    if (unfinished.isNotEmpty) {
       items.add(
         item(
           Positioned.fill(
@@ -376,12 +408,13 @@ class _DaysTabState extends State<DaysTab> {
               ),
             ),
           ),
-          unfinished,
+          unfinished.length,
           i18n.t('days.legend.unfinished'),
+          unfinished,
         ),
       );
     }
-    if (completed > 0) {
+    if (completed.isNotEmpty) {
       items.add(
         item(
           Align(
@@ -393,19 +426,24 @@ class _DaysTabState extends State<DaysTab> {
               color: color,
             ),
           ),
-          completed,
+          completed.length,
           i18n.t('days.legend.completed'),
+          completed,
         ),
       );
     }
 
     if (items.isEmpty) return const SizedBox.shrink();
 
-    return Wrap(
-      alignment: WrapAlignment.start,
-      spacing: gap,
-      runSpacing: gap,
-      children: items,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final item in items)
+          Padding(
+            padding: EdgeInsets.only(bottom: gap),
+            child: item,
+          ),
+      ],
     );
   }
 

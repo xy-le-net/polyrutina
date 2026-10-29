@@ -66,6 +66,10 @@ String fmtEditable(int sec) {
 }
 
 // ─── Editable time parsing ───
+// 1 part: minutes (e.g., "30" -> 30 minutes).
+// 2 parts: minutes:seconds.
+// 3 parts: hours:minutes:seconds.
+// 4 parts: days:hours:minutes:seconds.
 int? parseEditable(String s) {
   final t = s.trim();
   if (t.isEmpty) return 0;
@@ -74,7 +78,7 @@ int? parseEditable(String s) {
   if (parts.length == 1) {
     final a = n(0);
     if (a == null) return null;
-    return a;
+    return a * 60;
   }
   if (parts.length == 2) {
     final a = n(0);

@@ -6,17 +6,12 @@
 // on tap at once: the first tap grows it via AnimatedScale (only the
 // core, not the label) to indicate the need for a second tap.
 //
-// Icons. The size of the icons is increased by a third (compared to
-// the former 0.45/0.60). Numeric reflections (centerText) retain
-// their previous size to avoid breaking the layout.
+// Error Handling. Callbacks (onTap) are wrapped in a try-catch block
+// to prevent unexpected exceptions from crashing the application or
+// breaking the widget tree.
 //
-// Labels. The `labelsButtons` setting dictates whether labels are
-// shown. By default, they are.
-//
-// Error handling. Actions executed via onTap are wrapped in a
-// try-catch block. While this only catches synchronous errors, it
-// prevents a direct synchronous exception from breaking the event
-// loop and crashing the UI.
+// Caching. Text width calculations for labels are cached statically
+// to avoid creating TextPainter instances on every frame.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -124,6 +119,10 @@ class Pult extends StatelessWidget {
 
   static const double _minDot = 6.0;
 
+  // Static cache for label widths to avoid TextPainter on every frame.
+  // Key format: "label|size|compact".
+  static final Map<String, double> _labelWidthCache = {};
+
   void _pulseBort(BuildContext context) {
     try {
       AppScope.of(context).pulseBort();
@@ -139,7 +138,7 @@ class Pult extends StatelessWidget {
     try {
       spec.onTap?.call();
     } catch (_) {
-      // Swallow synchronous errors to prevent app crashes.
+      // Ignore callback errors to prevent tree crash.
     }
   }
 
@@ -198,9 +197,7 @@ class Pult extends StatelessWidget {
     }
     try {
       spec.onLongPress?.call();
-    } catch (_) {
-      // Swallow synchronous errors to prevent app crashes.
-    }
+    } catch (_) {}
   }
 
   @override
@@ -324,12 +321,21 @@ class Pult extends StatelessWidget {
         fontSize: side * 0.4,
         fontWeight: FontWeight.normal,
       );
-      final painter = TextPainter(
-        text: TextSpan(text: spec.label!, style: labelStyle),
-        textDirection: TextDirection.ltr,
-        maxLines: 1,
-      )..layout();
-      final textW = painter.width * 1.2;
+
+      final cacheKey =
+          '${spec.label}_${side.toStringAsFixed(2)}_${spec.compactLabel}';
+      double? textW = _labelWidthCache[cacheKey];
+
+      if (textW == null) {
+        final painter = TextPainter(
+          text: TextSpan(text: spec.label!, style: labelStyle),
+          textDirection: TextDirection.ltr,
+          maxLines: 1,
+        )..layout();
+        textW = painter.width * 1.2;
+        _labelWidthCache[cacheKey] = textW;
+      }
+
       final desired = textW + 12;
       final labelWidth = spec.compactLabel
           ? desired.clamp(side * 0.8, maxLabelW)

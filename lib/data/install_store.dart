@@ -11,12 +11,6 @@
 // media file written by the application takes the next value:
 //   <kind>_<index>_<deviceId>_<firstRun>.<ext>
 // The counter is per device+first-run, monotone and never reused.
-// Old install.json files lack the field; they load with zero, and
-// the first call to nextMediaIndex() writes one.
-//
-// Atomic write. Delegated to json_io.dart, which writes to <name>.tmp
-// and renames onto the target. A crash mid-write cannot leave a
-// half-written install.json.
 //
 // Serialized save. Previous versions fired _save() without awaiting,
 // which could lead to two concurrent writes racing for the same
@@ -34,7 +28,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import 'json_io.dart';
+import 'atomic_json.dart';
 
 class InstallStore {
   int firstRunUnixSec = 0;
@@ -89,6 +83,7 @@ class InstallStore {
   Future<void> _save() async {
     final snapshot = _buildData();
     await _writeData(snapshot);
+    _saveQueue = _saveQueue.then((_) {});
   }
 
   Map<String, dynamic> _buildData() => {

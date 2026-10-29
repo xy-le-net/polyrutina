@@ -125,7 +125,6 @@
 
     "notif.running": "выполняется",
     "notif.total": "всего",
-    "notif.stop": "остановить",
 
     "hint.time": "дд:чч:мм:сс",
     "hint.planned": "дд:чч:мм",
@@ -318,7 +317,6 @@
 
     "notif.running": "running",
     "notif.total": "total",
-    "notif.stop": "stop",
 
     "hint.time": "dd:hh:mm:ss",
     "hint.planned": "dd:hh:mm",

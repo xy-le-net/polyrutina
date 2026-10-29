@@ -17,8 +17,6 @@
 // default root). This is wrapped in a single journal transaction to
 // avoid multiple pumps and intermediate states.
 //
-// Atomic write. Delegated to json_io.dart.
-//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -30,10 +28,10 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'atomic_json.dart';
 import 'database.dart';
 import 'journal_layer.dart';
 import 'journal_types.dart';
-import 'json_io.dart';
 
 class FieldNode {
   final int id;
@@ -333,7 +331,7 @@ class FieldLayer extends ChangeNotifier {
     if (child.parents.contains(parentId)) return;
 
     // Prevent cycles
-    if (_isDescendant(parentId, childId)) return;
+    if (isDescendant(parentId, childId)) return;
 
     child.parents.add(parentId);
     parent.children.add(childId);
@@ -365,12 +363,12 @@ class FieldLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool _isDescendant(int potentialDescendant, int ancestor) {
+  bool isDescendant(int potentialDescendant, int ancestor) {
     if (potentialDescendant == ancestor) return true;
     final node = nodes[potentialDescendant];
     if (node == null) return false;
     for (final p in node.parents) {
-      if (_isDescendant(p, ancestor)) return true;
+      if (isDescendant(p, ancestor)) return true;
     }
     return false;
   }

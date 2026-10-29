@@ -4,10 +4,10 @@
 // Extracted from routine_card: frame, title, time pulse, content
 // (TraceField or summary in «total»), corner pults.
 //
-// Field awareness. The toggleBlockWithShift call now requires the
+// Field awareness. The toggleBlockWithShift call requires the
 // active field's ID to properly associate the shift.
 //
-// Move routine. The summary block now features a "move" pult (next
+// Move routine. The summary block features a "move" pult (next
 // to export) to change the routine's field attachment.
 //
 // Transparency is not applied.

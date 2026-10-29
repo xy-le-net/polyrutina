@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════
-// lib/ui/services/report.dart — routines report and zip packing.
+// report.dart — routines report and zip packing.
 //
 // The report is textual and human-readable. Each routine is a
 // section: completion mark, name, state, creation date, scheduled
@@ -7,13 +7,16 @@
 //
 // The archive contains report.txt, data.json, and media/.
 //
-// Streaming. To avoid OOM on large archives, the zip is built using
-// ZipFileEncoder (from archive_io.dart), which streams data directly
-// to the target file. The entire archive is never held in memory.
+// data.json has ONE shape: {"schema": 1, "routines": [...]}.
 //
-// Filename truncation. The label part of the archive name is capped
-// at fifty characters to prevent filesystem limits from rejecting
-// the export.
+// Streaming. The archive is packed using ZipFileEncoder directly to
+// disk, avoiding loading the entire zip into memory. The text files
+// are written to a temporary directory, added to the archive, and
+// deleted.
+//
+// File names. The zip follows one template:
+//   polyrutina_<label>_<stamp>_<idx>_<deviceId>_<firstRun>.zip
+// The label is truncated to 50 characters to avoid filesystem limits.
 //
 // Isolate. Zip compression and media reading are offloaded to a
 // background isolate (Isolate.run) to keep the UI thread responsive.
@@ -26,10 +29,10 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:archive/archive_io.dart';
-import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:flutter/material.dart';
 
 import '../../data/i18n.dart';
 import '../../data/routine.dart';
@@ -41,30 +44,43 @@ import 'report_json.dart';
 
 // ─── Isolate helper ───
 Future<void> _buildArchiveIsolate(Map<String, dynamic> args) async {
-  final outputPath = args['output_path'] as String;
-  final reportBytes = args['report'] as List<int>;
-  final jsonBytes = args['json'] as List<int>;
+  final zipPath = args['zipPath'] as String;
+  final reportText = args['report'] as String;
+  final jsonText = args['json'] as String;
   final mediaList = (args['media'] as List).cast<Map<String, String>>();
 
   final encoder = ZipFileEncoder();
-  encoder.create(outputPath);
+  encoder.create(zipPath);
+
+  // Temporary directory for text files.
+  final tmpDir = Directory(
+    '${Directory(zipPath).parent.path}/tmp_zip_${DateTime.now().microsecondsSinceEpoch}',
+  );
+  await tmpDir.create();
 
   try {
-    encoder.addArchiveFile(
-      ArchiveFile('report.txt', reportBytes.length, reportBytes),
-    );
-    encoder.addArchiveFile(
-      ArchiveFile('data.json', jsonBytes.length, jsonBytes),
-    );
+    // Write report.txt.
+    final reportFile = File('${tmpDir.path}/report.txt');
+    await reportFile.writeAsString(reportText);
+    encoder.addFile(reportFile, 'report.txt');
 
+    // Write data.json.
+    final jsonFile = File('${tmpDir.path}/data.json');
+    await jsonFile.writeAsString(jsonText);
+    encoder.addFile(jsonFile, 'data.json');
+
+    // Add media files.
     for (final m in mediaList) {
       final f = File(m['path']!);
       if (await f.exists()) {
-        await encoder.addFile(f, 'media/${m['name']}');
+        encoder.addFile(f, 'media/${m['name']}');
       }
     }
   } finally {
-    await encoder.close();
+    encoder.close();
+    try {
+      await tmpDir.delete(recursive: true);
+    } catch (_) {}
   }
 }
 
@@ -74,6 +90,12 @@ class ReportBuilder {
     String two(int v) => v.toString().padLeft(2, '0');
     return '${n.year.toString().padLeft(4, '0')}_'
         '${two(n.month)}_${two(n.day)}';
+  }
+
+  static String _truncateLabel(String s) {
+    final safe = safeFileNameOr(s);
+    if (safe.length > 50) return safe.substring(0, 50);
+    return safe;
   }
 
   static Future<String?> build(
@@ -109,7 +131,7 @@ class ReportBuilder {
       i18n,
       [r],
       objectKey: 'routine_$routineId',
-      label: safeFileNameOr(r.name),
+      label: _truncateLabel(r.name),
       uiContext: uiContext,
     );
   }
@@ -180,12 +202,10 @@ class ReportBuilder {
     if (token.cancelled) return null;
 
     report(0.05);
-    final reportBytes = utf8.encode(buf.toString());
     final jsonObj = <String, dynamic>{
       'schema': ReportJson.schemaVersion,
       'routines': [for (final r in routines) ReportJson.buildRoutine(app, r)],
     };
-    final jsonBytes = utf8.encode(jsonEncode(jsonObj));
     if (token.cancelled) return null;
 
     final mediaFiles = <({String name, File file})>[];
@@ -221,7 +241,6 @@ class ReportBuilder {
     }
 
     report(0.2);
-
     final dir = await getApplicationDocumentsDirectory();
     final exportsDir = Directory(p.join(dir.path, 'exports'));
     if (!await exportsDir.exists()) await exportsDir.create(recursive: true);
@@ -229,40 +248,28 @@ class ReportBuilder {
     final idx = app.bort.nextExportIndex(objectKey);
     final stamp = _stamp();
 
-    // Truncate the label to avoid filesystem limits.
-    final safeLabel = label.length > 50 ? label.substring(0, 50) : label;
+    // Append deviceId and firstRun to the filename
     final name =
-        'polyrutina_${safeLabel}_${stamp}_${idx}_${app.bort.deviceId}_${app.bort.firstRunUnixSec}.zip';
-
+        'polyrutina_${label}_${stamp}_${idx}_${app.bort.deviceId}_${app.bort.firstRunUnixSec}.zip';
     final zipFile = File(p.join(exportsDir.path, name));
 
     try {
       await Isolate.run(
         () => _buildArchiveIsolate({
-          'output_path': zipFile.path,
-          'report': reportBytes,
-          'json': jsonBytes,
+          'zipPath': zipFile.path,
+          'report': buf.toString(),
+          'json': jsonEncode(jsonObj),
           'media': mediaList,
         }),
       );
     } catch (_) {
-      try {
-        if (await zipFile.exists()) await zipFile.delete();
-      } catch (_) {}
       if (uiContext != null && uiContext.mounted) {
         Navigator.of(uiContext).pop();
       }
       return null;
     }
 
-    if (token.cancelled) {
-      try {
-        if (await zipFile.exists()) await zipFile.delete();
-      } catch (_) {}
-      return null;
-    }
-
-    report(0.98);
+    report(0.85);
     final lastId = await app.journal.lastEntryId();
     app.bort.setLastExportId(lastId);
 
@@ -270,6 +277,8 @@ class ReportBuilder {
     if (uiContext != null && uiContext.mounted) {
       Navigator.of(uiContext).pop();
     }
+
+    if (token.cancelled) return null;
 
     try {
       await Share.shareXFiles([XFile(zipFile.path)], subject: name);

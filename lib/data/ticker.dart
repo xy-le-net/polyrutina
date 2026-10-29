@@ -1,30 +1,25 @@
 // ═══════════════════════════════════════════════════════════════════
-// ticker.dart — единый тикер приложения.
+// ticker.dart — unified application ticker.
 //
-// Назначение: один Timer на всё приложение вместо отдельных таймеров
-// в каждом виджете. Виджеты, кому нужно обновляться по часам,
-// слушают сей тикер и зовут setState по его сигналу.
+// Purpose: one Timer for the entire application instead of separate
+// timers in each widget. Widgets that need to update by the clock
+// listen to this ticker and call setState on its signal.
 //
-// Период — пятьсот миллисекунд. Полсекунды видно, полсекунды нет —
-// так мелькает двоеточие у идущего таймера. Два тика в секунду
-// для современного устройства ничтожны.
+// Period — five hundred milliseconds. Half a second visible, half a
+// second not — this is how the colon of a running timer blinks. Two
+// ticks per second are negligible for a modern device.
 //
-// Wall-second. Таймер ходит полсекундами, но время на стенных
-// часах меняется раз в секунду. Метод wallSecond отдаёт текущую
-// секунду эпохи — по ней виджеты решают, изменилась ли видимая
-// единица (минута, час), и надо ли перерисовываться.
+// Wall-second. The timer runs in half-seconds, but the time on the
+// wall clock changes once a second. The wallSecond method returns
+// the current epoch second — based on it, widgets decide whether
+// the visible unit (minute, hour) has changed, and whether they
+// need to redraw.
 //
-// Start/Stop. Таймер можно остановить (при уходе приложения в фон)
-// и запустить снова (при возвращении), дабы не расходовать батарею
-// впустую. Повторный вызов start() игнорируется, если таймер уже
-// запущен.
+// Lifecycle. The pause and resume methods allow the main application
+// to stop the ticker when going to background and restart it when
+// returning to the foreground, saving battery.
 //
-// Устройство простое: ChangeNotifier, который по таймеру зовёт
-// notifyListeners. Никаких подписок на жизненный цикл — тикер
-// живёт столько же, сколько приложение, создаётся в main
-// и утилизируется там же.
-//
-// Прозрачность не применяется.
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:async';
@@ -32,21 +27,23 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 class AppTicker extends ChangeNotifier {
-  // Единый таймер. Один на всё приложение.
+  // The single timer. One for the whole application.
   Timer? _timer;
 
-  // Период тика — пятьсот миллисекунд.
+  // Tick period — five hundred milliseconds.
   static const Duration period = Duration(milliseconds: 500);
 
-  // Фаза мелькания двоеточия: истина — видно, ложь — нет.
+  // Colon blink phase: true — visible, false — not.
   bool _colonVisible = true;
   bool get colonVisible => _colonVisible;
 
+  bool _paused = false;
+
   AppTicker() {
-    _start();
+    _startTimer();
   }
 
-  void _start() {
+  void _startTimer() {
     _timer?.cancel();
     _timer = Timer.periodic(period, (_) {
       _colonVisible = !_colonVisible;
@@ -54,23 +51,26 @@ class AppTicker extends ChangeNotifier {
     });
   }
 
-  // Запуск после приостановки. Если таймер уже идёт — ничего не делает.
-  void start() {
-    if (_timer != null) return;
-    _start();
-  }
-
-  // Остановка при уходе в фон для экономии батареи.
-  void stop() {
+  // Pauses the ticker. Used when the app goes to background.
+  void pause() {
+    if (_paused) return;
+    _paused = true;
     _timer?.cancel();
     _timer = null;
   }
 
-  // Текущая секунда эпохи. Виджеты сравнивают её с сохранённой,
-  // дабы решить, сменилась ли видимая единица.
+  // Resumes the ticker. Used when the app returns to foreground.
+  void resume() {
+    if (!_paused) return;
+    _paused = false;
+    _startTimer();
+  }
+
+  // Current epoch second. Widgets compare it with a saved one
+  // to decide whether the visible unit has changed.
   int get wallSecond => DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
-  // Текущая минута эпохи — для грубого сравнения.
+  // Current epoch minute — for coarse comparison.
   int get wallMinute => wallSecond ~/ 60;
 
   @override

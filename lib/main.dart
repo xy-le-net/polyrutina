@@ -1,8 +1,11 @@
 // ═══════════════════════════════════════════════════════════════════
 // main.dart — entry point and governor.
 //
-// Startup order: journal, bort, i18n, trace, field (with root
-// creation), routine, notification manager. Then — journal.start().
+// Startup order: journal, bort, trace, field (with root creation),
+// routine, dictionary, notification manager. Then — journal.start().
+//
+// Dictionary initialization must occur BEFORE the field layer creates
+// its default root, so that the root name can be localized.
 //
 // Notification routing. When the user taps the body of a notification,
 // NotificationService.payloadNotifier is triggered. main.dart listens
@@ -12,16 +15,14 @@
 // reads it on resume via consumePendingAction and stops the shift
 // or routine.
 //
-// Per-field shifts. The AppContext delegates now require the fieldId
-// to properly target the correct shift. The ShiftRow reads the
-// active field automatically.
+// Mutex shift. If mutex_shift is enabled (true), stopping a shift
+// does not affect routines, and vice versa. If disabled (false),
+// stopping a shift stops all routines belonging to the field's
+// subtree.
 //
-// Pult scaling. _pultSide no longer multiplies by _bort.scale, as
-// the user scale is already applied globally via MediaQuery
-// textScaler. This prevents double-scaling of pult contents.
-//
-// Lifecycle. On pause, all layers are saved, and the global ticker
-// is stopped to conserve battery. On resume, the ticker restarts.
+// Lifecycle. When the app goes to background, all layers are saved,
+// the journal state is flushed, and the ticker is paused to save
+// battery. On resume, the ticker restarts and brightness is refreshed.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -151,17 +152,23 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   Future<void> _init() async {
     final systemBrightness =
         WidgetsBinding.instance.platformDispatcher.platformBrightness;
+
     await _journal.init();
     await _bort.init(systemBrightness);
-    _i18n = await I18n.load(_bort.lang);
     await _traceLayer.init(_journal);
+
+    // Load dictionary before field initialization to localize the root name.
+    _i18n = await I18n.load(_bort.lang);
+
     await _fieldLayer.init(_journal);
     await _fieldLayer.createRootIfNeeded(
       _journal,
       name: _i18n!.t('field.root'),
     );
+
     await _routineLayer.init(_journal, _traceLayer, _fieldLayer);
     _routineLayer.migrateFieldParents();
+
     _journal.start();
     _bort.setLastRereadId(await _journal.lastEntryId());
     _tab = 1;
@@ -231,11 +238,22 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           body: '{"action":"shift_stop","field_id":$fId}',
         );
         _bort.stopShift(fId);
-        for (final r in _routineLayer.routines) {
-          if (!r.fieldParents.contains(fId)) continue;
-          for (final b in r.blocks) {
-            if (b.isRunning) {
-              await _routineLayer.pauseBlock(_journal, r.id, b.kind);
+
+        if (!_bort.mutexShift) {
+          for (final r in _routineLayer.routines) {
+            bool inField = false;
+            for (final parentId in r.fieldParents) {
+              if (_fieldLayer.isDescendant(parentId, fId)) {
+                inField = true;
+                break;
+              }
+            }
+            if (!inField) continue;
+
+            for (final b in r.blocks) {
+              if (b.isRunning) {
+                await _routineLayer.pauseBlock(_journal, r.id, b.kind);
+              }
             }
           }
         }
@@ -289,11 +307,11 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       _traceLayer.saveNow();
       _fieldLayer.saveNow();
       _journal.saveNow();
-      _ticker.stop();
+      _ticker.pause();
       return;
     }
     if (state == AppLifecycleState.resumed) {
-      _ticker.start();
+      _ticker.resume();
       _refreshSystemBrightness();
       _handlePendingNotificationAction();
     }
@@ -357,7 +375,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   double _pultSide(BuildContext context) {
     final systemScale = MediaQuery.textScalerOf(context).scale(1.0);
-    final raw = _pultBase * systemScale;
+    final raw = _pultBase * systemScale * _bort.scale;
     return raw > _pultMax ? _pultMax : raw;
   }
 

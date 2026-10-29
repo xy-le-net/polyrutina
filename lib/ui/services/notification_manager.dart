@@ -5,14 +5,13 @@
 // cancel the ongoing notifications for the active field's shift and
 // the active routine block.
 //
-// State signatures. Instead of calling the notification service on
-// every tick (twice a second), this manager tracks the active field,
-// block kind, and routine ID. The notification is pushed only when
-// the signature changes (e.g., a new block starts, the shift stops).
-// The system chronometer handles the visual ticking of the time,
-// which saves resources and prevents notification spam.
+// Throttling. The system's chronometer handles the ticking display.
+// To save battery and avoid spamming the platform channel, the
+// notification is only updated when its text actually changes (e.g.,
+// once a minute, or when the block state changes).
 //
-// Texts come from I18n, keeping them short and localized.
+// Texts come from I18n and are formatted via format.dart, keeping
+// them consistent with the rest of the UI.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -22,6 +21,7 @@ import '../../data/i18n.dart';
 import '../../data/operational_layer.dart';
 import '../../data/routine_layer.dart';
 import '../../data/ticker.dart';
+import '../core/format.dart';
 import 'notification_service.dart';
 
 class NotificationManager {
@@ -31,9 +31,10 @@ class NotificationManager {
   final AppTicker ticker;
   final I18n i18n;
 
-  // State caches to prevent spamming the OS notification service.
-  int? _lastShiftFieldId;
-  bool _lastShiftActive = false;
+  String _lastShiftBody = '';
+  String _lastRoutineBody = '';
+
+  bool _wasShiftActive = false;
   int? _lastRoutineId;
   String? _lastBlockKind;
 
@@ -63,32 +64,34 @@ class NotificationManager {
     // ─── Shift ───
     final shiftActive = activeFieldId != null && bort.onShift(activeFieldId);
 
-    if (force ||
-        activeFieldId != _lastShiftFieldId ||
-        shiftActive != _lastShiftActive) {
-      if (shiftActive) {
-        final sessionSec = bort.shiftStartedAt(activeFieldId) != null
-            ? now - bort.shiftStartedAt(activeFieldId)!
-            : 0;
-        final totalSec = bort.shiftSecondsNow(activeFieldId);
+    if (shiftActive) {
+      final sessionSec = bort.shiftStartedAt(activeFieldId) != null
+          ? now - bort.shiftStartedAt(activeFieldId)!
+          : 0;
+      final totalSec = bort.shiftSecondsNow(activeFieldId);
 
-        final fieldName =
-            fieldLayer.nodes[activeFieldId]?.name ?? i18n.t('field.root');
-        final title = '${i18n.t('bort.shift')}: $fieldName';
+      final fieldName =
+          fieldLayer.nodes[activeFieldId]?.name ?? i18n.t('field.root');
+      final title = '${i18n.t('bort.shift')}: $fieldName';
+      final body = '${i18n.t('notif.total')}: ${fmtTime(totalSec, i18n.t)}';
 
+      if (force || !_wasShiftActive || body != _lastShiftBody) {
         NotificationService.showShift(
           fieldId: activeFieldId,
           title: title,
+          body: body,
           elapsedSec: sessionSec,
-          totalSec: totalSec,
-          t: i18n.t,
-          labelTotal: i18n.t('notif.total'),
+          lang: bort.lang,
         );
-      } else {
+        _lastShiftBody = body;
+      }
+      _wasShiftActive = true;
+    } else {
+      if (_wasShiftActive || force) {
         NotificationService.cancelShift();
       }
-      _lastShiftFieldId = activeFieldId;
-      _lastShiftActive = shiftActive;
+      _wasShiftActive = false;
+      _lastShiftBody = '';
     }
 
     // ─── Routine ───
@@ -97,41 +100,51 @@ class NotificationManager {
         ? routineLayer.findRoutine(currentId)
         : null;
     final runningBlock = currentRoutine?.runningBlock;
-    final blockKind = runningBlock?.kind;
 
-    if (force || currentId != _lastRoutineId || blockKind != _lastBlockKind) {
-      if (currentRoutine != null && runningBlock != null) {
-        final elapsedSec = runningBlock.secondsNowAt(now);
-        final totalSec = currentRoutine.totalSeconds;
+    if (currentRoutine != null && runningBlock != null) {
+      final elapsedSec = runningBlock.secondsNowAt(now);
+      final totalSec = currentRoutine.totalSeconds;
 
-        // Determine field name for the routine
-        String fieldName = i18n.t('field.root');
-        if (currentRoutine.fieldParents.isNotEmpty) {
-          final fId = currentRoutine.fieldParents.first;
-          final node = fieldLayer.nodes[fId];
-          if (node != null) fieldName = node.name;
-        }
+      // Determine field name for the routine
+      String fieldName = i18n.t('field.root');
+      if (currentRoutine.fieldParents.isNotEmpty) {
+        final fId = currentRoutine.fieldParents.first;
+        final node = fieldLayer.nodes[fId];
+        if (node != null) fieldName = node.name;
+      }
 
-        final rTitle = currentRoutine.name.isEmpty
-            ? i18n.t('routine.no_name')
-            : currentRoutine.name;
-        final title = '$fieldName · $rTitle';
+      final rTitle = currentRoutine.name.isEmpty
+          ? i18n.t('routine.no_name')
+          : currentRoutine.name;
+      final title = '$fieldName · $rTitle';
 
+      final blockTitle = i18n.t('routine.block.${runningBlock.kind}');
+      final body =
+          '$blockTitle ${i18n.t('notif.running')}\n'
+          '${i18n.t('notif.total')}: ${fmtTime(totalSec, i18n.t)}';
+
+      if (force ||
+          _lastRoutineId != currentId ||
+          _lastBlockKind != runningBlock.kind ||
+          body != _lastRoutineBody) {
         NotificationService.showRoutine(
           routineId: currentRoutine.id,
           title: title,
-          blockTitle: i18n.t('routine.block.${runningBlock.kind}'),
+          body: body,
           elapsedSec: elapsedSec,
-          totalSec: totalSec,
-          t: i18n.t,
-          labelRunning: i18n.t('notif.running'),
-          labelTotal: i18n.t('notif.total'),
+          lang: bort.lang,
         );
-      } else {
-        NotificationService.cancelRoutine();
+        _lastRoutineBody = body;
+        _lastBlockKind = runningBlock.kind;
       }
       _lastRoutineId = currentId;
-      _lastBlockKind = blockKind;
+    } else {
+      if (_lastRoutineId != null || force) {
+        NotificationService.cancelRoutine();
+      }
+      _lastRoutineId = null;
+      _lastBlockKind = null;
+      _lastRoutineBody = '';
     }
   }
 }
