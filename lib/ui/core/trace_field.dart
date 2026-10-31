@@ -8,34 +8,16 @@
 // scrolls. Limit — twenty-four lines or up to the keyboard start,
 // whichever is less. On focus loss — return to three lines.
 //
-// Keep visible. Whenever the field expands — on focus gain, on any
-// metrics change (the keyboard appearing, screen rotation, a system
-// bar showing up) — the field is scrolled into view by the enclosing
-// Scrollable. The key is captured on the TextField itself and used
-// with Scrollable.ensureVisible(alignment: 0.0), so the top of the
-// field always sits at the top of the viewport and the whole
-// expanded field stays above the keyboard at any text scale.
+// Font size. The text trace font is increased for better readability.
+// The field is wrapped in an Expanded widget to prevent horizontal
+// overflow on small screens.
 //
-// Below the field — a row of media pults (TraceMediaRow), if there
-// is media in the slot.
+// Keep visible. Whenever the field expands — on focus gain, on any
+// metrics change — the field is scrolled into view by the enclosing
+// Scrollable.
 //
 // Trace is distinguished by the pair (objectId, slot). Checklist
 // search — by kind=checklist + slot.
-//
-// Field clearing: text was and became empty — an edit entry with an
-// empty body.
-//
-// Enter on the keyboard — the same as tapping the send pult.
-//
-// Scopes. Dependencies are read from point scopes: BortScope (draft,
-// theme, colors), TraceScope (traces), I18nScope (strings), and
-// AppScope (journal — the sole dependency that lives there).
-//
-// Dispose race. _autoSend captures the field text into a local
-// variable before the first await. This makes it safe to call from
-// dispose: even if the widget is torn down while the write is in
-// flight, no access to the disposed controller occurs after the
-// first suspension point.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -59,8 +41,7 @@ class TraceField extends StatefulWidget {
   final Color bg;
   final Color signal;
   // Input field background. Differs from block bg: the block might be
-  // dimmed (bgdim), while the input field is normal (bg). This
-  // separation saves the field from extra darkening.
+  // dimmed (bgdim), while the input field is normal (bg).
   final Color fieldBg;
   final double side;
   final String blockTitle;
@@ -341,7 +322,9 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     final int? minLines;
     if (_focused) {
       final viewInsets = MediaQuery.of(context).viewInsets.bottom;
-      final lineH = (widget.side * bort.kNumberSmall) * 1.4;
+      final lineH =
+          (widget.side * bort.kNumber * 1.2) *
+          1.4; // adjusted for new font size
       final keyboardLines =
           ((MediaQuery.of(context).size.height - viewInsets) / lineH).floor();
       final limit = keyboardLines < _maxExpandedLines
@@ -353,6 +336,12 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
       maxLines = _collapsedLines;
       minLines = _collapsedLines;
     }
+
+    // Increased font size for the text trace.
+    final textStyle = TextStyle(
+      color: widget.fg,
+      fontSize: widget.side * bort.kNumber * 1.2, // Increased from kNumberSmall
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -371,10 +360,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
                   focusNode: _focus,
                   maxLines: maxLines,
                   minLines: minLines,
-                  style: TextStyle(
-                    color: widget.fg,
-                    fontSize: widget.side * bort.kNumberSmall,
-                  ),
+                  style: textStyle,
                   decoration: InputDecoration(
                     isDense: true,
                     // Input field — on the normal background, regardless
@@ -382,7 +368,10 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
                     filled: true,
                     fillColor: widget.fieldBg,
                     hintText: i18n.t('routine.block.note'),
-                    hintStyle: TextStyle(color: widget.dim),
+                    hintStyle: TextStyle(
+                      color: widget.dim,
+                      fontSize: textStyle.fontSize,
+                    ),
                     border: OutlineInputBorder(
                       borderSide: BorderSide(color: widget.dim),
                       borderRadius: BorderRadius.circular(

@@ -17,6 +17,12 @@
 // default root). This is wrapped in a single journal transaction to
 // avoid multiple pumps and intermediate states.
 //
+// isDescendant. A public method used to determine if a node is a
+// descendant of another. Crucial for preventing cycles during
+// attachment and for mutex shift logic in AppScope.
+//
+// Atomic write. Uses the shared atomicWriteJson helper.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 

@@ -10,8 +10,11 @@
 // notification is only updated when its text actually changes (e.g.,
 // once a minute, or when the block state changes).
 //
-// Texts come from I18n and are formatted via format.dart, keeping
-// them consistent with the rest of the UI.
+// Timer synchronization. The chronometer (when) is set to the
+// current block's elapsed time. The total time (body) is calculated
+// separately and formatted via the unified dictionary and format
+// helpers, ensuring both display consistent information without
+// desynchronization.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════

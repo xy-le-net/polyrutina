@@ -1,7 +1,7 @@
 name: polyrutina
 description: Бортовой журнал — след работы, привязанный к месту.
 publish_to: 'none'
-version: 1.1.0+3
+version: 0.1.1+3
 
 environment:
   sdk: '>=3.11.0 <4.0.0'
@@ -10,44 +10,44 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # значки.
+  # Icons.
   cupertino_icons: ^1.0.8
 
-  # хранилище и пути.
+  # Storage and paths.
   drift: ^2.35.1
   sqlite3_flutter_libs: ^0.5.42
   path: ^1.9.1
   path_provider: ^2.1.6
 
-  # медиа: снимок, видео, файлы, звук, геопозиция.
+  # Media: photo, video, files, audio, geolocation.
   image_picker: ^1.1.2
   file_picker: ^10.3.3
   record: ^6.0.0
   geolocator: ^13.0.1
 
-  # системный лист «поделиться».
+  # System share sheet.
   share_plus: ^10.0.0
 
-  # воспроизведение медиа: видео и аудио.
+  # Media playback: video and audio.
   video_player: ^2.9.2
   just_audio: ^0.9.42
 
-  # отверзание вовне: геоточки, файлы, ссылки.
+  # External opening: geo points, files, links.
   url_launcher: ^6.3.1
   open_filex: ^4.5.0
 
-  # карта для избрания геоточки (тайлы OpenStreetMap).
-  # своя, а не системная: даёт снимок точки и не требует ключей.
+  # Map for geo point selection (OpenStreetMap tiles).
+  # Custom, not system: provides a point snapshot and requires no keys.
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
 
-  # zip-архивы: выгрузка и приём рутин.
+  # Zip archives: export and import of routines.
   archive: ^3.6.1
 
-  # опознаватель устройства.
+  # Device identifier.
   device_info_plus: ^11.0.0
 
-  # непреложные извещения (ongoing notifications).
+  # Ongoing notifications.
   flutter_local_notifications: ^18.0.1
 
 dev_dependencies:
@@ -56,12 +56,23 @@ dev_dependencies:
 
   flutter_lints: ^4.0.0
 
-  # генерация кода Drift.
+  # Drift code generation.
   build_runner: ^2.16.1
   drift_dev: ^2.35.1
+
+  # App icon generator.
+  flutter_launcher_icons: ^0.14.1
 
 flutter:
   uses-material-design: true
   assets:
     - assets/i18n.json
     - assets/defaults.json
+    - assets/icon.jpg
+
+# Launcher icon configuration.
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: false
+  image_path: "assets/icon.jpg"
+  min_sdk_android: 21

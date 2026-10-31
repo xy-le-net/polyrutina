@@ -13,10 +13,17 @@
 // submit or focus loss, the name is committed. This avoids layout
 // breakage and text overflow while keeping the frame intact.
 //
-// Actions. The "..." pult on the right provides a subpult for the
-// node:
+// Header actions. Short tap on the active field header switches
+// fields. Long tap opens a subpult to rename, shake, or burn the
+// active field. Burning requires double confirmation (pult scaling,
+// then a dialog).
+//
+// Node actions. The "..." pult on the right provides a subpult for
+// the node:
+//   — rename;
 //   — add child branch;
 //   — attach a routine;
+//   — move branch (changes parent without deleting);
 //   — shake (detach the node, moving its children to its parents);
 //   — burn (delete the node and all its children).
 // Root nodes cannot be deleted (shake and burn are hidden for them).
@@ -28,8 +35,10 @@ import 'package:flutter/material.dart';
 
 import '../core/app_scope.dart';
 import '../core/block.dart';
+import '../core/bort_field.dart';
 import '../core/confirm_dialog.dart';
 import '../core/control_row.dart';
+import '../core/dialog_frame.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_sheet.dart';
 import 'routine_plate.dart';
@@ -67,21 +76,55 @@ class _FieldTabState extends State<FieldTab> {
     }
   }
 
-  Future<void> _deleteNode(int id) async {
+  void _showNodeActions(int id) {
     final app = AppScope.of(context);
     final i18n = app.i18n;
+    final node = app.fieldLayer.nodes[id];
+    if (node == null) return;
 
-    await showPultSheet(
-      context: context,
-      subs: [
+    final subs = <PultSpec>[
+      PultSpec(
+        id: 'rename_$id',
+        icon: Icons.edit,
+        label: i18n.t('field.rename'),
+        onTap: () => _renameNodeDialog(id, node.name),
+      ),
+      PultSpec(
+        id: 'add_child_$id',
+        icon: Icons.add,
+        label: i18n.t('field.new_node'),
+        onTap: () => _createChildNode(id),
+      ),
+      PultSpec(
+        id: 'attach_$id',
+        icon: Icons.link,
+        label: i18n.t('field.attach_routine'),
+        onTap: () => _attachRoutine(id),
+      ),
+    ];
+
+    if (!node.isRoot && node.parents.isNotEmpty) {
+      final currentParentId = node.parents.first;
+      subs.add(
         PultSpec(
-          id: 'shake',
+          id: 'move_branch_$id',
+          icon: Icons.drive_file_move,
+          label: i18n.t('field.move_branch'),
+          onTap: () => _pickNodeForBranch(id, currentParentId),
+        ),
+      );
+      subs.add(
+        PultSpec(
+          id: 'shake_$id',
           icon: Icons.alt_route,
           label: i18n.t('field.shake'),
+          confirm: true,
           onTap: () => app.fieldLayer.deleteNode(app.journal, id, burn: false),
         ),
+      );
+      subs.add(
         PultSpec(
-          id: 'burn',
+          id: 'burn_$id',
           icon: Icons.local_fire_department,
           label: i18n.t('field.burn'),
           confirm: true,
@@ -97,11 +140,83 @@ class _FieldTabState extends State<FieldTab> {
             }
           },
         ),
-      ],
+      );
+    }
+
+    showPultSheet(
+      context: context,
+      subs: subs,
       fg: app.bort.fg,
       bg: app.bort.bg,
       signal: app.bort.fgsignal,
       side: PultScope.of(context).smallSide,
+    );
+  }
+
+  void _renameNodeDialog(int id, String currentName) {
+    final app = AppScope.of(context);
+    final i18n = app.i18n;
+    final bort = app.bort;
+    String currentText = currentName;
+
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.transparent,
+      builder: (ctx) {
+        return DialogFrame(
+          onDismiss: () => Navigator.of(ctx).pop(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                i18n.t('field.rename'),
+                style: TextStyle(
+                  color: bort.fg,
+                  fontSize: PultScope.of(context).smallSide * bort.kTitle,
+                ),
+              ),
+              const SizedBox(height: 12),
+              BortField(
+                initial: currentName,
+                fg: bort.fg,
+                readOnly: false,
+                onChanged: (v) => currentText = v,
+                onCommit: (v) async {
+                  Navigator.of(ctx).pop();
+                  if (v.isNotEmpty) {
+                    await app.fieldLayer.renameNode(app.journal, id, v);
+                  }
+                },
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: Text(i18n.t('common.cancel')),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton(
+                    onPressed: () async {
+                      Navigator.of(ctx).pop();
+                      if (currentText.isNotEmpty) {
+                        await app.fieldLayer.renameNode(
+                          app.journal,
+                          id,
+                          currentText,
+                        );
+                      }
+                    },
+                    child: Text(i18n.t('common.ok')),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -124,6 +239,49 @@ class _FieldTabState extends State<FieldTab> {
             label: r.name.isEmpty ? app.i18n.t('routine.no_name') : r.name,
             onTap: () =>
                 app.routineLayer.attachToField(app.journal, r.id, nodeId),
+          ),
+      ],
+      fg: bort.fg,
+      bg: bort.bg,
+      signal: bort.fgsignal,
+      side: PultScope.of(context).smallSide,
+    );
+  }
+
+  void _pickNodeForBranch(int nodeId, int currentParentId) {
+    final app = AppScope.of(context);
+    final bort = app.bort;
+    final i18n = app.i18n;
+
+    // Find valid targets: not the node itself, and not its descendants.
+    final validNodes = app.fieldLayer.nodes.values.where((n) {
+      if (n.id == nodeId) return false;
+      if (app.fieldLayer.isDescendant(n.id, nodeId)) return false;
+      return true;
+    }).toList();
+
+    showPultSheet(
+      context: context,
+      subs: [
+        for (final n in validNodes)
+          PultSpec(
+            id: 'target_branch_${n.id}',
+            icon: n.isRoot ? Icons.layers : Icons.subdirectory_arrow_right,
+            label: n.name.isEmpty ? i18n.t('routine.no_name') : n.name,
+            selected: n.id == currentParentId,
+            onTap: () async {
+              if (n.id != currentParentId) {
+                await app.journal.transaction(() async {
+                  await app.fieldLayer.detachNode(
+                    app.journal,
+                    nodeId,
+                    currentParentId,
+                  );
+                  await app.fieldLayer.attachNode(app.journal, nodeId, n.id);
+                });
+                if (mounted) setState(() => _expandedNodes.add(n.id));
+              }
+            },
           ),
       ],
       fg: bort.fg,
@@ -245,8 +403,9 @@ class _FieldTabState extends State<FieldTab> {
                         spec: PultSpec(
                           id: 'field_active',
                           icon: Icons.layers,
-                          label: activeRoot.name,
-                          onLongPress: () => _openFieldSwitcher(activeId),
+                          // Label removed to avoid duplication with the text next to it.
+                          onTap: () => _openFieldSwitcher(activeId),
+                          onLongPress: () => _showNodeActions(activeId),
                         ),
                         fg: bort.fg,
                         bg: bort.bg,
@@ -255,14 +414,19 @@ class _FieldTabState extends State<FieldTab> {
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Text(
-                          activeRoot.name,
-                          style: TextStyle(
-                            color: bort.fg,
-                            fontSize: side * 0.5,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => _openFieldSwitcher(activeId),
+                          onLongPress: () => _showNodeActions(activeId),
+                          child: Text(
+                            activeRoot.name,
+                            style: TextStyle(
+                              color: bort.fg,
+                              fontSize: side * 0.5,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -433,29 +597,7 @@ class _FieldTabState extends State<FieldTab> {
         spec: PultSpec(
           id: 'node_actions_$nodeId',
           icon: Icons.more_horiz,
-          onTap: null,
-          longSubs: () => [
-            PultSpec(
-              id: 'add_child_$nodeId',
-              icon: Icons.add,
-              label: i18n.t('field.new_node'),
-              onTap: () => _createChildNode(nodeId),
-            ),
-            PultSpec(
-              id: 'attach_$nodeId',
-              icon: Icons.link,
-              label: i18n.t('field.attach_routine'),
-              onTap: () => _attachRoutine(nodeId),
-            ),
-            if (!node.isRoot)
-              PultSpec(
-                id: 'del_$nodeId',
-                icon: Icons.delete_outline,
-                label: i18n.t('bort.delete'),
-                confirm: true,
-                onTap: () => _deleteNode(nodeId),
-              ),
-          ],
+          onTap: () => _showNodeActions(nodeId),
         ),
         fg: bort.fg,
         bg: bort.bg,

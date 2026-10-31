@@ -15,7 +15,7 @@
 // (pending_action.json). The main application reads this file on
 // resume and applies the stop.
 //
-// Texts. The body of the notification is now pre-formatted by the
+// Texts. The body of the notification is pre-formatted by the
 // NotificationManager using unified dictionary and format helpers,
 // ensuring consistent units and localization.
 //

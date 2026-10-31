@@ -122,6 +122,7 @@
     "field.move_routine": "переместить",
     "field.link_routine": "связать",
     "field.detach_routine": "отвязать",
+    "field.move_branch": "переместить ветвь",
 
     "notif.running": "выполняется",
     "notif.total": "всего",
@@ -314,6 +315,7 @@
     "field.move_routine": "move",
     "field.link_routine": "link",
     "field.detach_routine": "detach",
+    "field.move_branch": "move branch",
 
     "notif.running": "running",
     "notif.total": "total",

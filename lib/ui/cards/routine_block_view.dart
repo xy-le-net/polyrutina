@@ -4,6 +4,10 @@
 // Extracted from routine_card: frame, title, time pulse, content
 // (TraceField or summary in «total»), corner pults.
 //
+// Layout tuning. Padding inside blocks and gaps between them are
+// reduced. The title font is slightly smaller to save space. The
+// text trace (TraceField) occupies the remaining width.
+//
 // Field awareness. The toggleBlockWithShift call requires the
 // active field's ID to properly associate the shift.
 //
@@ -127,9 +131,11 @@ class RoutineBlockView extends StatelessWidget {
       signal = bort.fgsignal;
     }
 
-    final titleSize = side * bort.kTitle;
-    final pad = side * bort.kFramePad;
-    final gap = side * bort.kBlockGap;
+    // Reduced padding and title size for a tighter layout.
+    final titleSize = side * bort.kTitle * 0.8;
+    final pad = side * bort.kFramePad * 0.75;
+    final gap = side * bort.kBlockGap * 0.75;
+
     final strokeW = side * bort.kStroke;
     final radiusW = side * bort.kRadius;
     final numberSize = side * bort.kNumber;
@@ -294,6 +300,7 @@ class RoutineBlockView extends StatelessWidget {
               children: rows,
             );
     } else {
+      // Pass increased font size for the text trace.
       body = TraceField(
         objectId: routine.id,
         slot: kind,

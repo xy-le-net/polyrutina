@@ -5,6 +5,9 @@
 // Confirmation. A confirmable pult (confirm && onTap) does not act
 // on tap at once: the first tap grows it via AnimatedScale (only the
 // core, not the label) to indicate the need for a second tap.
+// The confirming state also applies the signal palette (coreColor =
+// signal, iconColor = bg) to visually separate the first tap from
+// a normal press.
 //
 // Error Handling. Callbacks (onTap) are wrapped in a try-catch block
 // to prevent unexpected exceptions from crashing the application or
@@ -208,7 +211,8 @@ class Pult extends StatelessWidget {
     final bort = BortScope.of(context);
 
     final selected = spec.selected;
-    final coreColor = selected ? signal : fg;
+    // Apply signal palette when selected OR confirming.
+    final coreColor = (selected || confirming) ? signal : fg;
     final iconColor = bg;
 
     final borderW = side / 16;
@@ -302,7 +306,7 @@ class Pult extends StatelessWidget {
       );
     }
 
-    // Apply scale ONLY to the core, preserving label size and layout
+    // Apply scale ONLY to the core, preserving label size and layout.
     Widget scaledCore = AnimatedScale(
       scale: confirming ? 1.25 : 1.0,
       duration: const Duration(milliseconds: 150),
