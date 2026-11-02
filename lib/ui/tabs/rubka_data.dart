@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════
-// lib/ui/tabs/rubka_data.dart — «data» block in the rubka.
+// rubka_data.dart — «data» block in the rubka.
 //
 // Contents, top to bottom:
 //
@@ -22,6 +22,11 @@
 //     — bort: today's active time;
 //     — reset: caches and defaults to the initial state (progress +
 //       confirm).
+//
+// Post-reset recovery. After clearing the journal, importing, or
+// resetting caches, `afterJournalReset` is called on the AppContext
+// to recreate the root field node and rebind the active field,
+// preventing a blank UI state.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -155,6 +160,7 @@ class _RubkaDataState extends State<RubkaData> {
     );
     await app.journal.clearAll();
     bort.setLastRereadId(await app.journal.lastEntryId());
+    await app.afterJournalReset();
     await _refreshSize();
     if (mounted) {
       Navigator.of(context, rootNavigator: true).pop();
@@ -258,6 +264,8 @@ class _RubkaDataState extends State<RubkaData> {
       app: app,
       onProgress: (v) => token.report(v),
     );
+
+    await app.afterJournalReset();
     await app.refresh();
     await _refreshSize();
 
@@ -313,6 +321,7 @@ class _RubkaDataState extends State<RubkaData> {
     await bort.resetCache();
     await app.journal.reread();
     bort.setLastRereadId(await app.journal.lastEntryId());
+    await app.afterJournalReset();
     await app.reloadI18n();
     await _refreshSize();
 

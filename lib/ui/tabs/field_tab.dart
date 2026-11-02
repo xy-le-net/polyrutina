@@ -3,30 +3,25 @@
 //
 // The active field (root node) serves as the entry point.
 //
-// Tree rendering. The graph is rendered as a list of nested Block
-// widgets, giving each node a unified frame identical to routine
-// slots and rubka blocks. The nesting is visually represented by
-// the natural indentation of the Block margins.
+// Tree rendering. The active field's name and management live in the
+// header. The root node itself is rendered as a simple container
+// without a frame, holding its children. Nested branches are wrapped
+// in unified Block frames (identical to routine slots and rubka
+// blocks). Routines are rendered as RoutinePlate widgets, traces as
+// minimal framed containers.
 //
-// Title. The node name is displayed via a custom _NodeTitle widget.
-// Tapping the name switches it to an edit mode (TextField). On
-// submit or focus loss, the name is committed. This avoids layout
-// breakage and text overflow while keeping the frame intact.
+// Header actions. Short tap on the active field header (pult or text)
+// switches fields. Long tap opens a subpult for the active root to
+// rename, add a branch, or attach a routine.
 //
-// Header actions. Short tap on the active field header switches
-// fields. Long tap opens a subpult to rename, shake, or burn the
-// active field. Burning requires double confirmation (pult scaling,
-// then a dialog).
-//
-// Node actions. The "..." pult on the right provides a subpult for
-// the node:
+// Node actions. The "..." pult on nested branches provides a subpult:
 //   — rename;
 //   — add child branch;
 //   — attach a routine;
 //   — move branch (changes parent without deleting);
 //   — shake (detach the node, moving its children to its parents);
 //   — burn (delete the node and all its children).
-// Root nodes cannot be deleted (shake and burn are hidden for them).
+// Root nodes cannot be deleted or moved.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -39,6 +34,7 @@ import '../core/bort_field.dart';
 import '../core/confirm_dialog.dart';
 import '../core/control_row.dart';
 import '../core/dialog_frame.dart';
+import '../core/frame.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_sheet.dart';
 import 'routine_plate.dart';
@@ -403,7 +399,6 @@ class _FieldTabState extends State<FieldTab> {
                         spec: PultSpec(
                           id: 'field_active',
                           icon: Icons.layers,
-                          // Label removed to avoid duplication with the text next to it.
                           onTap: () => _openFieldSwitcher(activeId),
                           onLongPress: () => _showNodeActions(activeId),
                         ),
@@ -519,7 +514,8 @@ class _FieldTabState extends State<FieldTab> {
 
     final hasChildren =
         node.children.isNotEmpty || routines.isNotEmpty || traces.isNotEmpty;
-    final isExpanded = _expandedNodes.contains(nodeId);
+    // Root is always expanded visually (acts as a container), nested depends on state.
+    final isExpanded = node.isRoot ? true : _expandedNodes.contains(nodeId);
     final pultSide = side * bort.kPultSmall;
 
     final childrenWidgets = <Widget>[];
@@ -546,31 +542,56 @@ class _FieldTabState extends State<FieldTab> {
         );
       }
       for (final t in traces) {
+        final frame = borderFor(
+          parity: depth % 2,
+          active: false,
+          strokeW: side * bort.kStroke,
+          fg: bort.fg,
+          mid: bort.mid,
+          fgsignal: bort.fgsignal,
+        );
         childrenWidgets.add(
           Padding(
             padding: const EdgeInsets.only(top: 4, bottom: 4),
-            child: Row(
-              children: [
-                Icon(Icons.text_snippet, color: bort.mid, size: pultSide),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    t.text.isNotEmpty ? t.text : i18n.t('type.trace'),
-                    style: TextStyle(
-                      color: bort.fg,
-                      fontSize: side * bort.kNumberSmall,
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: frame.color, width: frame.width),
+                borderRadius: BorderRadius.circular(side * bort.kRadius),
+                color: bort.bg,
+              ),
+              padding: EdgeInsets.all(side * bort.kFramePad * 0.75),
+              child: Row(
+                children: [
+                  Icon(Icons.text_snippet, color: bort.mid, size: pultSide),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      t.text.isNotEmpty ? t.text : i18n.t('type.trace'),
+                      style: TextStyle(
+                        color: bort.fg,
+                        fontSize: side * bort.kNumberSmall,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
       }
     }
 
+    if (node.isRoot) {
+      // Root is a container without a frame, holding its children.
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: childrenWidgets,
+      );
+    }
+
+    // Nested nodes get a Block frame.
     return Block(
       title: node.name,
       titleWidget: _NodeTitle(

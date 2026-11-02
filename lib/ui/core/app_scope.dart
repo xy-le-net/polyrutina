@@ -17,10 +17,15 @@
 //
 // Shift and routine synchronization. The relationship between
 // shifts and routines is dictated by the mutexShift flag:
-//   — if mutexShift is true, they are independent;
-//   — if mutexShift is false, they are linked: starting a block
+//   — if mutexShift is true, they are linked: starting a block
 //     starts the shift, and stopping the shift pauses all running
 //     blocks in the field's subtree (including nested nodes).
+//   — if mutexShift is false, they are independent.
+//
+// afterJournalReset. A callback invoked after the journal is cleared
+// or fully replaced (e.g., via import). It recreates the default root
+// field node if missing and rebinds the active field, ensuring the
+// UI does not go blank.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -48,6 +53,7 @@ class AppContext {
   final Future<void> Function() refresh;
   final Future<void> Function() reloadI18n;
   final Future<void> Function(int routineId) openRoutine;
+  final Future<void> Function() afterJournalReset;
 
   const AppContext({
     required this.bort,
@@ -60,6 +66,7 @@ class AppContext {
     required this.refresh,
     required this.reloadI18n,
     required this.openRoutine,
+    required this.afterJournalReset,
   });
 
   // ─── Start a routine block with shift logic ───
@@ -76,8 +83,8 @@ class AppContext {
     final going = !b.isRunning;
 
     // Auto-start shift only if the shift is linked to routines
-    // (mutexShift = false) and not already running for this field.
-    if (going && !bort.mutexShift && !bort.onShift(fieldId)) {
+    // (mutexShift == true) and not already running for this field.
+    if (going && bort.mutexShift && !bort.onShift(fieldId)) {
       await journal.log(
         type: JournalType.actor,
         body: jsonEncode({'action': 'shift_start', 'field_id': fieldId}),
@@ -113,7 +120,7 @@ class AppContext {
     bort.stopShift(fieldId);
 
     // Pause all running routines in the field's subtree if linked.
-    if (!bort.mutexShift) {
+    if (bort.mutexShift) {
       for (final r in routineLayer.routines) {
         bool inField = false;
         for (final parentId in r.fieldParents) {
@@ -162,7 +169,8 @@ class AppScope extends InheritedWidget {
         old.appContext.i18n != appContext.i18n ||
         old.appContext.refresh != appContext.refresh ||
         old.appContext.reloadI18n != appContext.reloadI18n ||
-        old.appContext.openRoutine != appContext.openRoutine;
+        old.appContext.openRoutine != appContext.openRoutine ||
+        old.appContext.afterJournalReset != appContext.afterJournalReset;
   }
 }
 

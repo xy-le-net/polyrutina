@@ -11,18 +11,23 @@
 // correct screen. When the body is tapped, payloadNotifier is
 // triggered for main.dart to listen.
 //
+// Launch details. On initialization, the service checks if the app
+// was launched by tapping a notification (getNotificationAppLaunchDetails).
+// If so, the payload is immediately placed into payloadNotifier,
+// allowing main.dart to route the user correctly on startup.
+//
 // Background actions. The "stop" button writes the action to a file
 // (pending_action.json). The main application reads this file on
-// resume and applies the stop.
+// resume and applies the stop. The button has showsUserInterface: false,
+// meaning it executes in the background without bringing the app to
+// the foreground.
 //
-// Texts. The body of the notification is pre-formatted by the
-// NotificationManager using unified dictionary and format helpers,
-// ensuring consistent units and localization.
+// Channel ID. The channel ID is updated to 'polyrutina_ongoing_v2'
+// to ensure Android recognizes the new notification settings and
+// action behaviors, bypassing any previously cached channel state.
 //
-// iOS limitation. Live Activities (the only way to have
-// non-dismissible, constantly updating notifications on iOS)
-// require native Swift code. On iOS, this falls back to standard
-// notifications.
+// Exception handling. Calls to show() are wrapped in try-catch with
+// debugPrint to prevent silent failures from breaking the update loop.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -42,7 +47,8 @@ class NotificationService {
   // Used to route taps on the body of the notification to the app.
   static final ValueNotifier<String?> payloadNotifier = ValueNotifier(null);
 
-  static const String _channelId = 'polyrutina_ongoing';
+  // Updated channel ID to force Android to apply new settings.
+  static const String _channelId = 'polyrutina_ongoing_v2';
   static const String _channelName = 'Ongoing Work';
   static const String _channelDesc = 'Shows running routines and shifts';
 
@@ -80,6 +86,15 @@ class NotificationService {
           ?.requestNotificationsPermission();
     }
 
+    // Check if the app was launched via a notification tap.
+    final launchDetails = await _plugin.getNotificationAppLaunchDetails();
+    if (launchDetails != null && launchDetails.didNotificationLaunchApp) {
+      final payload = launchDetails.notificationResponse?.payload;
+      if (payload != null) {
+        payloadNotifier.value = payload;
+      }
+    }
+
     _initialized = true;
   }
 
@@ -112,7 +127,7 @@ class NotificationService {
         AndroidNotificationAction(
           'stop_routine',
           lang == 'ru' ? 'Остановить' : 'Stop',
-          showsUserInterface: true,
+          showsUserInterface: false, // Do not open the app on click
           cancelNotification: true,
         ),
       ],
@@ -129,13 +144,17 @@ class NotificationService {
       iOS: iosDetails,
     );
 
-    await _plugin.show(
-      _routineId,
-      title,
-      body,
-      details,
-      payload: 'routine_$routineId',
-    );
+    try {
+      await _plugin.show(
+        _routineId,
+        title,
+        body,
+        details,
+        payload: 'routine_$routineId',
+      );
+    } catch (e) {
+      debugPrint('NotificationService.showRoutine error: $e');
+    }
   }
 
   // ─── Show shift notification ───
@@ -167,7 +186,7 @@ class NotificationService {
         AndroidNotificationAction(
           'stop_shift',
           lang == 'ru' ? 'Остановить' : 'Stop',
-          showsUserInterface: true,
+          showsUserInterface: false, // Do not open the app on click
           cancelNotification: true,
         ),
       ],
@@ -184,13 +203,17 @@ class NotificationService {
       iOS: iosDetails,
     );
 
-    await _plugin.show(
-      _shiftId,
-      title,
-      body,
-      details,
-      payload: 'shift_$fieldId',
-    );
+    try {
+      await _plugin.show(
+        _shiftId,
+        title,
+        body,
+        details,
+        payload: 'shift_$fieldId',
+      );
+    } catch (e) {
+      debugPrint('NotificationService.showShift error: $e');
+    }
   }
 
   static Future<void> cancelRoutine() async {

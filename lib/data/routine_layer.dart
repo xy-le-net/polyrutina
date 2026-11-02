@@ -20,6 +20,7 @@
 //   _nodeRoutinesIndex — maps field node ID to a set of routine IDs.
 //   _runningRoutineIds — tracks IDs of routines with running blocks,
 //     allowing the mutex logic to iterate only over active routines.
+// Indices are rebuilt on reset and fully populated during _applyEntry.
 //
 // Schema. The cache file includes a 'schema' version field. If the
 // loaded schema is older, the cache is discarded and rebuilt from

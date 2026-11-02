@@ -15,14 +15,17 @@
 // reads it on resume via consumePendingAction and stops the shift
 // or routine.
 //
-// Mutex shift. If mutex_shift is enabled (true), stopping a shift
-// does not affect routines, and vice versa. If disabled (false),
-// stopping a shift stops all routines belonging to the field's
-// subtree.
+// Mutex shift. If mutex_shift is enabled (true), routines and shifts
+// are linked: stopping a shift stops all routines belonging to the
+// field's subtree. If disabled (false), they are independent.
 //
 // Lifecycle. When the app goes to background, all layers are saved,
 // the journal state is flushed, and the ticker is paused to save
 // battery. On resume, the ticker restarts and brightness is refreshed.
+//
+// afterJournalReset. A callback passed to AppContext to recreate the
+// root field node if it was lost (e.g., after clearing the journal)
+// and to ensure the active field is valid.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -108,6 +111,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     WidgetsBinding.instance.addObserver(this);
     NotificationService.init().then((_) {
       NotificationService.payloadNotifier.addListener(_onNotificationTap);
+      // Check for launch payload if the app was killed and opened via notification
+      _onNotificationTap();
     });
 
     _db = AppDb();
@@ -185,6 +190,20 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     if (mounted) setState(() {});
   }
 
+  Future<void> _afterJournalReset() async {
+    if (_i18n == null) return;
+    // Ensure the root field exists after a wipe
+    await _fieldLayer.createRootIfNeeded(
+      _journal,
+      name: _i18n!.t('field.root'),
+    );
+    // Ensure active field is valid
+    if (_fieldLayer.activeFieldId == null && _fieldLayer.rootId != null) {
+      _fieldLayer.setActiveField(_fieldLayer.rootId!);
+    }
+    if (mounted) setState(() {});
+  }
+
   Future<void> _reloadI18n() async {
     final i18n = await I18n.load(_bort.lang);
     if (mounted) {
@@ -239,7 +258,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
         );
         _bort.stopShift(fId);
 
-        if (!_bort.mutexShift) {
+        // If mutex shift is true, routines and shifts are linked.
+        if (_bort.mutexShift) {
           for (final r in _routineLayer.routines) {
             bool inField = false;
             for (final parentId in r.fieldParents) {
@@ -456,6 +476,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       refresh: _refreshAll,
       reloadI18n: _reloadI18n,
       openRoutine: _openRoutine,
+      afterJournalReset: _afterJournalReset,
     );
 
     return MaterialApp(
