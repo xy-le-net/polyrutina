@@ -50,6 +50,12 @@ dependencies:
   # Ongoing notifications.
   flutter_local_notifications: ^18.0.1
 
+  # Runtime permissions: notifications, location, camera, microphone,
+  # files. Consulted by the permissions block in the rubka: the
+  # request flow distinguishes denied from permanently-denied and
+  # offers a jump to the system settings on the latter.
+  permission_handler: ^11.3.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

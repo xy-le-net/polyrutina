@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════
 // rubka_tab.dart — rubka tab.
 //
-// Four blocks: artel, appearance, interface, data.
+// Five blocks: artel, appearance, interface, data, permissions.
 //
 // Artel. The shift row is the first line — fgsignal-colored in full
 // and refreshed on every ticker beat. It now reads the active field's
@@ -13,8 +13,8 @@
 // visibility («поле» and «артель»).
 //
 // Layout. Narrow: single column. Wide: two columns (artel+interface
-// on the left, appearance+data on the right) with chessboard frame
-// parity.
+// on the left, appearance+data+permissions on the right) with
+// chessboard frame parity.
 //
 // BlockWrapper. Preserves the original key of the Block widget to
 // avoid losing state during rebuilds.
@@ -35,6 +35,7 @@ import '../services/action_dialog.dart';
 import 'rubka_appearance.dart';
 import 'rubka_data.dart';
 import 'rubka_interface.dart';
+import 'rubka_permissions.dart';
 
 class RubkaTab extends StatelessWidget {
   const RubkaTab({super.key});
@@ -166,6 +167,12 @@ class RubkaTab extends StatelessWidget {
 
     const appearanceBlock = RubkaAppearance(parity: 3);
 
+    // The permissions block is a StatefulWidget that re-reads the
+    // platform's permission statuses on resume (via a lifecycle
+    // observer); keep it as a stable const instance so its state
+    // survives rebuilds of the surrounding layout.
+    const permissionsBlock = RubkaPermissions();
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
@@ -184,6 +191,7 @@ class RubkaTab extends StatelessWidget {
               const BlockWrapper(parity: 1, child: appearanceBlock),
               BlockWrapper(parity: 2, child: interface),
               BlockWrapper(parity: 3, child: data),
+              const BlockWrapper(parity: 4, child: permissionsBlock),
             ],
           );
         }
@@ -219,6 +227,7 @@ class RubkaTab extends StatelessWidget {
               col([
                 const BlockWrapper(parity: 1, child: appearanceBlock),
                 BlockWrapper(parity: 0, child: data),
+                const BlockWrapper(parity: 1, child: permissionsBlock),
               ]),
             ],
           ),
@@ -415,6 +424,8 @@ class BlockWrapper extends StatelessWidget {
       );
     } else if (child is RubkaAppearance) {
       return RubkaAppearance(parity: parity);
+    } else if (child is RubkaPermissions) {
+      return RubkaPermissions(parity: parity);
     }
     return child;
   }

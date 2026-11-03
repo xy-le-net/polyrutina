@@ -52,9 +52,9 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
     if (fieldId == null) return;
 
-    final anyRunning =
-        routineLayer.routines.any((r) => r.runningBlock != null) ||
-        bort.onShift(fieldId);
+    // O(1) check via the layer's index; the previous linear scan
+    // walked every routine on each half-second tick.
+    final anyRunning = routineLayer.anyRunning || bort.onShift(fieldId);
     if (!anyRunning) return;
 
     final sec = DateTime.now().millisecondsSinceEpoch ~/ 1000;

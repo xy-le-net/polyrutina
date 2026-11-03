@@ -1,387 +1,241 @@
-{
-  "ru": {
-    "media.copied": "скопировано",
-    "app.title": "Бортовой журнал",
-
-    "tab.field": "поле",
-    "tab.routines": "рутины",
-    "tab.days": "дни",
-    "tab.artel": "артель",
-    "tab.rubka": "рубка",
-
-    "type.trace": "след",
-    "type.routine": "рутина",
-    "type.timer": "таймер",
-    "type.actor": "актор",
-    "type.bort": "борт",
-
-    "flag.urgent": "срочно",
-    "flag.emergency": "аварийно",
-    "flag.important": "важно",
-    "flag.disputable": "спорно",
-    "flag.complexOp": "сложно",
-    "flag.local": "локально",
-    "flag.synced": "синхронизировано",
-    "flag.correction": "правка",
-
-    "routine.none": "рутин нет",
-    "routine.no_name": "без имени",
-    "routine.noname": "noname",
-    "routine.not_found": "рутина не найдена",
-    "routine.in_work": "в работе",
-    "routine.waiting": "ожидает",
-    "routine.completed": "завершено",
-    "routine.mark_completed": "завершено",
-
-    "routine.block.note": "описание",
-    "routine.block.prep": "подготовка",
-    "routine.block.transit": "переход",
-    "routine.block.work": "выполнение",
-    "routine.block.idle": "простой",
-    "routine.block.closeout": "завершение",
-    "routine.summary": "итог",
-    "routine.clear_date": "снять дату",
-    "routine.planned_hint": "план",
-    "routine.planned_title": "срок",
-
-    "block.artel": "артель",
-    "block.appearance": "оформление",
-    "block.interface": "интерфейс",
-    "block.data": "данные",
-
-    "theme.system": "система",
-    "theme.day": "день",
-    "theme.night": "ночь",
-    "theme.custom": "своя",
-    "theme.invers": "инверс",
-
-    "lang.ru": "русский",
-    "lang.en": "english",
-
-    "bort.theme": "тема",
-    "bort.bg": "фон",
-    "bort.bgdim": "мягкий фон",
-    "bort.dim": "мягкий текст",
-    "bort.fg": "текст",
-    "bort.signal": "сигнальный текст",
-    "bort.scale": "масштаб",
-    "bort.lang": "язык",
-    "bort.labels_buttons": "подписи",
-    "bort.midnight": "полночь",
-    "bort.map_scale": "масштаб карт",
-    "bort.shift": "смена",
-    "bort.bort": "борт",
-    "bort.default_slots": "слоты",
-    "bort.show_field_tab": "поле",
-    "bort.show_artel_tab": "артель",
-    "bort.mutex": "взаимоисключение",
-    "bort.mutex_routines": "рутины",
-    "bort.mutex_slots": "слоты",
-    "bort.mutex_shift": "смена",
-    "bort.blocks": "блоки",
-
-    "bort.k_pult": "размер пульта",
-    "bort.k_pult_small": "малый пульт",
-    "bort.k_block_gap": "промежуток блоков",
-    "bort.k_frame_pad": "отбивка рамки",
-    "bort.k_title": "кегль надписи",
-    "bort.k_number": "кегль числа",
-    "bort.k_number_small": "кегль числа малый",
-    "bort.k_name": "кегль имени",
-    "bort.k_radius": "радиус рамки",
-    "bort.k_stroke": "толщина обводки",
-
-    "bort.journal": "журнал",
-    "bort.media": "медиа",
-    "bort.bytes": "байт",
-    "bort.reload": "перечитать",
-    "bort.delete": "удалить",
-    "bort.delete_all_confirm": "удалить все записи?",
-    "bort.compress": "сжать",
-    "bort.export": "экспорт",
-    "bort.exports_clear": "очистить",
-    "bort.exports_clear_confirm": "удалить все архивы выгрузок?",
-    "bort.reset": "сброс",
-    "bort.reset_confirm": "сбросить кэши и умолчания?",
-    "bort.duplicate": "дублировать",
-    "bort.import": "импорт",
-    "bort.shake": "встряхнуть",
-    "bort.shake_none": "сирот нет",
-    "bort.shake_done_prefix": "удалено:",
-    "bort.shake_freed_prefix": "освобождено:",
-    "bort.select": "выбрать",
-    "bort.deselect": "снять выделение",
-
-    "field.root": "Поле",
-    "field.new_field": "новое поле",
-    "field.new_node": "новая ветвь",
-    "field.attach_routine": "прикрепить",
-    "field.shake": "стряхнуть",
-    "field.burn": "сжечь",
-    "field.burn_confirm": "сжечь ветвь и всё содержимое?",
-    "field.move_routine": "переместить",
-    "field.link_routine": "связать",
-    "field.detach_routine": "отвязать",
-    "field.move_branch": "переместить ветвь",
-
-    "notif.running": "выполняется",
-    "notif.total": "всего",
-
-    "hint.time": "дд:чч:мм:сс",
-    "hint.planned": "дд:чч:мм",
-
-    "size.b": "Б",
-    "size.kb": "КБ",
-    "size.mb": "МБ",
-    "size.gb": "ГБ",
-
-    "import.cancelled": "импорт отменён",
-    "import.empty": "ничего не импортировано",
-    "import.summary": "импортировано",
-    "import.routines_prefix": "рутин:",
-    "import.media_prefix": "медиа:",
-    "import.freed_prefix": "объём:",
-    "import.skipped_prefix": "пропущено:",
-
-    "compact.optimal": "журнал оптимален",
-    "compact.done_prefix": "удалено записей:",
-    "compact.freed_prefix": "освобождено:",
-
-    "common.ok": "ок",
-    "common.cancel": "отмена",
-    "common.wait": "простите, придётся подождать",
-    "export.prep": "подготовка архива",
-    "export.cancel": "отмена",
-
-    "checklist.mark_all": "отметить все",
-    "checklist.unmark_all": "снять все",
-    "checklist.clear_all": "очистить всё",
-
-    "media.audio": "аудио",
-    "media.photo": "фото",
-    "media.video": "видео",
-    "media.geo": "место",
-    "media.file": "файл",
-    "media.attach": "прикрепить",
-    "media.attached": "прикреплено",
-    "media.share": "поделиться",
-    "media.open": "открыть",
-    "media.no_network": "нет сети",
-
-    "time.d": "д",
-    "time.h": "ч",
-    "time.m": "м",
-    "time.s": "с",
-    "time.mon": "пн",
-    "time.tue": "вт",
-    "time.wed": "ср",
-    "time.thu": "чт",
-    "time.fri": "пт",
-    "time.sat": "сб",
-    "time.sun": "вс",
-
-    "report.completed": "завершено",
-    "report.in_progress": "в процессе",
-    "report.subject": "Отчёт по рутинам",
-
-    "days.legend.scheduled": "назначенные",
-    "days.legend.unfinished": "незавершённые",
-    "days.legend.completed": "завершённые",
-
-    "stub.title": "раздел",
-    "stub.text": "ещё не готов"
-  },
-
-  "en": {
-    "media.copied": "copied",
-    "app.title": "Logbook",
-
-    "tab.field": "field",
-    "tab.routines": "routines",
-    "tab.days": "days",
-    "tab.artel": "artel",
-    "tab.rubka": "cabin",
-
-    "type.trace": "trace",
-    "type.routine": "routine",
-    "type.timer": "timer",
-    "type.actor": "actor",
-    "type.bort": "board",
-
-    "flag.urgent": "urgent",
-    "flag.emergency": "emergency",
-    "flag.important": "important",
-    "flag.disputable": "disputable",
-    "flag.complexOp": "complex",
-    "flag.local": "local",
-    "flag.synced": "synced",
-    "flag.correction": "correction",
-
-    "routine.none": "no routines",
-    "routine.no_name": "no name",
-    "routine.noname": "noname",
-    "routine.not_found": "routine not found",
-    "routine.in_work": "in work",
-    "routine.waiting": "waiting",
-    "routine.completed": "completed",
-    "routine.mark_completed": "completed",
-
-    "routine.block.note": "note",
-    "routine.block.prep": "prep",
-    "routine.block.transit": "transit",
-    "routine.block.work": "execution",
-    "routine.block.idle": "idle",
-    "routine.block.closeout": "closeout",
-    "routine.summary": "total",
-    "routine.clear_date": "clear date",
-    "routine.planned_hint": "plan",
-    "routine.planned_title": "due",
-
-    "block.artel": "artel",
-    "block.appearance": "appearance",
-    "block.interface": "interface",
-    "block.data": "data",
-
-    "theme.system": "system",
-    "theme.day": "day",
-    "theme.night": "night",
-    "theme.custom": "custom",
-    "theme.invers": "inverse",
-
-    "lang.ru": "русский",
-    "lang.en": "english",
-
-    "bort.theme": "theme",
-    "bort.bg": "background",
-    "bort.bgdim": "soft background",
-    "bort.dim": "soft text",
-    "bort.fg": "text",
-    "bort.signal": "signal text",
-    "bort.scale": "scale",
-    "bort.lang": "language",
-    "bort.labels_buttons": "labels",
-    "bort.midnight": "midnight",
-    "bort.map_scale": "map scale",
-    "bort.shift": "shift",
-    "bort.bort": "board",
-    "bort.default_slots": "slots",
-    "bort.show_field_tab": "field",
-    "bort.show_artel_tab": "artel",
-    "bort.mutex": "mutex",
-    "bort.mutex_routines": "routines",
-    "bort.mutex_slots": "slots",
-    "bort.mutex_shift": "shift",
-    "bort.blocks": "blocks",
-
-    "bort.k_pult": "pult size",
-    "bort.k_pult_small": "small pult",
-    "bort.k_block_gap": "block gap",
-    "bort.k_frame_pad": "frame pad",
-    "bort.k_title": "title size",
-    "bort.k_number": "number size",
-    "bort.k_number_small": "small number",
-    "bort.k_name": "name size",
-    "bort.k_radius": "corner radius",
-    "bort.k_stroke": "stroke width",
-
-    "bort.journal": "journal",
-    "bort.media": "media",
-    "bort.bytes": "bytes",
-    "bort.reload": "reread",
-    "bort.delete": "delete",
-    "bort.delete_all_confirm": "delete all entries?",
-    "bort.compress": "compress",
-    "bort.export": "export",
-    "bort.exports_clear": "clear",
-    "bort.exports_clear_confirm": "delete all exported archives?",
-    "bort.reset": "reset",
-    "bort.reset_confirm": "reset caches and defaults?",
-    "bort.duplicate": "duplicate",
-    "bort.import": "import",
-    "bort.shake": "shake",
-    "bort.shake_none": "no orphans",
-    "bort.shake_done_prefix": "removed:",
-    "bort.shake_freed_prefix": "freed:",
-    "bort.select": "select",
-    "bort.deselect": "deselect",
-
-    "field.root": "Field",
-    "field.new_field": "new field",
-    "field.new_node": "new branch",
-    "field.attach_routine": "attach",
-    "field.shake": "shake",
-    "field.burn": "burn",
-    "field.burn_confirm": "burn branch and all content?",
-    "field.move_routine": "move",
-    "field.link_routine": "link",
-    "field.detach_routine": "detach",
-    "field.move_branch": "move branch",
-
-    "notif.running": "running",
-    "notif.total": "total",
-
-    "hint.time": "dd:hh:mm:ss",
-    "hint.planned": "dd:hh:mm",
-
-    "size.b": "B",
-    "size.kb": "KB",
-    "size.mb": "MB",
-    "size.gb": "GB",
-
-    "import.cancelled": "import cancelled",
-    "import.empty": "nothing imported",
-    "import.summary": "imported",
-    "import.routines_prefix": "routines:",
-    "import.media_prefix": "media:",
-    "import.freed_prefix": "size:",
-    "import.skipped_prefix": "skipped:",
-
-    "compact.optimal": "journal optimal",
-    "compact.done_prefix": "entries dropped:",
-    "compact.freed_prefix": "freed:",
-
-    "common.ok": "ok",
-    "common.cancel": "cancel",
-    "common.wait": "please wait, this may take a moment",
-    "export.prep": "preparing archive",
-    "export.cancel": "cancel",
-
-    "checklist.mark_all": "mark all",
-    "checklist.unmark_all": "unmark all",
-    "checklist.clear_all": "clear all",
-
-    "media.audio": "audio",
-    "media.photo": "photo",
-    "media.video": "video",
-    "media.geo": "place",
-    "media.file": "file",
-    "media.attach": "attach",
-    "media.attached": "attached",
-    "media.share": "share",
-    "media.open": "open",
-    "media.no_network": "no network",
-
-    "time.d": "d",
-    "time.h": "h",
-    "time.m": "m",
-    "time.s": "s",
-    "time.mon": "mo",
-    "time.tue": "tu",
-    "time.wed": "we",
-    "time.thu": "th",
-    "time.fri": "fr",
-    "time.sat": "sa",
-    "time.sun": "su",
-
-    "report.completed": "completed",
-    "report.in_progress": "in progress",
-    "report.subject": "Routines report",
-
-    "days.legend.scheduled": "scheduled",
-    "days.legend.unfinished": "unfinished",
-    "days.legend.completed": "completed",
-
-    "stub.title": "section",
-    "stub.text": "not ready yet"
-  }
-}
+[{
+	"resource": "/d:/polyrutina/lib/main.dart",
+	"owner": "dartAnalysisLSP",
+	"code": {
+		"value": "undefined_identifier",
+		"target": {
+			"$mid": 1,
+			"path": "/diagnostics/undefined_identifier",
+			"scheme": "https",
+			"authority": "dart.dev"
+		}
+	},
+	"severity": 8,
+	"message": "Undefined name 'NotificationService'.\nTry correcting the name to one that is defined, or defining the name.",
+	"source": "dart",
+	"startLineNumber": 112,
+	"startColumn": 5,
+	"endLineNumber": 112,
+	"endColumn": 24,
+	"modelVersionId": 1,
+	"origin": "extHost1"
+},{
+	"resource": "/d:/polyrutina/lib/main.dart",
+	"owner": "dartAnalysisLSP",
+	"code": {
+		"value": "undefined_identifier",
+		"target": {
+			"$mid": 1,
+			"path": "/diagnostics/undefined_identifier",
+			"scheme": "https",
+			"authority": "dart.dev"
+		}
+	},
+	"severity": 8,
+	"message": "Undefined name 'NotificationService'.\nTry correcting the name to one that is defined, or defining the name.",
+	"source": "dart",
+	"startLineNumber": 113,
+	"startColumn": 7,
+	"endLineNumber": 113,
+	"endColumn": 26,
+	"modelVersionId": 1,
+	"origin": "extHost1"
+},{
+	"resource": "/d:/polyrutina/lib/main.dart",
+	"owner": "dartAnalysisLSP",
+	"code": {
+		"value": "undefined_identifier",
+		"target": {
+			"$mid": 1,
+			"path": "/diagnostics/undefined_identifier",
+			"scheme": "https",
+			"authority": "dart.dev"
+		}
+	},
+	"severity": 8,
+	"message": "Undefined name 'NotificationService'.\nTry correcting the name to one that is defined, or defining the name.",
+	"source": "dart",
+	"startLineNumber": 230,
+	"startColumn": 21,
+	"endLineNumber": 230,
+	"endColumn": 40,
+	"modelVersionId": 1,
+	"origin": "extHost1"
+},{
+	"resource": "/d:/polyrutina/lib/main.dart",
+	"owner": "dartAnalysisLSP",
+	"code": {
+		"value": "undefined_identifier",
+		"target": {
+			"$mid": 1,
+			"path": "/diagnostics/undefined_identifier",
+			"scheme": "https",
+			"authority": "dart.dev"
+		}
+	},
+	"severity": 8,
+	"message": "Undefined name 'NotificationService'.\nTry correcting the name to one that is defined, or defining the name.",
+	"source": "dart",
+	"startLineNumber": 232,
+	"startColumn": 5,
+	"endLineNumber": 232,
+	"endColumn": 24,
+	"modelVersionId": 1,
+	"origin": "extHost1"
+},{
+	"resource": "/d:/polyrutina/lib/main.dart",
+	"owner": "dartAnalysisLSP",
+	"code": {
+		"value": "undefined_identifier",
+		"target": {
+			"$mid": 1,
+			"path": "/diagnostics/undefined_identifier",
+			"scheme": "https",
+			"authority": "dart.dev"
+		}
+	},
+	"severity": 8,
+	"message": "Undefined name 'NotificationService'.\nTry correcting the name to one that is defined, or defining the name.",
+	"source": "dart",
+	"startLineNumber": 246,
+	"startColumn": 24,
+	"endLineNumber": 246,
+	"endColumn": 43,
+	"modelVersionId": 1,
+	"origin": "extHost1"
+},{
+	"resource": "/d:/polyrutina/lib/main.dart",
+	"owner": "dartAnalysisLSP",
+	"code": {
+		"value": "undefined_identifier",
+		"target": {
+			"$mid": 1,
+			"path": "/diagnostics/undefined_identifier",
+			"scheme": "https",
+			"authority": "dart.dev"
+		}
+	},
+	"severity": 8,
+	"message": "Undefined name 'NotificationService'.\nTry correcting the name to one that is defined, or defining the name.",
+	"source": "dart",
+	"startLineNumber": 295,
+	"startColumn": 11,
+	"endLineNumber": 295,
+	"endColumn": 30,
+	"modelVersionId": 1,
+	"origin": "extHost1"
+},{
+	"resource": "/d:/polyrutina/lib/main.dart",
+	"owner": "dartAnalysisLSP",
+	"code": {
+		"value": "undefined_identifier",
+		"target": {
+			"$mid": 1,
+			"path": "/diagnostics/undefined_identifier",
+			"scheme": "https",
+			"authority": "dart.dev"
+		}
+	},
+	"severity": 8,
+	"message": "Undefined name 'NotificationService'.\nTry correcting the name to one that is defined, or defining the name.",
+	"source": "dart",
+	"startLineNumber": 302,
+	"startColumn": 5,
+	"endLineNumber": 302,
+	"endColumn": 24,
+	"modelVersionId": 1,
+	"origin": "extHost1"
+},{
+	"resource": "/D:/polyrutina/lib/ui/services/notification_manager.dart",
+	"owner": "dartAnalysisLSP",
+	"code": {
+		"value": "undefined_identifier",
+		"target": {
+			"$mid": 1,
+			"path": "/diagnostics/undefined_identifier",
+			"scheme": "https",
+			"authority": "dart.dev"
+		}
+	},
+	"severity": 8,
+	"message": "Undefined name 'NotificationService'.\nTry correcting the name to one that is defined, or defining the name.",
+	"source": "dart",
+	"startLineNumber": 82,
+	"startColumn": 9,
+	"endLineNumber": 82,
+	"endColumn": 28,
+	"origin": "extHost1"
+},{
+	"resource": "/D:/polyrutina/lib/ui/services/notification_manager.dart",
+	"owner": "dartAnalysisLSP",
+	"code": {
+		"value": "undefined_identifier",
+		"target": {
+			"$mid": 1,
+			"path": "/diagnostics/undefined_identifier",
+			"scheme": "https",
+			"authority": "dart.dev"
+		}
+	},
+	"severity": 8,
+	"message": "Undefined name 'NotificationService'.\nTry correcting the name to one that is defined, or defining the name.",
+	"source": "dart",
+	"startLineNumber": 94,
+	"startColumn": 9,
+	"endLineNumber": 94,
+	"endColumn": 28,
+	"origin": "extHost1"
+},{
+	"resource": "/D:/polyrutina/lib/ui/services/notification_manager.dart",
+	"owner": "dartAnalysisLSP",
+	"code": {
+		"value": "undefined_identifier",
+		"target": {
+			"$mid": 1,
+			"path": "/diagnostics/undefined_identifier",
+			"scheme": "https",
+			"authority": "dart.dev"
+		}
+	},
+	"severity": 8,
+	"message": "Undefined name 'NotificationService'.\nTry correcting the name to one that is defined, or defining the name.",
+	"source": "dart",
+	"startLineNumber": 133,
+	"startColumn": 9,
+	"endLineNumber": 133,
+	"endColumn": 28,
+	"origin": "extHost1"
+},{
+	"resource": "/D:/polyrutina/lib/ui/services/notification_manager.dart",
+	"owner": "dartAnalysisLSP",
+	"code": {
+		"value": "undefined_identifier",
+		"target": {
+			"$mid": 1,
+			"path": "/diagnostics/undefined_identifier",
+			"scheme": "https",
+			"authority": "dart.dev"
+		}
+	},
+	"severity": 8,
+	"message": "Undefined name 'NotificationService'.\nTry correcting the name to one that is defined, or defining the name.",
+	"source": "dart",
+	"startLineNumber": 146,
+	"startColumn": 9,
+	"endLineNumber": 146,
+	"endColumn": 28,
+	"origin": "extHost1"
+},{
+	"resource": "/d:/polyrutina/lib/ui/services/notification_service.dart",
+	"owner": "dartAnalysisLSP",
+	"code": "expected_executable",
+	"severity": 8,
+	"message": "Expected a method, getter, setter or operator declaration.\nThis appears to be incomplete code. Try removing it or completing it.",
+	"source": "dart",
+	"startLineNumber": 1,
+	"startColumn": 1,
+	"endLineNumber": 1,
+	"endColumn": 2,
+	"modelVersionId": 2,
+	"origin": "extHost1"
+}]

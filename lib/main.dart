@@ -192,14 +192,21 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   Future<void> _afterJournalReset() async {
     if (_i18n == null) return;
-    // Ensure the root field exists after a wipe
+    // Ensure the root field exists after a wipe.
     await _fieldLayer.createRootIfNeeded(
       _journal,
       name: _i18n!.t('field.root'),
     );
-    // Ensure active field is valid
-    if (_fieldLayer.activeFieldId == null && _fieldLayer.rootId != null) {
-      _fieldLayer.setActiveField(_fieldLayer.rootId!);
+    // Ensure the active field is valid. The check covers both a
+    // null id and a dangling one (the node was removed but the id
+    // was not yet normalized) — in either case we fall back to the
+    // default root, if it exists, so the field tab never goes blank
+    // after a reset, an import, or a journal clear.
+    final active = _fieldLayer.activeFieldId;
+    final root = _fieldLayer.rootId;
+    if (root != null &&
+        (active == null || !_fieldLayer.nodes.containsKey(active))) {
+      _fieldLayer.setActiveField(root);
     }
     if (mounted) setState(() {});
   }

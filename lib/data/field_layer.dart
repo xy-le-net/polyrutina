@@ -239,6 +239,16 @@ class FieldLayer extends ChangeNotifier {
           }
           break;
       }
+      // Normalize after every entry: any action above may leave
+      // activeFieldId null or pointing at a removed node. A single
+      // fallback here is cheaper than guarding every case, and it
+      // is the one place that guarantees the invariant `activeFieldId
+      // == null || nodes.containsKey(activeFieldId)`.
+      if (activeFieldId == null || !nodes.containsKey(activeFieldId)) {
+        activeFieldId = (rootId != null && nodes.containsKey(rootId))
+            ? rootId
+            : null;
+      }
     } catch (_) {}
   }
 
@@ -318,6 +328,20 @@ class FieldLayer extends ChangeNotifier {
     final n = nodes[id];
     if (n == null) return;
     n.name = name;
+    // If the node is the default root but rootId was lost (e.g. on a
+    // damaged cache load), restore it here — the active field must
+    // remain a valid key into `nodes`.
+    if (n.isRoot && (rootId == null || !nodes.containsKey(rootId))) {
+      rootId = id;
+    }
+    // If the active field is unset or dangling, fall back to the
+    // default root. Without this the field tab goes blank after a
+    // rename that follows a corrupted reload.
+    if (activeFieldId == null || !nodes.containsKey(activeFieldId)) {
+      if (rootId != null && nodes.containsKey(rootId)) {
+        activeFieldId = rootId;
+      }
+    }
     await journal.log(
       type: JournalType.fieldNode,
       body: jsonEncode({'action': 'rename', 'id': id, 'name': name}),

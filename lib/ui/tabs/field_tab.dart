@@ -374,13 +374,27 @@ class _FieldTabState extends State<FieldTab> {
     final i18n = I18nScope.of(context);
     final fieldLayer = FieldScope.of(context);
     final side = PultScope.of(context).smallSide;
-
-    final activeId = fieldLayer.activeFieldId;
-    if (activeId == null || !fieldLayer.nodes.containsKey(activeId)) {
+    // Hard fallback: if the active field is unset or dangling, use
+    // the default root. The field layer already normalizes this in
+    // _applyEntry, but the tab may be rebuilt between a node removal
+    // and the next journal entry, so the invariant is enforced here
+    // as well — otherwise the tab goes blank.
+    // Fallback to the root if the active id is unset or dangling.
+    // Kept as `final` locals so the null checks below promote them
+    // for the rest of the method — a mutable local loses promotion,
+    // which is what the analyzer reported at the four call sites in
+    // the closures below.
+    final int? activeId0 = fieldLayer.activeFieldId;
+    final int? activeId1 =
+        (activeId0 != null && fieldLayer.nodes.containsKey(activeId0))
+        ? activeId0
+        : fieldLayer.rootId;
+    if (activeId1 == null || !fieldLayer.nodes.containsKey(activeId1)) {
       return Center(
         child: Text(i18n.t('routine.none'), style: TextStyle(color: bort.mid)),
       );
     }
+    final int activeId = activeId1;
 
     final activeRoot = fieldLayer.nodes[activeId]!;
 

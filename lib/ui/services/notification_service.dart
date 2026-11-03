@@ -22,12 +22,21 @@
 // meaning it executes in the background without bringing the app to
 // the foreground.
 //
-// Channel ID. The channel ID is updated to 'polyrutina_ongoing_v2'
-// to ensure Android recognizes the new notification settings and
-// action behaviors, bypassing any previously cached channel state.
+// Channel ID. Bumped to 'polyrutina_ongoing_v3': Android caches a
+// channel's importance on first creation and will not honour later
+// changes to the same ID, so raising importance on an existing
+// channel is a no-op. A new ID is the only reliable way to make
+// Android 13+ surface the ongoing notification without the user
+// digging into system settings.
 //
-// Exception handling. Calls to show() are wrapped in try-catch with
-// debugPrint to prevent silent failures from breaking the update loop.
+// Importance. Raised from low to default. The previous low setting
+// was silently suppressed by Android 13+ system policy, which is
+// why notifications never appeared after the upgrade. Default is
+// the lowest level that is guaranteed to be displayed.
+//
+// Debug. init() prints the outcome of plugin initialization so a
+// failed platform channel is visible in the device log rather than
+// silent. Debug-only, harmless in release.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -47,8 +56,9 @@ class NotificationService {
   // Used to route taps on the body of the notification to the app.
   static final ValueNotifier<String?> payloadNotifier = ValueNotifier(null);
 
-  // Updated channel ID to force Android to apply new settings.
-  static const String _channelId = 'polyrutina_ongoing_v2';
+  // Bumped from v2 to force Android to apply the new importance;
+  // see the file header for the rationale.
+  static const String _channelId = 'polyrutina_ongoing_v3';
   static const String _channelName = 'Ongoing Work';
   static const String _channelDesc = 'Shows running routines and shifts';
 
@@ -72,27 +82,41 @@ class NotificationService {
       iOS: iosSettings,
     );
 
-    await _plugin.initialize(
-      initSettings,
-      onDidReceiveNotificationResponse: _onNotificationResponse,
-      onDidReceiveBackgroundNotificationResponse: _onBackgroundResponse,
-    );
+    try {
+      await _plugin.initialize(
+        initSettings,
+        onDidReceiveNotificationResponse: _onNotificationResponse,
+        onDidReceiveBackgroundNotificationResponse: _onBackgroundResponse,
+      );
+      debugPrint('NotificationService: plugin initialized');
+    } catch (e) {
+      debugPrint('NotificationService: plugin initialize failed: $e');
+      return;
+    }
 
     if (defaultTargetPlatform == TargetPlatform.android) {
-      await _plugin
-          .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin
-          >()
-          ?.requestNotificationsPermission();
+      try {
+        await _plugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >()
+            ?.requestNotificationsPermission();
+      } catch (e) {
+        debugPrint('NotificationService: permission request failed: $e');
+      }
     }
 
     // Check if the app was launched via a notification tap.
-    final launchDetails = await _plugin.getNotificationAppLaunchDetails();
-    if (launchDetails != null && launchDetails.didNotificationLaunchApp) {
-      final payload = launchDetails.notificationResponse?.payload;
-      if (payload != null) {
-        payloadNotifier.value = payload;
+    try {
+      final launchDetails = await _plugin.getNotificationAppLaunchDetails();
+      if (launchDetails != null && launchDetails.didNotificationLaunchApp) {
+        final payload = launchDetails.notificationResponse?.payload;
+        if (payload != null) {
+          payloadNotifier.value = payload;
+        }
       }
+    } catch (e) {
+      debugPrint('NotificationService: launch details failed: $e');
     }
 
     _initialized = true;
@@ -114,8 +138,8 @@ class NotificationService {
       _channelId,
       _channelName,
       channelDescription: _channelDesc,
-      importance: Importance.low,
-      priority: Priority.low,
+      importance: Importance.defaultImportance,
+      priority: Priority.defaultPriority,
       ongoing: true,
       autoCancel: false,
       showWhen: true,
@@ -173,8 +197,8 @@ class NotificationService {
       _channelId,
       _channelName,
       channelDescription: _channelDesc,
-      importance: Importance.low,
-      priority: Priority.low,
+      importance: Importance.defaultImportance,
+      priority: Priority.defaultPriority,
       ongoing: true,
       autoCancel: false,
       showWhen: true,

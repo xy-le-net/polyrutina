@@ -1,29 +1,18 @@
 // ═══════════════════════════════════════════════════════════════════
-// json_io.dart — shared atomic JSON writer.
+// json_io.dart — legacy alias for atomic_json.dart.
 //
-// A single implementation of the «write to .tmp, rename onto target»
-// pattern used across all caches (bort file, install store, routine,
-// trace, field layers). On POSIX, rename within a single filesystem
-// is atomic, so a crash mid-write cannot leave a half-written target:
-// either the old file survives or the new one appears whole.
+// Formerly a second, byte-identical copy of atomicWriteJson. Two
+// implementations of one operation diverge over time: a fix in one
+// is forgotten in the other, and the resulting writes differ only
+// on the day a crash happens. The single implementation now lives
+// in atomic_json.dart; this file only re-exports it so existing
+// imports keep compiling.
 //
-// Extracted to eliminate duplication. On failure, the stray .tmp
-// file is removed so that a subsequent write is not blocked by it.
+// New code must import atomic_json.dart directly. This alias is
+// kept solely for backward compatibility and may be removed once
+// every reference is migrated.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
-import 'dart:convert';
-import 'dart:io';
-
-Future<void> atomicWriteJson(File target, Map<String, dynamic> data) async {
-  final tmp = File('${target.path}.tmp');
-  try {
-    await tmp.writeAsString(jsonEncode(data), flush: true);
-    await tmp.rename(target.path);
-  } catch (_) {
-    try {
-      if (await tmp.exists()) await tmp.delete();
-    } catch (_) {}
-  }
-}
+export 'atomic_json.dart' show atomicWriteJson;

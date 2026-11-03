@@ -72,6 +72,11 @@ class RoutineLayer extends ChangeNotifier {
     return copy;
   }
 
+  // O(1) check for «is any routine currently running». The set is
+  // maintained by _applyEntry and _rebuildIndices, so this stays
+  // accurate after reloads and is safe to call on every ticker beat.
+  bool get anyRunning => _runningRoutineIds.isNotEmpty;
+
   Future<void> init(
     JournalLayer journal,
     TraceLayer traces,
