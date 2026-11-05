@@ -3,21 +3,14 @@
 //
 // Five blocks: artel, appearance, interface, data, permissions.
 //
-// Artel. The shift row is the first line — fgsignal-colored in full
-// and refreshed on every ticker beat. It now reads the active field's
-// shift state (via FieldScope). Then: midnight field (HH:MM) and map
-// scale field (meters). Under «взаимоисключение» — three checkboxes:
-// «рутины» (global pause), «слоты» (same-routine pause), and
-// «смена» (mutex shift: if true, routines and shift are independent;
-// if false, they are linked). Under «блоки» — two checkboxes for tab
-// visibility («поле» and «артель»).
+// Artel. The shift row is the first line. Then: midnight field
+// (HH:MM) and map scale field (meters). Under «взаимоисключение» —
+// three checkboxes: «рутины», «слоты», «смена». Under «блоки» — one
+// checkbox for tab visibility («артель»); «поле» is abolished.
 //
 // Layout. Narrow: single column. Wide: two columns (artel+interface
 // on the left, appearance+data+permissions on the right) with
 // chessboard frame parity.
-//
-// BlockWrapper. Preserves the original key of the Block widget to
-// avoid losing state during rebuilds.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -110,15 +103,6 @@ class RubkaTab extends StatelessWidget {
           _sectionHeader(i18n.t('bort.blocks'), mid, side),
           _tabTickRow(
             context,
-            'show_field_tab',
-            i18n.t('bort.show_field_tab'),
-            fg,
-            bg,
-            fgsignal,
-            side,
-          ),
-          _tabTickRow(
-            context,
             'show_artel_tab',
             i18n.t('bort.show_artel_tab'),
             fg,
@@ -166,11 +150,6 @@ class RubkaTab extends StatelessWidget {
     );
 
     const appearanceBlock = RubkaAppearance(parity: 3);
-
-    // The permissions block is a StatefulWidget that re-reads the
-    // platform's permission statuses on resume (via a lifecycle
-    // observer); keep it as a stable const instance so its state
-    // survives rebuilds of the surrounding layout.
     const permissionsBlock = RubkaPermissions();
 
     return LayoutBuilder(

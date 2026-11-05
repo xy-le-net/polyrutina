@@ -77,6 +77,42 @@ class RoutineLayer extends ChangeNotifier {
   // accurate after reloads and is safe to call on every ticker beat.
   bool get anyRunning => _runningRoutineIds.isNotEmpty;
 
+  // Grouping and sorting for the routines list.
+  // Active routines first (running ones at the very top), then
+  // completed ones. Within each group, ordering is by the moment of
+  // the last ticker pulse (lastPulseAt), falling back to the last
+  // action time if a routine never pulsed. This keeps the list
+  // stable when a user merely opens a card without interacting with
+  // the timer.
+  ({List<Routine> active, List<Routine> done}) get groupedByTicker {
+    final active = <Routine>[];
+    final done = <Routine>[];
+    for (final r in routines) {
+      if (r.completed) {
+        done.add(r);
+      } else {
+        active.add(r);
+      }
+    }
+
+    int sortPulse(Routine r) => r.lastPulseAt ?? r.lastActionAt;
+
+    active.sort((a, b) {
+      final aRun = a.runningBlock != null;
+      final bRun = b.runningBlock != null;
+      if (aRun && !bRun) return -1;
+      if (!aRun && bRun) return 1;
+      if (aRun && bRun) {
+        final at = a.runningBlock?.startedAt ?? 0;
+        final bt = b.runningBlock?.startedAt ?? 0;
+        return bt.compareTo(at);
+      }
+      return sortPulse(b).compareTo(sortPulse(a));
+    });
+    done.sort((a, b) => sortPulse(b).compareTo(sortPulse(a)));
+    return (active: active, done: done);
+  }
+
   Future<void> init(
     JournalLayer journal,
     TraceLayer traces,

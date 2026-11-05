@@ -1,7 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- Runtime permissions consulted by permission_handler and
-         requested by the in-app permissions block. -->
+         requested by the in-app permissions block. Without these
+         declarations the plugin fails silently on Android, which
+         manifests as a black screen at startup. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />

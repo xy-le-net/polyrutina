@@ -4,28 +4,9 @@
 // Startup order: journal, bort, trace, field (with root creation),
 // routine, dictionary, notification manager. Then — journal.start().
 //
-// Dictionary initialization must occur BEFORE the field layer creates
-// its default root, so that the root name can be localized.
-//
-// Notification routing. When the user taps the body of a notification,
-// NotificationService.payloadNotifier is triggered. main.dart listens
-// and switches to the routines tab, optionally opening the routine
-// card. When the user presses the "stop" button in the notification,
-// the action is saved to a file by the background isolate; main.dart
-// reads it on resume via consumePendingAction and stops the shift
-// or routine.
-//
-// Mutex shift. If mutex_shift is enabled (true), routines and shifts
-// are linked: stopping a shift stops all routines belonging to the
-// field's subtree. If disabled (false), they are independent.
-//
-// Lifecycle. When the app goes to background, all layers are saved,
-// the journal state is flushed, and the ticker is paused to save
-// battery. On resume, the ticker restarts and brightness is refreshed.
-//
-// afterJournalReset. A callback passed to AppContext to recreate the
-// root field node if it was lost (e.g., after clearing the journal)
-// and to ensure the active field is valid.
+// Field tab merged into routines. The separate «field» tab has been
+// removed; the tree is now built on top of the routines tab. The
+// `show_field_tab` flag is obsolete.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -51,7 +32,6 @@ import 'ui/pults/root_pult.dart';
 import 'ui/services/notification_manager.dart';
 import 'ui/services/notification_service.dart';
 import 'ui/tabs/days_tab.dart';
-import 'ui/tabs/field_tab.dart';
 import 'ui/tabs/routines_tab.dart';
 import 'ui/tabs/rubka_tab.dart';
 import 'ui/tabs/stub_tab.dart';
@@ -80,16 +60,14 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   I18n? _i18n;
   String? _initError;
 
-  int _tab = 1;
+  int _tab = 0; // Routines
   int? _openedRoutineId;
   bool _sheetOpen = false;
 
   VoidCallback? _onTickerTick;
-
   String _bortSignature = '';
 
   static const List<RootTabItem> _allTabs = [
-    RootTabItem(icon: Icons.map, labelKey: 'tab.field'),
     RootTabItem(icon: Icons.checklist, labelKey: 'tab.routines'),
     RootTabItem(icon: Icons.calendar_month, labelKey: 'tab.days'),
     RootTabItem(icon: Icons.groups, labelKey: 'tab.artel'),
@@ -97,8 +75,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   ];
 
   bool _tabVisible(int i) {
-    if (i == 0) return _bort.showFieldTab;
-    if (i == 3) return _bort.showArtelTab;
+    if (i == 2) return _bort.showArtelTab; // Artel is now index 2
     return true;
   }
 
@@ -133,7 +110,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   String _computeBortSignature() {
     return '${_bort.themeName}|'
         '${_bort.scale.toStringAsFixed(4)}|'
-        '${_bort.showFieldTab}|'
         '${_bort.showArtelTab}|'
         '${_bort.systemBrightness.name}|'
         '${_bort.lang}|'
@@ -176,7 +152,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
       _journal.start();
       _bort.setLastRereadId(await _journal.lastEntryId());
-      _tab = 1;
+      _tab = 0;
       _bortSignature = _computeBortSignature();
 
       _notificationManager = NotificationManager(
@@ -236,12 +212,12 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     NotificationService.payloadNotifier.value = null;
 
     if (payload.startsWith('shift_')) {
-      _switchTab(1);
+      _switchTab(0);
     } else if (payload.startsWith('routine_')) {
       final idStr = payload.split('_').last;
       final rId = int.tryParse(idStr);
       if (rId != null) {
-        _switchTab(1).then((_) => _openRoutine(rId));
+        _switchTab(0).then((_) => _openRoutine(rId));
       }
     }
   }
@@ -425,14 +401,12 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   Widget _tabBody() {
     switch (_tab) {
       case 0:
-        return const FieldTab();
-      case 1:
         return const RoutinesTab();
-      case 2:
+      case 1:
         return const DaysTab();
+      case 2:
+        return const StubTab(); // Artel
       case 3:
-        return const StubTab();
-      case 4:
       default:
         return const RubkaTab();
     }
@@ -443,8 +417,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       _navigatorKey.currentState?.popUntil((r) => r.isFirst);
       return;
     }
-    if (_tab != 1) {
-      setState(() => _tab = 1);
+    if (_tab != 0) {
+      setState(() => _tab = 0);
       return;
     }
   }
@@ -473,7 +447,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     if (!_tabVisible(_tab)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !_tabVisible(_tab)) {
-          setState(() => _tab = 1);
+          setState(() => _tab = 0);
         }
       });
     }

@@ -250,6 +250,11 @@ class FieldLayer extends ChangeNotifier {
             : null;
       }
     } catch (_) {}
+    // Always notify: the UI must rebuild after any journal entry,
+    // otherwise a rename or creation appears to do nothing until a
+    // restart. This was the root cause of the «disappearing field»
+    // bug.
+    notifyListeners();
   }
 
   void _resetMemory() {

@@ -269,7 +269,7 @@ class OperationalLayer extends ChangeNotifier {
   bool mutexRoutines = true;
   bool mutexSlots = true;
 
-  bool showFieldTab = false;
+  bool showFieldTab = false; // Legacy, unused.
   bool showArtelTab = false;
 
   int selectedType = 4;
@@ -966,6 +966,7 @@ class OperationalLayer extends ChangeNotifier {
     out['block_appearance'] = blockAppearance.toString();
     out['block_interface'] = blockInterface.toString();
     out['block_data'] = blockData.toString();
+    out['block_permissions'] = blockPermissions.toString();
     out['mutex_routines'] = mutexRoutines.toString();
     out['mutex_slots'] = mutexSlots.toString();
     out['show_field_tab'] = showFieldTab.toString();

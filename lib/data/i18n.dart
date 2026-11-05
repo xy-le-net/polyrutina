@@ -1,13 +1,16 @@
 // ═══════════════════════════════════════════════════════════════════
-// i18n.dart — словарь.
+// i18n.dart — dictionary.
 //
-// Читает assets/i18n.json, держит текущий язык, отдаёт строки по ключу.
-// Файл словаря правится вручную — код при добавлении языков не трогается.
+// Reads assets/i18n.json, holds the current language, returns strings
+// by key. The dictionary file is edited by hand; the code is not
+// touched when adding languages.
 //
 // Resilient load. If the asset is missing, malformed, or (worst case)
 // a JSON array instead of an object, the loader falls back to an empty
 // dictionary so the app can still start. Previously a single typo in
 // i18n.json took down the whole app with a black screen.
+//
+// Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:convert';
@@ -20,6 +23,8 @@ class I18n {
 
   I18n._(this._data, this.lang);
 
+  // Load the dictionary. `lang` is «ru» or «en». Other languages are
+  // added to the JSON without touching the code.
   static Future<I18n> load(String lang) async {
     try {
       final raw = await rootBundle.loadString('assets/i18n.json');
@@ -37,6 +42,8 @@ class I18n {
     return I18n._({'ru': {}, 'en': {}}, lang);
   }
 
+  // String by key. If the key is missing in the current language, the
+  // English one is used, then the key itself.
   String t(String key) {
     return _data[lang]?[key] ?? _data['en']?[key] ?? key;
   }
