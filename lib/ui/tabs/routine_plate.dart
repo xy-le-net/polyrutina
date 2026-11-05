@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════
-// lib/ui/tabs/routine_plate.dart — one routine tile in the list.
+// routine_plate.dart — one routine tile in the list.
 //
 // Frame. Computed by borderFor (core/frame.dart).
 //
@@ -8,6 +8,13 @@
 // Resume. The "play" button starts the last worked-on block
 // (routine.lastBlockKind), falling back to "work" if none exists.
 // It uses the active field's ID to correctly associate the shift.
+//
+// Multiselect abolished. Long press anywhere on the plate (including
+// the right-hand pult) opens the routine options sheet; the caller
+// decides what goes into it.
+//
+// Font. Name, date, and number sizes are reduced by a fifth relative
+// to the former values.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -21,26 +28,19 @@ import '../core/frame.dart';
 import '../core/routine_flags.dart';
 import '../core/timer_text.dart';
 import '../pults/pult_core.dart';
-import '../pults/pult_tick.dart';
 
 class RoutinePlate extends StatelessWidget {
   final Routine routine;
-  final bool selectMode;
-  final bool selected;
   final int parity;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
-  final VoidCallback onSelectToggle;
   final VoidCallback onChanged;
 
   const RoutinePlate({
     super.key,
     required this.routine,
-    required this.selectMode,
-    required this.selected,
     required this.onTap,
     required this.onLongPress,
-    required this.onSelectToggle,
     required this.onChanged,
     this.parity = 0,
   });
@@ -74,9 +74,10 @@ class RoutinePlate extends StatelessWidget {
       accent = bort.fgsignal;
     }
 
-    final nameSize = side * bort.kName;
-    final dateSize = side * bort.kTitle * 0.7;
-    final numberSize = side * bort.kNumberSmall;
+    // Font sizes reduced by a fifth relative to the former values.
+    final nameSize = side * bort.kName * 0.8;
+    final dateSize = side * bort.kTitle * 0.7 * 0.8;
+    final numberSize = side * bort.kNumberSmall * 0.8;
     final pultSide = side * bort.kPultSmall;
     final strokeW = side * bort.kStroke;
     final radiusW = side * bort.kRadius;
@@ -117,50 +118,13 @@ class RoutinePlate extends StatelessWidget {
       };
     }
 
-    final subs = <PultSpec>[];
-    subs.add(
-      PultSpec(
-        id: 'dup_${routine.id}',
-        icon: Icons.copy,
-        label: i18n.t('bort.duplicate'),
-        onTap: () async {
-          await routineLayer.duplicateRoutine(app.journal, routine.id);
-          onChanged();
-        },
-      ),
-    );
-    if (!routine.completed && !running) {
-      subs.add(
-        PultSpec(
-          id: 'complete_${routine.id}',
-          icon: Icons.check_circle_outline,
-          label: i18n.t('routine.mark_completed'),
-          confirm: true,
-          onTap: () {
-            routineLayer.setCompleted(app.journal, routine.id, true);
-          },
-        ),
-      );
-    }
-    subs.add(
-      PultSpec(
-        id: 'del_${routine.id}',
-        icon: Icons.delete_outline,
-        label: i18n.t('bort.delete'),
-        confirm: true,
-        onTap: () {
-          routineLayer.deleteRoutine(app.journal, routine.id);
-        },
-      ),
-    );
-
     final rightControl = Pult(
       spec: PultSpec(
         id: 'routine_${routine.id}',
         icon: pulseIcon,
         selected: false,
         onTap: pulseTap,
-        longSubs: () => subs,
+        onLongPress: onLongPress,
       ),
       fg: textMain,
       bg: plateBg,
@@ -201,21 +165,6 @@ class RoutinePlate extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (selectMode) ...[
-            Center(
-              child: PultTick(
-                id: 'sel_${routine.id}',
-                value: selected,
-                binary: true,
-                fg: textMain,
-                bg: plateBg,
-                signal: accent,
-                overrideSize: pultSide,
-                onTap: onSelectToggle,
-              ),
-            ),
-            SizedBox(width: side * 0.15),
-          ],
           if (flagsColumn != null) ...[
             flagsColumn,
             SizedBox(width: side * 0.15),

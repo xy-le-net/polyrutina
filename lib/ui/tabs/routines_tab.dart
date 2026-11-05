@@ -1,14 +1,20 @@
 // ═══════════════════════════════════════════════════════════════════
 // routines_tab.dart — routines and field tree (merged).
 //
-// This tab now hosts both the routines list and the field tree.
-// The separate «field» tab has been removed.
+// This tab hosts both the routines list and the active field's tree.
+// Only the active field is shown; its name sits in the control row
+// above the list, with a pult to switch fields.
 //
-// Structure. The shift row on top. Below — a flat outline: each root
-// field node is a header; its nested branches are plates indented by
-// depth; routines are drawn by RoutinePlate, indented once more;
-// traces attached to a node are collapsed into a single pult with a
-// count, opening a left-side sheet.
+// Multiselect abolished. Long press on a routine plate (anywhere,
+// including the right-hand pult) opens the routine options sheet:
+// duplicate, move across the tree, complete (when applicable),
+// delete. The former selection mode is gone.
+//
+// Structure. The control row with the field name and the field
+// switcher. The shift row. Below — a flat outline: each non-root
+// branch is a plate indented by depth; routines are drawn by
+// RoutinePlate; traces attached to a node are collapsed into a
+// single pult with a count, opening a left-side sheet.
 //
 // Sorting. Active routines are sorted by the last ticker pulse
 // (lastPulseAt), falling back to lastActionAt if a routine never
@@ -24,6 +30,7 @@ import '../../data/ticker.dart';
 import '../core/app_scope.dart';
 import '../core/bort_field.dart';
 import '../core/confirm_dialog.dart';
+import '../core/control_row.dart';
 import '../core/dialog_frame.dart';
 import '../core/frame.dart';
 import '../pults/pult_core.dart';
@@ -41,8 +48,6 @@ class RoutinesTab extends StatefulWidget {
 class _RoutinesTabState extends State<RoutinesTab> {
   AppTicker? _ticker;
 
-  bool _selectMode = false;
-  final Set<int> _selected = {};
   final Set<int> _expanded = {};
 
   int _lastMinute = 0;
@@ -122,76 +127,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
     }
   }
 
-  void _enterSelectMode(int id) {
-    setState(() {
-      _selectMode = true;
-      _selected.clear();
-      _selected.add(id);
-    });
-  }
-
-  void _exitSelectMode() {
-    setState(() {
-      _selectMode = false;
-      _selected.clear();
-    });
-  }
-
-  void _toggleSelect(int id) {
-    setState(() {
-      if (_selected.contains(id)) {
-        _selected.remove(id);
-      } else {
-        _selected.add(id);
-      }
-    });
-  }
-
-  bool get _hasUncompletedInSelection {
-    final routineLayer = RoutineScope.of(context);
-    for (final id in _selected) {
-      final r = routineLayer.findRoutine(id);
-      if (r == null) continue;
-      if (!r.completed && r.runningBlock == null) return true;
-    }
-    return false;
-  }
-
-  Future<void> _deleteSelected() async {
-    final routineLayer = RoutineScope.of(context);
-    final journal = AppScope.of(context).journal;
-    final ids = _selected.toList();
-    if (ids.isEmpty) {
-      _exitSelectMode();
-      return;
-    }
-    await journal.transaction(() async {
-      for (final id in ids) {
-        await routineLayer.deleteRoutine(journal, id);
-      }
-    });
-    _exitSelectMode();
-  }
-
-  Future<void> _completeSelected() async {
-    final routineLayer = RoutineScope.of(context);
-    final journal = AppScope.of(context).journal;
-    final ids = _selected.toList();
-    if (ids.isEmpty) {
-      _exitSelectMode();
-      return;
-    }
-    await journal.transaction(() async {
-      for (final id in ids) {
-        final r = routineLayer.findRoutine(id);
-        if (r == null) continue;
-        if (r.completed) continue;
-        await routineLayer.setCompleted(journal, id, true);
-      }
-    });
-    _exitSelectMode();
-  }
-
   void _toggleExpand(int id) {
     setState(() {
       if (_expanded.contains(id)) {
@@ -201,6 +136,104 @@ class _RoutinesTabState extends State<RoutinesTab> {
       }
     });
   }
+
+  // ─── Routine long-press actions ───
+
+  void _showRoutineActions(Routine r) {
+    final app = AppScope.of(context);
+    final i18n = app.i18n;
+    final running = r.runningBlock != null;
+    final subs = <PultSpec>[
+      PultSpec(
+        id: 'dup_${r.id}',
+        icon: Icons.copy,
+        label: i18n.t('bort.duplicate'),
+        onTap: () async {
+          await app.routineLayer.duplicateRoutine(app.journal, r.id);
+          if (mounted) setState(() {});
+        },
+      ),
+      PultSpec(
+        id: 'move_${r.id}',
+        icon: Icons.drive_file_move,
+        label: i18n.t('field.move_routine'),
+        onTap: () => _moveRoutine(r),
+      ),
+    ];
+    if (!r.completed && !running) {
+      subs.add(
+        PultSpec(
+          id: 'complete_${r.id}',
+          icon: Icons.check_circle_outline,
+          label: i18n.t('routine.mark_completed'),
+          confirm: true,
+          onTap: () {
+            app.routineLayer.setCompleted(app.journal, r.id, true);
+          },
+        ),
+      );
+    }
+    subs.add(
+      PultSpec(
+        id: 'del_${r.id}',
+        icon: Icons.delete_outline,
+        label: i18n.t('bort.delete'),
+        confirm: true,
+        onTap: () {
+          app.routineLayer.deleteRoutine(app.journal, r.id);
+        },
+      ),
+    );
+    showPultSheet(
+      context: context,
+      subs: subs,
+      fg: app.bort.fg,
+      bg: app.bort.bg,
+      signal: app.bort.fgsignal,
+      side: PultScope.of(context).smallSide,
+    );
+  }
+
+  void _moveRoutine(Routine r) {
+    final app = AppScope.of(context);
+    final i18n = app.i18n;
+    final currentParentId = r.fieldParents.isNotEmpty
+        ? r.fieldParents.first
+        : null;
+    final valid = app.fieldLayer.nodes.values.toList();
+
+    showPultSheet(
+      context: context,
+      subs: [
+        for (final n in valid)
+          PultSpec(
+            id: 'move_to_${n.id}',
+            icon: n.isRoot ? Icons.layers : Icons.subdirectory_arrow_right,
+            label: n.name.isEmpty ? i18n.t('routine.no_name') : n.name,
+            selected: n.id == currentParentId,
+            onTap: () async {
+              await app.journal.transaction(() async {
+                for (final pId in List<int>.from(r.fieldParents)) {
+                  await app.routineLayer.detachFromField(
+                    app.journal,
+                    r.id,
+                    pId,
+                  );
+                }
+                await app.routineLayer.attachToField(app.journal, r.id, n.id);
+              });
+              if (mounted) setState(() => _expanded.add(n.id));
+            },
+          ),
+      ],
+      fg: app.bort.fg,
+      bg: app.bort.bg,
+      signal: app.bort.fgsignal,
+      side: PultScope.of(context).smallSide,
+    );
+  }
+
+  // ─── Node actions ───
 
   void _showNodeActions(int id) {
     final app = AppScope.of(context);
@@ -279,14 +312,16 @@ class _RoutinesTabState extends State<RoutinesTab> {
     );
   }
 
-  void _createChildNode(int parentId) {
+  Future<void> _createChildNode(int parentId) async {
     final app = AppScope.of(context);
-    app.fieldLayer.createNode(
+    final node = await app.fieldLayer.createNode(
       app.journal,
       name: app.i18n.t('field.new_node'),
       parentId: parentId,
     );
+    if (!mounted) return;
     setState(() => _expanded.add(parentId));
+    _renameNodeDialog(node.id, node.name);
   }
 
   void _renameNodeDialog(int id, String currentName) {
@@ -461,13 +496,13 @@ class _RoutinesTabState extends State<RoutinesTab> {
           id: 'new_field',
           icon: Icons.add,
           label: i18n.t('field.new_field'),
-          confirm: true,
           onTap: () async {
             final f = await app.fieldLayer.createField(
               app.journal,
               i18n.t('field.new_field'),
             );
             app.fieldLayer.setActiveField(f.id);
+            if (mounted) _renameNodeDialog(f.id, f.name);
           },
         ),
       ],
@@ -508,43 +543,14 @@ class _RoutinesTabState extends State<RoutinesTab> {
           ),
         ),
       );
-    } else {
-      out.add(
-        Padding(
-          padding: const EdgeInsets.fromLTRB(4, 12, 4, 4),
-          child: Row(
-            children: [
-              GestureDetector(
-                onTap: () => _openFieldSwitcher(nodeId),
-                onLongPress: () => _showNodeActions(nodeId),
-                child: Icon(Icons.layers, color: BortScope.of(context).mid),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => _openFieldSwitcher(nodeId),
-                  onLongPress: () => _showNodeActions(nodeId),
-                  child: Text(
-                    node.name,
-                    style: TextStyle(
-                      color: BortScope.of(context).fg,
-                      fontSize: PultScope.of(context).smallSide * 0.5,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
     }
+    // The active field's own name is shown in the control row above
+    // the list; no separate header is emitted here.
 
     if (!isExpanded) return;
 
     final routines = RoutineScope.of(context).routinesForNode(nodeId);
 
-    // Sort routines within the node: running first, then by ticker pulse.
     int sortPulse(Routine r) => r.lastPulseAt ?? r.lastActionAt;
     routines.sort((a, b) {
       final aRun = a.runningBlock != null;
@@ -614,21 +620,11 @@ class _RoutinesTabState extends State<RoutinesTab> {
   Widget _routinePlate(Routine r) {
     return RoutinePlate(
       routine: r,
-      selectMode: _selectMode,
-      selected: _selected.contains(r.id),
-      onTap: () {
-        if (_selectMode) {
-          _toggleSelect(r.id);
-        } else {
-          AppScope.of(context).openRoutine(r.id);
-        }
-      },
+      onTap: () => AppScope.of(context).openRoutine(r.id),
       onLongPress: () {
-        if (_selectMode) return;
         FocusManager.instance.primaryFocus?.unfocus();
-        _enterSelectMode(r.id);
+        _showRoutineActions(r);
       },
-      onSelectToggle: () => _toggleSelect(r.id),
       onChanged: () => setState(() {}),
     );
   }
@@ -645,9 +641,9 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
     final items = <Widget>[];
     final fieldLayer = FieldScope.of(context);
-    final roots = fieldLayer.nodes.values.where((n) => n.isRoot).toList();
-    for (final r in roots) {
-      _buildTree(r.id, 0, {}, items);
+    final activeFieldId = fieldLayer.activeFieldId;
+    if (activeFieldId != null) {
+      _buildTree(activeFieldId, 0, {}, items);
     }
 
     // Any routines not attached to any node? (Should not happen due to
@@ -667,7 +663,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
         Padding(
           padding: const EdgeInsets.fromLTRB(4, 16, 4, 4),
           child: Text(
-            i18n.t('routine.none'), // Or a specific "unassigned" key
+            i18n.t('routine.none'),
             style: TextStyle(color: dim, fontWeight: FontWeight.bold),
           ),
         ),
@@ -703,10 +699,50 @@ class _RoutinesTabState extends State<RoutinesTab> {
           );
         }
 
+        final activeNode = activeFieldId != null
+            ? fieldLayer.nodes[activeFieldId]
+            : null;
+        final fieldName = activeNode?.name ?? '';
+
         return Stack(
           children: [
             Column(
               children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8, right: 12),
+                  child: ControlRow(
+                    rootSide: side,
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            fieldName,
+                            style: TextStyle(
+                              color: fg,
+                              fontSize: side * bort.kName * 0.8,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Pult(
+                          spec: PultSpec(
+                            id: 'field_switch',
+                            icon: Icons.layers,
+                            onTap: activeFieldId == null
+                                ? null
+                                : () => _openFieldSwitcher(activeFieldId),
+                          ),
+                          fg: fg,
+                          bg: bg,
+                          signal: signal,
+                          overrideSize: side * bort.kPultSmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
                 ShiftRow(
                   onChanged: () {
                     if (mounted) setState(() {});
@@ -720,9 +756,9 @@ class _RoutinesTabState extends State<RoutinesTab> {
               bottom: 12,
               child: Pult(
                 spec: PultSpec(
-                  id: _selectMode ? 'cancel_select' : 'create_routine',
-                  icon: _selectMode ? Icons.close : Icons.add,
-                  onTap: _selectMode ? _exitSelectMode : () => _create(context),
+                  id: 'create_routine',
+                  icon: Icons.add,
+                  onTap: () => _create(context),
                 ),
                 fg: fg,
                 bg: bg,
@@ -730,49 +766,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
                 overrideSize: side,
               ),
             ),
-            if (_selectMode)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 12,
-                child: Center(
-                  child: Pult(
-                    spec: PultSpec(
-                      id: 'selected_actions',
-                      icon: Icons.more_horiz,
-                      onTap: null,
-                      longSubs: () {
-                        final out = <PultSpec>[];
-                        if (_hasUncompletedInSelection) {
-                          out.add(
-                            PultSpec(
-                              id: 'sel_complete',
-                              icon: Icons.check_circle_outline,
-                              label: i18n.t('routine.mark_completed'),
-                              confirm: true,
-                              onTap: _completeSelected,
-                            ),
-                          );
-                        }
-                        out.add(
-                          PultSpec(
-                            id: 'sel_delete',
-                            icon: Icons.delete_outline,
-                            label: i18n.t('bort.delete'),
-                            confirm: true,
-                            onTap: _deleteSelected,
-                          ),
-                        );
-                        return out;
-                      },
-                    ),
-                    fg: fg,
-                    bg: bg,
-                    signal: signal,
-                    overrideSize: side,
-                  ),
-                ),
-              ),
           ],
         );
       },

@@ -1,15 +1,13 @@
 // ═══════════════════════════════════════════════════════════════════
 // rubka_tab.dart — rubka tab.
 //
-// Five blocks: artel, appearance, interface, data, permissions.
+// Four blocks: appearance, interface, data, permissions. The former
+// «artel» block and its contents (shift row, midnight, map scale,
+// mutex ticks, tab visibility) have been abolished together with
+// the artel tab.
 //
-// Artel. The shift row is the first line. Then: midnight field
-// (HH:MM) and map scale field (meters). Under «взаимоисключение» —
-// three checkboxes: «рутины», «слоты», «смена». Under «блоки» — one
-// checkbox for tab visibility («артель»); «поле» is abolished.
-//
-// Layout. Narrow: single column. Wide: two columns (artel+interface
-// on the left, appearance+data+permissions on the right) with
+// Layout. Narrow: single column. Wide: two columns (interface and
+// data on the left, appearance and permissions on the right) with
 // chessboard frame parity.
 //
 // Transparency is not applied.
@@ -19,12 +17,8 @@ import 'package:flutter/material.dart';
 
 import '../core/app_scope.dart';
 import '../core/block.dart';
-import '../core/bort_field.dart';
 import '../core/control_row.dart';
-import '../core/format.dart';
 import '../pults/pult_core.dart';
-import '../pults/pult_tick.dart';
-import '../services/action_dialog.dart';
 import 'rubka_appearance.dart';
 import 'rubka_data.dart';
 import 'rubka_interface.dart';
@@ -50,69 +44,6 @@ class RubkaTab extends StatelessWidget {
     final radiusW = side * bort.kRadius;
 
     void set(String key, String value) => bort.set(key, value);
-
-    final artel = Block(
-      title: i18n.t('block.artel'),
-      collapsed: !bort.blockArtel,
-      onToggleCollapsed: () =>
-          set('block_artel', (!bort.blockArtel).toString()),
-      bg: bg,
-      dim: mid,
-      fg: fg,
-      signal: fgsignal,
-      titleSize: titleSize,
-      pad: pad,
-      gap: gap,
-      strokeW: strokeW,
-      radiusW: radiusW,
-      parity: 0,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _shiftRow(context, side),
-          _midnightRow(context, fg, side),
-          _mapScaleRow(context, fg, side),
-          _sectionHeader(i18n.t('bort.mutex'), mid, side),
-          _tabTickRow(
-            context,
-            'mutex_routines',
-            i18n.t('bort.mutex_routines'),
-            fg,
-            bg,
-            fgsignal,
-            side,
-          ),
-          _tabTickRow(
-            context,
-            'mutex_slots',
-            i18n.t('bort.mutex_slots'),
-            fg,
-            bg,
-            fgsignal,
-            side,
-          ),
-          _tabTickRow(
-            context,
-            'mutex_shift',
-            i18n.t('bort.mutex_shift'),
-            fg,
-            bg,
-            fgsignal,
-            side,
-          ),
-          _sectionHeader(i18n.t('bort.blocks'), mid, side),
-          _tabTickRow(
-            context,
-            'show_artel_tab',
-            i18n.t('bort.show_artel_tab'),
-            fg,
-            bg,
-            fgsignal,
-            side,
-          ),
-        ],
-      ),
-    );
 
     final interface = Block(
       title: i18n.t('block.interface'),
@@ -166,11 +97,10 @@ class RubkaTab extends StatelessWidget {
               16,
             ),
             children: [
-              BlockWrapper(parity: 0, child: artel),
-              const BlockWrapper(parity: 1, child: appearanceBlock),
-              BlockWrapper(parity: 2, child: interface),
-              BlockWrapper(parity: 3, child: data),
-              const BlockWrapper(parity: 4, child: permissionsBlock),
+              const BlockWrapper(parity: 0, child: appearanceBlock),
+              BlockWrapper(parity: 1, child: interface),
+              BlockWrapper(parity: 0, child: data),
+              const BlockWrapper(parity: 1, child: permissionsBlock),
             ],
           );
         }
@@ -199,14 +129,13 @@ class RubkaTab extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               col([
-                BlockWrapper(parity: 0, child: artel),
-                BlockWrapper(parity: 1, child: interface),
+                BlockWrapper(parity: 0, child: interface),
+                BlockWrapper(parity: 1, child: data),
               ]),
               const SizedBox(width: spacing),
               col([
                 const BlockWrapper(parity: 1, child: appearanceBlock),
-                BlockWrapper(parity: 0, child: data),
-                const BlockWrapper(parity: 1, child: permissionsBlock),
+                const BlockWrapper(parity: 0, child: permissionsBlock),
               ]),
             ],
           ),
@@ -214,162 +143,9 @@ class RubkaTab extends StatelessWidget {
       },
     );
   }
-
-  Widget _midnightRow(BuildContext context, Color fg, double side) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 140,
-            child: Text(i18n.t('bort.midnight'), style: TextStyle(color: fg)),
-          ),
-          Expanded(
-            child: BortField(
-              initial: bort.midnight,
-              fg: fg,
-              readOnly: false,
-              onCommit: (v) async {
-                final ok = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(v);
-                if (!ok) return;
-                bort.set('midnight', v);
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _mapScaleRow(BuildContext context, Color fg, double side) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 140,
-            child: Text(i18n.t('bort.map_scale'), style: TextStyle(color: fg)),
-          ),
-          Expanded(
-            child: BortField(
-              initial: bort.mapScale.toString(),
-              fg: fg,
-              readOnly: false,
-              onCommit: (v) async {
-                final val = int.tryParse(v);
-                if (val != null && val > 0) {
-                  bort.setInt('map_scale', val);
-                }
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _sectionHeader(String label, Color mid, double side) {
-    return Padding(
-      padding: EdgeInsets.only(top: side * 0.2, bottom: side * 0.05),
-      child: Text(
-        label,
-        style: TextStyle(color: mid, fontSize: side * 0.35),
-      ),
-    );
-  }
-
-  Widget _shiftRow(BuildContext context, double side) {
-    final ticker = TickerScope.of(context);
-    return AnimatedBuilder(
-      animation: ticker,
-      builder: (context, _) {
-        final bort = BortScope.of(context);
-        final i18n = I18nScope.of(context);
-        final fieldId = FieldScope.of(context).activeFieldId;
-        if (fieldId == null) return const SizedBox.shrink();
-
-        final sec = bort.shiftSecondsNow(fieldId);
-        final value = sec <= 0 ? '0${i18n.t('time.m')}' : fmtTime(sec, i18n.t);
-
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => showTimeHistory(context, key: 'shift', fieldId: fieldId),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 140,
-                  child: Text(
-                    i18n.t('bort.shift'),
-                    style: TextStyle(
-                      color: bort.fgsignal,
-                      decoration: TextDecoration.underline,
-                      decorationColor: bort.fgsignal,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    value,
-                    style: TextStyle(
-                      color: bort.fgsignal,
-                      fontFamily: 'monospace',
-                      decoration: TextDecoration.underline,
-                      decorationColor: bort.fgsignal,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _tabTickRow(
-    BuildContext context,
-    String key,
-    String label,
-    Color fg,
-    Color bg,
-    Color signal,
-    double side,
-  ) {
-    final bort = BortScope.of(context);
-    final value = (bort.allAsStrings[key] ?? 'false') == 'true';
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 140,
-            child: Text(label, style: TextStyle(color: fg)),
-          ),
-          PultTick(
-            id: 'tick_$key',
-            value: value,
-            binary: true,
-            fg: fg,
-            bg: bg,
-            signal: signal,
-            overrideSize: side,
-            onTap: () => bort.setBool(key, !value),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
-// Helper to override parity for strict alternation
+// Helper to override parity for strict alternation.
 class BlockWrapper extends StatelessWidget {
   final int parity;
   final Widget child;

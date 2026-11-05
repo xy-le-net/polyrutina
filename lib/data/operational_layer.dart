@@ -24,6 +24,11 @@
 // Map scale. The `mapScale` property (default 40) represents the
 // number of meters to fit into the smaller side of the map view.
 //
+// Theme selection. Three independent settings replace the former
+// five-theme model: `theme_custom` (bool), `theme_day` (bool), and
+// `theme_autoswitch` (bool). The effective palette is resolved in
+// ThemeStore.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -230,7 +235,9 @@ class OperationalLayer extends ChangeNotifier {
   Color get fg => _themes.fg;
   Color get fgsignal => _themes.fgsignal;
   Map<String, Map<String, Color>> get themes => _themes.themes;
-  String get themeName => _themes.themeName;
+  bool get themeCustom => _themes.customEnabled;
+  bool get themeDay => _themes.dayEnabled;
+  bool get themeAutoswitch => _themes.autoswitch;
   Brightness get systemBrightness => _themes.systemBrightness;
 
   int get bortTime => _bortTime.bortTime;
@@ -254,7 +261,6 @@ class OperationalLayer extends ChangeNotifier {
   String lang = 'ru';
   String anchor = 'tl';
   bool labelsButtons = true;
-  bool blockArtel = false;
   bool blockAppearance = false;
   bool blockInterface = false;
   bool blockData = false;
@@ -268,9 +274,6 @@ class OperationalLayer extends ChangeNotifier {
 
   bool mutexRoutines = true;
   bool mutexSlots = true;
-
-  bool showFieldTab = false; // Legacy, unused.
-  bool showArtelTab = false;
 
   int selectedType = 4;
   int selectedFlags = 0;
@@ -399,21 +402,22 @@ class OperationalLayer extends ChangeNotifier {
       final data = jsonDecode(raw) as Map<String, dynamic>;
       final t = data['themes'];
       if (t is Map) _themes.parseThemes(t);
-      _themes.themeName = data['theme'] as String? ?? _themes.themeName;
+      _themes.customEnabled =
+          data['theme_custom'] as bool? ?? _themes.customEnabled;
+      _themes.dayEnabled = data['theme_day'] as bool? ?? _themes.dayEnabled;
+      _themes.autoswitch =
+          data['theme_autoswitch'] as bool? ?? _themes.autoswitch;
 
       scale = (data['scale'] as num?)?.toDouble() ?? scale;
       lang = data['lang'] as String? ?? lang;
       anchor = data['anchor'] as String? ?? anchor;
       labelsButtons = data['labels_buttons'] as bool? ?? labelsButtons;
-      blockArtel = data['block_artel'] as bool? ?? blockArtel;
       blockAppearance = data['block_appearance'] as bool? ?? blockAppearance;
       blockInterface = data['block_interface'] as bool? ?? blockInterface;
       blockData = data['block_data'] as bool? ?? blockData;
       blockPermissions = data['block_permissions'] as bool? ?? blockPermissions;
       mutexRoutines = data['mutex_routines'] as bool? ?? mutexRoutines;
       mutexSlots = data['mutex_slots'] as bool? ?? mutexSlots;
-      showFieldTab = data['show_field_tab'] as bool? ?? showFieldTab;
-      showArtelTab = data['show_artel_tab'] as bool? ?? showArtelTab;
       selectedType = (data['selected_type'] as num?)?.toInt() ?? selectedType;
       selectedFlags =
           (data['selected_flags'] as num?)?.toInt() ?? selectedFlags;
@@ -448,21 +452,22 @@ class OperationalLayer extends ChangeNotifier {
 
     final t = data['themes'];
     if (t is Map) _themes.parseThemes(t);
-    _themes.themeName = data['theme'] as String? ?? _themes.themeName;
+    _themes.customEnabled =
+        data['theme_custom'] as bool? ?? _themes.customEnabled;
+    _themes.dayEnabled = data['theme_day'] as bool? ?? _themes.dayEnabled;
+    _themes.autoswitch =
+        data['theme_autoswitch'] as bool? ?? _themes.autoswitch;
 
     scale = (data['scale'] as num?)?.toDouble() ?? scale;
     lang = data['lang'] as String? ?? lang;
     anchor = data['anchor'] as String? ?? anchor;
     labelsButtons = data['labels_buttons'] as bool? ?? labelsButtons;
-    blockArtel = data['block_artel'] as bool? ?? blockArtel;
     blockAppearance = data['block_appearance'] as bool? ?? blockAppearance;
     blockInterface = data['block_interface'] as bool? ?? blockInterface;
     blockData = data['block_data'] as bool? ?? blockData;
     blockPermissions = data['block_permissions'] as bool? ?? blockPermissions;
     mutexRoutines = data['mutex_routines'] as bool? ?? mutexRoutines;
     mutexSlots = data['mutex_slots'] as bool? ?? mutexSlots;
-    showFieldTab = data['show_field_tab'] as bool? ?? showFieldTab;
-    showArtelTab = data['show_artel_tab'] as bool? ?? showArtelTab;
     selectedType = (data['selected_type'] as num?)?.toInt() ?? selectedType;
     selectedFlags = (data['selected_flags'] as num?)?.toInt() ?? selectedFlags;
     _bortTime.midnight = data['midnight'] as String? ?? _bortTime.midnight;
@@ -538,13 +543,12 @@ class OperationalLayer extends ChangeNotifier {
   void setSystemBrightness(Brightness b) {
     if (_themes.systemBrightness == b) return;
     _themes.setSystemBrightness(b);
-    if (_themes.themeName == 'system') {
+    if (_themes.autoswitch) {
       _themes.resolve();
       notifyListeners();
     }
   }
 
-  String oppositeThemeName() => _themes.oppositeName();
   Map<String, Color>? colorsForOpposite() => _themes.colorsForOpposite();
 
   ({Color bg, Color mid, Color fg, Color fgsignal}) runningColors() {
@@ -679,7 +683,9 @@ class OperationalLayer extends ChangeNotifier {
   Future<void> resetCache() async {
     await _file.delete();
     _themes.themes = {};
-    _themes.themeName = 'system';
+    _themes.customEnabled = false;
+    _themes.dayEnabled = false;
+    _themes.autoswitch = true;
     _draftsStore.reset();
     _bortTime.reset();
     shiftHistory.reset();
@@ -690,8 +696,6 @@ class OperationalLayer extends ChangeNotifier {
     collapsedBlocks = {};
     exportCounters = {};
     defaultSlots = {'work'};
-    showFieldTab = false;
-    showArtelTab = false;
     mutexRoutines = true;
     mutexSlots = true;
     lastExportId = 0;
@@ -785,9 +789,14 @@ class OperationalLayer extends ChangeNotifier {
     if (_themes.applyThemeKey(key, value)) return;
 
     switch (key) {
-      case 'theme':
-        _themes.themeName = value;
-        _themes.resolve();
+      case 'theme_custom':
+        _themes.customEnabled = _parseBool(value) ?? _themes.customEnabled;
+        break;
+      case 'theme_day':
+        _themes.dayEnabled = _parseBool(value) ?? _themes.dayEnabled;
+        break;
+      case 'theme_autoswitch':
+        _themes.autoswitch = _parseBool(value) ?? _themes.autoswitch;
         break;
       case 'scale':
         scale = double.tryParse(value) ?? scale;
@@ -800,15 +809,6 @@ class OperationalLayer extends ChangeNotifier {
         break;
       case 'labels_buttons':
         labelsButtons = _parseBool(value) ?? labelsButtons;
-        break;
-      case 'show_field_tab':
-        showFieldTab = _parseBool(value) ?? showFieldTab;
-        break;
-      case 'show_artel_tab':
-        showArtelTab = _parseBool(value) ?? showArtelTab;
-        break;
-      case 'block_artel':
-        blockArtel = _parseBool(value) ?? blockArtel;
         break;
       case 'block_appearance':
         blockAppearance = _parseBool(value) ?? blockAppearance;
@@ -906,20 +906,19 @@ class OperationalLayer extends ChangeNotifier {
     }
     return <String, dynamic>{
       'themes': _themes.toJson(),
-      'theme': _themes.themeName,
+      'theme_custom': _themes.customEnabled,
+      'theme_day': _themes.dayEnabled,
+      'theme_autoswitch': _themes.autoswitch,
       'scale': scale,
       'lang': lang,
       'anchor': anchor,
       'labels_buttons': labelsButtons,
-      'block_artel': blockArtel,
       'block_appearance': blockAppearance,
       'block_interface': blockInterface,
       'block_data': blockData,
       'block_permissions': blockPermissions,
       'mutex_routines': mutexRoutines,
       'mutex_slots': mutexSlots,
-      'show_field_tab': showFieldTab,
-      'show_artel_tab': showArtelTab,
       'selected_type': selectedType,
       'selected_flags': selectedFlags,
       'midnight': _bortTime.midnight,
@@ -958,19 +957,18 @@ class OperationalLayer extends ChangeNotifier {
   Map<String, String> get allAsStrings {
     final out = <String, String>{};
     out.addAll(_themes.toFlatStrings());
-    out['theme'] = _themes.themeName;
+    out['theme_custom'] = _themes.customEnabled.toString();
+    out['theme_day'] = _themes.dayEnabled.toString();
+    out['theme_autoswitch'] = _themes.autoswitch.toString();
     out['scale'] = scale.toStringAsFixed(2);
     out['lang'] = lang;
     out['labels_buttons'] = labelsButtons.toString();
-    out['block_artel'] = blockArtel.toString();
     out['block_appearance'] = blockAppearance.toString();
     out['block_interface'] = blockInterface.toString();
     out['block_data'] = blockData.toString();
     out['block_permissions'] = blockPermissions.toString();
     out['mutex_routines'] = mutexRoutines.toString();
     out['mutex_slots'] = mutexSlots.toString();
-    out['show_field_tab'] = showFieldTab.toString();
-    out['show_artel_tab'] = showArtelTab.toString();
     out['midnight'] = _bortTime.midnight;
     out['map_scale'] = mapScale.toString();
     out['mutex_shift'] = mutexShift.toString();
@@ -988,7 +986,9 @@ class OperationalLayer extends ChangeNotifier {
   }
 
   static const Map<String, String> settingTypes = {
-    'theme': 'theme',
+    'theme_custom': 'bool',
+    'theme_day': 'bool',
+    'theme_autoswitch': 'bool',
     'scale': 'string',
     'lang': 'string',
     'labels_buttons': 'bool',

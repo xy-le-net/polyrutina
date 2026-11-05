@@ -5,8 +5,16 @@
 // routine, dictionary, notification manager. Then — journal.start().
 //
 // Field tab merged into routines. The separate «field» tab has been
-// removed; the tree is now built on top of the routines tab. The
-// `show_field_tab` flag is obsolete.
+// removed; the tree is now built on top of the routines tab.
+//
+// Artel tab removed. The former stub has been abolished together
+// with its block in the rubka; the tab list now carries routines,
+// days, and rubka only.
+//
+// Theme selection. Three independent settings — custom, day, and
+// autoswitch — replace the former five-theme model. Effective
+// brightness is derived from the resolved background colour, so an
+// edited custom palette is honoured.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -34,7 +42,6 @@ import 'ui/services/notification_service.dart';
 import 'ui/tabs/days_tab.dart';
 import 'ui/tabs/routines_tab.dart';
 import 'ui/tabs/rubka_tab.dart';
-import 'ui/tabs/stub_tab.dart';
 
 void main() => runApp(const PolyRutinaApp());
 
@@ -70,14 +77,10 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   static const List<RootTabItem> _allTabs = [
     RootTabItem(icon: Icons.checklist, labelKey: 'tab.routines'),
     RootTabItem(icon: Icons.calendar_month, labelKey: 'tab.days'),
-    RootTabItem(icon: Icons.groups, labelKey: 'tab.artel'),
     RootTabItem(icon: Icons.dashboard, labelKey: 'tab.rubka'),
   ];
 
-  bool _tabVisible(int i) {
-    if (i == 2) return _bort.showArtelTab; // Artel is now index 2
-    return true;
-  }
+  bool _tabVisible(int i) => true;
 
   static const double _pultBase = 32.0;
   static const double _pultMax = 64.0;
@@ -108,9 +111,10 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   }
 
   String _computeBortSignature() {
-    return '${_bort.themeName}|'
+    return '${_bort.themeCustom}|'
+        '${_bort.themeDay}|'
+        '${_bort.themeAutoswitch}|'
         '${_bort.scale.toStringAsFixed(4)}|'
-        '${_bort.showArtelTab}|'
         '${_bort.systemBrightness.name}|'
         '${_bort.lang}|'
         '${_bort.colorToHex(_bort.bg)}|'
@@ -392,10 +396,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   }
 
   Brightness _effectiveBrightness(Brightness systemBrightness) {
-    if (_bort.themeName == 'system') return systemBrightness;
-    if (_bort.themeName == 'night') return Brightness.dark;
-    if (_bort.themeName == 'custom') return Brightness.dark;
-    return Brightness.light;
+    return _bort.bg.computeLuminance() > 0.5
+        ? Brightness.light
+        : Brightness.dark;
   }
 
   Widget _tabBody() {
@@ -405,8 +408,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       case 1:
         return const DaysTab();
       case 2:
-        return const StubTab(); // Artel
-      case 3:
       default:
         return const RubkaTab();
     }

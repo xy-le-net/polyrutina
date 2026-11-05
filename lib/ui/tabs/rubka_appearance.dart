@@ -1,20 +1,16 @@
 // ═══════════════════════════════════════════════════════════════════
 // lib/ui/tabs/rubka_appearance.dart — «appearance» block in the rubka.
 //
-// Five theme pults: system, day, night, custom, invers. The current
-// one is marked.
+// Three theme toggles replace the former five-theme row:
+//   — «custom»: use the custom palette, overriding day/night;
+//   — «day»: true selects day, false selects night;
+//   — «autoswitch»: follow the system brightness.
+//
+// The custom role editor is shown only when the custom palette is
+// enabled; otherwise it is hidden, so the block stays compact.
 //
 // Scopes. Dependencies are read from point scopes: BortScope (theme
-// name, labels flag, per-theme colors) and I18nScope (strings). The
-// former AppScope reading did not subscribe to bort notifications
-// (AppScope.updateShouldNotify compares only the appContext fields,
-// which do not change on bort mutations); as a result this widget
-// never rebuilt, and the block appeared frozen in its initial
-// collapsed state — the «phantom» behaviour reported in the review.
-//
-// The coefficients subblock has been removed from the rubka: the
-// coefficients remain in the bort file and in the defaults, but are
-// not edited from here.
+// flags, labels flag, per-theme colors) and I18nScope (strings).
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -26,17 +22,15 @@ import '../core/app_scope.dart';
 import '../core/block.dart';
 import '../core/bort_field.dart';
 import '../pults/pult_core.dart';
+import '../pults/pult_tick.dart';
 
 class RubkaAppearance extends StatelessWidget {
-  // Stable parity for the rubka block frame: the four rubka blocks
-  // (artel=0, appearance=1, interface=2, data=3) share one
-  // alternation, so the frame flips fg / mid regardless of layout.
+  // Stable parity for the rubka block frame.
   final int parity;
 
   const RubkaAppearance({super.key, this.parity = 1});
 
   // Roles in the ladder order: bgsignal → bg → mid → fg → fgsignal.
-  // Matches ThemeStore's five-role set.
   static const List<String> _roles = [
     'bgsignal',
     'bg',
@@ -82,11 +76,11 @@ class RubkaAppearance extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _themeRow(context, fg, mid, bg, fgsignal, side),
-          // «Custom» theme fields — always, regardless of the active
-          // theme.
-          _sectionTitle(i18n.t('theme.custom'), mid, side),
-          for (final role in _roles)
-            _colorRow(context, 'custom', role, fg, mid, bg, fgsignal, side),
+          if (bort.themeCustom) ...[
+            _sectionTitle(i18n.t('theme.custom'), mid, side),
+            for (final role in _roles)
+              _colorRow(context, 'custom', role, fg, mid, bg, fgsignal, side),
+          ],
         ],
       ),
     );
@@ -102,7 +96,7 @@ class RubkaAppearance extends StatelessWidget {
     );
   }
 
-  // ─── Five theme pults side by side ───
+  // ─── Three theme toggles ───
   Widget _themeRow(
     BuildContext context,
     Color fg,
@@ -113,55 +107,58 @@ class RubkaAppearance extends StatelessWidget {
   ) {
     final bort = BortScope.of(context);
     final i18n = I18nScope.of(context);
-    final showLabels = bort.labelsButtons;
 
-    // «invers» — the custom palette flipped by the same rule as the
-    // running-block inverse (bg↔fg, bgsignal↔fgsignal, mid kept);
-    // it is computed on read from the custom colors, so editing
-    // custom updates it automatically. Placed after custom —
-    // «под пункт своя» — matching the theme_store resolution.
-    final names = ['system', 'day', 'night', 'custom', 'invers'];
-    final icons = [
-      Icons.brightness_auto,
-      Icons.light_mode_outlined,
-      Icons.dark_mode_outlined,
-      Icons.palette_outlined,
-      Icons.invert_colors,
-    ];
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 140,
-            child: Text(i18n.t('bort.theme'), style: TextStyle(color: fg)),
-          ),
-          Expanded(
-            child: Wrap(
-              spacing: side * 0.15,
-              runSpacing: side * 0.15,
-              children: [
-                for (var i = 0; i < names.length; i++)
-                  Pult(
-                    spec: PultSpec(
-                      id: 'theme_${names[i]}',
-                      icon: icons[i],
-                      label: showLabels ? i18n.t('theme.${names[i]}') : null,
-                      selected: bort.themeName == names[i],
-                      onTap: () => bort.set('theme', names[i]),
-                    ),
-                    fg: fg,
-                    bg: bg,
-                    signal: fgsignal,
-                    overrideSize: side,
-                  ),
-              ],
+    Widget toggle({
+      required String id,
+      required String label,
+      required bool value,
+      required VoidCallback onTap,
+    }) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 140,
+              child: Text(label, style: TextStyle(color: fg)),
             ),
-          ),
-        ],
-      ),
+            PultTick(
+              id: id,
+              value: value,
+              binary: true,
+              fg: fg,
+              bg: bg,
+              signal: fgsignal,
+              overrideSize: side,
+              onTap: onTap,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        toggle(
+          id: 'theme_custom',
+          label: i18n.t('theme.custom'),
+          value: bort.themeCustom,
+          onTap: () => bort.setBool('theme_custom', !bort.themeCustom),
+        ),
+        toggle(
+          id: 'theme_day',
+          label: i18n.t('theme.day'),
+          value: bort.themeDay,
+          onTap: () => bort.setBool('theme_day', !bort.themeDay),
+        ),
+        toggle(
+          id: 'theme_autoswitch',
+          label: i18n.t('theme.autoswitch'),
+          value: bort.themeAutoswitch,
+          onTap: () => bort.setBool('theme_autoswitch', !bort.themeAutoswitch),
+        ),
+      ],
     );
   }
 

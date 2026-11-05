@@ -157,11 +157,28 @@ class Pult extends StatelessWidget {
       state.setConfirming(null);
     }
 
+    // Unification: a pult with sub-options opens them on tap when
+    // there is no separate tap action. Pults that carry a meaningful
+    // onTap (start/pause, for instance) keep that action and expose
+    // their options on long press.
     if (spec.subsBuilder != null) {
       showPultSheet(
         context: context,
         subs: spec.subsBuilder!(),
         subsBuilder: spec.subsBuilder,
+        fg: fg,
+        bg: bg,
+        signal: signal,
+        side: state.smallSide,
+        rebuildOn: spec.rebuildOn,
+      );
+      return;
+    }
+    if (spec.onTap == null && spec.longSubs != null) {
+      showPultSheet(
+        context: context,
+        subs: spec.longSubs!(),
+        subsBuilder: spec.longSubs,
         fg: fg,
         bg: bg,
         signal: signal,

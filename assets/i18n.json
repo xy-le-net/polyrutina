@@ -3,10 +3,8 @@
     "media.copied": "скопировано",
     "app.title": "Бортовой журнал",
 
-    "tab.field": "поле",
     "tab.routines": "рутины",
     "tab.days": "дни",
-    "tab.artel": "артель",
     "tab.rubka": "рубка",
 
     "type.trace": "след",
@@ -44,21 +42,17 @@
     "routine.planned_hint": "план",
     "routine.planned_title": "срок",
 
-    "block.artel": "артель",
     "block.appearance": "оформление",
     "block.interface": "интерфейс",
     "block.data": "данные",
 
-    "theme.system": "система",
-    "theme.day": "день",
-    "theme.night": "ночь",
     "theme.custom": "своя",
-    "theme.invers": "инверс",
+    "theme.day": "день",
+    "theme.autoswitch": "автосмена",
 
     "lang.ru": "русский",
     "lang.en": "english",
 
-    "bort.theme": "тема",
     "bort.bg": "фон",
     "bort.bgdim": "мягкий фон",
     "bort.dim": "мягкий текст",
@@ -72,13 +66,6 @@
     "bort.shift": "смена",
     "bort.bort": "борт",
     "bort.default_slots": "слоты",
-    "bort.show_field_tab": "поле",
-    "bort.show_artel_tab": "артель",
-    "bort.mutex": "взаимоисключение",
-    "bort.mutex_routines": "рутины",
-    "bort.mutex_slots": "слоты",
-    "bort.mutex_shift": "смена",
-    "bort.blocks": "блоки",
     "bort.permissions": "разрешения",
 
     "bort.k_pult": "размер пульта",
@@ -204,10 +191,8 @@
     "media.copied": "copied",
     "app.title": "Logbook",
 
-    "tab.field": "field",
     "tab.routines": "routines",
     "tab.days": "days",
-    "tab.artel": "artel",
     "tab.rubka": "cabin",
 
     "type.trace": "trace",
@@ -245,21 +230,17 @@
     "routine.planned_hint": "plan",
     "routine.planned_title": "due",
 
-    "block.artel": "artel",
     "block.appearance": "appearance",
     "block.interface": "interface",
     "block.data": "data",
 
-    "theme.system": "system",
-    "theme.day": "day",
-    "theme.night": "night",
     "theme.custom": "custom",
-    "theme.invers": "inverse",
+    "theme.day": "day",
+    "theme.autoswitch": "autoswitch",
 
     "lang.ru": "русский",
     "lang.en": "english",
 
-    "bort.theme": "theme",
     "bort.bg": "background",
     "bort.bgdim": "soft background",
     "bort.dim": "soft text",
@@ -273,13 +254,6 @@
     "bort.shift": "shift",
     "bort.bort": "board",
     "bort.default_slots": "slots",
-    "bort.show_field_tab": "field",
-    "bort.show_artel_tab": "artel",
-    "bort.mutex": "mutex",
-    "bort.mutex_routines": "routines",
-    "bort.mutex_slots": "slots",
-    "bort.mutex_shift": "shift",
-    "bort.blocks": "blocks",
     "bort.permissions": "permissions",
 
     "bort.k_pult": "pult size",
