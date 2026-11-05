@@ -3,7 +3,7 @@
 //
 // Opened from the rubka's «import» pult: the system file sheet
 // (FileType.custom, *.zip, multiple). Each archive is read:
-//   data.json — the routine(s) as a whole;
+//   data.json — the routine(s) as a whole, plus the field tree;
 //   media/<name> — media files, matched by name against the traces.
 //
 // Streaming. The archive is decoded using a stream (InputFileStream)
@@ -12,8 +12,14 @@
 // to disk.
 //
 // data.json shape. ONE shape is accepted:
-//   {"schema": 1, "routines": [ ... ]}
+//   {"schema": 1, "fields": [...], "routines": [ ... ]}
 // The former «bare object» form is abolished.
+//
+// Field tree. If the "fields" array is present, the importer first
+// creates all nodes (mapping the old IDs to the new ones), then
+// re-attaches the parent-child links, and finally binds routines
+// to the new node IDs. If "fields" is absent (older archives), the
+// routines are attached to the current root field, as before.
 //
 // Deduplication. The source key of each parsed routine is
 // «deviceId/firstRun/routineId» of the exporting device; the routine
@@ -39,6 +45,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../data/journal_layer.dart';
+import '../../data/journal_types.dart';
 import '../../data/routine_layer.dart';
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
@@ -121,12 +128,16 @@ Future<ImportResult> _importZip(AppContext app, String path) async {
 
   // ONE accepted shape: the wrapper object.
   final list = <Map<String, dynamic>>[];
+  List<dynamic>? fieldList;
   if (decoded is Map) {
     final routines = decoded['routines'];
     if (routines is List) {
       for (final Object? e in routines) {
         if (e is Map) list.add(Map<String, dynamic>.from(e));
       }
+    }
+    if (decoded['fields'] is List) {
+      fieldList = decoded['fields'] as List;
     }
   }
   if (list.isEmpty) {
@@ -209,8 +220,61 @@ Future<ImportResult> _importZip(AppContext app, String path) async {
   var imported = 0;
   try {
     await app.journal.transaction(() async {
+      final fieldIdMap = <int, int>{};
+
+      // 3a. Restore field tree topology, if present.
+      if (fieldList != null) {
+        final fields = fieldList;
+        // Pass 1: create all nodes (without parents yet).
+        for (final f in fields) {
+          if (f is! Map) continue;
+          final oldId = (f['id'] as num?)?.toInt();
+          if (oldId == null) continue;
+          final name = f['name'] as String? ?? '';
+          final isRoot = f['is_root'] as bool? ?? false;
+
+          final newId = await app.journal.log(
+            type: JournalType.fieldNode,
+            body: jsonEncode({
+              'action': 'create',
+              'name': name,
+              'is_root': isRoot,
+            }),
+          );
+          fieldIdMap[oldId] = newId;
+        }
+
+        // Pass 2: establish parent-child links using the new IDs.
+        for (final f in fields) {
+          if (f is! Map) continue;
+          final oldId = (f['id'] as num?)?.toInt();
+          final newId = fieldIdMap[oldId];
+          if (oldId == null || newId == null) continue;
+
+          final oldParents =
+              (f['parents'] as List?)
+                  ?.map((e) => (e as num).toInt())
+                  .toList() ??
+              [];
+          for (final oldParentId in oldParents) {
+            final newParentId = fieldIdMap[oldParentId];
+            if (newParentId != null) {
+              await app.journal.log(
+                type: JournalType.fieldNode,
+                body: jsonEncode({
+                  'action': 'attach',
+                  'id': newId,
+                  'parent': newParentId,
+                }),
+              );
+            }
+          }
+        }
+      }
+
+      // 3b. Apply routines, binding them to the new field IDs.
       for (final parsed in toImport) {
-        await _applyParsed(app, parsed, extracted);
+        await _applyParsed(app, parsed, extracted, fieldIdMap);
       }
     });
     imported = toImport.length;
@@ -240,21 +304,31 @@ Future<void> _applyParsed(
   AppContext app,
   ParsedRoutine p,
   Map<String, String> extracted,
+  Map<int, int> fieldIdMap,
 ) async {
   final RoutineLayer routineLayer = app.routineLayer;
   final TraceLayer traceLayer = app.traceLayer;
   final JournalLayer journal = app.journal;
 
-  // Attach imported routines to the root field node so they appear
-  // in the field tree immediately.
-  final rootId = app.fieldLayer.rootId;
-  final fieldParents = rootId != null ? [rootId] : <int>[];
+  // Map the old parent IDs to the newly created ones. If the routine
+  // has no field_parents (or the archive lacks the "fields" array),
+  // fall back to the current root field, so it appears immediately
+  // in the tree.
+  final newFieldParents = <int>[];
+  for (final oldParentId in p.fieldParents) {
+    final newId = fieldIdMap[oldParentId];
+    if (newId != null) newFieldParents.add(newId);
+  }
+  if (newFieldParents.isEmpty) {
+    final rootId = app.fieldLayer.rootId;
+    if (rootId != null) newFieldParents.add(rootId);
+  }
 
   final r = await routineLayer.createRoutine(
     journal,
     sourceKey: p.key,
     createdAt: p.createdAt > 0 ? p.createdAt : null,
-    fieldParents: fieldParents,
+    fieldParents: newFieldParents,
   );
   if (p.name.isNotEmpty) {
     await routineLayer.renameRoutine(journal, r.id, p.name);

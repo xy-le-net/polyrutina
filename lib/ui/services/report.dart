@@ -204,6 +204,7 @@ class ReportBuilder {
     report(0.05);
     final jsonObj = <String, dynamic>{
       'schema': ReportJson.schemaVersion,
+      'fields': ReportJson.buildFields(app),
       'routines': [for (final r in routines) ReportJson.buildRoutine(app, r)],
     };
     if (token.cancelled) return null;

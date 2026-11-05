@@ -5,36 +5,19 @@
 // data.json (schema = 1):
 //   {
 //     "schema": 1,
-//     "source_device": "...",
-//     "source_first_run": 1234567890,
-//     "source_routine_id": 42,
-//     "name": "...",
-//     "flags": 0,
-//     "completed": false,
-//     "created_at": 1234567890,
-//     "last_action_at": 1234567890,
-//     "last_pulse_at": 1234567890,
-//     "completed_at": 1234567890,
-//     "scheduled_at": 1234567890,
-//     "planned_seconds": 0,
-//     "blocks": [
-//       {"kind":"prep","accumulator":0,"time_edited":false},
-//       ...
-//     ],
-//     "traces": [
-//       {"slot":"work","kind":"text","text":"...","items":[],"files":[]},
-//       ...
+//     "fields": [ { "id": 1, "name": "...", "parents": [], "is_root": true } ],
+//     "routines": [
+//       {
+//         "source_device": "...",
+//         "source_first_run": 1234567890,
+//         "source_routine_id": 42,
+//         ...
+//         "field_parents": [1, 2],
+//         "blocks": [...],
+//         "traces": [...]
+//       }
 //     ]
 //   }
-//
-// Optional fields (last_pulse_at, completed_at, scheduled_at) are
-// null when unset; planned_seconds is always written, zero when
-// unset. On the receiving side, null means «absent», and the
-// importer uses that to leave the corresponding value untouched.
-//
-// Files inside traces[].files: {kind, name, lat?, lon?, acc?}. The
-// `name` is the file's basename in the archive (media/). `path`
-// is not written to JSON: on import the path is assembled locally.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -44,6 +27,20 @@ import '../core/app_scope.dart';
 
 class ReportJson {
   static const int schemaVersion = 1;
+
+  // ─── Build fields array ───
+  static List<Map<String, dynamic>> buildFields(AppContext app) {
+    final out = <Map<String, dynamic>>[];
+    for (final n in app.fieldLayer.nodes.values) {
+      out.add({
+        'id': n.id,
+        'name': n.name,
+        'parents': n.parents,
+        'is_root': n.isRoot,
+      });
+    }
+    return out;
+  }
 
   // ─── Build a single routine object ───
   static Map<String, dynamic> buildRoutine(AppContext app, Routine r) {
@@ -85,6 +82,7 @@ class ReportJson {
       'completed_at': r.completedAt,
       'scheduled_at': r.scheduledAt,
       'planned_seconds': r.plannedSeconds,
+      'field_parents': r.fieldParents,
       'blocks': [
         for (final b in r.blocks)
           {
@@ -105,6 +103,12 @@ class ReportJson {
     final firstRun = (j['source_first_run'] as num?)?.toInt() ?? 0;
     final srcId = (j['source_routine_id'] as num?)?.toInt();
     if (srcId == null) return null;
+
+    final fieldParents =
+        (j['field_parents'] as List?)
+            ?.map((e) => (e as num).toInt())
+            .toList() ??
+        [];
 
     final blocks = <ParsedBlock>[];
     final rawBlocks = j['blocks'];
@@ -180,6 +184,7 @@ class ReportJson {
       completedAt: (j['completed_at'] as num?)?.toInt(),
       scheduledAt: (j['scheduled_at'] as num?)?.toInt(),
       plannedSeconds: (j['planned_seconds'] as num?)?.toInt() ?? 0,
+      fieldParents: fieldParents,
       blocks: blocks,
       traces: traces,
     );
@@ -199,6 +204,7 @@ class ParsedRoutine {
   final int? completedAt;
   final int? scheduledAt;
   final int plannedSeconds;
+  final List<int> fieldParents;
   final List<ParsedBlock> blocks;
   final List<ParsedTrace> traces;
 
@@ -215,6 +221,7 @@ class ParsedRoutine {
     this.completedAt,
     this.scheduledAt,
     this.plannedSeconds = 0,
+    this.fieldParents = const [],
     required this.blocks,
     required this.traces,
   });
