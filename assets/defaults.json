@@ -35,6 +35,7 @@
   "block_appearance": false,
   "block_interface": false,
   "block_data": false,
+  "block_permissions": false,
   "show_field_tab": false,
   "show_artel_tab": false,
 

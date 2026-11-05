@@ -3,9 +3,15 @@
 //
 // Читает assets/i18n.json, держит текущий язык, отдаёт строки по ключу.
 // Файл словаря правится вручную — код при добавлении языков не трогается.
+//
+// Resilient load. If the asset is missing, malformed, or (worst case)
+// a JSON array instead of an object, the loader falls back to an empty
+// dictionary so the app can still start. Previously a single typo in
+// i18n.json took down the whole app with a black screen.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 class I18n {
@@ -14,19 +20,23 @@ class I18n {
 
   I18n._(this._data, this.lang);
 
-  // Загрузка словаря. lang — «ru» либо «en». Прочие языки добавляются
-  // в JSON без правки кода.
   static Future<I18n> load(String lang) async {
-    final raw = await rootBundle.loadString('assets/i18n.json');
-    final map = jsonDecode(raw) as Map<String, dynamic>;
-    final data = map.map(
-      (k, v) => MapEntry(k, Map<String, String>.from(v as Map)),
-    );
-    return I18n._(data, lang);
+    try {
+      final raw = await rootBundle.loadString('assets/i18n.json');
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        final data = decoded.map(
+          (k, v) => MapEntry(k, Map<String, String>.from(v as Map)),
+        );
+        return I18n._(data, lang);
+      }
+      debugPrint('i18n.json is not a JSON object');
+    } catch (e) {
+      debugPrint('Failed to load i18n.json: $e');
+    }
+    return I18n._({'ru': {}, 'en': {}}, lang);
   }
 
-  // Строка по ключу. Ежели ключа нет в текущем языке — берём английский,
-  // затем сам ключ.
   String t(String key) {
     return _data[lang]?[key] ?? _data['en']?[key] ?? key;
   }

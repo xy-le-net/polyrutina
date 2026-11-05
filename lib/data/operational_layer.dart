@@ -258,6 +258,7 @@ class OperationalLayer extends ChangeNotifier {
   bool blockAppearance = false;
   bool blockInterface = false;
   bool blockData = false;
+  bool blockPermissions = false;
 
   // Map scale (meters per smaller side)
   int mapScale = 40;
@@ -408,6 +409,7 @@ class OperationalLayer extends ChangeNotifier {
       blockAppearance = data['block_appearance'] as bool? ?? blockAppearance;
       blockInterface = data['block_interface'] as bool? ?? blockInterface;
       blockData = data['block_data'] as bool? ?? blockData;
+      blockPermissions = data['block_permissions'] as bool? ?? blockPermissions;
       mutexRoutines = data['mutex_routines'] as bool? ?? mutexRoutines;
       mutexSlots = data['mutex_slots'] as bool? ?? mutexSlots;
       showFieldTab = data['show_field_tab'] as bool? ?? showFieldTab;
@@ -456,6 +458,7 @@ class OperationalLayer extends ChangeNotifier {
     blockAppearance = data['block_appearance'] as bool? ?? blockAppearance;
     blockInterface = data['block_interface'] as bool? ?? blockInterface;
     blockData = data['block_data'] as bool? ?? blockData;
+    blockPermissions = data['block_permissions'] as bool? ?? blockPermissions;
     mutexRoutines = data['mutex_routines'] as bool? ?? mutexRoutines;
     mutexSlots = data['mutex_slots'] as bool? ?? mutexSlots;
     showFieldTab = data['show_field_tab'] as bool? ?? showFieldTab;
@@ -816,6 +819,9 @@ class OperationalLayer extends ChangeNotifier {
       case 'block_data':
         blockData = _parseBool(value) ?? blockData;
         break;
+      case 'block_permissions':
+        blockPermissions = _parseBool(value) ?? blockPermissions;
+        break;
       case 'mutex_routines':
         mutexRoutines = _parseBool(value) ?? mutexRoutines;
         break;
@@ -909,6 +915,7 @@ class OperationalLayer extends ChangeNotifier {
       'block_appearance': blockAppearance,
       'block_interface': blockInterface,
       'block_data': blockData,
+      'block_permissions': blockPermissions,
       'mutex_routines': mutexRoutines,
       'mutex_slots': mutexSlots,
       'show_field_tab': showFieldTab,

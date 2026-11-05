@@ -78,6 +78,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   final _navigatorKey = GlobalKey<NavigatorState>();
 
   I18n? _i18n;
+  String? _initError;
 
   int _tab = 1;
   int? _openedRoutineId;
@@ -111,7 +112,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     WidgetsBinding.instance.addObserver(this);
     NotificationService.init().then((_) {
       NotificationService.payloadNotifier.addListener(_onNotificationTap);
-      // Check for launch payload if the app was killed and opened via notification
       _onNotificationTap();
     });
 
@@ -155,53 +155,51 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   }
 
   Future<void> _init() async {
-    final systemBrightness =
-        WidgetsBinding.instance.platformDispatcher.platformBrightness;
+    try {
+      final systemBrightness =
+          WidgetsBinding.instance.platformDispatcher.platformBrightness;
 
-    await _journal.init();
-    await _bort.init(systemBrightness);
-    await _traceLayer.init(_journal);
+      await _journal.init();
+      await _bort.init(systemBrightness);
+      await _traceLayer.init(_journal);
 
-    // Load dictionary before field initialization to localize the root name.
-    _i18n = await I18n.load(_bort.lang);
+      _i18n = await I18n.load(_bort.lang);
 
-    await _fieldLayer.init(_journal);
-    await _fieldLayer.createRootIfNeeded(
-      _journal,
-      name: _i18n!.t('field.root'),
-    );
+      await _fieldLayer.init(_journal);
+      await _fieldLayer.createRootIfNeeded(
+        _journal,
+        name: _i18n!.t('field.root'),
+      );
 
-    await _routineLayer.init(_journal, _traceLayer, _fieldLayer);
-    _routineLayer.migrateFieldParents();
+      await _routineLayer.init(_journal, _traceLayer, _fieldLayer);
+      _routineLayer.migrateFieldParents();
 
-    _journal.start();
-    _bort.setLastRereadId(await _journal.lastEntryId());
-    _tab = 1;
-    _bortSignature = _computeBortSignature();
+      _journal.start();
+      _bort.setLastRereadId(await _journal.lastEntryId());
+      _tab = 1;
+      _bortSignature = _computeBortSignature();
 
-    _notificationManager = NotificationManager(
-      bort: _bort,
-      routineLayer: _routineLayer,
-      fieldLayer: _fieldLayer,
-      ticker: _ticker,
-      i18n: _i18n!,
-    );
+      _notificationManager = NotificationManager(
+        bort: _bort,
+        routineLayer: _routineLayer,
+        fieldLayer: _fieldLayer,
+        ticker: _ticker,
+        i18n: _i18n!,
+      );
+    } catch (e, st) {
+      debugPrint('INIT FAILED: $e\n$st');
+      _initError = '$e';
+    }
 
     if (mounted) setState(() {});
   }
 
   Future<void> _afterJournalReset() async {
     if (_i18n == null) return;
-    // Ensure the root field exists after a wipe.
     await _fieldLayer.createRootIfNeeded(
       _journal,
       name: _i18n!.t('field.root'),
     );
-    // Ensure the active field is valid. The check covers both a
-    // null id and a dangling one (the node was removed but the id
-    // was not yet normalized) — in either case we fall back to the
-    // default root, if it exists, so the field tab never goes blank
-    // after a reset, an import, or a journal clear.
     final active = _fieldLayer.activeFieldId;
     final root = _fieldLayer.rootId;
     if (root != null &&
@@ -216,7 +214,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     if (mounted) {
       setState(() {
         _i18n = i18n;
-        // Recreate manager with new i18n
         _notificationManager?.dispose();
         _notificationManager = NotificationManager(
           bort: _bort,
@@ -265,7 +262,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
         );
         _bort.stopShift(fId);
 
-        // If mutex shift is true, routines and shifts are linked.
         if (_bort.mutexShift) {
           for (final r in _routineLayer.routines) {
             bool inField = false;
@@ -455,7 +451,24 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   @override
   Widget build(BuildContext context) {
-    if (_i18n == null) return const SizedBox.shrink();
+    if (_i18n == null) {
+      if (_initError == null) return const SizedBox.shrink();
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          backgroundColor: Colors.black,
+          body: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: SelectableText(
+                'init failed:\n$_initError',
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     if (!_tabVisible(_tab)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {

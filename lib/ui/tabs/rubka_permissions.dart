@@ -2,32 +2,27 @@
 // rubka_permissions.dart — «permissions» block in the rubka.
 //
 // A short diagnostic list: notifications, location, camera, micro-
-// phone, files. Each row shows a pult with a three-state indicator:
+// phone. Each row shows a pult with a three-state indicator:
 //   — granted: check mark, signal-colored;
-//   — denied / limited / provisional: hollow circle (the permission
-//     can still be requested by the user);
-//   — permanentlyDenied / restricted: a crossed circle, indicating
-//     that the OS will no longer show its own prompt.
+//   — denied / limited / provisional: hollow circle;
+//   — permanentlyDenied / restricted: crossed circle.
 //
-// Tapping a row:
-//   — granted: no-op (no reason to nag the user);
-//   — denied: request() is called, the OS dialog appears;
-//   — permanentlyDenied / restricted: openAppSettings() is called,
-//     so the user can flip the switch in the system settings.
+// Tap semantics:
+//   — granted: openAppSettings() — modern OS versions forbid apps
+//     from revoking a permission themselves; the user must flip the
+//     switch in the system settings, so the tap takes them there;
+//   — denied / limited / provisional: request() — the OS prompt;
+//   — permanentlyDenied / restricted: openAppSettings().
 // Statuses are re-read after every request and on returning from
-// the system settings (via the lifecycle observer) — Android and
-// iOS do not notify the app of a change made outside of it.
+// the system settings (via a lifecycle observer).
 //
-// Permissions on iOS. The file (storage) entry is a no-op on iOS,
-// where app data is sandboxed and no general storage permission
-// exists; the row shows the platform's own answer and stays as
-// «granted» for the user's convenience. All other entries map to
-// the matching iOS permission.
+// Permission.storage is intentionally absent: on Android 13+ it
+// maps to READ_EXTERNAL_STORAGE, which the system ignores and
+// reports as «denied»; file access goes through FilePicker, no
+// runtime permission needed.
 //
-// Collapse. This block is not collapsible: the list is short, and
-// a stable always-open view is more useful for diagnostics than a
-// hidden one. `canCollapse: false` also means the collapse mark is
-// not drawn.
+// Collapse. The block is collapsible like the other rubka blocks;
+// its state lives in bort.blockPermissions.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -46,9 +41,6 @@ class _PermEntry {
 }
 
 class RubkaPermissions extends StatefulWidget {
-  // Stable parity for the block frame. The rubka shares one
-  // alternation across its five blocks (artel=0, appearance=1,
-  // interface=2, data=3, permissions=4).
   final int parity;
 
   const RubkaPermissions({super.key, this.parity = 4});
@@ -64,7 +56,6 @@ class _RubkaPermissionsState extends State<RubkaPermissions>
     _PermEntry(key: 'perm.location', permission: Permission.locationWhenInUse),
     _PermEntry(key: 'perm.camera', permission: Permission.camera),
     _PermEntry(key: 'perm.microphone', permission: Permission.microphone),
-    _PermEntry(key: 'perm.files', permission: Permission.storage),
   ];
 
   final Map<Permission, PermissionStatus> _statuses = {};
@@ -85,9 +76,7 @@ class _RubkaPermissionsState extends State<RubkaPermissions>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _refreshAll();
-    }
+    if (state == AppLifecycleState.resumed) _refreshAll();
   }
 
   Future<void> _refreshAll() async {
@@ -108,8 +97,11 @@ class _RubkaPermissionsState extends State<RubkaPermissions>
     } catch (_) {
       status = PermissionStatus.denied;
     }
-    if (status == PermissionStatus.granted) return;
-    if (status == PermissionStatus.permanentlyDenied ||
+    // Both granted and permanently-denied lead to the system
+    // settings: in the first case so the user can revoke, in the
+    // second so they can re-enable after a hard denial.
+    if (status == PermissionStatus.granted ||
+        status == PermissionStatus.permanentlyDenied ||
         status == PermissionStatus.restricted) {
       try {
         await openAppSettings();
@@ -150,6 +142,7 @@ class _RubkaPermissionsState extends State<RubkaPermissions>
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: Row(
+            key: ValueKey('perm_row_${e.key}'),
             children: [
               SizedBox(
                 width: 140,
@@ -175,8 +168,9 @@ class _RubkaPermissionsState extends State<RubkaPermissions>
 
     return Block(
       title: i18n.t('bort.permissions'),
-      collapsed: false,
-      canCollapse: false,
+      collapsed: !bort.blockPermissions,
+      onToggleCollapsed: () =>
+          bort.setBool('block_permissions', !bort.blockPermissions),
       bg: bg,
       dim: mid,
       fg: fg,

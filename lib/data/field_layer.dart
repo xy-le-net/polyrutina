@@ -275,14 +275,8 @@ class FieldLayer extends ChangeNotifier {
       body: jsonEncode({'action': 'create', 'name': name, 'is_root': true}),
     );
 
-    if (!nodes.containsKey(id)) {
-      final n = FieldNode(id: id, name: name, isRoot: true);
-      nodes[id] = n;
-      rootId = id;
-      activeFieldId = id;
-      _scheduleSave();
-      notifyListeners();
-    }
+    _scheduleSave();
+    notifyListeners();
     return nodes[id]!;
   }
 
@@ -291,13 +285,8 @@ class FieldLayer extends ChangeNotifier {
       type: JournalType.fieldNode,
       body: jsonEncode({'action': 'create', 'name': name, 'is_root': true}),
     );
-    if (!nodes.containsKey(id)) {
-      final n = FieldNode(id: id, name: name, isRoot: true);
-      nodes[id] = n;
-      activeFieldId = id;
-      _scheduleSave();
-      notifyListeners();
-    }
+    _scheduleSave();
+    notifyListeners();
     return nodes[id]!;
   }
 
@@ -314,13 +303,8 @@ class FieldLayer extends ChangeNotifier {
         'parents': [parentId],
       }),
     );
-    if (!nodes.containsKey(id)) {
-      final n = FieldNode(id: id, name: name, parents: [parentId]);
-      nodes[id] = n;
-      nodes[parentId]?.children.add(id);
-      _scheduleSave();
-      notifyListeners();
-    }
+    _scheduleSave();
+    notifyListeners();
     return nodes[id]!;
   }
 

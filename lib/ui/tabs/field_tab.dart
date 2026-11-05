@@ -1,27 +1,21 @@
 // ═══════════════════════════════════════════════════════════════════
-// field_tab.dart — «field» tab. Hierarchical tree of field nodes.
+// field_tab.dart — «field» tab. Flat outline of field nodes.
 //
-// The active field (root node) serves as the entry point.
+// The active field is chosen in the header. Its subtree is drawn as
+// a flat outline: each node is a plate on a routine-like frame,
+// indented by depth; the plate's chevron expands or collapses the
+// branch. Traces attached to a node are collapsed into a single
+// pult with a count, opening a left-side sheet. Routines are drawn
+// by RoutinePlate, as on the routines tab.
 //
-// Tree rendering. The active field's name and management live in the
-// header. The root node itself is rendered as a simple container
-// without a frame, holding its children. Nested branches are wrapped
-// in unified Block frames (identical to routine slots and rubka
-// blocks). Routines are rendered as RoutinePlate widgets, traces as
-// minimal framed containers.
+// Actions. Long press on the header (or on any plate) opens the
+// subpult: rename, add child branch, attach a routine, move, shake,
+// burn (root nodes cannot be moved or deleted).
 //
-// Header actions. Short tap on the active field header (pult or text)
-// switches fields. Long tap opens a subpult for the active root to
-// rename, add a branch, or attach a routine.
-//
-// Node actions. The "..." pult on nested branches provides a subpult:
-//   — rename;
-//   — add child branch;
-//   — attach a routine;
-//   — move branch (changes parent without deleting);
-//   — shake (detach the node, moving its children to its parents);
-//   — burn (delete the node and all its children).
-// Root nodes cannot be deleted or moved.
+// Why flat. Nested Blocks produced a Russian-doll of frames that
+// swallowed the screen on deep trees and hid the routines. The flat
+// outline keeps the hierarchy visible through indentation alone and
+// uses the same visual language as the routines tab.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -29,7 +23,6 @@
 import 'package:flutter/material.dart';
 
 import '../core/app_scope.dart';
-import '../core/block.dart';
 import '../core/bort_field.dart';
 import '../core/confirm_dialog.dart';
 import '../core/control_row.dart';
@@ -47,32 +40,29 @@ class FieldTab extends StatefulWidget {
 }
 
 class _FieldTabState extends State<FieldTab> {
-  final Set<int> _expandedNodes = {};
+  final Set<int> _expanded = {};
 
-  void _toggleExpand(int id) {
+  void _toggle(int id) {
     setState(() {
-      if (_expandedNodes.contains(id)) {
-        _expandedNodes.remove(id);
+      if (_expanded.contains(id)) {
+        _expanded.remove(id);
       } else {
-        _expandedNodes.add(id);
+        _expanded.add(id);
       }
     });
   }
 
-  Future<void> _createChildNode(int parentId) async {
+  Future<void> _createChild(int parentId) async {
     final app = AppScope.of(context);
-    final i18n = app.i18n;
     await app.fieldLayer.createNode(
       app.journal,
-      name: i18n.t('field.new_node'),
+      name: app.i18n.t('field.new_node'),
       parentId: parentId,
     );
-    if (mounted) {
-      setState(() => _expandedNodes.add(parentId));
-    }
+    if (mounted) setState(() => _expanded.add(parentId));
   }
 
-  void _showNodeActions(int id) {
+  void _showActions(int id) {
     final app = AppScope.of(context);
     final i18n = app.i18n;
     final node = app.fieldLayer.nodes[id];
@@ -83,13 +73,13 @@ class _FieldTabState extends State<FieldTab> {
         id: 'rename_$id',
         icon: Icons.edit,
         label: i18n.t('field.rename'),
-        onTap: () => _renameNodeDialog(id, node.name),
+        onTap: () => _renameDialog(id, node.name),
       ),
       PultSpec(
         id: 'add_child_$id',
         icon: Icons.add,
         label: i18n.t('field.new_node'),
-        onTap: () => _createChildNode(id),
+        onTap: () => _createChild(id),
       ),
       PultSpec(
         id: 'attach_$id',
@@ -100,13 +90,13 @@ class _FieldTabState extends State<FieldTab> {
     ];
 
     if (!node.isRoot && node.parents.isNotEmpty) {
-      final currentParentId = node.parents.first;
+      final curParent = node.parents.first;
       subs.add(
         PultSpec(
           id: 'move_branch_$id',
           icon: Icons.drive_file_move,
           label: i18n.t('field.move_branch'),
-          onTap: () => _pickNodeForBranch(id, currentParentId),
+          onTap: () => _pickBranch(id, curParent),
         ),
       );
       subs.add(
@@ -149,82 +139,77 @@ class _FieldTabState extends State<FieldTab> {
     );
   }
 
-  void _renameNodeDialog(int id, String currentName) {
+  void _renameDialog(int id, String current) {
     final app = AppScope.of(context);
     final i18n = app.i18n;
     final bort = app.bort;
-    String currentText = currentName;
+    String currentText = current;
 
     showDialog<void>(
       context: context,
       barrierColor: Colors.transparent,
-      builder: (ctx) {
-        return DialogFrame(
-          onDismiss: () => Navigator.of(ctx).pop(),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                i18n.t('field.rename'),
-                style: TextStyle(
-                  color: bort.fg,
-                  fontSize: PultScope.of(context).smallSide * bort.kTitle,
+      builder: (ctx) => DialogFrame(
+        onDismiss: () => Navigator.of(ctx).pop(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              i18n.t('field.rename'),
+              style: TextStyle(
+                color: bort.fg,
+                fontSize: PultScope.of(context).smallSide * bort.kTitle,
+              ),
+            ),
+            const SizedBox(height: 12),
+            BortField(
+              initial: current,
+              fg: bort.fg,
+              readOnly: false,
+              onChanged: (v) => currentText = v,
+              onCommit: (v) async {
+                Navigator.of(ctx).pop();
+                if (v.isNotEmpty) {
+                  await app.fieldLayer.renameNode(app.journal, id, v);
+                }
+              },
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: Text(i18n.t('common.cancel')),
                 ),
-              ),
-              const SizedBox(height: 12),
-              BortField(
-                initial: currentName,
-                fg: bort.fg,
-                readOnly: false,
-                onChanged: (v) => currentText = v,
-                onCommit: (v) async {
-                  Navigator.of(ctx).pop();
-                  if (v.isNotEmpty) {
-                    await app.fieldLayer.renameNode(app.journal, id, v);
-                  }
-                },
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    child: Text(i18n.t('common.cancel')),
-                  ),
-                  const SizedBox(width: 8),
-                  TextButton(
-                    onPressed: () async {
-                      Navigator.of(ctx).pop();
-                      if (currentText.isNotEmpty) {
-                        await app.fieldLayer.renameNode(
-                          app.journal,
-                          id,
-                          currentText,
-                        );
-                      }
-                    },
-                    child: Text(i18n.t('common.ok')),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: () async {
+                    Navigator.of(ctx).pop();
+                    if (currentText.isNotEmpty) {
+                      await app.fieldLayer.renameNode(
+                        app.journal,
+                        id,
+                        currentText,
+                      );
+                    }
+                  },
+                  child: Text(i18n.t('common.ok')),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 
   void _attachRoutine(int nodeId) {
     final app = AppScope.of(context);
-    final bort = app.bort;
     final available = app.routineLayer.routines
         .where((r) => !r.fieldParents.contains(nodeId))
         .toList();
-
     if (available.isEmpty) return;
-
     showPultSheet(
       context: context,
       subs: [
@@ -237,20 +222,17 @@ class _FieldTabState extends State<FieldTab> {
                 app.routineLayer.attachToField(app.journal, r.id, nodeId),
           ),
       ],
-      fg: bort.fg,
-      bg: bort.bg,
-      signal: bort.fgsignal,
+      fg: app.bort.fg,
+      bg: app.bort.bg,
+      signal: app.bort.fgsignal,
       side: PultScope.of(context).smallSide,
     );
   }
 
-  void _pickNodeForBranch(int nodeId, int currentParentId) {
+  void _pickBranch(int nodeId, int currentParentId) {
     final app = AppScope.of(context);
-    final bort = app.bort;
     final i18n = app.i18n;
-
-    // Find valid targets: not the node itself, and not its descendants.
-    final validNodes = app.fieldLayer.nodes.values.where((n) {
+    final valid = app.fieldLayer.nodes.values.where((n) {
       if (n.id == nodeId) return false;
       if (app.fieldLayer.isDescendant(n.id, nodeId)) return false;
       return true;
@@ -259,7 +241,7 @@ class _FieldTabState extends State<FieldTab> {
     showPultSheet(
       context: context,
       subs: [
-        for (final n in validNodes)
+        for (final n in valid)
           PultSpec(
             id: 'target_branch_${n.id}',
             icon: n.isRoot ? Icons.layers : Icons.subdirectory_arrow_right,
@@ -275,14 +257,14 @@ class _FieldTabState extends State<FieldTab> {
                   );
                   await app.fieldLayer.attachNode(app.journal, nodeId, n.id);
                 });
-                if (mounted) setState(() => _expandedNodes.add(n.id));
+                if (mounted) setState(() => _expanded.add(n.id));
               }
             },
           ),
       ],
-      fg: bort.fg,
-      bg: bort.bg,
-      signal: bort.fgsignal,
+      fg: app.bort.fg,
+      bg: app.bort.bg,
+      signal: app.bort.fgsignal,
       side: PultScope.of(context).smallSide,
     );
   }
@@ -290,8 +272,6 @@ class _FieldTabState extends State<FieldTab> {
   void _showRoutineActions(int routineId, int currentNodeId) {
     final app = AppScope.of(context);
     final i18n = app.i18n;
-    final bort = app.bort;
-
     showPultSheet(
       context: context,
       subs: [
@@ -319,20 +299,17 @@ class _FieldTabState extends State<FieldTab> {
           ),
         ),
       ],
-      fg: bort.fg,
-      bg: bort.bg,
-      signal: bort.fgsignal,
+      fg: app.bort.fg,
+      bg: app.bort.bg,
+      signal: app.bort.fgsignal,
       side: PultScope.of(context).smallSide,
     );
   }
 
   void _pickNodeForRoutine(int routineId, int currentId, bool move) {
     final app = AppScope.of(context);
-    final bort = app.bort;
     final i18n = app.i18n;
-
     final nodes = app.fieldLayer.nodes.values.toList();
-
     showPultSheet(
       context: context,
       subs: [
@@ -361,114 +338,38 @@ class _FieldTabState extends State<FieldTab> {
               },
             ),
       ],
-      fg: bort.fg,
-      bg: bort.bg,
-      signal: bort.fgsignal,
+      fg: app.bort.fg,
+      bg: app.bort.bg,
+      signal: app.bort.fgsignal,
       side: PultScope.of(context).smallSide,
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
-    final fieldLayer = FieldScope.of(context);
-    final side = PultScope.of(context).smallSide;
-    // Hard fallback: if the active field is unset or dangling, use
-    // the default root. The field layer already normalizes this in
-    // _applyEntry, but the tab may be rebuilt between a node removal
-    // and the next journal entry, so the invariant is enforced here
-    // as well — otherwise the tab goes blank.
-    // Fallback to the root if the active id is unset or dangling.
-    // Kept as `final` locals so the null checks below promote them
-    // for the rest of the method — a mutable local loses promotion,
-    // which is what the analyzer reported at the four call sites in
-    // the closures below.
-    final int? activeId0 = fieldLayer.activeFieldId;
-    final int? activeId1 =
-        (activeId0 != null && fieldLayer.nodes.containsKey(activeId0))
-        ? activeId0
-        : fieldLayer.rootId;
-    if (activeId1 == null || !fieldLayer.nodes.containsKey(activeId1)) {
-      return Center(
-        child: Text(i18n.t('routine.none'), style: TextStyle(color: bort.mid)),
-      );
-    }
-    final int activeId = activeId1;
-
-    final activeRoot = fieldLayer.nodes[activeId]!;
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8, right: 12),
-          child: ControlRow(
-            rootSide: side,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      Pult(
-                        spec: PultSpec(
-                          id: 'field_active',
-                          icon: Icons.layers,
-                          onTap: () => _openFieldSwitcher(activeId),
-                          onLongPress: () => _showNodeActions(activeId),
-                        ),
-                        fg: bort.fg,
-                        bg: bort.bg,
-                        signal: bort.fgsignal,
-                        overrideSize: side,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => _openFieldSwitcher(activeId),
-                          onLongPress: () => _showNodeActions(activeId),
-                          child: Text(
-                            activeRoot.name,
-                            style: TextStyle(
-                              color: bort.fg,
-                              fontSize: side * 0.5,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+  void _showTraceList(int nodeId) {
+    final app = AppScope.of(context);
+    final traces = app.traceLayer.attachedToField(nodeId);
+    if (traces.isEmpty) return;
+    showPultSheet(
+      context: context,
+      subs: [
+        for (final t in traces)
+          PultSpec(
+            id: 'trace_${t.id}',
+            icon: Icons.text_snippet,
+            label: t.text.isEmpty ? app.i18n.t('type.trace') : t.text,
           ),
-        ),
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minWidth: MediaQuery.of(context).size.width,
-              ),
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _buildNode(context, activeId, 0, {}),
-              ),
-            ),
-          ),
-        ),
       ],
+      fg: app.bort.fg,
+      bg: app.bort.bg,
+      signal: app.bort.fgsignal,
+      side: PultScope.of(context).smallSide,
     );
   }
 
   void _openFieldSwitcher(int currentId) {
     final app = AppScope.of(context);
     final i18n = app.i18n;
-    final bort = app.bort;
     final fields = app.fieldLayer.nodes.values.where((n) => n.isRoot).toList();
-
     showPultSheet(
       context: context,
       subs: [
@@ -486,259 +387,269 @@ class _FieldTabState extends State<FieldTab> {
           label: i18n.t('field.new_field'),
           confirm: true,
           onTap: () async {
-            final newId = await app.fieldLayer.createField(
+            final f = await app.fieldLayer.createField(
               app.journal,
               i18n.t('field.new_field'),
             );
-            app.fieldLayer.setActiveField(newId.id);
+            app.fieldLayer.setActiveField(f.id);
           },
         ),
       ],
-      fg: bort.fg,
-      bg: bort.bg,
-      signal: bort.fgsignal,
+      fg: app.bort.fg,
+      bg: app.bort.bg,
+      signal: app.bort.fgsignal,
       side: PultScope.of(context).smallSide,
     );
   }
 
-  Widget _buildNode(
-    BuildContext context,
-    int nodeId,
-    int depth,
-    Set<int> visited,
-  ) {
+  // ─── Flatten the subtree into a linear list of widgets ───
+  void _flatten(int nodeId, int depth, Set<int> visited, List<Widget> out) {
     final fieldLayer = FieldScope.of(context);
     final node = fieldLayer.nodes[nodeId];
-    if (node == null) return const SizedBox.shrink();
+    if (node == null || visited.contains(nodeId)) return;
 
-    if (visited.contains(nodeId)) {
-      return Padding(
-        padding: const EdgeInsets.only(left: 16.0, top: 4, bottom: 4),
-        child: Text('…', style: TextStyle(color: BortScope.of(context).mid)),
-      );
-    }
-
-    final currentVisited = Set<int>.from(visited)..add(nodeId);
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
-    final side = PultScope.of(context).smallSide;
-
-    final routines = RoutineScope.of(context).routinesForNode(nodeId);
-    final traces = TraceScope.of(context).attachedToField(nodeId);
-
+    final nextVisited = Set<int>.from(visited)..add(nodeId);
+    final isExpanded = node.isRoot || _expanded.contains(nodeId);
     final hasChildren =
-        node.children.isNotEmpty || routines.isNotEmpty || traces.isNotEmpty;
-    // Root is always expanded visually (acts as a container), nested depends on state.
-    final isExpanded = node.isRoot ? true : _expandedNodes.contains(nodeId);
-    final pultSide = side * bort.kPultSmall;
+        node.children.isNotEmpty ||
+        RoutineScope.of(context).routinesForNode(nodeId).isNotEmpty ||
+        TraceScope.of(context).attachedToField(nodeId).isNotEmpty;
 
-    final childrenWidgets = <Widget>[];
-    if (isExpanded) {
-      for (final childId in node.children) {
-        childrenWidgets.add(
-          _buildNode(context, childId, depth + 1, currentVisited),
-        );
-      }
-      for (final r in routines) {
-        childrenWidgets.add(
-          Padding(
-            padding: const EdgeInsets.only(top: 4, bottom: 4),
-            child: RoutinePlate(
-              routine: r,
-              selectMode: false,
-              selected: false,
-              onTap: () => AppScope.of(context).openRoutine(r.id),
-              onLongPress: () => _showRoutineActions(r.id, nodeId),
-              onSelectToggle: () {},
-              onChanged: () {},
-            ),
+    // Plate for the node itself (except the root: the root is the
+    // header, not a row).
+    if (!node.isRoot) {
+      out.add(
+        Padding(
+          padding: EdgeInsets.only(
+            left: depth * 20.0,
+            top: 4,
+            bottom: 4,
+            right: 4,
           ),
-        );
-      }
-      for (final t in traces) {
-        final frame = borderFor(
-          parity: depth % 2,
-          active: false,
-          strokeW: side * bort.kStroke,
-          fg: bort.fg,
-          mid: bort.mid,
-          fgsignal: bort.fgsignal,
-        );
-        childrenWidgets.add(
-          Padding(
-            padding: const EdgeInsets.only(top: 4, bottom: 4),
-            child: Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: frame.color, width: frame.width),
-                borderRadius: BorderRadius.circular(side * bort.kRadius),
-                color: bort.bg,
-              ),
-              padding: EdgeInsets.all(side * bort.kFramePad * 0.75),
-              child: Row(
-                children: [
-                  Icon(Icons.text_snippet, color: bort.mid, size: pultSide),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      t.text.isNotEmpty ? t.text : i18n.t('type.trace'),
-                      style: TextStyle(
-                        color: bort.fg,
-                        fontSize: side * bort.kNumberSmall,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          child: _FieldPlate(
+            title: node.name,
+            expanded: isExpanded,
+            hasChildren: hasChildren,
+            onTap: () => _toggle(nodeId),
+            onLongPress: () => _showActions(nodeId),
           ),
-        );
-      }
-    }
-
-    if (node.isRoot) {
-      // Root is a container without a frame, holding its children.
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: childrenWidgets,
+        ),
       );
     }
 
-    // Nested nodes get a Block frame.
-    return Block(
-      title: node.name,
-      titleWidget: _NodeTitle(
-        initial: node.name,
-        fg: bort.fg,
-        fontSize: side * 0.5,
-        onCommit: (v) =>
-            fieldLayer.renameNode(AppScope.of(context).journal, nodeId, v),
-      ),
-      collapsed: !isExpanded,
-      canCollapse: hasChildren,
-      onToggleCollapsed: () => _toggleExpand(nodeId),
-      bg: bort.bg,
-      dim: bort.mid,
-      fg: bort.fg,
-      signal: bort.fgsignal,
-      titleSize: side * bort.kTitle,
-      pad: side * bort.kFramePad,
-      gap: side * bort.kBlockGap,
-      strokeW: side * bort.kStroke,
-      radiusW: side * bort.kRadius,
-      parity: depth % 2,
-      cornerRightTop: Pult(
-        spec: PultSpec(
-          id: 'node_actions_$nodeId',
-          icon: Icons.more_horiz,
-          onTap: () => _showNodeActions(nodeId),
-        ),
-        fg: bort.fg,
-        bg: bort.bg,
-        signal: bort.fgsignal,
-        overrideSize: pultSide,
-      ),
-      child: childrenWidgets.isEmpty
-          ? null
-          : Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: childrenWidgets,
-              ),
-            ),
-    );
-  }
-}
+    if (!isExpanded) return;
 
-// ─── Node title (tap to edit) ───
-// Prevents layout breakage and text overflow. Displays a Text widget
-// normally, and switches to a TextField on tap.
-class _NodeTitle extends StatefulWidget {
-  final String initial;
-  final Color fg;
-  final double fontSize;
-  final Future<void> Function(String value) onCommit;
-
-  const _NodeTitle({
-    required this.initial,
-    required this.fg,
-    required this.fontSize,
-    required this.onCommit,
-  });
-
-  @override
-  State<_NodeTitle> createState() => _NodeTitleState();
-}
-
-class _NodeTitleState extends State<_NodeTitle> {
-  late final TextEditingController _ctrl;
-  final _focus = FocusNode();
-  bool _editing = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = TextEditingController(text: widget.initial);
-    _focus.addListener(() {
-      if (!_focus.hasFocus && _editing) {
-        _commit();
-      }
-    });
-  }
-
-  @override
-  void didUpdateWidget(covariant _NodeTitle oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.initial != widget.initial && !_editing) {
-      _ctrl.text = widget.initial;
+    // Children branches.
+    for (final c in node.children) {
+      _flatten(c, node.isRoot ? depth : depth + 1, nextVisited, out);
     }
-  }
 
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    _focus.dispose();
-    super.dispose();
-  }
+    // Routines attached to this node.
+    final routines = RoutineScope.of(context).routinesForNode(nodeId);
+    for (final r in routines) {
+      out.add(
+        Padding(
+          padding: EdgeInsets.only(
+            left: (node.isRoot ? depth : depth + 1) * 20.0,
+            top: 4,
+            bottom: 4,
+            right: 4,
+          ),
+          child: RoutinePlate(
+            routine: r,
+            selectMode: false,
+            selected: false,
+            onTap: () => AppScope.of(context).openRoutine(r.id),
+            onLongPress: () => _showRoutineActions(r.id, nodeId),
+            onSelectToggle: () {},
+            onChanged: () {},
+          ),
+        ),
+      );
+    }
 
-  Future<void> _commit() async {
-    if (!_editing) return;
-    setState(() => _editing = false);
-    final v = _ctrl.text.trim();
-    if (v != widget.initial && v.isNotEmpty) {
-      await widget.onCommit(v);
-    } else {
-      _ctrl.text = widget.initial;
+    // Traces collapsed into a single pult.
+    final traces = TraceScope.of(context).attachedToField(nodeId);
+    if (traces.isNotEmpty) {
+      final bort = BortScope.of(context);
+      final side = PultScope.of(context).smallSide;
+      final pultSide = side * bort.kPultSmall;
+      out.add(
+        Padding(
+          padding: EdgeInsets.only(
+            left: (node.isRoot ? depth : depth + 1) * 20.0,
+            top: 4,
+            bottom: 4,
+            right: 4,
+          ),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Pult(
+              spec: PultSpec(
+                id: 'traces_$nodeId',
+                icon: Icons.text_snippet,
+                centerText: '${traces.length}',
+                selected: false,
+                onTap: () => _showTraceList(nodeId),
+              ),
+              fg: bort.fg,
+              bg: bort.bg,
+              signal: bort.fgsignal,
+              overrideSize: pultSide,
+            ),
+          ),
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_editing) {
-      return TextField(
-        controller: _ctrl,
-        focusNode: _focus,
-        autofocus: true,
-        style: TextStyle(color: widget.fg, fontSize: widget.fontSize),
-        decoration: const InputDecoration(
-          isDense: true,
-          border: InputBorder.none,
-          contentPadding: EdgeInsets.zero,
-        ),
-        onSubmitted: (_) => _commit(),
+    final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
+    final fieldLayer = FieldScope.of(context);
+    final side = PultScope.of(context).smallSide;
+
+    int? cand = fieldLayer.activeFieldId;
+    if (cand == null || !fieldLayer.nodes.containsKey(cand)) {
+      cand = fieldLayer.rootId;
+    }
+    if (cand == null || !fieldLayer.nodes.containsKey(cand)) {
+      return Center(
+        child: Text(i18n.t('routine.none'), style: TextStyle(color: bort.mid)),
       );
     }
+    final activeId = cand;
+    final root = fieldLayer.nodes[activeId]!;
+
+    final rows = <Widget>[];
+    _flatten(activeId, 0, {}, rows);
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8, right: 12),
+          child: ControlRow(
+            rootSide: side,
+            child: Row(
+              children: [
+                Pult(
+                  spec: PultSpec(
+                    id: 'field_active',
+                    icon: Icons.layers,
+                    onTap: () => _openFieldSwitcher(activeId),
+                    onLongPress: () => _showActions(activeId),
+                  ),
+                  fg: bort.fg,
+                  bg: bort.bg,
+                  signal: bort.fgsignal,
+                  overrideSize: side,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _openFieldSwitcher(activeId),
+                    onLongPress: () => _showActions(activeId),
+                    child: Text(
+                      root.name,
+                      style: TextStyle(color: bort.fg, fontSize: side * 0.5),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Expanded(
+          child: rows.isEmpty
+              ? Center(
+                  child: Text(
+                    i18n.t('routine.none'),
+                    style: TextStyle(color: bort.mid),
+                  ),
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
+                  children: rows,
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Field plate: routine-like row for a branch ───
+class _FieldPlate extends StatelessWidget {
+  final String title;
+  final bool expanded;
+  final bool hasChildren;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+
+  const _FieldPlate({
+    required this.title,
+    required this.expanded,
+    required this.hasChildren,
+    required this.onTap,
+    required this.onLongPress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bort = BortScope.of(context);
+    final side = PultScope.of(context).smallSide;
+    final frame = borderFor(
+      parity: 0,
+      active: false,
+      strokeW: side * bort.kStroke,
+      fg: bort.fg,
+      mid: bort.mid,
+      fgsignal: bort.fgsignal,
+    );
+    final radius = side * bort.kRadius;
+    final pad = side * bort.kFramePad * 0.6;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => setState(() => _editing = true),
-      child: Text(
-        widget.initial,
-        style: TextStyle(color: widget.fg, fontSize: widget.fontSize),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: Container(
+        decoration: BoxDecoration(
+          color: bort.bg,
+          border: Border.all(color: frame.color, width: frame.width),
+          borderRadius: BorderRadius.circular(radius),
+        ),
+        padding: EdgeInsets.all(pad),
+        child: Row(
+          children: [
+            if (hasChildren)
+              Icon(
+                expanded ? Icons.expand_more : Icons.chevron_right,
+                color: bort.mid,
+                size: side * 0.5,
+              )
+            else
+              SizedBox(width: side * 0.5),
+            const SizedBox(width: 6),
+            Icon(
+              Icons.account_tree_outlined,
+              color: bort.mid,
+              size: side * 0.5,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(color: bort.fg, fontSize: side * bort.kName),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
