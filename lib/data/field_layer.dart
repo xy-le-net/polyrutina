@@ -398,7 +398,10 @@ class FieldLayer extends ChangeNotifier {
     bool burn = false,
   }) async {
     final node = nodes[id];
-    if (node == null || node.isRoot) return; // Cannot delete roots
+    if (node == null) return;
+    // The zero field (the default root) cannot be deleted; any other
+    // node, including user-created roots, can.
+    if (node.isRoot && node.id == rootId) return;
 
     await journal.transaction(() async {
       if (burn) {
@@ -408,17 +411,11 @@ class FieldLayer extends ChangeNotifier {
           await deleteNode(journal, cId, burn: true);
         }
       } else {
-        // Shake children to parents
-        for (final cId in node.children) {
-          if (node.parents.isEmpty) {
-            // If the node had no parents, shake children to the default root
-            if (rootId != null && rootId != id) {
-              await attachNode(journal, cId, rootId!);
-            }
-          } else {
-            for (final pId in node.parents) {
-              await attachNode(journal, cId, pId);
-            }
+        // Shake children to the zero field (the default root).
+        final target = rootId;
+        if (target != null && target != id) {
+          for (final cId in node.children) {
+            await attachNode(journal, cId, target);
           }
         }
       }

@@ -5,10 +5,10 @@
 // Here — card state: name editing, block time editing, show/hide
 // slots, collapse, auto-scroll, completion, export, move to field.
 //
-// Scheduled date. Uses a custom date picker inside DialogFrame,
-// discarding the system showDatePicker to maintain visual unity.
-// The time of the selected day is set to the bort's «midnight»
-// setting.
+// Scheduled date. The custom picker lives in bort_date_picker.dart;
+// the planned-time dialog in planned_picker.dart. Both are invoked
+// here and their results are applied to the routine. The bort's
+// «midnight» setting is applied to the picked date by the caller.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -21,12 +21,12 @@ import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
 import '../core/bort_field.dart';
 import '../core/control_row.dart';
-import '../core/dialog_frame.dart';
 import '../core/format.dart';
-import '../core/link_text.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_sheet.dart';
 import '../services/report.dart';
+import 'bort_date_picker.dart';
+import 'planned_picker.dart';
 import 'routine_block_view.dart';
 
 class RoutineCard extends StatefulWidget {
@@ -272,7 +272,7 @@ class _RoutineCardState extends State<RoutineCard> {
         ? DateTime.fromMillisecondsSinceEpoch(r.scheduledAt! * 1000)
         : now;
 
-    final picked = await _showBortDatePicker(context, initial);
+    final picked = await showBortDatePicker(context, initial);
     if (picked == null) return;
 
     final parts = bort.midnight.split(':');
@@ -293,215 +293,14 @@ class _RoutineCardState extends State<RoutineCard> {
     );
   }
 
-  // ─── Custom Date Picker ───
-  Future<DateTime?> _showBortDatePicker(
-    BuildContext context,
-    DateTime initial,
-  ) async {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
-    final side = PultScope.of(context).smallSide;
-
-    DateTime viewing = DateTime(initial.year, initial.month, 1);
-
-    return showDialog<DateTime>(
-      context: context,
-      barrierColor: Colors.transparent,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            final firstWeekday = viewing.weekday;
-            final daysInMonth = DateTime(
-              viewing.year,
-              viewing.month + 1,
-              0,
-            ).day;
-            final totalCells =
-                (((firstWeekday - 1) + daysInMonth + 6) ~/ 7) * 7;
-
-            final grid = <Widget>[];
-            for (var i = 0; i < totalCells; i++) {
-              final dayNum = i - (firstWeekday - 1) + 1;
-              if (dayNum < 1 || dayNum > daysInMonth) {
-                grid.add(const SizedBox.shrink());
-                continue;
-              }
-              final isSelected =
-                  dayNum == initial.day &&
-                  viewing.month == initial.month &&
-                  viewing.year == initial.year;
-
-              grid.add(
-                GestureDetector(
-                  onTap: () => Navigator.of(
-                    ctx,
-                  ).pop(DateTime(viewing.year, viewing.month, dayNum)),
-                  child: Center(
-                    child: Container(
-                      width: side * 0.9,
-                      height: side * 0.9,
-                      alignment: Alignment.center,
-                      decoration: isSelected
-                          ? BoxDecoration(
-                              color: bort.bgsignal,
-                              borderRadius: BorderRadius.circular(side * 0.1),
-                            )
-                          : null,
-                      child: Text(
-                        '$dayNum',
-                        style: TextStyle(
-                          color: isSelected ? bort.fgsignal : bort.fg,
-                          fontSize: side * 0.4,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }
-
-            return DialogFrame(
-              onDismiss: () => Navigator.of(ctx).pop(),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Pult(
-                        spec: PultSpec(
-                          id: 'date_prev',
-                          icon: Icons.chevron_left,
-                          onTap: () => setState(() {
-                            viewing = DateTime(
-                              viewing.year,
-                              viewing.month - 1,
-                              1,
-                            );
-                          }),
-                        ),
-                        fg: bort.fg,
-                        bg: bort.bg,
-                        signal: bort.fgsignal,
-                        overrideSize: side,
-                      ),
-                      Text(
-                        '${viewing.year}.${viewing.month.toString().padLeft(2, '0')}',
-                        style: TextStyle(color: bort.fg, fontSize: side * 0.5),
-                      ),
-                      Pult(
-                        spec: PultSpec(
-                          id: 'date_next',
-                          icon: Icons.chevron_right,
-                          onTap: () => setState(() {
-                            viewing = DateTime(
-                              viewing.year,
-                              viewing.month + 1,
-                              1,
-                            );
-                          }),
-                        ),
-                        fg: bort.fg,
-                        bg: bort.bg,
-                        signal: bort.fgsignal,
-                        overrideSize: side,
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: side * 0.5),
-                  SizedBox(
-                    width: side * 6.3,
-                    child: GridView.count(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisCount: 7,
-                      childAspectRatio: 1,
-                      children: grid,
-                    ),
-                  ),
-                  SizedBox(height: side * 0.5),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: LinkText(
-                      text: i18n.t('common.cancel'),
-                      color: bort.mid,
-                      fontSize: side * bort.kName / 1.6,
-                      padding: EdgeInsets.symmetric(
-                        horizontal: side * 0.3,
-                        vertical: side * 0.1,
-                      ),
-                      onTap: () => Navigator.of(ctx).pop(),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
   Future<void> _pickPlanned(Routine r) async {
     final routineLayer = RoutineScope.of(context);
     final journal = AppScope.of(context).journal;
-    final i18n = I18nScope.of(context);
-    final bort = BortScope.of(context);
 
-    final initial = fmtPlannedTime(r.plannedSeconds);
-
-    final result = await showDialog<String>(
-      context: context,
-      barrierColor: Colors.transparent,
-      builder: (ctx) {
-        String currentText = initial;
-        return DialogFrame(
-          onDismiss: () => Navigator.of(ctx).pop(),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                i18n.t('routine.planned_title'),
-                style: TextStyle(
-                  color: bort.fg,
-                  fontSize: PultScope.of(context).smallSide * bort.kTitle,
-                ),
-              ),
-              const SizedBox(height: 12),
-              BortField(
-                initial: initial,
-                fg: bort.fg,
-                readOnly: false,
-                hint: i18n.t('hint.planned'),
-                onChanged: (v) => currentText = v,
-                onCommit: (v) async {
-                  Navigator.of(ctx).pop(v);
-                },
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    child: Text(i18n.t('common.cancel')),
-                  ),
-                  const SizedBox(width: 8),
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(currentText),
-                    child: Text(i18n.t('common.ok')),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
+    final total = await showPlannedPicker(
+      context,
+      initialSeconds: r.plannedSeconds,
     );
-
-    if (result == null) return;
-    final total = parsePlannedTime(result);
     if (total == null) return;
     await routineLayer.setPlanned(journal, r.id, total);
   }

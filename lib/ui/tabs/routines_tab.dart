@@ -3,22 +3,27 @@
 //
 // This tab hosts both the routines list and the active field's tree.
 // Only the active field is shown; its name sits in the control row
-// above the list, with a pult to switch fields.
+// above the list and serves as the field pult: tap switches fields,
+// long press opens the node actions (rename, new branch, move,
+// shake, burn) for any field except the zero one.
 //
 // Multiselect abolished. Long press on a routine plate (anywhere,
 // including the right-hand pult) opens the routine options sheet:
 // duplicate, move across the tree, complete (when applicable),
-// delete. The former selection mode is gone.
+// delete.
 //
-// Structure. The control row with the field name and the field
-// switcher. The shift row. Below — a flat outline: each non-root
-// branch is a plate indented by depth; routines are drawn by
-// RoutinePlate; traces attached to a node are collapsed into a
-// single pult with a count, opening a left-side sheet.
+// Indentation. Root-level content — routines and branches directly
+// under the active field — carries no extra left offset; deeper
+// levels keep the twenty-pixel step.
 //
-// Sorting. Active routines are sorted by the last ticker pulse
-// (lastPulseAt), falling back to lastActionAt if a routine never
-// pulsed. Completed routines follow, also by lastPulseAt.
+// Completed routines. Within every node's group they are rendered
+// last, after a thin divider, so that the active work stays on top.
+//
+// Structure. The control row with the field name. The shift row.
+// Below — a flat outline: each non-root branch is a plate indented
+// by depth; routines are drawn by RoutinePlate; traces attached to
+// a node are collapsed into a single pult with a count, opening a
+// left-side sheet.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -64,7 +69,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
     _lastMinute = now.millisecondsSinceEpoch ~/ 60000;
     _lastSecond = now.millisecondsSinceEpoch ~/ 1000;
 
-    // Auto-expand the active field on first load.
     final fieldLayer = FieldScope.of(context);
     if (_expanded.isEmpty && fieldLayer.activeFieldId != null) {
       _expanded.add(fieldLayer.activeFieldId!);
@@ -136,6 +140,11 @@ class _RoutinesTabState extends State<RoutinesTab> {
       }
     });
   }
+
+  // ─── Indentation ───
+  // Root-level content (depth 0 and 1) carries no extra left offset;
+  // deeper levels keep the twenty-pixel step.
+  double _indent(int depth) => depth <= 1 ? 4.0 : 4.0 + (depth - 1) * 20.0;
 
   // ─── Routine long-press actions ───
 
@@ -262,8 +271,12 @@ class _RoutinesTabState extends State<RoutinesTab> {
       ),
     ];
 
-    if (!node.isRoot && node.parents.isNotEmpty) {
-      final currentParentId = node.parents.first;
+    // Every node except the zero field (the default root) gets the
+    // remaining actions — move, shake, burn.
+    if (node.id != app.fieldLayer.rootId) {
+      final currentParentId = node.parents.isNotEmpty
+          ? node.parents.first
+          : null;
       subs.add(
         PultSpec(
           id: 'move_branch_$id',
@@ -416,7 +429,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     );
   }
 
-  void _pickNodeForBranch(int nodeId, int currentParentId) {
+  void _pickNodeForBranch(int nodeId, int? currentParentId) {
     final app = AppScope.of(context);
     final i18n = app.i18n;
     final valid = app.fieldLayer.nodes.values.where((n) {
@@ -437,11 +450,13 @@ class _RoutinesTabState extends State<RoutinesTab> {
             onTap: () async {
               if (n.id != currentParentId) {
                 await app.journal.transaction(() async {
-                  await app.fieldLayer.detachNode(
-                    app.journal,
-                    nodeId,
-                    currentParentId,
-                  );
+                  if (currentParentId != null) {
+                    await app.fieldLayer.detachNode(
+                      app.journal,
+                      nodeId,
+                      currentParentId,
+                    );
+                  }
                   await app.fieldLayer.attachNode(app.journal, nodeId, n.id);
                 });
                 if (mounted) setState(() => _expanded.add(n.id));
@@ -529,7 +544,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
       out.add(
         Padding(
           padding: EdgeInsets.only(
-            left: 4.0 + depth * 20.0,
+            left: _indent(depth),
             top: 4,
             bottom: 4,
             right: 4,
@@ -544,15 +559,22 @@ class _RoutinesTabState extends State<RoutinesTab> {
         ),
       );
     }
-    // The active field's own name is shown in the control row above
-    // the list; no separate header is emitted here.
 
     if (!isExpanded) return;
 
     final routines = RoutineScope.of(context).routinesForNode(nodeId);
+    final active = <Routine>[];
+    final done = <Routine>[];
+    for (final r in routines) {
+      if (r.completed) {
+        done.add(r);
+      } else {
+        active.add(r);
+      }
+    }
 
     int sortPulse(Routine r) => r.lastPulseAt ?? r.lastActionAt;
-    routines.sort((a, b) {
+    active.sort((a, b) {
       final aRun = a.runningBlock != null;
       final bRun = b.runningBlock != null;
       if (aRun && !bRun) return -1;
@@ -564,12 +586,13 @@ class _RoutinesTabState extends State<RoutinesTab> {
       }
       return sortPulse(b).compareTo(sortPulse(a));
     });
+    done.sort((a, b) => sortPulse(b).compareTo(sortPulse(a)));
 
-    for (final r in routines) {
+    for (final r in active) {
       out.add(
         Padding(
           padding: EdgeInsets.only(
-            left: 4.0 + (depth + 1) * 20.0,
+            left: _indent(depth + 1),
             top: 4,
             bottom: 4,
             right: 4,
@@ -577,6 +600,36 @@ class _RoutinesTabState extends State<RoutinesTab> {
           child: _routinePlate(r),
         ),
       );
+    }
+
+    if (done.isNotEmpty) {
+      final bort = BortScope.of(context);
+      final side = PultScope.of(context).smallSide;
+      final strokeW = side * bort.kStroke;
+      out.add(
+        Padding(
+          padding: EdgeInsets.only(
+            left: _indent(depth + 1),
+            right: 4,
+            top: 6,
+            bottom: 6,
+          ),
+          child: Container(height: strokeW, color: bort.mid),
+        ),
+      );
+      for (final r in done) {
+        out.add(
+          Padding(
+            padding: EdgeInsets.only(
+              left: _indent(depth + 1),
+              top: 4,
+              bottom: 4,
+              right: 4,
+            ),
+            child: _routinePlate(r),
+          ),
+        );
+      }
     }
 
     final traces = TraceScope.of(context).attachedToField(nodeId);
@@ -587,7 +640,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
       out.add(
         Padding(
           padding: EdgeInsets.only(
-            left: 4.0 + (depth + 1) * 20.0,
+            left: _indent(depth + 1),
             top: 4,
             bottom: 4,
             right: 4,
@@ -646,8 +699,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
       _buildTree(activeFieldId, 0, {}, items);
     }
 
-    // Any routines not attached to any node? (Should not happen due to
-    // migrateFieldParents, but as a safety net.)
     final attachedRoutineIds = <int>{};
     for (final n in fieldLayer.nodes.values) {
       for (final r in RoutineScope.of(context).routinesForNode(n.id)) {
@@ -659,6 +710,25 @@ class _RoutinesTabState extends State<RoutinesTab> {
     ).routines.where((r) => !attachedRoutineIds.contains(r.id)).toList();
 
     if (unassigned.isNotEmpty) {
+      final activeU = <Routine>[];
+      final doneU = <Routine>[];
+      for (final r in unassigned) {
+        if (r.completed) {
+          doneU.add(r);
+        } else {
+          activeU.add(r);
+        }
+      }
+      int sortPulse(Routine r) => r.lastPulseAt ?? r.lastActionAt;
+      activeU.sort((a, b) {
+        final aRun = a.runningBlock != null;
+        final bRun = b.runningBlock != null;
+        if (aRun && !bRun) return -1;
+        if (!aRun && bRun) return 1;
+        return sortPulse(b).compareTo(sortPulse(a));
+      });
+      doneU.sort((a, b) => sortPulse(b).compareTo(sortPulse(a)));
+
       items.add(
         Padding(
           padding: const EdgeInsets.fromLTRB(4, 16, 4, 4),
@@ -669,19 +739,24 @@ class _RoutinesTabState extends State<RoutinesTab> {
         ),
       );
 
-      int sortPulse(Routine r) => r.lastPulseAt ?? r.lastActionAt;
-      unassigned.sort((a, b) {
-        final aRun = a.runningBlock != null;
-        final bRun = b.runningBlock != null;
-        if (aRun && !bRun) return -1;
-        if (!aRun && bRun) return 1;
-        return sortPulse(b).compareTo(sortPulse(a));
-      });
-
-      for (final r in unassigned) {
+      for (final r in activeU) {
         items.add(
           Padding(padding: const EdgeInsets.all(4), child: _routinePlate(r)),
         );
+      }
+      if (doneU.isNotEmpty) {
+        final strokeW = side * bort.kStroke;
+        items.add(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
+            child: Container(height: strokeW, color: dim),
+          ),
+        );
+        for (final r in doneU) {
+          items.add(
+            Padding(padding: const EdgeInsets.all(4), child: _routinePlate(r)),
+          );
+        }
       }
     }
 
@@ -713,33 +788,23 @@ class _RoutinesTabState extends State<RoutinesTab> {
                   child: ControlRow(
                     rootSide: side,
                     alignment: Alignment.centerLeft,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            fieldName,
-                            style: TextStyle(
-                              color: fg,
-                              fontSize: side * bort.kName * 0.8,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: activeFieldId == null
+                          ? null
+                          : () => _openFieldSwitcher(activeFieldId),
+                      onLongPress: activeFieldId == null
+                          ? null
+                          : () => _showNodeActions(activeFieldId),
+                      child: Text(
+                        fieldName,
+                        style: TextStyle(
+                          color: fg,
+                          fontSize: side * bort.kName * 0.8,
                         ),
-                        Pult(
-                          spec: PultSpec(
-                            id: 'field_switch',
-                            icon: Icons.layers,
-                            onTap: activeFieldId == null
-                                ? null
-                                : () => _openFieldSwitcher(activeFieldId),
-                          ),
-                          fg: fg,
-                          bg: bg,
-                          signal: signal,
-                          overrideSize: side * bort.kPultSmall,
-                        ),
-                      ],
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ),
                 ),
