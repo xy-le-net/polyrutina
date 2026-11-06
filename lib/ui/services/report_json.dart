@@ -6,18 +6,18 @@
 //   {
 //     "schema": 1,
 //     "fields": [ { "id": 1, "name": "...", "parents": [], "is_root": true } ],
-//     "routines": [
-//       {
-//         "source_device": "...",
-//         "source_first_run": 1234567890,
-//         "source_routine_id": 42,
-//         ...
-//         "field_parents": [1, 2],
-//         "blocks": [...],
-//         "traces": [...]
-//       }
-//     ]
+//     "series": {
+//       "shift": [ { "field_id": 1, "year": 2026, "month": 11,
+//                    "days": { "1": 3600, "2": 7200 } } ],
+//       "bort":  [ { "field_id": 0, ... } ]
+//     },
+//     "routines": [ ... ]
 //   }
+//
+// The `series` block carries every month of every registered time
+// series, so that a full export/import round-trip preserves the
+// shift and bort histories. Archives without the block are accepted;
+// they simply import no series.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -38,6 +38,35 @@ class ReportJson {
         'parents': n.parents,
         'is_root': n.isRoot,
       });
+    }
+    return out;
+  }
+
+  // ─── Build series block ───
+  static Map<String, dynamic> buildSeries(AppContext app) {
+    final out = <String, dynamic>{};
+    for (final entry in app.bort.series.entries) {
+      final kind = entry.key;
+      final series = entry.value;
+      final fieldIds = kind == 'shift'
+          ? app.bort.shifts.keys.toList()
+          : <int>[0];
+      final months = <Map<String, dynamic>>[];
+      for (final fId in fieldIds) {
+        for (final m in series.allMonths(fId)) {
+          final days = <String, int>{};
+          for (final e in m.days.entries) {
+            days[e.key.toString()] = e.value;
+          }
+          months.add({
+            'field_id': fId,
+            'year': m.year,
+            'month': m.month,
+            'days': days,
+          });
+        }
+      }
+      if (months.isNotEmpty) out[kind] = months;
     }
     return out;
   }
@@ -189,6 +218,61 @@ class ReportJson {
       traces: traces,
     );
   }
+
+  // ─── Parse the series block ───
+  // Returns a flat list of month records; an absent or malformed
+  // block yields an empty list.
+  static List<ParsedMonth> parseSeries(Map<String, dynamic> data) {
+    final out = <ParsedMonth>[];
+    final raw = data['series'];
+    if (raw is! Map) return out;
+    for (final kindKey in raw.keys) {
+      final kind = kindKey.toString();
+      final months = raw[kindKey];
+      if (months is! List) continue;
+      for (final m in months) {
+        if (m is! Map) continue;
+        final fieldId = (m['field_id'] as num?)?.toInt() ?? 0;
+        final year = (m['year'] as num?)?.toInt();
+        final month = (m['month'] as num?)?.toInt();
+        final days = m['days'];
+        if (year == null || month == null || days is! Map) continue;
+        final dayMap = <int, int>{};
+        for (final dk in days.keys) {
+          final d = int.tryParse(dk.toString());
+          if (d == null) continue;
+          final v = (days[dk] as num?)?.toInt() ?? 0;
+          if (v > 0) dayMap[d] = v;
+        }
+        if (dayMap.isEmpty) continue;
+        out.add(
+          ParsedMonth(
+            kind: kind,
+            fieldId: fieldId,
+            year: year,
+            month: month,
+            days: dayMap,
+          ),
+        );
+      }
+    }
+    return out;
+  }
+}
+
+class ParsedMonth {
+  final String kind;
+  final int fieldId;
+  final int year;
+  final int month;
+  final Map<int, int> days;
+  ParsedMonth({
+    required this.kind,
+    required this.fieldId,
+    required this.year,
+    required this.month,
+    required this.days,
+  });
 }
 
 class ParsedRoutine {

@@ -11,25 +11,21 @@
 // via the `series` registry. The class itself lives in
 // time_series.dart.
 //
+// Journal as source of truth. Every time a day total is written to a
+// series, the whole month is also logged as a `period_month` entry of
+// the actor kind. On reread (or after attachJournal) those entries
+// restore the series from the journal, so a lost or stale file is
+// rebuilt. The file remains a cache; the journal remains the origin.
+//
 // Shift per field. The concept of "shift" is independent for every
 // field (root node). The layer holds a map of FieldShiftState keyed
 // by fieldId. The state class lives in field_shift_state.dart. The
 // global BortTime remains unified (bort time is not split per field).
 //
-// Mutex shift. The `mutexShift` flag (default true) dictates the
-// relationship between routines and shifts:
-//   — if true, they are independent (stopping a shift does not stop
-//     routines, and starting a routine does not start a shift);
-//   — if false, they are linked (starting a routine starts the shift,
-//     stopping the shift pauses all routines in its subtree).
-//
-// Map scale. The `mapScale` property (default 40) represents the
-// number of meters to fit into the smaller side of the map view.
-//
-// Theme selection. Three independent settings replace the former
-// five-theme model: `theme_custom` (bool), `theme_day` (bool), and
-// `theme_autoswitch` (bool). The effective palette is resolved in
-// ThemeStore.
+// Theme selection. Three independent settings: custom, night, auto.
+// Night and auto are mutually exclusive; with both off, day is used.
+// Migration from the former `theme_day`/`theme_autoswitch` keys is
+// done with the sense inverted on `theme_day`.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -42,9 +38,12 @@ import 'package:flutter/services.dart';
 
 import 'bort_file.dart';
 import 'bort_time.dart';
+import 'database.dart';
 import 'drafts_store.dart';
 import 'field_shift_state.dart';
 import 'install_store.dart';
+import 'journal_layer.dart';
+import 'journal_types.dart';
 import 'theme_store.dart';
 import 'time_series.dart';
 
@@ -55,6 +54,8 @@ class OperationalLayer extends ChangeNotifier {
   final DraftsStore _draftsStore = DraftsStore();
   final InstallStore _install = InstallStore();
   final BortFile _file = BortFile();
+
+  JournalLayer? _journal;
 
   // Registry of registered time series (shift, bort).
   final Map<String, TimeSeries> series = {};
@@ -69,8 +70,8 @@ class OperationalLayer extends ChangeNotifier {
   Color get fgsignal => _themes.fgsignal;
   Map<String, Map<String, Color>> get themes => _themes.themes;
   bool get themeCustom => _themes.customEnabled;
-  bool get themeDay => _themes.dayEnabled;
-  bool get themeAutoswitch => _themes.autoswitch;
+  bool get themeNight => _themes.night;
+  bool get themeAuto => _themes.auto;
   Brightness get systemBrightness => _themes.systemBrightness;
 
   int get bortTime => _bortTime.bortTime;
@@ -99,12 +100,8 @@ class OperationalLayer extends ChangeNotifier {
   bool blockData = false;
   bool blockPermissions = false;
 
-  // Map scale (meters per smaller side)
   int mapScale = 40;
-
-  // Mutex shift flag (true = independent, false = linked).
   bool mutexShift = true;
-
   bool mutexRoutines = true;
   bool mutexSlots = true;
 
@@ -177,6 +174,94 @@ class OperationalLayer extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ─── Journal attachment ───
+  // Registers the series handler so that `period_month` entries
+  // restore the histories on reread. Safe to call once, after the
+  // journal has been initialised.
+  void attachJournal(JournalLayer journal) {
+    if (_journal != null) return;
+    _journal = journal;
+    journal.register(
+      name: 'series',
+      types: [JournalType.actor],
+      apply: _applySeriesEntry,
+      reset: _resetSeries,
+    );
+  }
+
+  void _applySeriesEntry(JournalData e) {
+    try {
+      final data = jsonDecode(e.body) as Map<String, dynamic>;
+      if (data['action'] != 'period_month') return;
+      final kind = data['kind'] as String?;
+      if (kind == null) return;
+      final s = series[kind];
+      if (s == null) return;
+      final fieldId = (data['field_id'] as num?)?.toInt() ?? 0;
+      final year = (data['year'] as num?)?.toInt();
+      final month = (data['month'] as num?)?.toInt();
+      final days = data['days'];
+      if (year == null || month == null || days is! Map) return;
+      for (final dk in days.keys) {
+        final d = int.tryParse(dk.toString());
+        if (d == null) continue;
+        final v = (days[dk] as num?)?.toInt() ?? 0;
+        s.addDay(fieldId, year, month, d, v);
+      }
+    } catch (_) {}
+  }
+
+  void _resetSeries() {
+    for (final s in series.values) {
+      s.reset();
+    }
+  }
+
+  // Applies one month to the named series: writes the days to the
+  // file and logs the whole month to the journal, keeping the
+  // journal as the origin of truth. Used by import.
+  void applySeriesMonth(
+    String kind,
+    int fieldId,
+    int year,
+    int month,
+    Map<int, int> days,
+  ) {
+    final s = series[kind];
+    if (s == null) return;
+    for (final e in days.entries) {
+      s.addDay(fieldId, year, month, e.key, e.value);
+    }
+    _logSeriesMonth(kind, fieldId, year, month);
+  }
+
+  // Writes the whole month for a given kind/field to the journal.
+  // Called after every day total is recorded. Fire-and-forget; the
+  // journal pump will pick it up.
+  void _logSeriesMonth(String kind, int fieldId, int year, int month) {
+    final journal = _journal;
+    if (journal == null) return;
+    final s = series[kind];
+    if (s == null) return;
+    final days = s.daysFor(fieldId, year, month);
+    if (days.isEmpty) return;
+    final out = <String, int>{};
+    for (final e in days.entries) {
+      out[e.key.toString()] = e.value;
+    }
+    journal.log(
+      type: JournalType.actor,
+      body: jsonEncode({
+        'action': 'period_month',
+        'kind': kind,
+        'field_id': fieldId,
+        'year': year,
+        'month': month,
+        'days': out,
+      }),
+    );
+  }
+
   @override
   void dispose() {
     _file.dispose();
@@ -201,6 +286,7 @@ class OperationalLayer extends ChangeNotifier {
       if (running > 0) {
         final dt = DateTime.fromMillisecondsSinceEpoch(prevDayStart * 1000);
         shiftHistory.addDay(fieldId, dt.year, dt.month, dt.day, running);
+        _logSeriesMonth('shift', fieldId, dt.year, dt.month);
       }
     } else {
       if (s.totalShiftSeconds > 0 && oldPrev > 0) {
@@ -209,16 +295,17 @@ class OperationalLayer extends ChangeNotifier {
             : s.totalShiftSeconds;
         final dt = DateTime.fromMillisecondsSinceEpoch(oldPrev * 1000);
         shiftHistory.addDay(fieldId, dt.year, dt.month, dt.day, capped);
+        _logSeriesMonth('shift', fieldId, dt.year, dt.month);
       }
       if (running > 0) {
         final capped = running > 86400 ? 86400 : running;
         final dt = DateTime.fromMillisecondsSinceEpoch(prevDayStart * 1000);
         shiftHistory.addDay(fieldId, dt.year, dt.month, dt.day, capped);
+        _logSeriesMonth('shift', fieldId, dt.year, dt.month);
       }
     }
   }
 
-  // ─── Bort day recording ───
   void _recordBortDay(int curMid, int oldPrev) {
     final yesterday = _bortTime.yesterday;
     if (yesterday <= 0) return;
@@ -227,6 +314,34 @@ class OperationalLayer extends ChangeNotifier {
     final at = skipped && oldPrev > 0 ? oldPrev : (curMid - 86400);
     final dt = DateTime.fromMillisecondsSinceEpoch(at * 1000);
     bortHistory.addDay(0, dt.year, dt.month, dt.day, capped);
+    _logSeriesMonth('bort', 0, dt.year, dt.month);
+  }
+
+  // ─── Theme migration ───
+  // Old keys: theme_day (true = day), theme_autoswitch (true = auto).
+  // New keys: theme_night (true = night), theme_auto (true = auto).
+  // Sense of theme_day is inverted; theme_autoswitch is carried over.
+  // When both would be true, auto wins.
+  void _migrateTheme(Map<String, dynamic> data) {
+    final oldDay = data['theme_day'] as bool?;
+    final oldAuto = data['theme_autoswitch'] as bool?;
+    final newNight = data['theme_night'] as bool?;
+    final newAuto = data['theme_auto'] as bool?;
+
+    if (newNight != null || newAuto != null) {
+      _themes.auto = newAuto ?? true;
+      _themes.night = _themes.auto ? false : (newNight ?? false);
+      return;
+    }
+    if (oldDay == null && oldAuto == null) {
+      _themes.auto = true;
+      _themes.night = false;
+      return;
+    }
+    final auto = oldAuto ?? true;
+    final night = auto ? false : !(oldDay ?? true);
+    _themes.auto = auto;
+    _themes.night = night;
   }
 
   Future<void> _loadDefaults() async {
@@ -237,9 +352,7 @@ class OperationalLayer extends ChangeNotifier {
       if (t is Map) _themes.parseThemes(t);
       _themes.customEnabled =
           data['theme_custom'] as bool? ?? _themes.customEnabled;
-      _themes.dayEnabled = data['theme_day'] as bool? ?? _themes.dayEnabled;
-      _themes.autoswitch =
-          data['theme_autoswitch'] as bool? ?? _themes.autoswitch;
+      _migrateTheme(data);
 
       scale = (data['scale'] as num?)?.toDouble() ?? scale;
       lang = data['lang'] as String? ?? lang;
@@ -287,9 +400,7 @@ class OperationalLayer extends ChangeNotifier {
     if (t is Map) _themes.parseThemes(t);
     _themes.customEnabled =
         data['theme_custom'] as bool? ?? _themes.customEnabled;
-    _themes.dayEnabled = data['theme_day'] as bool? ?? _themes.dayEnabled;
-    _themes.autoswitch =
-        data['theme_autoswitch'] as bool? ?? _themes.autoswitch;
+    _migrateTheme(data);
 
     scale = (data['scale'] as num?)?.toDouble() ?? scale;
     lang = data['lang'] as String? ?? lang;
@@ -376,7 +487,7 @@ class OperationalLayer extends ChangeNotifier {
   void setSystemBrightness(Brightness b) {
     if (_themes.systemBrightness == b) return;
     _themes.setSystemBrightness(b);
-    if (_themes.autoswitch) {
+    if (_themes.auto) {
       _themes.resolve();
       notifyListeners();
     }
@@ -517,8 +628,8 @@ class OperationalLayer extends ChangeNotifier {
     await _file.delete();
     _themes.themes = {};
     _themes.customEnabled = false;
-    _themes.dayEnabled = false;
-    _themes.autoswitch = true;
+    _themes.auto = true;
+    _themes.night = false;
     _draftsStore.reset();
     _bortTime.reset();
     shiftHistory.reset();
@@ -625,11 +736,11 @@ class OperationalLayer extends ChangeNotifier {
       case 'theme_custom':
         _themes.customEnabled = _parseBool(value) ?? _themes.customEnabled;
         break;
-      case 'theme_day':
-        _themes.dayEnabled = _parseBool(value) ?? _themes.dayEnabled;
+      case 'theme_night':
+        _themes.night = _parseBool(value) ?? _themes.night;
         break;
-      case 'theme_autoswitch':
-        _themes.autoswitch = _parseBool(value) ?? _themes.autoswitch;
+      case 'theme_auto':
+        _themes.auto = _parseBool(value) ?? _themes.auto;
         break;
       case 'scale':
         scale = double.tryParse(value) ?? scale;
@@ -740,8 +851,8 @@ class OperationalLayer extends ChangeNotifier {
     return <String, dynamic>{
       'themes': _themes.toJson(),
       'theme_custom': _themes.customEnabled,
-      'theme_day': _themes.dayEnabled,
-      'theme_autoswitch': _themes.autoswitch,
+      'theme_night': _themes.night,
+      'theme_auto': _themes.auto,
       'scale': scale,
       'lang': lang,
       'anchor': anchor,
@@ -791,8 +902,8 @@ class OperationalLayer extends ChangeNotifier {
     final out = <String, String>{};
     out.addAll(_themes.toFlatStrings());
     out['theme_custom'] = _themes.customEnabled.toString();
-    out['theme_day'] = _themes.dayEnabled.toString();
-    out['theme_autoswitch'] = _themes.autoswitch.toString();
+    out['theme_night'] = _themes.night.toString();
+    out['theme_auto'] = _themes.auto.toString();
     out['scale'] = scale.toStringAsFixed(2);
     out['lang'] = lang;
     out['labels_buttons'] = labelsButtons.toString();
@@ -820,8 +931,8 @@ class OperationalLayer extends ChangeNotifier {
 
   static const Map<String, String> settingTypes = {
     'theme_custom': 'bool',
-    'theme_day': 'bool',
-    'theme_autoswitch': 'bool',
+    'theme_night': 'bool',
+    'theme_auto': 'bool',
     'scale': 'string',
     'lang': 'string',
     'labels_buttons': 'bool',

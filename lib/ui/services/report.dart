@@ -7,16 +7,12 @@
 //
 // The archive contains report.txt, data.json, and media/.
 //
-// data.json has ONE shape: {"schema": 1, "routines": [...]}.
+// data.json carries routines, fields, and the full series block
+// (shift and bort histories, every month). Media files are packed
+// as before.
 //
 // Streaming. The archive is packed using ZipFileEncoder directly to
-// disk, avoiding loading the entire zip into memory. The text files
-// are written to a temporary directory, added to the archive, and
-// deleted.
-//
-// File names. The zip follows one template:
-//   polyrutina_<label>_<stamp>_<idx>_<deviceId>_<firstRun>.zip
-// The label is truncated to 50 characters to avoid filesystem limits.
+// disk, avoiding loading the entire zip into memory.
 //
 // Isolate. Zip compression and media reading are offloaded to a
 // background isolate (Isolate.run) to keep the UI thread responsive.
@@ -52,24 +48,20 @@ Future<void> _buildArchiveIsolate(Map<String, dynamic> args) async {
   final encoder = ZipFileEncoder();
   encoder.create(zipPath);
 
-  // Temporary directory for text files.
   final tmpDir = Directory(
     '${Directory(zipPath).parent.path}/tmp_zip_${DateTime.now().microsecondsSinceEpoch}',
   );
   await tmpDir.create();
 
   try {
-    // Write report.txt.
     final reportFile = File('${tmpDir.path}/report.txt');
     await reportFile.writeAsString(reportText);
     encoder.addFile(reportFile, 'report.txt');
 
-    // Write data.json.
     final jsonFile = File('${tmpDir.path}/data.json');
     await jsonFile.writeAsString(jsonText);
     encoder.addFile(jsonFile, 'data.json');
 
-    // Add media files.
     for (final m in mediaList) {
       final f = File(m['path']!);
       if (await f.exists()) {
@@ -205,6 +197,7 @@ class ReportBuilder {
     final jsonObj = <String, dynamic>{
       'schema': ReportJson.schemaVersion,
       'fields': ReportJson.buildFields(app),
+      'series': ReportJson.buildSeries(app),
       'routines': [for (final r in routines) ReportJson.buildRoutine(app, r)],
     };
     if (token.cancelled) return null;
@@ -249,7 +242,6 @@ class ReportBuilder {
     final idx = app.bort.nextExportIndex(objectKey);
     final stamp = _stamp();
 
-    // Append deviceId and firstRun to the filename
     final name =
         'polyrutina_${label}_${stamp}_${idx}_${app.bort.deviceId}_${app.bort.firstRunUnixSec}.zip';
     final zipFile = File(p.join(exportsDir.path, name));
@@ -313,7 +305,6 @@ class ReportBuilder {
     }
     buf.writeln();
 
-    // Iterate over 'note' plus standard block kinds
     final slots = ['note', ...RoutineBlock.kinds];
 
     for (final kind in slots) {
@@ -321,7 +312,6 @@ class ReportBuilder {
       final sec = b?.accumulatorSeconds ?? 0;
       final title = i18n.t('routine.block.$kind');
 
-      // Gather all traces for this slot
       final traces =
           app.traceLayer.traces.values
               .where(
@@ -330,7 +320,6 @@ class ReportBuilder {
               .toList()
             ..sort((a, b) => a.id.compareTo(b.id));
 
-      // Check if there's any content
       bool hasContent = sec > 0;
       for (final t in traces) {
         if (t.kind == TraceKind.text && t.text.trim().isNotEmpty) {
@@ -354,7 +343,6 @@ class ReportBuilder {
         buf.writeln('   $title');
       }
 
-      // Print all texts
       for (final t in traces) {
         if (t.kind == TraceKind.text && t.text.trim().isNotEmpty) {
           for (final line in t.text.split('\n')) {
@@ -363,7 +351,6 @@ class ReportBuilder {
         }
       }
 
-      // Attached media summary
       final allFiles = traces.expand((t) => t.files).toList();
       if (allFiles.isNotEmpty) {
         final counts = <String, int>{};
@@ -390,7 +377,6 @@ class ReportBuilder {
         }
       }
 
-      // Geo coordinates
       for (final g in allFiles.where((f) => f.kind == MediaKind.geo)) {
         final lat = g.lat?.toStringAsFixed(6) ?? '?';
         final lon = g.lon?.toStringAsFixed(6) ?? '?';
@@ -398,7 +384,6 @@ class ReportBuilder {
         buf.writeln('      $lat, $lon (±$acc ${i18n.t('time.m')})');
       }
 
-      // Checklists (all of them)
       for (final t in traces) {
         if (t.kind == TraceKind.checklist) {
           for (final it in t.items) {

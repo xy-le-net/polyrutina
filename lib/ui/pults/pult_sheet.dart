@@ -157,7 +157,12 @@ class _SheetBody extends StatelessWidget {
     final items = <Widget>[
       for (final s in subs)
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+          padding: EdgeInsets.only(
+            top: 6,
+            bottom: 6,
+            left: 8 + s.indent,
+            right: 8,
+          ),
           child: Pult(
             spec: s,
             fg: fg,

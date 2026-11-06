@@ -13,6 +13,10 @@
 // orientation. Each legend item is clickable and opens a pult sheet
 // listing the corresponding routines for the current month.
 //
+// Swipe. A horizontal swipe anywhere on the body (grid, legend,
+// empty space) flips the month: swipe right — previous, swipe left —
+// next.
+//
 // Scheduling midnight. When a routine is scheduled to a specific
 // day, the time is set to the bort's «midnight» setting.
 //
@@ -56,6 +60,13 @@ class _DaysTabState extends State<DaysTab> {
     setState(() {
       _month = DateTime(_month.year, _month.month + delta, 1);
     });
+  }
+
+  void _onSwipe(DragEndDetails details) {
+    final v = details.primaryVelocity ?? 0;
+    if (v.abs() < 100) return;
+    // Swipe right → previous month; swipe left → next month.
+    _shift(v > 0 ? -1 : 1);
   }
 
   int? _dayOf(Routine r) {
@@ -278,52 +289,56 @@ class _DaysTabState extends State<DaysTab> {
           ),
         ),
         Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final wide = constraints.maxWidth > 640;
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragEnd: _onSwipe,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final wide = constraints.maxWidth > 640;
 
-              double maxGridWidth = 600.0;
-              if (wide) {
-                final availableHeight =
-                    constraints.maxHeight - 40; // padding margin
-                final maxCellSize = availableHeight / 6;
-                maxGridWidth = (maxCellSize * 7).clamp(200.0, 600.0);
-              }
+                double maxGridWidth = 600.0;
+                if (wide) {
+                  final availableHeight =
+                      constraints.maxHeight - 40; // padding margin
+                  final maxCellSize = availableHeight / 6;
+                  maxGridWidth = (maxCellSize * 7).clamp(200.0, 600.0);
+                }
 
-              if (!wide) {
+                if (!wide) {
+                  return SingleChildScrollView(
+                    padding: EdgeInsets.all(side * 0.3),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        gridWidget,
+                        SizedBox(height: side * 0.8),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: legendWidget,
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
                 return SingleChildScrollView(
-                  padding: EdgeInsets.all(side * 0.3),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                  padding: EdgeInsets.all(side * 0.6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      gridWidget,
-                      SizedBox(height: side * 0.8),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: legendWidget,
+                      SizedBox(width: maxGridWidth, child: gridWidget),
+                      SizedBox(width: side * 1.0),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.topLeft,
+                          child: legendWidget,
+                        ),
                       ),
                     ],
                   ),
                 );
-              }
-
-              return SingleChildScrollView(
-                padding: EdgeInsets.all(side * 0.6),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(width: maxGridWidth, child: gridWidget),
-                    SizedBox(width: side * 1.0),
-                    Expanded(
-                      child: Align(
-                        alignment: Alignment.topLeft,
-                        child: legendWidget,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+              },
+            ),
           ),
         ),
       ],

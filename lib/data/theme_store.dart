@@ -2,37 +2,30 @@
 // lib/data/theme_store.dart — colors and themes.
 //
 // Five roles, in the ladder order used across the app:
-//   1 — bgsignal: background of signal elements (accent plates,
-//                 the collapse mark); the soft end, close to bg;
+//   1 — bgsignal: background of signal elements;
 //   2 — bg:       base background;
 //   3 — mid:      secondary content and soft strokes;
 //   4 — fg:       base content;
-//   5 — fgsignal: content of signal elements, the accent color;
-//                 the extreme end, opposite the accent plate.
+//   5 — fgsignal: content of signal elements, the accent color.
 //
-// Usage rule. bg/fg — the base pair (page surface, main text).
-// bgsignal/fgsignal — signal elements: selected pults, the
-// collapse mark, the active date pult, primary links, the shift
-// row. When a signal element is drawn as a plate, fgsignal fills
-// the plate and bgsignal colors the icon or text on it; when it
-// is drawn as text, fgsignal alone colors it. mid — secondary
-// text and hairline strokes.
+// Theme selection. Three independent settings:
+//   customEnabled — use the «custom» palette (the source palette);
+//   night         — force the night palette (mutually exclusive
+//                   with auto);
+//   auto          — follow the system brightness (mutually
+//                   exclusive with night).
+// When both night and auto are false, the day palette is used.
 //
-// Theme selection. Three independent settings replace the former
-// five-theme model:
-//   customEnabled — use the «custom» palette, overriding day/night;
-//   dayEnabled    — true selects day, false selects night;
-//   autoswitch    — follow the system brightness for the day/night
-//                   pair.
-// The effective palette is resolved in _computeCurrent. The
-// opposite palette is always the mirror of the current one
-// (bg ↔ fg, bgsignal ↔ fgsignal, mid fixed), which keeps the
-// running-block inverse coherent without a separate «invers»
-// theme.
+// Resolving. With customEnabled, the source palette is the custom
+// one; otherwise the built-in day or night. Then:
+//   — night on: the night palette is used (custom night = the
+//     mirror of the custom palette);
+//   — auto on: the palette follows the system brightness (day or
+//     night, mirrored for custom as above);
+//   — neither: the day palette (built-in day or custom as is).
 //
-// Built-in themes live in const maps. Any caller that needs a
-// mutable copy wraps it in Map.from; callers that only read the
-// palette use the constant directly.
+// Opposite palette. Always the mirror of the current one
+// (bg ↔ fg, bgsignal ↔ fgsignal, mid fixed), for running blocks.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -40,9 +33,6 @@
 import 'package:flutter/material.dart';
 
 class ThemeStore {
-  // ─── All stored themes ───
-  // day, night, custom. The resolved system and the computed
-  // opposite are not stored here.
   Map<String, Map<String, Color>> _themes = {};
   Map<String, Map<String, Color>> get themes => _themes;
   set themes(Map<String, Map<String, Color>> v) {
@@ -50,11 +40,7 @@ class ThemeStore {
     _invalidate();
   }
 
-  // ─── Theme selection (three independent settings) ───
-  // customEnabled — use the «custom» palette, which overrides the
-  // day/night pair. dayEnabled — true selects day, false selects
-  // night (the default when nothing is chosen). autoswitch — when
-  // true, the day/night pair follows the system brightness.
+  // ─── Theme selection ───
   bool _customEnabled = false;
   bool get customEnabled => _customEnabled;
   set customEnabled(bool v) {
@@ -63,23 +49,26 @@ class ThemeStore {
     _invalidate();
   }
 
-  bool _dayEnabled = false;
-  bool get dayEnabled => _dayEnabled;
-  set dayEnabled(bool v) {
-    if (_dayEnabled == v) return;
-    _dayEnabled = v;
+  // Night forces the night palette; auto follows the system. The two
+  // are mutually exclusive: turning one on turns the other off.
+  bool _night = false;
+  bool get night => _night;
+  set night(bool v) {
+    if (_night == v) return;
+    _night = v;
+    if (v) _auto = false;
     _invalidate();
   }
 
-  bool _autoswitch = true;
-  bool get autoswitch => _autoswitch;
-  set autoswitch(bool v) {
-    if (_autoswitch == v) return;
-    _autoswitch = v;
+  bool _auto = true;
+  bool get auto => _auto;
+  set auto(bool v) {
+    if (_auto == v) return;
+    _auto = v;
+    if (v) _night = false;
     _invalidate();
   }
 
-  // ─── System brightness ───
   Brightness _systemBrightness = Brightness.light;
   Brightness get systemBrightness => _systemBrightness;
   set systemBrightness(Brightness b) {
@@ -88,7 +77,6 @@ class ThemeStore {
     _invalidate();
   }
 
-  // ─── Caches ───
   Map<String, Color>? _curCache;
   Map<String, Color>? _oppCache;
 
@@ -97,7 +85,6 @@ class ThemeStore {
     _oppCache = null;
   }
 
-  // ─── Current palette ───
   Map<String, Color> get _cur => _curCache ??= _computeCurrent();
 
   Color get bg => _cur['bg']!;
@@ -106,13 +93,10 @@ class ThemeStore {
   Color get fg => _cur['fg']!;
   Color get fgsignal => _cur['fgsignal']!;
 
-  // ─── Opposite palette ───
   Map<String, Color> get _opp => _oppCache ??= _computeOpposite();
 
   Map<String, Color>? colorsForOpposite() => Map<String, Color>.from(_opp);
 
-  // ─── Resolution ───
-  // Forces the current palette to be computed after bulk mutations.
   void resolve() {
     _cur;
   }
@@ -121,28 +105,29 @@ class ThemeStore {
     systemBrightness = b;
   }
 
-  // ─── Compute current ───
+  // ─── Resolution ───
   Map<String, Color> _computeCurrent() {
-    if (_customEnabled) {
-      return Map<String, Color>.from(_themes['custom'] ?? _customColors);
+    final source = _customEnabled
+        ? Map<String, Color>.from(_themes['custom'] ?? _customColors)
+        : null;
+
+    Map<String, Color> builtin(String name) =>
+        Map<String, Color>.from(_themes[name] ?? _builtinThemes[name]!);
+
+    if (_night) {
+      return source != null ? _invert(source) : builtin('night');
     }
-    if (_autoswitch) {
-      final name = _systemBrightness == Brightness.dark ? 'night' : 'day';
-      return Map<String, Color>.from(_themes[name] ?? _builtinThemes[name]!);
+    if (_auto) {
+      if (_systemBrightness == Brightness.dark) {
+        return source != null ? _invert(source) : builtin('night');
+      }
+      return source ?? builtin('day');
     }
-    final name = _dayEnabled ? 'day' : 'night';
-    return Map<String, Color>.from(_themes[name] ?? _builtinThemes[name]!);
+    return source ?? builtin('day');
   }
 
-  // ─── Compute opposite ───
-  // Unified: the opposite is always the mirror of the current
-  // palette. Since night = mirror(day) and custom/invers are each
-  // other's mirror, this reproduces the day↔night pairing and the
-  // custom↔invers pairing with one rule.
   Map<String, Color> _computeOpposite() => _invert(_cur);
 
-  // Mirror rule: bg ↔ fg, bgsignal ↔ fgsignal, mid fixed.
-  // Involution: applying it twice restores the original palette.
   static Map<String, Color> _invert(Map<String, Color> cur) => {
     'bg': cur['fg']!,
     'bgsignal': cur['fgsignal']!,
@@ -151,7 +136,6 @@ class ThemeStore {
     'fgsignal': cur['bgsignal']!,
   };
 
-  // ─── Parse themes from JSON ───
   void parseThemes(Map<dynamic, dynamic> t) {
     final out = <String, Map<String, Color>>{};
     for (final k in t.keys) {
@@ -173,10 +157,6 @@ class ThemeStore {
     _invalidate();
   }
 
-  // ─── Roles accepted by applyThemeKey ───
-  // Only the five current role names. Legacy names (bgdim, dim,
-  // signal) are silently ignored, so old saved states degrade to
-  // the built-in defaults rather than corrupting the palette.
   static const Set<String> _roleSet = {
     'bg',
     'bgsignal',
@@ -185,7 +165,6 @@ class ThemeStore {
     'fgsignal',
   };
 
-  // ─── Apply a single theme color key ───
   bool applyThemeKey(String key, String value) {
     if (!key.startsWith('theme.')) return false;
     if (key.split('.').length != 3) return false;
@@ -201,7 +180,6 @@ class ThemeStore {
     return true;
   }
 
-  // ─── Serialization ───
   Map<String, dynamic> toJson() {
     final out = <String, dynamic>{};
     for (final e in _themes.entries) {
@@ -228,7 +206,6 @@ class ThemeStore {
     return out;
   }
 
-  // ─── Built-in defaults ───
   void ensureThemes() {
     var changed = false;
     for (final e in _builtinThemes.entries) {
@@ -240,18 +217,6 @@ class ThemeStore {
     if (changed) _invalidate();
   }
 
-  // ─── Const built-ins ───
-  //
-  // day — light theme. The ladder, from soft to extreme:
-  //   bg #D9D3C7, bgsignal #FBF5E9, mid #7F8694,
-  //   fg #181D27, fgsignal #060810.
-  // The palette is a cool-to-warm gradient: the dark end (bgsignal,
-  // which in the light theme is the extreme) is bluish, the light
-  // end (fg, fgsignal) is creamy, mid is neutral. Saturation is
-  // kept moderate (ten to twenty percent) so the theme is soft but
-  // visibly colored; hierarchy reads by lightness alone, which
-  // keeps it legible under protanopia, deuteranopia, tritanopia,
-  // and on monochrome screens.
   static const Map<String, Color> _dayColors = {
     'bg': Color(0xFFD9D3C7),
     'bgsignal': Color(0xFFFBF5E9),
@@ -260,12 +225,6 @@ class ThemeStore {
     'fgsignal': Color(0xFF060810),
   };
 
-  // night — exact mirror of day: bg↔fg, bgsignal↔fgsignal.
-  //   bg #181D27, bgsignal #060810, mid #7F8694,
-  //   fg #D9D3C7, fgsignal #FBF5E9.
-  // The same cool-to-warm gradient, inverted in lightness: the
-  // page is a deep blue, the text is creamy, the signal plate is
-  // near-black, the signal text is near-white.
   static const Map<String, Color> _nightColors = {
     'bg': Color(0xFF181D27),
     'bgsignal': Color(0xFF060810),
@@ -274,13 +233,6 @@ class ThemeStore {
     'fgsignal': Color(0xFFFBF5E9),
   };
 
-  // custom — dark theme with a yellow accent. The ladder from soft
-  // to extreme:
-  //   bg #3F4D5A, bgsignal #071232, mid #7A868F,
-  //   fg #B9B3A6, fgsignal #FFCB4F.
-  // Its mirror (the computed opposite) yields beige page, light
-  // alternate blocks, dark text, dark-blue accents — a coherent
-  // light theme under the same rule.
   static const Map<String, Color> _customColors = {
     'bg': Color(0xFF3F4D5A),
     'bgsignal': Color(0xFF071232),
@@ -289,9 +241,6 @@ class ThemeStore {
     'fgsignal': Color(0xFFFFCB4F),
   };
 
-  // Only day, night, custom are stored built-ins. The opposite is
-  // computed from the current palette; «system» resolves at read
-  // time.
   static const Map<String, Map<String, Color>> _builtinThemes = {
     'day': _dayColors,
     'night': _nightColors,
@@ -299,7 +248,6 @@ class ThemeStore {
   };
 }
 
-// ─── Color parsing ───
 Color? parseColor(String? s) {
   if (s == null) return null;
   var t = s.trim();
@@ -310,7 +258,6 @@ Color? parseColor(String? s) {
   return Color(0xFF000000 | v);
 }
 
-// ─── Color to string ───
 String colorToHex(Color c) {
   final r = (c.r * 255).round().toRadixString(16).padLeft(2, '0');
   final g = (c.g * 255).round().toRadixString(16).padLeft(2, '0');

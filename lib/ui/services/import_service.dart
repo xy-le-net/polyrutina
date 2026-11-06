@@ -3,7 +3,7 @@
 //
 // Opened from the rubka's «import» pult: the system file sheet
 // (FileType.custom, *.zip, multiple). Each archive is read:
-//   data.json — the routine(s) as a whole, plus the field tree;
+//   data.json — routines, the field tree, and the series block;
 //   media/<name> — media files, matched by name against the traces.
 //
 // Streaming. The archive is decoded using a stream (InputFileStream)
@@ -12,24 +12,27 @@
 // to disk.
 //
 // data.json shape. ONE shape is accepted:
-//   {"schema": 1, "fields": [...], "routines": [ ... ]}
-// The former «bare object» form is abolished.
+//   {"schema": 1, "fields": [...], "series": {...}, "routines": [ ... ]}
+// The former «bare object» form is abolished. The `series` block is
+// optional; archives without it simply import no series.
 //
 // Field tree. If the "fields" array is present, the importer first
 // creates all nodes (mapping the old IDs to the new ones), then
 // re-attaches the parent-child links, and finally binds routines
-// to the new node IDs. If "fields" is absent (older archives), the
-// routines are attached to the current root field, as before.
+// to the new node IDs. If "fields" is absent, the routines are
+// attached to the current root field.
+//
+// Series. Every month from the `series` block is applied to the
+// layer via applySeriesMonth: the file is updated and the month is
+// logged to the journal, so the journal holds the full history.
 //
 // Deduplication. The source key of each parsed routine is
-// «deviceId/firstRun/routineId» of the exporting device; the routine
-// layer stores it as Routine.sourceKey, so re-importing the same
-// archive is idempotent — such routines are counted as «skipped»
-// and produce no new entries, no media copies, no trace copies.
+// «deviceId/firstRun/routineId»; re-importing the same archive is
+// idempotent.
 //
 // Media orphan prevention. Media files are copied into media/ ONLY
-// for routines that are actually going to be imported, and under
-// fresh monotone names (via nextMediaIndex). If the transaction fails,
+// for routines that are actually going to be imported, under fresh
+// monotone names (via nextMediaIndex). If the transaction fails,
 // every file written during the attempt is removed.
 //
 // Transparency is not applied.
@@ -80,7 +83,6 @@ class ImportResult {
   );
 }
 
-// ─── Public entry: pick archives and import ───
 Future<ImportResult> importFromPicker({
   required AppContext app,
   ValueChanged<double>? onProgress,
@@ -98,21 +100,15 @@ Future<ImportResult> importFromPicker({
   for (var i = 0; i < picked.files.length; i++) {
     final f = picked.files[i];
     if (f.path == null) continue;
-
-    // Report progress per archive.
     onProgress?.call(i / picked.files.length);
-
     try {
       total = total.merge(await _importZip(app, f.path!));
-    } catch (_) {
-      // A single corrupt archive must not abort the whole session.
-    }
+    } catch (_) {}
   }
   onProgress?.call(1.0);
   return total;
 }
 
-// ─── One archive ───
 Future<ImportResult> _importZip(AppContext app, String path) async {
   final inputStream = InputFileStream(path);
   final archive = ZipDecoder().decodeBuffer(inputStream);
@@ -126,9 +122,9 @@ Future<ImportResult> _importZip(AppContext app, String path) async {
   final dataStr = utf8.decode(dataFile.content as List<int>);
   final Object? decoded = jsonDecode(dataStr);
 
-  // ONE accepted shape: the wrapper object.
   final list = <Map<String, dynamic>>[];
   List<dynamic>? fieldList;
+  List<ParsedMonth> months = const [];
   if (decoded is Map) {
     final routines = decoded['routines'];
     if (routines is List) {
@@ -139,8 +135,9 @@ Future<ImportResult> _importZip(AppContext app, String path) async {
     if (decoded['fields'] is List) {
       fieldList = decoded['fields'] as List;
     }
+    months = ReportJson.parseSeries(Map<String, dynamic>.from(decoded));
   }
-  if (list.isEmpty) {
+  if (list.isEmpty && months.isEmpty) {
     await inputStream.close();
     return const ImportResult();
   }
@@ -156,10 +153,6 @@ Future<ImportResult> _importZip(AppContext app, String path) async {
       continue;
     }
     toImport.add(parsed);
-  }
-  if (toImport.isEmpty) {
-    await inputStream.close();
-    return ImportResult(skipped: skipped);
   }
 
   // Phase 2: extract media — only the files referenced by the
@@ -196,9 +189,6 @@ Future<ImportResult> _importZip(AppContext app, String path) async {
       );
       final target = File(p.join(mediaDir.path, safe));
 
-      // Stream the file content to disk. writeContent is synchronous
-      // in archive 3.x; OutputFileStream.closeSync() is used to
-      // ensure the file handle is released.
       final outputStream = OutputFileStream(target.path);
       file.writeContent(outputStream);
       outputStream.closeSync();
@@ -225,7 +215,6 @@ Future<ImportResult> _importZip(AppContext app, String path) async {
       // 3a. Restore field tree topology, if present.
       if (fieldList != null) {
         final fields = fieldList;
-        // Pass 1: create all nodes (without parents yet).
         for (final f in fields) {
           if (f is! Map) continue;
           final oldId = (f['id'] as num?)?.toInt();
@@ -244,7 +233,6 @@ Future<ImportResult> _importZip(AppContext app, String path) async {
           fieldIdMap[oldId] = newId;
         }
 
-        // Pass 2: establish parent-child links using the new IDs.
         for (final f in fields) {
           if (f is! Map) continue;
           final oldId = (f['id'] as num?)?.toInt();
@@ -272,7 +260,12 @@ Future<ImportResult> _importZip(AppContext app, String path) async {
         }
       }
 
-      // 3b. Apply routines, binding them to the new field IDs.
+      // 3b. Apply series months.
+      for (final m in months) {
+        app.bort.applySeriesMonth(m.kind, m.fieldId, m.year, m.month, m.days);
+      }
+
+      // 3c. Apply routines, binding them to the new field IDs.
       for (final parsed in toImport) {
         await _applyParsed(app, parsed, extracted, fieldIdMap);
       }
@@ -310,10 +303,6 @@ Future<void> _applyParsed(
   final TraceLayer traceLayer = app.traceLayer;
   final JournalLayer journal = app.journal;
 
-  // Map the old parent IDs to the newly created ones. If the routine
-  // has no field_parents (or the archive lacks the "fields" array),
-  // fall back to the current root field, so it appears immediately
-  // in the tree.
   final newFieldParents = <int>[];
   for (final oldParentId in p.fieldParents) {
     final newId = fieldIdMap[oldParentId];

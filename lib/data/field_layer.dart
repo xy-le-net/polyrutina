@@ -12,10 +12,12 @@
 //
 // Renaming. All nodes, including roots, can be renamed.
 //
-// Deletion. Deleting a node with children is a multi-step operation.
-// The children are re-attached to the node's parents (or to the
-// default root). This is wrapped in a single journal transaction to
-// avoid multiple pumps and intermediate states.
+// Deletion. Every node except the zero field (the default root) can
+// be deleted. Deleting a node with children is a multi-step
+// operation: on shake, the children are re-attached to the zero
+// field; on burn, they are removed recursively. This is wrapped in
+// a single journal transaction to avoid multiple pumps and
+// intermediate states.
 //
 // isDescendant. A public method used to determine if a node is a
 // descendant of another. Crucial for preventing cycles during
@@ -239,21 +241,12 @@ class FieldLayer extends ChangeNotifier {
           }
           break;
       }
-      // Normalize after every entry: any action above may leave
-      // activeFieldId null or pointing at a removed node. A single
-      // fallback here is cheaper than guarding every case, and it
-      // is the one place that guarantees the invariant `activeFieldId
-      // == null || nodes.containsKey(activeFieldId)`.
       if (activeFieldId == null || !nodes.containsKey(activeFieldId)) {
         activeFieldId = (rootId != null && nodes.containsKey(rootId))
             ? rootId
             : null;
       }
     } catch (_) {}
-    // Always notify: the UI must rebuild after any journal entry,
-    // otherwise a rename or creation appears to do nothing until a
-    // restart. This was the root cause of the «disappearing field»
-    // bug.
     notifyListeners();
   }
 
@@ -317,15 +310,9 @@ class FieldLayer extends ChangeNotifier {
     final n = nodes[id];
     if (n == null) return;
     n.name = name;
-    // If the node is the default root but rootId was lost (e.g. on a
-    // damaged cache load), restore it here — the active field must
-    // remain a valid key into `nodes`.
     if (n.isRoot && (rootId == null || !nodes.containsKey(rootId))) {
       rootId = id;
     }
-    // If the active field is unset or dangling, fall back to the
-    // default root. Without this the field tab goes blank after a
-    // rename that follows a corrupted reload.
     if (activeFieldId == null || !nodes.containsKey(activeFieldId)) {
       if (rootId != null && nodes.containsKey(rootId)) {
         activeFieldId = rootId;
@@ -348,8 +335,6 @@ class FieldLayer extends ChangeNotifier {
     final parent = nodes[parentId];
     if (child == null || parent == null) return;
     if (child.parents.contains(parentId)) return;
-
-    // Prevent cycles
     if (isDescendant(parentId, childId)) return;
 
     child.parents.add(parentId);
@@ -405,7 +390,6 @@ class FieldLayer extends ChangeNotifier {
 
     await journal.transaction(() async {
       if (burn) {
-        // Recursively delete children
         final children = List<int>.from(node.children);
         for (final cId in children) {
           await deleteNode(journal, cId, burn: true);
@@ -420,7 +404,6 @@ class FieldLayer extends ChangeNotifier {
         }
       }
 
-      // Delete this node
       nodes.remove(id);
       for (final pId in node.parents) {
         nodes[pId]?.children.remove(id);

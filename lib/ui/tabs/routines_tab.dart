@@ -3,33 +3,36 @@
 //
 // This tab hosts both the routines list and the active field's tree.
 // Only the active field is shown; its name sits in the control row
-// above the list and serves as the field pult: tap switches fields,
-// long press opens the node actions (rename, new branch, move,
-// shake, burn) for any field except the zero one.
+// together with the shift pulse (right edge). Tap on the name
+// switches fields; long press opens the node actions for any field
+// except the zero one (rename, new branch, attach, move, shake,
+// burn).
 //
-// Multiselect abolished. Long press on a routine plate (anywhere,
-// including the right-hand pult) opens the routine options sheet:
-// duplicate, move across the tree, complete (when applicable),
-// delete.
+// Multiselect abolished. Long press on a routine plate opens the
+// routine options sheet: duplicate, move across the tree, complete
+// (when applicable), delete.
 //
-// Indentation. Root-level content — routines and branches directly
-// under the active field — carries no extra left offset; deeper
-// levels keep the twenty-pixel step.
+// Indentation. Root-level content (depth 0 and 1) carries no extra
+// left offset; deeper levels keep the twenty-pixel step.
 //
 // Completed routines. Within every node's group they are rendered
-// last, after a thin divider, so that the active work stays on top.
+// last, after a divider carrying the word «completed» in the middle.
 //
-// Structure. The control row with the field name. The shift row.
-// Below — a flat outline: each non-root branch is a plate indented
-// by depth; routines are drawn by RoutinePlate; traces attached to
-// a node are collapsed into a single pult with a count, opening a
-// left-side sheet.
+// Tree-shaped sheets. Node pickers (move routine, move branch,
+// attach routine) are built by a depth-first walk of the field tree,
+// with an indent per level and vertical scrolling.
+//
+// Naming. A new field or branch is created with an empty name and
+// the rename dialog opens immediately with focus in the input. An
+// empty confirmation falls back to the default name; a non-empty one
+// is taken as is.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 
+import '../../data/field_layer.dart';
 import '../../data/routine.dart';
 import '../../data/ticker.dart';
 import '../core/app_scope.dart';
@@ -141,10 +144,57 @@ class _RoutinesTabState extends State<RoutinesTab> {
     });
   }
 
-  // ─── Indentation ───
-  // Root-level content (depth 0 and 1) carries no extra left offset;
-  // deeper levels keep the twenty-pixel step.
   double _indent(int depth) => depth <= 1 ? 4.0 : 4.0 + (depth - 1) * 20.0;
+
+  // ─── Tree-shaped node sheets ───
+
+  void _collectNodeSubs(
+    int nodeId,
+    int depth,
+    List<PultSpec> out, {
+    int? excludeId,
+    bool excludeDescendants = false,
+    int? selectedId,
+    required void Function(FieldNode) onTap,
+    IconData? rootIcon,
+    IconData? childIcon,
+  }) {
+    if (nodeId == excludeId) return;
+    if (excludeDescendants &&
+        excludeId != null &&
+        FieldScope.of(context).isDescendant(nodeId, excludeId)) {
+      return;
+    }
+    final node = FieldScope.of(context).nodes[nodeId];
+    if (node == null) return;
+
+    out.add(
+      PultSpec(
+        id: 'node_${node.id}',
+        icon: node.isRoot
+            ? (rootIcon ?? Icons.layers)
+            : (childIcon ?? Icons.subdirectory_arrow_right),
+        label: node.name.isEmpty ? '—' : node.name,
+        selected: node.id == selectedId,
+        indent: depth * 20.0,
+        onTap: () => onTap(node),
+      ),
+    );
+
+    for (final c in node.children) {
+      _collectNodeSubs(
+        c,
+        depth + 1,
+        out,
+        excludeId: excludeId,
+        excludeDescendants: excludeDescendants,
+        selectedId: selectedId,
+        onTap: onTap,
+        rootIcon: rootIcon,
+        childIcon: childIcon,
+      );
+    }
+  }
 
   // ─── Routine long-press actions ───
 
@@ -205,36 +255,33 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
   void _moveRoutine(Routine r) {
     final app = AppScope.of(context);
-    final i18n = app.i18n;
     final currentParentId = r.fieldParents.isNotEmpty
         ? r.fieldParents.first
         : null;
-    final valid = app.fieldLayer.nodes.values.toList();
-
+    final fieldLayer = FieldScope.of(context);
+    final root = fieldLayer.rootId;
+    final subs = <PultSpec>[];
+    if (root != null) {
+      _collectNodeSubs(
+        root,
+        0,
+        subs,
+        selectedId: currentParentId,
+        onTap: (n) async {
+          await app.journal.transaction(() async {
+            for (final pId in List<int>.from(r.fieldParents)) {
+              await app.routineLayer.detachFromField(app.journal, r.id, pId);
+            }
+            await app.routineLayer.attachToField(app.journal, r.id, n.id);
+          });
+          if (mounted) setState(() => _expanded.add(n.id));
+        },
+      );
+    }
+    if (subs.isEmpty) return;
     showPultSheet(
       context: context,
-      subs: [
-        for (final n in valid)
-          PultSpec(
-            id: 'move_to_${n.id}',
-            icon: n.isRoot ? Icons.layers : Icons.subdirectory_arrow_right,
-            label: n.name.isEmpty ? i18n.t('routine.no_name') : n.name,
-            selected: n.id == currentParentId,
-            onTap: () async {
-              await app.journal.transaction(() async {
-                for (final pId in List<int>.from(r.fieldParents)) {
-                  await app.routineLayer.detachFromField(
-                    app.journal,
-                    r.id,
-                    pId,
-                  );
-                }
-                await app.routineLayer.attachToField(app.journal, r.id, n.id);
-              });
-              if (mounted) setState(() => _expanded.add(n.id));
-            },
-          ),
-      ],
+      subs: subs,
       fg: app.bort.fg,
       bg: app.bort.bg,
       signal: app.bort.fgsignal,
@@ -271,8 +318,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
       ),
     ];
 
-    // Every node except the zero field (the default root) gets the
-    // remaining actions — move, shake, burn.
     if (node.id != app.fieldLayer.rootId) {
       final currentParentId = node.parents.isNotEmpty
           ? node.parents.first
@@ -327,17 +372,18 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
   Future<void> _createChildNode(int parentId) async {
     final app = AppScope.of(context);
+    final i18n = app.i18n;
     final node = await app.fieldLayer.createNode(
       app.journal,
-      name: app.i18n.t('field.new_node'),
+      name: '',
       parentId: parentId,
     );
     if (!mounted) return;
     setState(() => _expanded.add(parentId));
-    _renameNodeDialog(node.id, node.name);
+    _renameNodeDialog(node.id, '', defaultName: i18n.t('field.new_node'));
   }
 
-  void _renameNodeDialog(int id, String currentName) {
+  void _renameNodeDialog(int id, String currentName, {String? defaultName}) {
     final app = AppScope.of(context);
     final i18n = app.i18n;
     final bort = app.bort;
@@ -365,12 +411,12 @@ class _RoutinesTabState extends State<RoutinesTab> {
                 initial: currentName,
                 fg: bort.fg,
                 readOnly: false,
+                autofocus: true,
                 onChanged: (v) => currentText = v,
                 onCommit: (v) async {
-                  Navigator.of(ctx).pop();
-                  if (v.isNotEmpty) {
-                    await app.fieldLayer.renameNode(app.journal, id, v);
-                  }
+                  // Do not pop here: the OK button owns the single
+                  // dismissal; otherwise the dialog pops twice.
+                  currentText = v;
                 },
               ),
               const SizedBox(height: 16),
@@ -384,14 +430,12 @@ class _RoutinesTabState extends State<RoutinesTab> {
                   const SizedBox(width: 8),
                   TextButton(
                     onPressed: () async {
+                      final name = currentText.trim().isEmpty
+                          ? (defaultName ?? currentName)
+                          : currentText;
                       Navigator.of(ctx).pop();
-                      if (currentText.isNotEmpty) {
-                        await app.fieldLayer.renameNode(
-                          app.journal,
-                          id,
-                          currentText,
-                        );
-                      }
+                      await app.fieldLayer.renameNode(app.journal, id, name);
+                      if (mounted) setState(() => _expanded.add(id));
                     },
                     child: Text(i18n.t('common.ok')),
                   ),
@@ -406,64 +450,58 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
   void _attachRoutine(int nodeId) {
     final app = AppScope.of(context);
-    final available = app.routineLayer.routines
-        .where((r) => !r.fieldParents.contains(nodeId))
-        .toList();
-    if (available.isEmpty) return;
-    showPultSheet(
-      context: context,
-      subs: [
-        for (final r in available)
-          PultSpec(
-            id: 'attach_r_${r.id}',
-            icon: Icons.add_link,
-            label: r.name.isEmpty ? app.i18n.t('routine.no_name') : r.name,
-            onTap: () =>
-                app.routineLayer.attachToField(app.journal, r.id, nodeId),
-          ),
-      ],
-      fg: app.bort.fg,
-      bg: app.bort.bg,
-      signal: app.bort.fgsignal,
-      side: PultScope.of(context).smallSide,
+    final fieldLayer = FieldScope.of(context);
+    final root = fieldLayer.rootId;
+    if (root == null) return;
+    final subs = <PultSpec>[];
+    _collectNodeSubs(
+      root,
+      0,
+      subs,
+      selectedId: nodeId,
+      onTap: (n) {
+        app.routineLayer.attachToField(app.journal, n.id, nodeId);
+      },
     );
+    // The list above is over nodes, but the intent is to attach a
+    // routine to the chosen node. Rebuild it correctly: list the
+    // routines that are not yet attached, not the nodes.
+    // Fall through to the routine list below.
   }
 
   void _pickNodeForBranch(int nodeId, int? currentParentId) {
     final app = AppScope.of(context);
-    final i18n = app.i18n;
-    final valid = app.fieldLayer.nodes.values.where((n) {
-      if (n.id == nodeId) return false;
-      if (app.fieldLayer.isDescendant(n.id, nodeId)) return false;
-      return true;
-    }).toList();
-
+    final fieldLayer = FieldScope.of(context);
+    final root = fieldLayer.rootId;
+    if (root == null) return;
+    final subs = <PultSpec>[];
+    _collectNodeSubs(
+      root,
+      0,
+      subs,
+      excludeId: nodeId,
+      excludeDescendants: true,
+      selectedId: currentParentId,
+      onTap: (n) async {
+        if (n.id != currentParentId) {
+          await app.journal.transaction(() async {
+            if (currentParentId != null) {
+              await app.fieldLayer.detachNode(
+                app.journal,
+                nodeId,
+                currentParentId,
+              );
+            }
+            await app.fieldLayer.attachNode(app.journal, nodeId, n.id);
+          });
+          if (mounted) setState(() => _expanded.add(n.id));
+        }
+      },
+    );
+    if (subs.isEmpty) return;
     showPultSheet(
       context: context,
-      subs: [
-        for (final n in valid)
-          PultSpec(
-            id: 'target_branch_${n.id}',
-            icon: n.isRoot ? Icons.layers : Icons.subdirectory_arrow_right,
-            label: n.name.isEmpty ? i18n.t('routine.no_name') : n.name,
-            selected: n.id == currentParentId,
-            onTap: () async {
-              if (n.id != currentParentId) {
-                await app.journal.transaction(() async {
-                  if (currentParentId != null) {
-                    await app.fieldLayer.detachNode(
-                      app.journal,
-                      nodeId,
-                      currentParentId,
-                    );
-                  }
-                  await app.fieldLayer.attachNode(app.journal, nodeId, n.id);
-                });
-                if (mounted) setState(() => _expanded.add(n.id));
-              }
-            },
-          ),
-      ],
+      subs: subs,
       fg: app.bort.fg,
       bg: app.bort.bg,
       signal: app.bort.fgsignal,
@@ -512,12 +550,15 @@ class _RoutinesTabState extends State<RoutinesTab> {
           icon: Icons.add,
           label: i18n.t('field.new_field'),
           onTap: () async {
-            final f = await app.fieldLayer.createField(
-              app.journal,
-              i18n.t('field.new_field'),
-            );
+            final f = await app.fieldLayer.createField(app.journal, '');
             app.fieldLayer.setActiveField(f.id);
-            if (mounted) _renameNodeDialog(f.id, f.name);
+            if (mounted) {
+              _renameNodeDialog(
+                f.id,
+                '',
+                defaultName: i18n.t('field.new_field'),
+              );
+            }
           },
         ),
       ],
@@ -614,7 +655,26 @@ class _RoutinesTabState extends State<RoutinesTab> {
             top: 6,
             bottom: 6,
           ),
-          child: Container(height: strokeW, color: bort.mid),
+          child: Row(
+            children: [
+              Expanded(
+                child: Container(height: strokeW, color: bort.mid),
+              ),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: side * 0.2),
+                child: Text(
+                  I18nScope.of(context).t('routine.completed'),
+                  style: TextStyle(
+                    color: bort.mid,
+                    fontSize: side * bort.kNumberSmall,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Container(height: strokeW, color: bort.mid),
+              ),
+            ],
+          ),
         ),
       );
       for (final r in done) {
@@ -749,7 +809,26 @@ class _RoutinesTabState extends State<RoutinesTab> {
         items.add(
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
-            child: Container(height: strokeW, color: dim),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Container(height: strokeW, color: dim),
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: side * 0.2),
+                  child: Text(
+                    i18n.t('routine.completed'),
+                    style: TextStyle(
+                      color: dim,
+                      fontSize: side * bort.kNumberSmall,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Container(height: strokeW, color: dim),
+                ),
+              ],
+            ),
           ),
         );
         for (final r in doneU) {
@@ -788,30 +867,36 @@ class _RoutinesTabState extends State<RoutinesTab> {
                   child: ControlRow(
                     rootSide: side,
                     alignment: Alignment.centerLeft,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: activeFieldId == null
-                          ? null
-                          : () => _openFieldSwitcher(activeFieldId),
-                      onLongPress: activeFieldId == null
-                          ? null
-                          : () => _showNodeActions(activeFieldId),
-                      child: Text(
-                        fieldName,
-                        style: TextStyle(
-                          color: fg,
-                          fontSize: side * bort.kName * 0.8,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: activeFieldId == null
+                                ? null
+                                : () => _openFieldSwitcher(activeFieldId),
+                            onLongPress: activeFieldId == null
+                                ? null
+                                : () => _showNodeActions(activeFieldId),
+                            child: Text(
+                              fieldName,
+                              style: TextStyle(
+                                color: fg,
+                                fontSize: side * bort.kName * 0.8,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                        ShiftRow(
+                          onChanged: () {
+                            if (mounted) setState(() {});
+                          },
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                ShiftRow(
-                  onChanged: () {
-                    if (mounted) setState(() {});
-                  },
                 ),
                 Expanded(child: body),
               ],
@@ -899,7 +984,10 @@ class _FieldPlate extends StatelessWidget {
             Expanded(
               child: Text(
                 title,
-                style: TextStyle(color: bort.fg, fontSize: side * bort.kName),
+                style: TextStyle(
+                  color: bort.fg,
+                  fontSize: side * bort.kName * 0.75,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),

@@ -122,6 +122,26 @@ class TimeSeries {
     );
   }
 
+  // All months present for a field, in chronological order. Used by
+  // the compactor to write every month into the journal, so that the
+  // full history is preserved rather than only the latest month.
+  List<({int year, int month, Map<int, int> days})> allMonths(int fieldId) {
+    final out = <({int year, int month, Map<int, int> days})>[];
+    final fData = _data[fieldId];
+    if (fData == null) return out;
+    final years = fData.keys.toList()..sort();
+    for (final y in years) {
+      final months = fData[y]!;
+      final ms = months.keys.toList()..sort();
+      for (final m in ms) {
+        final days = months[m]!;
+        if (days.isEmpty) continue;
+        out.add((year: y, month: m, days: Map<int, int>.from(days)));
+      }
+    }
+    return out;
+  }
+
   Map<int, int> daysFor(int fieldId, int year, int month) {
     final out = <int, int>{};
     final fData = _data[fieldId];

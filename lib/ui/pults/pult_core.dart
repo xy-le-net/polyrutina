@@ -40,6 +40,8 @@ class PultSpec {
   final bool stayOpen;
   final bool compactLabel;
   final Listenable? rebuildOn;
+  // Left offset for tree-shaped sheets; zero for flat lists.
+  final double indent;
 
   const PultSpec({
     required this.id,
@@ -57,6 +59,7 @@ class PultSpec {
     this.stayOpen = false,
     this.compactLabel = false,
     this.rebuildOn,
+    this.indent = 0,
   });
 }
 

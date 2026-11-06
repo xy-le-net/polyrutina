@@ -112,8 +112,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   String _computeBortSignature() {
     return '${_bort.themeCustom}|'
-        '${_bort.themeDay}|'
-        '${_bort.themeAutoswitch}|'
+        '${_bort.themeNight}|'
+        '${_bort.themeAuto}|'
         '${_bort.scale.toStringAsFixed(4)}|'
         '${_bort.systemBrightness.name}|'
         '${_bort.lang}|'
@@ -154,6 +154,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       await _routineLayer.init(_journal, _traceLayer, _fieldLayer);
       _routineLayer.migrateFieldParents();
 
+      _bort.attachJournal(_journal);
       _journal.start();
       _bort.setLastRereadId(await _journal.lastEntryId());
       _tab = 0;

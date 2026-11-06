@@ -4,8 +4,16 @@
 // Collapses the journal into a compact form: erases all entries,
 // writes routine snapshots (action "snapshot"), writes field node
 // snapshots, rewrites traces with remapped trace-to-trace references,
-// saves one monthly record per registered TimeSeries (per field for
-// shifts, global for bort), and resets the export and reread marks.
+// saves ALL monthly records for every registered TimeSeries (per
+// field for shifts, global for bort), and resets the export and
+// reread marks.
+//
+// History preservation. The compactor no longer prunes older months
+// from the series files. Every month present in memory is written
+// to the journal as a `period_month` entry, so the journal holds the
+// full history and can rebuild the series on reread. Only then is
+// the previous journal content erased — after the snapshots and
+// months are safely written.
 //
 // CompactResult. Every run returns a CompactResult carrying the
 // entry count and the database byte size, measured before and
@@ -85,9 +93,32 @@ class JournalCompactor {
     }
     onProgress?.call(0.18);
 
+    // 4. Capture ALL months for every registered series.
+    final seriesSnapshots =
+        <
+          ({String kind, int fieldId, int year, int month, Map<int, int> days})
+        >[];
+    for (final entry in bort.series.entries) {
+      final kind = entry.key;
+      final series = entry.value;
+      final fieldIds = kind == 'shift' ? bort.shifts.keys : [0];
+      for (final fId in fieldIds) {
+        for (final m in series.allMonths(fId)) {
+          seriesSnapshots.add((
+            kind: kind,
+            fieldId: fId,
+            year: m.year,
+            month: m.month,
+            days: m.days,
+          ));
+        }
+      }
+    }
+    onProgress?.call(0.22);
+
     onProgress?.call(0.25);
 
-    // 4. Single transaction.
+    // 5. Single transaction.
     await journal.transaction(() async {
       await journal.db.delete(journal.db.journal).go();
 
@@ -147,74 +178,43 @@ class JournalCompactor {
         );
       }
 
-      // Write monthly records for time series.
-      for (final entry in bort.series.entries) {
-        final kind = entry.key;
-        final series = entry.value;
-
-        if (kind == 'shift') {
-          for (final fId in bort.shifts.keys) {
-            final m = series.lastMonth(fId);
-            if (m != null) {
-              await journal.log(
-                type: JournalType.actor,
-                body: jsonEncode({
-                  'action': 'period_month',
-                  'kind': kind,
-                  'field_id': fId,
-                  'year': m.year,
-                  'month': m.month,
-                  'days': m.days,
-                }),
-              );
-            }
-          }
-        } else {
-          final m = series.lastMonth(0);
-          if (m != null) {
-            await journal.log(
-              type: JournalType.actor,
-              body: jsonEncode({
-                'action': 'period_month',
-                'kind': kind,
-                'field_id': 0,
-                'year': m.year,
-                'month': m.month,
-                'days': m.days,
-              }),
-            );
-          }
+      // Write ALL monthly records for every series, not just the
+      // latest month. The journal becomes the full origin of truth.
+      for (final s in seriesSnapshots) {
+        final out = <String, int>{};
+        for (final e in s.days.entries) {
+          out[e.key.toString()] = e.value;
         }
+        await journal.log(
+          type: JournalType.actor,
+          body: jsonEncode({
+            'action': 'period_month',
+            'kind': s.kind,
+            'field_id': s.fieldId,
+            'year': s.year,
+            'month': s.month,
+            'days': out,
+          }),
+        );
       }
     });
     onProgress?.call(0.55);
 
-    // Prune old history.
-    for (final entry in bort.series.entries) {
-      final kind = entry.key;
-      final series = entry.value;
-      if (kind == 'shift') {
-        for (final fId in bort.shifts.keys) {
-          final m = series.lastMonth(fId);
-          if (m != null) series.pruneBefore(fId, m);
-        }
-      } else {
-        final m = series.lastMonth(0);
-        if (m != null) series.pruneBefore(0, m);
-      }
-    }
+    // No pruning: every month stays in the series files and in the
+    // journal. Pruning was the source of history loss.
+
     onProgress?.call(0.65);
 
-    // 5. Reread the journal.
+    // 6. Reread the journal.
     await journal.reread();
     onProgress?.call(0.75);
 
-    // 6. Reset marks.
+    // 7. Reset marks.
     bort.setLastExportId(0);
     bort.setLastRereadId(await journal.lastEntryId());
     onProgress?.call(0.85);
 
-    // 7. Reclaim space.
+    // 8. Reclaim space.
     try {
       await journal.db.customSelect('PRAGMA wal_checkpoint(TRUNCATE)').get();
       onProgress?.call(0.90);

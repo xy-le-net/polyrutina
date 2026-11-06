@@ -47,8 +47,8 @@
     "block.data": "данные",
 
     "theme.custom": "своя",
-    "theme.day": "день",
-    "theme.autoswitch": "автосмена",
+    "theme.night": "ночь",
+    "theme.auto": "авто",
 
     "lang.ru": "русский",
     "lang.en": "english",
@@ -235,8 +235,8 @@
     "block.data": "data",
 
     "theme.custom": "custom",
-    "theme.day": "day",
-    "theme.autoswitch": "autoswitch",
+    "theme.night": "night",
+    "theme.auto": "auto",
 
     "lang.ru": "русский",
     "lang.en": "english",

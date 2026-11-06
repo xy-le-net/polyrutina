@@ -1,16 +1,14 @@
 // ═══════════════════════════════════════════════════════════════════
 // lib/ui/tabs/rubka_appearance.dart — «appearance» block in the rubka.
 //
-// Three theme toggles replace the former five-theme row:
-//   — «custom»: use the custom palette, overriding day/night;
-//   — «day»: true selects day, false selects night;
-//   — «autoswitch»: follow the system brightness.
+// Three theme toggles:
+//   — «custom»: use the custom palette;
+//   — «night»: force the night palette (mutually exclusive with auto);
+//   — «auto»: follow the system brightness (mutually exclusive with
+//     night). With both off, day is used.
 //
 // The custom role editor is shown only when the custom palette is
-// enabled; otherwise it is hidden, so the block stays compact.
-//
-// Scopes. Dependencies are read from point scopes: BortScope (theme
-// flags, labels flag, per-theme colors) and I18nScope (strings).
+// enabled.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -25,12 +23,10 @@ import '../pults/pult_core.dart';
 import '../pults/pult_tick.dart';
 
 class RubkaAppearance extends StatelessWidget {
-  // Stable parity for the rubka block frame.
   final int parity;
 
   const RubkaAppearance({super.key, this.parity = 1});
 
-  // Roles in the ladder order: bgsignal → bg → mid → fg → fgsignal.
   static const List<String> _roles = [
     'bgsignal',
     'bg',
@@ -96,7 +92,6 @@ class RubkaAppearance extends StatelessWidget {
     );
   }
 
-  // ─── Three theme toggles ───
   Widget _themeRow(
     BuildContext context,
     Color fg,
@@ -147,16 +142,16 @@ class RubkaAppearance extends StatelessWidget {
           onTap: () => bort.setBool('theme_custom', !bort.themeCustom),
         ),
         toggle(
-          id: 'theme_day',
-          label: i18n.t('theme.day'),
-          value: bort.themeDay,
-          onTap: () => bort.setBool('theme_day', !bort.themeDay),
+          id: 'theme_night',
+          label: i18n.t('theme.night'),
+          value: bort.themeNight,
+          onTap: () => bort.setBool('theme_night', !bort.themeNight),
         ),
         toggle(
-          id: 'theme_autoswitch',
-          label: i18n.t('theme.autoswitch'),
-          value: bort.themeAutoswitch,
-          onTap: () => bort.setBool('theme_autoswitch', !bort.themeAutoswitch),
+          id: 'theme_auto',
+          label: i18n.t('theme.auto'),
+          value: bort.themeAuto,
+          onTap: () => bort.setBool('theme_auto', !bort.themeAuto),
         ),
       ],
     );
