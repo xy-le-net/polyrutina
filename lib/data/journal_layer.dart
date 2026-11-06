@@ -10,6 +10,12 @@
 // Distribution. pump reads everything after the smallest mark,
 // distributes to each layer its kinds, advances the marks.
 //
+// Mark reset. clearMark(name) drops the persisted mark for one
+// layer and resets its in-memory lastId to 0, so that the next pump
+// replays the journal for that layer only. Used when a layer's
+// cache was discarded by a schema bump: otherwise the caught-up
+// mark would make pump a no-op and the layer would start empty.
+//
 // Subscription. Set up in start, not init — after all layers have
 // registered. This avoids dropping early entries.
 //
@@ -19,15 +25,7 @@
 //
 // Sync flags. deleteSynced, countSynced, and markSynced operate via
 // SQL conditions (bitwise AND against JournalFlag.synced) rather
-// than by loading every row and filtering in Dart. The former
-// approach was O(n) in the journal size; this one is O(k) in the
-// matched rows.
-//
-// Dead code removal. Methods recent and watchRecent were removed
-// as they had no callers in the codebase.
-//
-// Immediate save. saveNow() forces the state to be flushed to disk,
-// used by the main application when going to background.
+// than by loading every row and filtering in Dart.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -78,16 +76,12 @@ class JournalLayer extends ChangeNotifier {
 
   StreamSubscription<List<JournalData>>? _sub;
 
-  // ─── Startup ───
-  // Subscription is not set up here; it is deferred to start().
   Future<void> init() async {
     final dir = await getApplicationDocumentsDirectory();
     _stateFile = File(p.join(dir.path, 'journal_layer.json'));
     await _loadState();
   }
 
-  // ─── Subscription ───
-  // Called after all layers have registered.
   void start() {
     _sub ??= watchAll().listen((_) => pump());
   }
@@ -99,7 +93,6 @@ class JournalLayer extends ChangeNotifier {
     super.dispose();
   }
 
-  // ─── Registration ───
   void register({
     required String name,
     required List<int> types,
@@ -114,7 +107,20 @@ class JournalLayer extends ChangeNotifier {
     );
   }
 
-  // ─── Transaction ───
+  // ─── Mark reset ───
+  // Drops the persisted mark for one layer and zeroes its in-memory
+  // lastId, so that the next pump replays the journal from the
+  // beginning for that layer only. Called by a layer whose cache was
+  // discarded (schema bump): otherwise the caught-up mark would
+  // short-circuit pump and leave the layer empty.
+  void clearMark(String name) {
+    _savedIds.remove(name);
+    final l = _layers[name];
+    if (l != null) l.lastId = 0;
+    _stateDirty = true;
+    _scheduleSave();
+  }
+
   Future<T> transaction<T>(Future<T> Function() action) async {
     _txDepth++;
     try {
@@ -125,7 +131,6 @@ class JournalLayer extends ChangeNotifier {
     }
   }
 
-  // ─── Distribution ───
   Future<void> pump() async {
     if (_pumping) return;
     if (_layers.isEmpty) return;
@@ -157,7 +162,6 @@ class JournalLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ─── Full reread ───
   Future<void> reread() async {
     for (final l in _layers.values) {
       l.reset?.call();
@@ -169,7 +173,6 @@ class JournalLayer extends ChangeNotifier {
     await pump();
   }
 
-  // ─── Write ───
   Future<int> log({
     required int type,
     String body = '{}',
@@ -189,7 +192,6 @@ class JournalLayer extends ChangeNotifier {
     return id;
   }
 
-  // ─── Read ───
   Stream<List<JournalData>> watchAll() {
     return (db.select(
       db.journal,
@@ -212,7 +214,6 @@ class JournalLayer extends ChangeNotifier {
     )..orderBy([(t) => OrderingTerm.asc(t.id)])).get();
   }
 
-  // ─── Management ───
   Future<void> clearAll() async {
     await db.delete(db.journal).go();
     for (final l in _layers.values) {
@@ -228,8 +229,6 @@ class JournalLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Deletes every entry carrying the synced flag. Runs as a single
-  // DELETE with a bitwise condition — no full scan in Dart.
   Future<void> deleteSynced() async {
     final n = await db.customUpdate(
       'DELETE FROM journal WHERE (flags & ?1) != 0',
@@ -239,11 +238,6 @@ class JournalLayer extends ChangeNotifier {
     if (n > 0) notifyListeners();
   }
 
-  // Counts entries carrying the synced flag. COUNT(*) with a bitwise
-  // condition — no row transfer into Dart.
-  //
-  // Type note: bitwiseAnd takes Expression<int> (wrap the mask in
-  // Constant), while equals takes a plain int for Expression<int>.
   Future<int> countSynced() async {
     final count = db.journal.id.count();
     final q = db.selectOnly(db.journal)
@@ -257,9 +251,6 @@ class JournalLayer extends ChangeNotifier {
     return row.read(count) ?? 0;
   }
 
-  // Sets the synced flag on one entry. A single UPDATE with a bitwise
-  // OR; the WHERE clause makes it idempotent — no spurious
-  // notification when the flag is already set.
   Future<void> markSynced(int id) async {
     await db.customUpdate(
       'UPDATE journal SET flags = flags | ?1 '
@@ -269,9 +260,6 @@ class JournalLayer extends ChangeNotifier {
     );
   }
 
-  // Number of entries currently in the journal. A SQL COUNT(*),
-  // no row transfer — used by the compactor to report how many
-  // entries were dropped in this pass.
   Future<int> countEntries() async {
     final count = db.journal.id.count();
     final q = db.selectOnly(db.journal)..addColumns([count]);
@@ -288,7 +276,6 @@ class JournalLayer extends ChangeNotifier {
     return rows.isEmpty ? 0 : rows.first.id;
   }
 
-  // ─── Mark saving ───
   void _scheduleSave() {
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 200), () {
@@ -296,9 +283,6 @@ class JournalLayer extends ChangeNotifier {
     });
   }
 
-  // Forces an immediate write of the mark state. Called by the main
-  // application when going to background, ensuring that the marks
-  // are persisted before the process might be killed.
   Future<void> saveNow() async {
     _saveTimer?.cancel();
     _saveTimer = null;
@@ -320,10 +304,6 @@ class JournalLayer extends ChangeNotifier {
     } catch (_) {}
   }
 
-  // Marks are written atomically: a crash mid-write leaves either
-  // the old journal_layer.json or the new one whole, never a torn
-  // file. Shared with BortFile and the other caches via
-  // atomicWriteJson.
   Future<void> _saveStateNow() async {
     if (_stateFile == null) return;
     final data = {'layers': _layers.map((k, v) => MapEntry(k, v.lastId))};
