@@ -7,12 +7,31 @@
 //
 // Transactions. Actions producing several entries at once
 // (completing a routine, starting a block while stopping the others,
-// switching blocks between routines) are wrapped in
-// journal.transaction.
+// switching blocks between routines, clearing the date together with
+// the notice) are wrapped in journal.transaction.
 //
 // Cache. Written with a 200 ms debounce. currentRoutineId is
 // reconstructed on startup from the first running block. Cache
 // writes go through atomicWriteJson.
+//
+// Notice interval. The former «planned duration» pult is now a
+// notice interval; see routine.dart for the semantics. It is stored
+// as noticeBeforeSec + noticeSet, journalled as `set_notice` and
+// `clear_notice`. Clearing the date clears the notice in the same
+// transaction. Old caches that carried planned_seconds are dropped
+// by the schema bump (cache schema 2) and rebuilt from the journal;
+// planned-to-notice mapping is not attempted, because the two
+// concepts are semantically different (duration versus lead time).
+//
+// Overdue scheduler. The layer does not format notifications and
+// does not talk to the platform. Instead it exposes a slot of type
+// OverdueScheduler; main.dart attaches a real implementation after
+// init. Every mutation that can affect the deferred notice — date
+// change, notice change, completion, deletion — calls _refreshSchedule
+// or _cancelSchedule. When the slot is null (during import, during
+// tests, before init), these calls are no-ops; the next application
+// startup scans every routine and reschedules from scratch, so a
+// missed refresh is never a silent loss.
 //
 // Indices. To avoid O(N) lookups on every UI frame and heavy
 // operations, three indices are maintained:
@@ -20,11 +39,6 @@
 //   _nodeRoutinesIndex — maps field node ID to a set of routine IDs.
 //   _runningRoutineIds — tracks IDs of routines with running blocks,
 //     allowing the mutex logic to iterate only over active routines.
-// Indices are rebuilt on reset and fully populated during _applyEntry.
-//
-// Schema. The cache file includes a 'schema' version field. If the
-// loaded schema is older, the cache is discarded and rebuilt from
-// the journal.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -45,8 +59,19 @@ import 'journal_types.dart';
 import 'routine.dart';
 import 'trace_layer.dart';
 
+/// Hook for the deferred-notice scheduler. The layer only knows that
+/// a routine's schedule may need refreshing or that a routine is
+/// gone; the implementation decides whether to schedule, reschedule,
+/// or cancel, and owns all formatting. Attached from main.dart after
+/// the layers are initialised; null means "not ready yet", and
+/// refreshes are silently skipped.
+abstract class OverdueScheduler {
+  void refresh(Routine routine);
+  void cancel(int routineId);
+}
+
 class RoutineLayer extends ChangeNotifier {
-  static const int _schemaVersion = 1;
+  static const int _schemaVersion = 2;
 
   // ─── Current state ───
   List<Routine> routines = [];
@@ -54,12 +79,16 @@ class RoutineLayer extends ChangeNotifier {
   int? currentRoutineId;
   String? lastActiveBlockKind;
 
+  // ─── Scheduler slot ───
+  OverdueScheduler? _scheduler;
+
+  set scheduler(OverdueScheduler? s) => _scheduler = s;
+
   // ─── Indices ───
   final Map<String, int> _sourceKeyIndex = {};
   final Map<int, Set<int>> _nodeRoutinesIndex = {};
   final Set<int> _runningRoutineIds = {};
 
-  // Trace and field layer references.
   TraceLayer? _traces;
   FieldLayer? _field;
 
@@ -72,21 +101,20 @@ class RoutineLayer extends ChangeNotifier {
     return copy;
   }
 
-  // O(1) check for «is any routine currently running». The set is
-  // maintained by _applyEntry and _rebuildIndices, so this stays
-  // accurate after reloads and is safe to call on every ticker beat.
   bool get anyRunning => _runningRoutineIds.isNotEmpty;
 
-  // Grouping and sorting for the routines list.
-  // Active routines first (running ones at the very top), then
-  // completed ones. Within each group, ordering is by the moment of
-  // the last ticker pulse (lastPulseAt), falling back to the last
-  // action time if a routine never pulsed. This keeps the list
-  // stable when a user merely opens a card without interacting with
-  // the timer.
+  bool get anyOverdue {
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    for (final r in routines) {
+      if (r.isOverdueAt(now)) return true;
+    }
+    return false;
+  }
+
   ({List<Routine> active, List<Routine> done}) get groupedByTicker {
     final active = <Routine>[];
     final done = <Routine>[];
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     for (final r in routines) {
       if (r.completed) {
         done.add(r);
@@ -98,6 +126,10 @@ class RoutineLayer extends ChangeNotifier {
     int sortPulse(Routine r) => r.lastPulseAt ?? r.lastActionAt;
 
     active.sort((a, b) {
+      final aOd = a.isOverdueAt(now);
+      final bOd = b.isOverdueAt(now);
+      if (aOd && !bOd) return -1;
+      if (!aOd && bOd) return 1;
       final aRun = a.runningBlock != null;
       final bRun = b.runningBlock != null;
       if (aRun && !bRun) return -1;
@@ -132,6 +164,20 @@ class RoutineLayer extends ChangeNotifier {
     );
 
     notifyListeners();
+  }
+
+  // ─── Scheduler refresh helpers ───
+
+  void _refreshSchedule(Routine r) {
+    try {
+      _scheduler?.refresh(r);
+    } catch (_) {}
+  }
+
+  void _cancelSchedule(int routineId) {
+    try {
+      _scheduler?.cancel(routineId);
+    } catch (_) {}
   }
 
   // ─── Index Maintenance ───
@@ -179,7 +225,6 @@ class RoutineLayer extends ChangeNotifier {
     _runningRoutineIds.remove(r.id);
   }
 
-  // ─── Migration to root field ───
   void migrateFieldParents() {
     final rootId = _field?.rootId;
     if (rootId == null) return;
@@ -212,7 +257,6 @@ class RoutineLayer extends ChangeNotifier {
 
       final schema = (data['schema'] as num?)?.toInt() ?? 0;
       if (schema < _schemaVersion) {
-        // Cache is outdated, rely on journal reread.
         return;
       }
 
@@ -229,7 +273,6 @@ class RoutineLayer extends ChangeNotifier {
       }
       lastActiveBlockKind = data['last_active_block_kind'] as String?;
 
-      // Reconstruct currentRoutineId from the first running block.
       for (final r in routines) {
         if (r.runningBlock != null) {
           currentRoutineId = r.id;
@@ -292,6 +335,8 @@ class RoutineLayer extends ChangeNotifier {
                 routines.add(r);
                 _indexAdd(r);
               }
+              // Journal replay does not reschedule: main.dart's
+              // startup scan covers this on the next launch.
             } catch (_) {}
           }
           break;
@@ -355,15 +400,30 @@ class RoutineLayer extends ChangeNotifier {
           final id = (data['routine'] as num).toInt();
           final r = findRoutine(id);
           if (r != null) {
-            r.scheduledAt = (data['at'] as num?)?.toInt();
+            final at = (data['at'] as num?)?.toInt();
+            r.scheduledAt = at;
+            if (at == null) {
+              r.noticeBeforeSec = 0;
+              r.noticeSet = false;
+            }
             r.lastActionAt = e.time;
           }
           break;
-        case 'set_planned':
+        case 'set_notice':
           final id = (data['routine'] as num).toInt();
           final r = findRoutine(id);
           if (r != null) {
-            r.plannedSeconds = (data['seconds'] as num?)?.toInt() ?? 0;
+            r.noticeBeforeSec = (data['seconds'] as num?)?.toInt() ?? 0;
+            r.noticeSet = true;
+            r.lastActionAt = e.time;
+          }
+          break;
+        case 'clear_notice':
+          final id = (data['routine'] as num).toInt();
+          final r = findRoutine(id);
+          if (r != null) {
+            r.noticeBeforeSec = 0;
+            r.noticeSet = false;
             r.lastActionAt = e.time;
           }
           break;
@@ -466,7 +526,8 @@ class RoutineLayer extends ChangeNotifier {
         blocks: RoutineBlock.kinds.map((k) => RoutineBlock(kind: k)).toList(),
         flags: src.flags,
         scheduledAt: src.scheduledAt,
-        plannedSeconds: src.plannedSeconds,
+        noticeBeforeSec: src.noticeBeforeSec,
+        noticeSet: src.noticeSet,
         fieldParents: src.fieldParents,
       );
 
@@ -510,7 +571,9 @@ class RoutineLayer extends ChangeNotifier {
     });
 
     if (newId == null) return null;
-    return findRoutine(newId!);
+    final result = findRoutine(newId!);
+    if (result != null) _refreshSchedule(result);
+    return result;
   }
 
   // ─── Mutations ───
@@ -522,7 +585,6 @@ class RoutineLayer extends ChangeNotifier {
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
-    // Auto-attach to active field or root if no parents provided.
     List<int> parentList = fieldParents ?? [];
     if (parentList.isEmpty) {
       final active = _field?.activeFieldId;
@@ -589,6 +651,7 @@ class RoutineLayer extends ChangeNotifier {
       type: JournalType.routine,
       body: '{"action":"delete","routine":$id}',
     );
+    _cancelSchedule(id);
     _scheduleSave();
     notifyListeners();
   }
@@ -610,26 +673,57 @@ class RoutineLayer extends ChangeNotifier {
     final r = findRoutine(id);
     if (r == null) return;
     if (r.scheduledAt == at) return;
-    r.scheduledAt = at;
-    r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    await journal.log(
-      type: JournalType.routine,
-      body: '{"action":"set_schedule","routine":$id,"at":${at ?? 'null'}}',
-    );
+
+    await journal.transaction(() async {
+      r.scheduledAt = at;
+      r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      await journal.log(
+        type: JournalType.routine,
+        body: '{"action":"set_schedule","routine":$id,"at":${at ?? 'null'}}',
+      );
+      if (at == null) {
+        r.noticeBeforeSec = 0;
+        r.noticeSet = false;
+        await journal.log(
+          type: JournalType.routine,
+          body: '{"action":"clear_notice","routine":$id}',
+        );
+      }
+    });
+    _refreshSchedule(r);
     _scheduleSave();
     notifyListeners();
   }
 
-  Future<void> setPlanned(JournalLayer journal, int id, int seconds) async {
+  Future<void> setNotice(JournalLayer journal, int id, int seconds) async {
     final r = findRoutine(id);
     if (r == null) return;
-    if (r.plannedSeconds == seconds) return;
-    r.plannedSeconds = seconds;
+    if (r.scheduledAt == null) return;
+    if (r.noticeSet && r.noticeBeforeSec == seconds) return;
+    r.noticeBeforeSec = seconds;
+    r.noticeSet = true;
     r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     await journal.log(
       type: JournalType.routine,
-      body: '{"action":"set_planned","routine":$id,"seconds":$seconds}',
+      body: '{"action":"set_notice","routine":$id,"seconds":$seconds}',
     );
+    _refreshSchedule(r);
+    _scheduleSave();
+    notifyListeners();
+  }
+
+  Future<void> clearNotice(JournalLayer journal, int id) async {
+    final r = findRoutine(id);
+    if (r == null) return;
+    if (!r.noticeSet) return;
+    r.noticeBeforeSec = 0;
+    r.noticeSet = false;
+    r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await journal.log(
+      type: JournalType.routine,
+      body: '{"action":"clear_notice","routine":$id}',
+    );
+    _refreshSchedule(r);
     _scheduleSave();
     notifyListeners();
   }
@@ -714,6 +808,7 @@ class RoutineLayer extends ChangeNotifier {
         body: '{"action":"complete","routine":$id,"value":false}',
       );
     }
+    _refreshSchedule(r);
     _scheduleSave();
     notifyListeners();
   }
@@ -778,7 +873,6 @@ class RoutineLayer extends ChangeNotifier {
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
       if (mutex) {
-        // Iterate only over routines that are currently running
         final runningIds = List<int>.from(_runningRoutineIds);
         for (final rId in runningIds) {
           final other = findRoutine(rId);
@@ -876,7 +970,6 @@ class RoutineLayer extends ChangeNotifier {
     return id != null ? findRoutine(id) : null;
   }
 
-  // ─── Lookup by field node ───
   List<Routine> routinesForNode(int nodeId) {
     final ids = _nodeRoutinesIndex[nodeId];
     if (ids == null || ids.isEmpty) return [];

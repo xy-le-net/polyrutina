@@ -3,13 +3,21 @@
 //
 // The report is textual and human-readable. Each routine is a
 // section: completion mark, name, state, creation date, scheduled
-// date, blocks with time, all traces (text, checklists, geo, files).
+// date, notice interval (if set), blocks with time, all traces
+// (text, checklists, geo, files).
+//
+// Notice interval. The former planned duration is now a lead time —
+// how long before the due date to remind. It is printed ONLY when
+// the routine has a due date; the caption is «предуведомление» and
+// the value uses the same «days:hours:minutes» format the pult
+// accepts. Zero seconds is a legitimate value («remind right at the
+// due moment») and is printed as 0:00:00.
 //
 // The archive contains report.txt, data.json, and media/.
 //
 // data.json carries routines, fields, and the full series block
-// (shift and bort histories, every month). Media files are packed
-// as before.
+// (shift under field 0, bort under field 0, every month). Media
+// files are packed as before.
 //
 // Streaming. The archive is packed using ZipFileEncoder directly to
 // disk, avoiding loading the entire zip into memory.
@@ -298,10 +306,19 @@ class ReportBuilder {
       '   ${i18n.t('routine.block.note')}: ${fmtDateFull(r.createdAt, i18n.t)}',
     );
 
+    // Schedule first; notice printed only when a date exists — the
+    // same invariant the card enforces.
     if (r.scheduledAt != null) {
       buf.writeln(
-        '   ${i18n.t('routine.planned_title')}: ${fmtDateFull(r.scheduledAt!, i18n.t)}',
+        '   ${i18n.t('routine.planned_title')}: '
+        '${fmtDateFull(r.scheduledAt!, i18n.t)}',
       );
+      if (r.noticeSet) {
+        buf.writeln(
+          '   ${i18n.t('routine.notice_title')}: '
+          '${fmtNoticeTime(r.noticeBeforeSec)}',
+        );
+      }
     }
     buf.writeln();
 

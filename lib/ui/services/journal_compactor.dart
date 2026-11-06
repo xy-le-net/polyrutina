@@ -8,12 +8,20 @@
 // field for shifts, global for bort), and resets the export and
 // reread marks.
 //
-// History preservation. The compactor no longer prunes older months
-// from the series files. Every month present in memory is written
-// to the journal as a `period_month` entry, so the journal holds the
-// full history and can rebuild the series on reread. Only then is
-// the previous journal content erased — after the snapshots and
-// months are safely written.
+// Unified shift. The shift now lives under the zero-field key; the
+// compactor no longer enumerates `bort.shifts.keys` and writes one
+// snapshot per field. Only field 0 is written for the shift series,
+// matching the single-state semantics. Historical per-field entries
+// that may still exist in older series files are left untouched but
+// are not emitted: the unified view does not read them.
+//
+// Notice interval. Routine snapshots carry notice_before_sec and
+// notice_set verbatim (via Routine.toJson); the compactor does not
+// interpret or normalize them. Date and notice are stored
+// independently, so a snapshot preserves the pair exactly as the
+// layer holds it. The layer's invariant — no notice without a date —
+// is enforced at mutation time (setSchedule clears the notice) and
+// therefore holds in the snapshots too.
 //
 // CompactResult. Every run returns a CompactResult carrying the
 // entry count and the database byte size, measured before and
@@ -71,7 +79,9 @@ class JournalCompactor {
 
     onProgress?.call(0.05);
 
-    // 1. Capture routine snapshots.
+    // 1. Capture routine snapshots. Routine.toJson carries the
+    // notice pair (notice_before_sec, notice_set) verbatim; the
+    // compactor does not interpret it.
     final routineSnapshots = <Map<String, dynamic>>[];
     for (final r in routineLayer.routines) {
       routineSnapshots.add(r.toJson());
@@ -94,6 +104,7 @@ class JournalCompactor {
     onProgress?.call(0.18);
 
     // 4. Capture ALL months for every registered series.
+    // The shift is unified under field 0; no per-field enumeration.
     final seriesSnapshots =
         <
           ({String kind, int fieldId, int year, int month, Map<int, int> days})
@@ -101,17 +112,14 @@ class JournalCompactor {
     for (final entry in bort.series.entries) {
       final kind = entry.key;
       final series = entry.value;
-      final fieldIds = kind == 'shift' ? bort.shifts.keys : [0];
-      for (final fId in fieldIds) {
-        for (final m in series.allMonths(fId)) {
-          seriesSnapshots.add((
-            kind: kind,
-            fieldId: fId,
-            year: m.year,
-            month: m.month,
-            days: m.days,
-          ));
-        }
+      for (final m in series.allMonths(0)) {
+        seriesSnapshots.add((
+          kind: kind,
+          fieldId: 0,
+          year: m.year,
+          month: m.month,
+          days: m.days,
+        ));
       }
     }
     onProgress?.call(0.22);
@@ -122,7 +130,9 @@ class JournalCompactor {
     await journal.transaction(() async {
       await journal.db.delete(journal.db.journal).go();
 
-      // Write routine snapshots.
+      // Write routine snapshots. Notice pair is inside the snapshot
+      // body; no separate set_notice entries are emitted, and none
+      // are needed: the snapshot fully reconstructs the routine.
       for (final s in routineSnapshots) {
         await journal.log(
           type: JournalType.routine,
@@ -178,8 +188,7 @@ class JournalCompactor {
         );
       }
 
-      // Write ALL monthly records for every series, not just the
-      // latest month. The journal becomes the full origin of truth.
+      // Write ALL monthly records for every series under field 0.
       for (final s in seriesSnapshots) {
         final out = <String, int>{};
         for (final e in s.days.entries) {
@@ -190,7 +199,7 @@ class JournalCompactor {
           body: jsonEncode({
             'action': 'period_month',
             'kind': s.kind,
-            'field_id': s.fieldId,
+            'field_id': 0,
             'year': s.year,
             'month': s.month,
             'days': out,
@@ -199,9 +208,6 @@ class JournalCompactor {
       }
     });
     onProgress?.call(0.55);
-
-    // No pruning: every month stays in the series files and in the
-    // journal. Pruning was the source of history loss.
 
     onProgress?.call(0.65);
 

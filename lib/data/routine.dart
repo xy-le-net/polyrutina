@@ -3,7 +3,7 @@
 //
 // Routine: id, name, creation time, last action time, last
 // effective pulse time, completion-install time, scheduled date,
-// planned man-hours, five blocks, flags, completion flag, sourceKey,
+// notice interval, five blocks, flags, completion flag, sourceKey,
 // fieldParents (nodes of the field graph this routine is attached to),
 // and lastBlockKind.
 //
@@ -19,11 +19,21 @@
 // unset. The senior measure of the day when the mark is chosen in
 // the calendar.
 //
-// scheduledAt. Planned end date (Unix seconds). Zero means absent.
+// scheduledAt. Planned end date (Unix seconds). Zero or null means
+// absent.
 //
-// plannedSeconds. Planned man-hours in seconds; input and output
-// in «dd:hh:mm» format (years and months beyond — do not fit,
-// but going past 99 days is not prohibited).
+// noticeBeforeSec. Notice interval: how long before the due date
+// the user should be reminded. This replaces the former
+// «plannedSeconds» (planned duration) — the pult now sets a lead
+// time, not a target effort. Zero is a valid value («remind right
+// at the due moment»); whether a notice was actually set is told
+// apart by noticeSet.
+//
+// noticeSet. True when a notice interval was explicitly assigned.
+// This is what makes «overdue» distinguishable from «never had a
+// notice»: zero seconds is a legitimate interval, so the flag,
+// not the number, carries the fact of assignment. Cleared when
+// the date is cleared, per the spec.
 //
 // flags. JournalFlag bits. Edited in the card.
 //
@@ -32,20 +42,20 @@
 // sourceKey. Identifier of the source routine this one was
 // imported from: «deviceId/firstRun/routineId» of the exporting
 // device. Empty for routines created natively or via duplication.
-// Used by import to skip already-present routines, so re-importing
-// the same archive is idempotent.
 //
 // fieldParents. Identifiers of the field nodes (graph vertices)
 // to which this routine is attached. An empty list means the
-// routine is unattached (legacy state); the UI treats such a
-// routine as belonging to the root field node.
+// routine is unattached; the UI treats such a routine as belonging
+// to no field (and the notification body labels it «shared»).
 //
 // lastBlockKind. The kind of the most recently active block.
-// Used by the "play" button in the routine list to resume the
-// last worked-on slot rather than blindly starting "work".
 //
 // timeEdited (per block). True when time was edited manually.
-// Shown underlined. Reset on block start.
+//
+// isOverdue. A derived predicate: the due date has passed, the
+// routine is not completed, and a notice was set. This drives the
+// first-place, doubled-frame rendering in the routines list and
+// the overdue push at startup.
 //
 // Block kinds: prep, transit, work, idle, closeout.
 // ═══════════════════════════════════════════════════════════════════
@@ -132,18 +142,18 @@ class Routine {
   int? lastPulseAt;
   int? completedAt;
   int? scheduledAt;
-  int plannedSeconds;
+
+  // Notice interval, in seconds before the due date. Zero is a
+  // legitimate value; noticeSet, not the number, carries the fact
+  // that a notice was assigned.
+  int noticeBeforeSec;
+  bool noticeSet;
 
   int flags;
   bool completed;
 
-  // Identifier of the source routine this one was imported from.
   String sourceKey;
-
-  // Nodes of the field graph this routine is attached to.
   List<int> fieldParents;
-
-  // The kind of the most recently active block (for resuming).
   String? lastBlockKind;
 
   Routine({
@@ -155,7 +165,8 @@ class Routine {
     this.lastPulseAt,
     this.completedAt,
     this.scheduledAt,
-    this.plannedSeconds = 0,
+    this.noticeBeforeSec = 0,
+    this.noticeSet = false,
     this.flags = 0,
     this.completed = false,
     this.sourceKey = '',
@@ -164,11 +175,6 @@ class Routine {
   }) : lastActionAt = lastActionAt ?? createdAt,
        fieldParents = fieldParents ?? [];
 
-  // createdAt overrides the creation moment: import supplies the
-  // historical value from the archive, so a routine does not look
-  // as if it was created at the instant of import. lastActionAt
-  // still defaults to the entry time (now), keeping the freshly
-  // imported routine at the top of the «recent» ordering.
   factory Routine.create(
     int id, {
     int? at,
@@ -207,6 +213,30 @@ class Routine {
     return null;
   }
 
+  // ─── Derived status ───
+
+  // Whether this routine is presently overdue. See the header for
+  // the rule: due date passed, not completed, notice was set.
+  bool isOverdueAt(int now) {
+    if (completed) return false;
+    if (!noticeSet) return false;
+    final due = scheduledAt;
+    if (due == null || due <= 0) return false;
+    return due < now;
+  }
+
+  bool get isOverdue =>
+      isOverdueAt(DateTime.now().millisecondsSinceEpoch ~/ 1000);
+
+  // The moment a notice should fire (unix seconds), or null when
+  // the notice is not applicable. Used by the scheduler.
+  int? noticeMoment() {
+    if (!noticeSet) return null;
+    final due = scheduledAt;
+    if (due == null || due <= 0) return null;
+    return due - noticeBeforeSec;
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'name': name,
@@ -215,7 +245,8 @@ class Routine {
     'last_pulse_at': lastPulseAt,
     'completed_at': completedAt,
     'scheduled_at': scheduledAt,
-    'planned_seconds': plannedSeconds,
+    'notice_before_sec': noticeBeforeSec,
+    'notice_set': noticeSet,
     'flags': flags,
     'completed': completed,
     'source_key': sourceKey,
@@ -225,12 +256,9 @@ class Routine {
   };
 
   // Lenient parsing: a damaged record must not take down the whole
-  // cache. Only `id` and `created_at` are mandatory — without them
-  // the record cannot be identified or placed on the timeline, so a
-  // FormatException is thrown and the caller is expected to skip
-  // that single record. Every other field falls back to a sane
-  // default, and a malformed block is dropped without discarding
-  // its siblings.
+  // cache. Only `id` and `created_at` are mandatory. Both the old
+  // planned_seconds and the new notice_before_sec are accepted so
+  // that archives built before the rename still load.
   factory Routine.fromJson(Map<String, dynamic> j) {
     final id = (j['id'] as num?)?.toInt();
     final createdAt = (j['created_at'] as num?)?.toInt();
@@ -249,6 +277,23 @@ class Routine {
         }
       }
     }
+
+    // Notice field: prefer the new name, fall back to the old one.
+    final rawNotice =
+        (j['notice_before_sec'] as num?)?.toInt() ??
+        (j['planned_seconds'] as num?)?.toInt() ??
+        0;
+    final hasNewNoticeFlag = j.containsKey('notice_set');
+    final bool noticeSet;
+    if (hasNewNoticeFlag) {
+      noticeSet = j['notice_set'] as bool? ?? false;
+    } else {
+      // Old archives carried no explicit flag; a non-zero interval
+      // is the historical signal of assignment. Zero seconds was
+      // never a real value under the old semantics.
+      noticeSet = rawNotice > 0;
+    }
+
     return Routine(
       id: id,
       name: j['name'] as String? ?? '',
@@ -257,7 +302,8 @@ class Routine {
       lastPulseAt: (j['last_pulse_at'] as num?)?.toInt(),
       completedAt: (j['completed_at'] as num?)?.toInt(),
       scheduledAt: (j['scheduled_at'] as num?)?.toInt(),
-      plannedSeconds: (j['planned_seconds'] as num?)?.toInt() ?? 0,
+      noticeBeforeSec: rawNotice,
+      noticeSet: noticeSet,
       flags: (j['flags'] as num?)?.toInt() ?? 0,
       completed: j['completed'] as bool? ?? false,
       sourceKey: j['source_key'] as String? ?? '',

@@ -50,6 +50,11 @@ dependencies:
   # Ongoing notifications.
   flutter_local_notifications: ^18.0.1
 
+  # Timezone support for deferred notices (`zonedSchedule` inside
+  # flutter_local_notifications needs the device's zone identifier).
+  timezone: ^0.9.4
+  flutter_timezone: ^3.0.1
+
   # Runtime permissions: notifications, location, camera, microphone,
   # files. Consulted by the permissions block in the rubka: the
   # request flow distinguishes denied from permanently-denied and

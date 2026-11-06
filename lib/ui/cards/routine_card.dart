@@ -6,9 +6,24 @@
 // slots, collapse, auto-scroll, completion, export, move to field.
 //
 // Scheduled date. The custom picker lives in bort_date_picker.dart;
-// the planned-time dialog in planned_picker.dart. Both are invoked
-// here and their results are applied to the routine. The bort's
-// «midnight» setting is applied to the picked date by the caller.
+// the notice-interval dialog in notice_picker.dart. Both are invoked
+// here; results are applied to the routine. The bort's «midnight»
+// setting is applied to the picked date by this caller.
+//
+// Notice interval. The pult that used to set a planned duration now
+// sets a lead time; see routine.dart for the semantics. It is shown
+// only when a date is assigned (the parameter onPickNotice is null
+// otherwise, and RoutineBlockView hides the pult accordingly). When
+// a notice is set, a long-press subpult «снять предуведомление»
+// clears it; this is routed through RoutineLayer.clearNotice, and
+// the layer logs a clear_notice entry so the journal is complete.
+// Clearing the date clears the notice automatically (setSchedule).
+//
+// Move to field. The dropdown enumerates ALL roots, not just the
+// zero field; an «отвязать» item is prepended when the routine is
+// attached to anything, and detaching removes every field parent at
+// once (a routine can be bound to several fields). Same option is
+// wired in routines_tab's general routine menu.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -26,7 +41,7 @@ import '../pults/pult_core.dart';
 import '../pults/pult_sheet.dart';
 import '../services/report.dart';
 import 'bort_date_picker.dart';
-import 'planned_picker.dart';
+import 'notice_picker.dart';
 import 'routine_block_view.dart';
 
 class RoutineCard extends StatefulWidget {
@@ -250,6 +265,14 @@ class _RoutineCardState extends State<RoutineCard> {
     await routineLayer.setCompleted(journal, r.id, !r.completed);
   }
 
+  Future<void> _deleteRoutine(Routine r) async {
+    final routineLayer = RoutineScope.of(context);
+    final journal = AppScope.of(context).journal;
+    final nav = Navigator.of(context);
+    await routineLayer.deleteRoutine(journal, r.id);
+    if (mounted) nav.pop();
+  }
+
   Future<void> _exportOne(Routine r) async {
     final app = AppScope.of(context);
     final i18n = I18nScope.of(context);
@@ -293,51 +316,75 @@ class _RoutineCardState extends State<RoutineCard> {
     );
   }
 
-  Future<void> _pickPlanned(Routine r) async {
+  Future<void> _pickNotice(Routine r) async {
+    // Guard: notice pult is meaningful only with a date.
+    if (r.scheduledAt == null) return;
     final routineLayer = RoutineScope.of(context);
     final journal = AppScope.of(context).journal;
 
-    final total = await showPlannedPicker(
+    final total = await showNoticePicker(
       context,
-      initialSeconds: r.plannedSeconds,
+      initialSeconds: r.noticeBeforeSec,
     );
     if (total == null) return;
-    await routineLayer.setPlanned(journal, r.id, total);
+    await routineLayer.setNotice(journal, r.id, total);
+  }
+
+  Future<void> _clearNotice(Routine r) async {
+    final routineLayer = RoutineScope.of(context);
+    final journal = AppScope.of(context).journal;
+    await routineLayer.clearNotice(journal, r.id);
   }
 
   Future<void> _moveRoutine(Routine r) async {
     final app = AppScope.of(context);
+    final i18n = app.i18n;
     final bort = app.bort;
     final currentFieldId = FieldScope.of(context).activeFieldId;
+    final attached = r.fieldParents.isNotEmpty;
 
     final nodes = app.fieldLayer.nodes.values.where((n) => n.isRoot).toList();
-
     if (nodes.isEmpty) return;
 
-    showPultSheet(
+    final subs = <PultSpec>[
+      if (attached)
+        PultSpec(
+          id: 'detach_${r.id}',
+          icon: Icons.link_off,
+          label: i18n.t('field.detach_routine'),
+          onTap: () async {
+            await app.journal.transaction(() async {
+              for (final pId in List<int>.from(r.fieldParents)) {
+                await app.routineLayer.detachFromField(app.journal, r.id, pId);
+              }
+            });
+          },
+        ),
+      for (final n in nodes)
+        PultSpec(
+          id: 'move_${r.id}_${n.id}',
+          icon: Icons.layers,
+          label: n.name,
+          selected: currentFieldId == n.id,
+          onTap: () async {
+            if (currentFieldId != null && currentFieldId != n.id) {
+              await app.routineLayer.detachFromField(
+                app.journal,
+                r.id,
+                currentFieldId,
+              );
+            }
+            if (currentFieldId != n.id) {
+              await app.routineLayer.attachToField(app.journal, r.id, n.id);
+              app.fieldLayer.setActiveField(n.id);
+            }
+          },
+        ),
+    ];
+
+    await showPultSheet(
       context: context,
-      subs: [
-        for (final n in nodes)
-          PultSpec(
-            id: 'move_${r.id}_${n.id}',
-            icon: Icons.layers,
-            label: n.name,
-            selected: currentFieldId == n.id,
-            onTap: () async {
-              if (currentFieldId != null && currentFieldId != n.id) {
-                await app.routineLayer.detachFromField(
-                  app.journal,
-                  r.id,
-                  currentFieldId,
-                );
-              }
-              if (currentFieldId != n.id) {
-                await app.routineLayer.attachToField(app.journal, r.id, n.id);
-                app.fieldLayer.setActiveField(n.id);
-              }
-            },
-          ),
-      ],
+      subs: subs,
       fg: bort.fg,
       bg: bort.bg,
       signal: bort.fgsignal,
@@ -412,13 +459,21 @@ class _RoutineCardState extends State<RoutineCard> {
             ? () => _toggleCompleted(r)
             : null,
         onExport: (kind == 'summary') ? () => _exportOne(r) : null,
+        onDelete: (kind == 'summary') ? () => _deleteRoutine(r) : null,
         onMove: (kind == 'summary') ? () => _moveRoutine(r) : null,
         onToggleShowAll: () => setState(() => _showAllSlots = !_showAllSlots),
         parity: parity,
         scheduledActive: r.scheduledAt != null,
         onPickDate: kind == 'note' ? () => _pickSchedule(r) : null,
-        onPickPlanned: kind == 'note' ? () => _pickPlanned(r) : null,
         onClearDate: kind == 'note' ? () => _clearSchedule(r) : null,
+        // Notice pult is enabled only with a date; RoutineBlockView
+        // hides the pult when onPickNotice is null.
+        onPickNotice: (kind == 'note' && r.scheduledAt != null)
+            ? () => _pickNotice(r)
+            : null,
+        onClearNotice: (kind == 'note' && r.noticeSet)
+            ? () => _clearNotice(r)
+            : null,
       );
     }
 

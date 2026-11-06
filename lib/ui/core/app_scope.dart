@@ -15,11 +15,26 @@
 //   TickerScope  — AppTicker: timers and colon blink.
 //   I18nScope    — dictionary: interface strings.
 //
-// Shift and routine synchronization. The relationship between
-// shifts and routines is dictated by the mutexShift flag:
-//   — if mutexShift is true, they are linked: starting a block
-//     starts the shift, and stopping the shift pauses all running
-//     blocks in the field's subtree (including nested nodes).
+// Unified shift. The shift is no longer bound to any field: one
+// timer for the entire application, stored under the zero-field key
+// (see operational_layer). Shift toggling and shift auto-start are
+// therefore independent of the caller's field argument; the argument
+// is retained in signatures for source compatibility only and is not
+// consulted.
+//
+// Shift toggle gating. When bort.shiftEnabled is false, no shift
+// exists at all: toggleShift is a no-op, and toggleBlockWithShift
+// skips the auto-start branch. Turning the toggle off while a shift
+// runs is handled in operational_layer (it stops the shift and
+// journals it, but does not pause routines).
+//
+// Shift and routine synchronization. The relationship is dictated
+// by the mutexShift flag:
+//   — if mutexShift is true, they are linked: starting any block
+//     starts the shift if it is not running (already running shifts
+//     are not restarted), and stopping the shift pauses every
+//     running block across every field — no subtree filtering, since
+//     the shift is global.
 //   — if mutexShift is false, they are independent.
 //
 // afterJournalReset. A callback invoked after the journal is cleared
@@ -70,6 +85,8 @@ class AppContext {
   });
 
   // ─── Start a routine block with shift logic ───
+  // The field argument is kept for source compatibility; the shift
+  // is global, so its identity is ignored here.
   Future<void> toggleBlockWithShift(
     int fieldId,
     int routineId,
@@ -82,14 +99,16 @@ class AppContext {
 
     final going = !b.isRunning;
 
-    // Auto-start shift only if the shift is linked to routines
-    // (mutexShift == true) and not already running for this field.
-    if (going && bort.mutexShift && !bort.onShift(fieldId)) {
+    // Auto-start the shift when the block is started, the shift
+    // exists (toggle on), the shift is linked to routines, and it
+    // is not already running. If it is already running, it is
+    // deliberately left as is (per the spec: no restart).
+    if (bort.shiftEnabled && going && bort.mutexShift && !bort.onShift(0)) {
       await journal.log(
         type: JournalType.actor,
-        body: jsonEncode({'action': 'shift_start', 'field_id': fieldId}),
+        body: jsonEncode({'action': 'shift_start', 'field_id': 0}),
       );
-      bort.startShift(fieldId);
+      bort.startShift(0);
     }
 
     await routineLayer.toggleBlock(
@@ -102,35 +121,34 @@ class AppContext {
   }
 
   // ─── Shift ───
+  // The field argument is kept for source compatibility; the shift
+  // is unified, so the identity is ignored. When shiftEnabled is
+  // false, this is a no-op: no shift, no state change, no journal
+  // entry — the toggle switch in the rubka owns that transition
+  // (see operational_layer).
   Future<void> toggleShift(int fieldId) async {
-    final going = !bort.onShift(fieldId);
+    if (!bort.shiftEnabled) return;
+    final going = !bort.onShift(0);
     await journal.log(
       type: JournalType.actor,
       body: jsonEncode({
         'action': going ? 'shift_start' : 'shift_stop',
-        'field_id': fieldId,
+        'field_id': 0,
       }),
     );
 
     if (going) {
-      bort.startShift(fieldId);
+      bort.startShift(0);
       return;
     }
 
-    bort.stopShift(fieldId);
+    bort.stopShift(0);
 
-    // Pause all running routines in the field's subtree if linked.
+    // Pause every running block across every field when the shift
+    // is linked to routines. No descent check: the shift is global,
+    // so its scope covers all fields equally.
     if (bort.mutexShift) {
       for (final r in routineLayer.routines) {
-        bool inField = false;
-        for (final parentId in r.fieldParents) {
-          if (fieldLayer.isDescendant(parentId, fieldId)) {
-            inField = true;
-            break;
-          }
-        }
-        if (!inField) continue;
-
         for (final b in r.blocks) {
           if (b.isRunning) {
             await routineLayer.pauseBlock(journal, r.id, b.kind);

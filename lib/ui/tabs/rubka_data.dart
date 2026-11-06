@@ -19,9 +19,14 @@
 //       (progress shown during import).
 //
 //   Group 2 — other:
-//     — bort: today's active time;
 //     — reset: caches and defaults to the initial state (progress +
 //       confirm).
+//
+// The bort-history row that lived here has moved to the «control»
+// block, per the spec. The _linkRow helper is therefore gone.
+//
+// Labels use HelpLabel; each row has a `help.<key>` text in the
+// dictionary. The block title stays a regular collapse mark.
 //
 // Post-reset recovery. After clearing the journal, importing, or
 // resetting caches, `afterJournalReset` is called on the AppContext
@@ -40,10 +45,10 @@ import 'package:path_provider/path_provider.dart';
 import '../core/app_scope.dart';
 import '../core/confirm_dialog.dart';
 import '../core/format.dart';
+import '../core/help_label.dart';
 import '../core/notice_dialog.dart';
 import '../core/progress_dialog.dart';
 import '../pults/pult_core.dart';
-import '../services/action_dialog.dart';
 import '../services/import_service.dart';
 import '../services/journal_compactor.dart';
 import '../services/report.dart';
@@ -61,6 +66,8 @@ class _RubkaDataState extends State<RubkaData> {
   int _exportsBytes = 0;
   bool _sizeLoaded = false;
   bool _compacting = false;
+
+  static const double _labelW = 140.0;
 
   String _fmtSize(int bytes, Translate t) {
     if (bytes <= 0) return '0 ${t('size.b')}';
@@ -403,8 +410,14 @@ class _RubkaDataState extends State<RubkaData> {
     );
 
     final group1 = <Widget>[
-      _valueRow(i18n.t('bort.journal'), _fmtSize(_journalBytes, i18n.t), fg),
+      _valueRow(
+        helpKey: 'bort.journal',
+        label: i18n.t('bort.journal'),
+        value: _fmtSize(_journalBytes, i18n.t),
+        fg: fg,
+      ),
       _pultRow(
+        helpKey: 'bort.reload',
         label: i18n.t('bort.reload'),
         fg: fg,
         pult: Pult(
@@ -421,6 +434,7 @@ class _RubkaDataState extends State<RubkaData> {
         ),
       ),
       _pultRow(
+        helpKey: 'bort.delete',
         label: i18n.t('bort.delete'),
         fg: fg,
         pult: Pult(
@@ -437,6 +451,7 @@ class _RubkaDataState extends State<RubkaData> {
         ),
       ),
       _pultRow(
+        helpKey: 'bort.compress',
         label: i18n.t('bort.compress'),
         fg: fg,
         pult: Pult(
@@ -453,8 +468,14 @@ class _RubkaDataState extends State<RubkaData> {
         ),
       ),
       divider(),
-      _valueRow(i18n.t('bort.media'), _fmtSize(_mediaBytes, i18n.t), fg),
+      _valueRow(
+        helpKey: 'bort.media',
+        label: i18n.t('bort.media'),
+        value: _fmtSize(_mediaBytes, i18n.t),
+        fg: fg,
+      ),
       _pultRow(
+        helpKey: 'bort.shake',
         label: i18n.t('bort.shake'),
         fg: fg,
         pult: Pult(
@@ -472,6 +493,7 @@ class _RubkaDataState extends State<RubkaData> {
       ),
       divider(),
       _pultRow(
+        helpKey: 'bort.export',
         label: '${i18n.t('bort.export')} (${_fmtSize(_exportsBytes, i18n.t)})',
         fg: fg,
         pult: Pult(
@@ -496,6 +518,7 @@ class _RubkaDataState extends State<RubkaData> {
         ),
       ),
       _pultRow(
+        helpKey: 'bort.import',
         label: i18n.t('bort.import'),
         fg: fg,
         pult: Pult(
@@ -509,15 +532,8 @@ class _RubkaDataState extends State<RubkaData> {
     ];
 
     final group2 = <Widget>[
-      _linkRow(
-        label: i18n.t('bort.bort'),
-        value: bort.bortTime <= 0
-            ? '0${i18n.t('time.m')}'
-            : fmtTime(bort.bortTime, i18n.t),
-        fgsignal: fgsignal,
-        onTap: () => showTimeHistory(context, key: 'bort'),
-      ),
       _pultRow(
+        helpKey: 'bort.reset',
         label: i18n.t('bort.reset'),
         fg: fg,
         pult: Pult(
@@ -541,19 +557,21 @@ class _RubkaDataState extends State<RubkaData> {
     );
   }
 
-  Widget _valueRow(
-    String label,
-    String value,
-    Color fg, {
-    VoidCallback? onTap,
+  Widget _valueRow({
+    required String helpKey,
+    required String label,
+    required String value,
+    required Color fg,
   }) {
-    final row = Padding(
+    return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
-          SizedBox(
-            width: 140,
-            child: Text(label, style: TextStyle(color: fg)),
+          HelpLabel(
+            helpKey: helpKey,
+            text: label,
+            width: _labelW,
+            style: TextStyle(color: fg),
           ),
           Expanded(
             child: Text(
@@ -564,56 +582,10 @@ class _RubkaDataState extends State<RubkaData> {
         ],
       ),
     );
-    if (onTap == null) return row;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: row,
-    );
-  }
-
-  Widget _linkRow({
-    required String label,
-    required String value,
-    required Color fgsignal,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 140,
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: fgsignal,
-                  decoration: TextDecoration.underline,
-                  decorationColor: fgsignal,
-                ),
-              ),
-            ),
-            Expanded(
-              child: Text(
-                value,
-                style: TextStyle(
-                  color: fgsignal,
-                  fontFamily: 'monospace',
-                  decoration: TextDecoration.underline,
-                  decorationColor: fgsignal,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   Widget _pultRow({
+    required String helpKey,
     required String label,
     required Widget pult,
     required Color fg,
@@ -622,9 +594,11 @@ class _RubkaDataState extends State<RubkaData> {
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
-          SizedBox(
-            width: 140,
-            child: Text(label, style: TextStyle(color: fg)),
+          HelpLabel(
+            helpKey: helpKey,
+            text: label,
+            width: _labelW,
+            style: TextStyle(color: fg),
           ),
           pult,
         ],

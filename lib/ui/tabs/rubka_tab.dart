@@ -1,14 +1,24 @@
 // ═══════════════════════════════════════════════════════════════════
 // rubka_tab.dart — rubka tab.
 //
-// Four blocks: appearance, interface, data, permissions. The former
-// «artel» block and its contents (shift row, midnight, map scale,
-// mutex ticks, tab visibility) have been abolished together with
-// the artel tab.
+// Five blocks: appearance, interface, control, data, permissions.
+// The «control» block is new (midnight, bort, shift toggle, mutexes,
+// map scale). The «artel» block was abolished earlier; the bort
+// history row moved from «data» to «control».
 //
-// Layout. Narrow: single column. Wide: two columns (interface and
-// data on the left, appearance and permissions on the right) with
-// chessboard frame parity.
+// Layout. Narrow: single column. Wide: two columns with chessboard
+// frame parity. Column composition on wide screens:
+//   left  — interface, control, data;
+//   right — appearance, permissions.
+// Parity alternates down each column independently: the first item
+// of each column is parity 0 (or 1, chosen so the two columns do not
+// start with the same thickness at the top edge — this keeps the
+// horizontal rhythm consistent with the previous two-column layout).
+//
+// BlockWrapper. Still needed: the child blocks (RubkaAppearance,
+// RubkaPermissions, RubkaControl) carry their own default parity; the
+// wrapper overrides it. The Block branch is retained for callers that
+// build a Block directly (interface, data).
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -20,6 +30,7 @@ import '../core/block.dart';
 import '../core/control_row.dart';
 import '../pults/pult_core.dart';
 import 'rubka_appearance.dart';
+import 'rubka_control.dart';
 import 'rubka_data.dart';
 import 'rubka_interface.dart';
 import 'rubka_permissions.dart';
@@ -81,6 +92,7 @@ class RubkaTab extends StatelessWidget {
     );
 
     const appearanceBlock = RubkaAppearance(parity: 3);
+    const controlBlock = RubkaControl(parity: 2);
     const permissionsBlock = RubkaPermissions();
 
     return LayoutBuilder(
@@ -99,8 +111,9 @@ class RubkaTab extends StatelessWidget {
             children: [
               const BlockWrapper(parity: 0, child: appearanceBlock),
               BlockWrapper(parity: 1, child: interface),
-              BlockWrapper(parity: 0, child: data),
-              const BlockWrapper(parity: 1, child: permissionsBlock),
+              const BlockWrapper(parity: 0, child: controlBlock),
+              BlockWrapper(parity: 1, child: data),
+              const BlockWrapper(parity: 0, child: permissionsBlock),
             ],
           );
         }
@@ -128,11 +141,14 @@ class RubkaTab extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Left: interface, control, data.
               col([
                 BlockWrapper(parity: 0, child: interface),
-                BlockWrapper(parity: 1, child: data),
+                const BlockWrapper(parity: 1, child: controlBlock),
+                BlockWrapper(parity: 0, child: data),
               ]),
               const SizedBox(width: spacing),
+              // Right: appearance, permissions.
               col([
                 const BlockWrapper(parity: 1, child: appearanceBlock),
                 const BlockWrapper(parity: 0, child: permissionsBlock),
@@ -179,6 +195,8 @@ class BlockWrapper extends StatelessWidget {
       );
     } else if (child is RubkaAppearance) {
       return RubkaAppearance(parity: parity);
+    } else if (child is RubkaControl) {
+      return RubkaControl(parity: parity);
     } else if (child is RubkaPermissions) {
       return RubkaPermissions(parity: parity);
     }

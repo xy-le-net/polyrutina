@@ -8,7 +8,17 @@
 //     night). With both off, day is used.
 //
 // The custom role editor is shown only when the custom palette is
-// enabled.
+// enabled. The custom palette is now stored in its night form (see
+// theme_store.dart); the editor therefore writes to the same entry,
+// and the visible day view is the mirror. No logic change is needed
+// here: the fields are the same five roles, the stored hex strings
+// come from ThemeStore.toFlatStrings() and go back through
+// applyThemeKey.
+//
+// Labels use HelpLabel; the three theme toggles each have a
+// `help.theme.*` text. Role labels (bg, fg, …) stay plain — they are
+// not settings, only slots of the palette; the section heading above
+// carries the group help.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -19,6 +29,7 @@ import '../../data/theme_store.dart';
 import '../core/app_scope.dart';
 import '../core/block.dart';
 import '../core/bort_field.dart';
+import '../core/help_label.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_tick.dart';
 
@@ -34,6 +45,8 @@ class RubkaAppearance extends StatelessWidget {
     'fg',
     'fgsignal',
   ];
+
+  static const double _labelW = 140.0;
 
   @override
   Widget build(BuildContext context) {
@@ -85,8 +98,9 @@ class RubkaAppearance extends StatelessWidget {
   Widget _sectionTitle(String text, Color mid, double side) {
     return Padding(
       padding: EdgeInsets.only(top: side * 0.3, bottom: side * 0.1),
-      child: Text(
-        text,
+      child: HelpLabel(
+        helpKey: 'theme.custom',
+        text: text,
         style: TextStyle(color: mid, fontSize: side * 0.35),
       ),
     );
@@ -105,6 +119,7 @@ class RubkaAppearance extends StatelessWidget {
 
     Widget toggle({
       required String id,
+      required String helpKey,
       required String label,
       required bool value,
       required VoidCallback onTap,
@@ -113,9 +128,11 @@ class RubkaAppearance extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
           children: [
-            SizedBox(
-              width: 140,
-              child: Text(label, style: TextStyle(color: fg)),
+            HelpLabel(
+              helpKey: helpKey,
+              text: label,
+              width: _labelW,
+              style: TextStyle(color: fg),
             ),
             PultTick(
               id: id,
@@ -137,18 +154,21 @@ class RubkaAppearance extends StatelessWidget {
       children: [
         toggle(
           id: 'theme_custom',
+          helpKey: 'theme.custom',
           label: i18n.t('theme.custom'),
           value: bort.themeCustom,
           onTap: () => bort.setBool('theme_custom', !bort.themeCustom),
         ),
         toggle(
           id: 'theme_night',
+          helpKey: 'theme.night',
           label: i18n.t('theme.night'),
           value: bort.themeNight,
           onTap: () => bort.setBool('theme_night', !bort.themeNight),
         ),
         toggle(
           id: 'theme_auto',
+          helpKey: 'theme.auto',
           label: i18n.t('theme.auto'),
           value: bort.themeAuto,
           onTap: () => bort.setBool('theme_auto', !bort.themeAuto),
@@ -177,7 +197,7 @@ class RubkaAppearance extends StatelessWidget {
       child: Row(
         children: [
           SizedBox(
-            width: 140,
+            width: _labelW,
             child: Text(role, style: TextStyle(color: fg)),
           ),
           Expanded(

@@ -7,7 +7,7 @@
 //     "schema": 1,
 //     "fields": [ { "id": 1, "name": "...", "parents": [], "is_root": true } ],
 //     "series": {
-//       "shift": [ { "field_id": 1, "year": 2026, "month": 11,
+//       "shift": [ { "field_id": 0, "year": 2026, "month": 11,
 //                    "days": { "1": 3600, "2": 7200 } } ],
 //       "bort":  [ { "field_id": 0, ... } ]
 //     },
@@ -15,9 +15,23 @@
 //   }
 //
 // The `series` block carries every month of every registered time
-// series, so that a full export/import round-trip preserves the
-// shift and bort histories. Archives without the block are accepted;
-// they simply import no series.
+// series. Shift is unified under field 0; the exporter therefore
+// walks only field 0 (the per-field loop is gone), keeping the
+// archive compact and the import side unambiguous. Archives produced
+// by older builds that contained per-field shift entries are still
+// read: the importer collapses them under field 0 (see
+// import_service.dart). No schema bump: the routine field rename
+// (planned_seconds → notice_before_sec + notice_set) is handled
+// leniently at parse time, and old archives carry the old name,
+// which the parser accepts.
+//
+// Notice interval. The former planned duration is now a lead time;
+// the JSON carries `notice_before_sec` (integer) and `notice_set`
+// (bool). Old archives carry `planned_seconds`; a non-zero value is
+// treated as «notice was set», with notice_before_sec taken as-is.
+// Because the two concepts are semantically different (duration vs
+// lead time), the numeric value is preserved verbatim — archives
+// round-trip byte-for-byte, even though the meaning is re-interpreted.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -43,28 +57,24 @@ class ReportJson {
   }
 
   // ─── Build series block ───
+  // Shift is unified: only field 0 is walked. Bort is always under 0.
   static Map<String, dynamic> buildSeries(AppContext app) {
     final out = <String, dynamic>{};
     for (final entry in app.bort.series.entries) {
       final kind = entry.key;
       final series = entry.value;
-      final fieldIds = kind == 'shift'
-          ? app.bort.shifts.keys.toList()
-          : <int>[0];
       final months = <Map<String, dynamic>>[];
-      for (final fId in fieldIds) {
-        for (final m in series.allMonths(fId)) {
-          final days = <String, int>{};
-          for (final e in m.days.entries) {
-            days[e.key.toString()] = e.value;
-          }
-          months.add({
-            'field_id': fId,
-            'year': m.year,
-            'month': m.month,
-            'days': days,
-          });
+      for (final m in series.allMonths(0)) {
+        final days = <String, int>{};
+        for (final e in m.days.entries) {
+          days[e.key.toString()] = e.value;
         }
+        months.add({
+          'field_id': 0,
+          'year': m.year,
+          'month': m.month,
+          'days': days,
+        });
       }
       if (months.isNotEmpty) out[kind] = months;
     }
@@ -110,7 +120,8 @@ class ReportJson {
       'last_pulse_at': r.lastPulseAt,
       'completed_at': r.completedAt,
       'scheduled_at': r.scheduledAt,
-      'planned_seconds': r.plannedSeconds,
+      'notice_before_sec': r.noticeBeforeSec,
+      'notice_set': r.noticeSet,
       'field_parents': r.fieldParents,
       'blocks': [
         for (final b in r.blocks)
@@ -200,6 +211,20 @@ class ReportJson {
       }
     }
 
+    // Notice: prefer the new pair; fall back to the old name.
+    final hasNewNotice =
+        j.containsKey('notice_before_sec') || j.containsKey('notice_set');
+    final int noticeBeforeSec;
+    final bool noticeSet;
+    if (hasNewNotice) {
+      noticeBeforeSec = (j['notice_before_sec'] as num?)?.toInt() ?? 0;
+      noticeSet = j['notice_set'] as bool? ?? false;
+    } else {
+      final old = (j['planned_seconds'] as num?)?.toInt() ?? 0;
+      noticeBeforeSec = old;
+      noticeSet = old > 0;
+    }
+
     return ParsedRoutine(
       sourceDevice: device,
       sourceFirstRun: firstRun,
@@ -212,7 +237,8 @@ class ReportJson {
       lastPulseAt: (j['last_pulse_at'] as num?)?.toInt(),
       completedAt: (j['completed_at'] as num?)?.toInt(),
       scheduledAt: (j['scheduled_at'] as num?)?.toInt(),
-      plannedSeconds: (j['planned_seconds'] as num?)?.toInt() ?? 0,
+      noticeBeforeSec: noticeBeforeSec,
+      noticeSet: noticeSet,
       fieldParents: fieldParents,
       blocks: blocks,
       traces: traces,
@@ -221,7 +247,9 @@ class ReportJson {
 
   // ─── Parse the series block ───
   // Returns a flat list of month records; an absent or malformed
-  // block yields an empty list.
+  // block yields an empty list. Shift entries under non-zero fields
+  // are collapsed under 0 at import time (see import_service.dart);
+  // the parser returns them verbatim, preserving the field_id.
   static List<ParsedMonth> parseSeries(Map<String, dynamic> data) {
     final out = <ParsedMonth>[];
     final raw = data['series'];
@@ -287,7 +315,8 @@ class ParsedRoutine {
   final int? lastPulseAt;
   final int? completedAt;
   final int? scheduledAt;
-  final int plannedSeconds;
+  final int noticeBeforeSec;
+  final bool noticeSet;
   final List<int> fieldParents;
   final List<ParsedBlock> blocks;
   final List<ParsedTrace> traces;
@@ -304,7 +333,8 @@ class ParsedRoutine {
     this.lastPulseAt,
     this.completedAt,
     this.scheduledAt,
-    this.plannedSeconds = 0,
+    this.noticeBeforeSec = 0,
+    this.noticeSet = false,
     this.fieldParents = const [],
     required this.blocks,
     required this.traces,

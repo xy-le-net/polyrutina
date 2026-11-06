@@ -19,11 +19,32 @@
 // Trace is distinguished by the pair (objectId, slot). Checklist
 // search — by kind=checklist + slot.
 //
+// Dependency capture. The three layers this widget writes to (trace,
+// bort, journal) are captured once in didChangeDependencies as plain
+// fields. This lets _autoSend run from dispose after the widget has
+// been unmounted, when dependOnInheritedWidgetOfExactType would
+// assert in debug mode; the layers themselves outlive the widget.
+//
+// Send pult. When the pult shows the send glyph (edit_note), tapping
+// it unfocuses the field. The focus listener then runs _autoSend, and
+// the keyboard hides — exactly the same flow as the attach pult. The
+// caller no longer awaits _autoSend explicitly (that would race with
+// the focus listener and risk a duplicate journal entry).
+//
+// Line budget. The per-line height is multiplied by the current text
+// scaler, and the resulting budget is a fraction (0.6) of the
+// available height (screen minus keyboard), not the whole screen.
+// Previously the scaler was ignored, so the field over-estimated the
+// number of lines that would fit and overflowed the bottom of the
+// screen. Fraction and scaler together keep the expanded field within
+// the visible area.
+//
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 
+import '../../data/journal_layer.dart';
 import '../../data/operational_layer.dart';
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
@@ -81,6 +102,11 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
 
   int _traceId = -1;
 
+  // Captured in didChangeDependencies; stable for the widget's life.
+  TraceLayer? _traceLayer;
+  OperationalLayer? _bort;
+  JournalLayer? _journal;
+
   String get _key =>
       OperationalLayer.traceDraftKey(widget.objectId, widget.slot);
 
@@ -117,14 +143,21 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // Capture once: the layers outlive the widget, so the dispose
+    // path can still write.
+    _traceLayer = TraceScope.of(context);
+    _bort = BortScope.of(context);
+    _journal = AppScope.of(context).journal;
+
     if (_initialized) return;
     _initialized = true;
     _reloadFromLayer();
   }
 
   void _reloadFromLayer() {
-    final traceLayer = TraceScope.of(context);
-    final bort = BortScope.of(context);
+    final traceLayer = _traceLayer;
+    final bort = _bort;
+    if (traceLayer == null || bort == null) return;
     final t = traceLayer.findFirstByKindSlot(
       widget.objectId,
       TraceKind.text,
@@ -169,16 +202,18 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
 
   Future<void> _autoSend() async {
     if (!_initialized) return;
-    if (!mounted) return;
+
+    // Captured layers: the dispose path no longer touches `context`,
+    // but the layers themselves remain valid.
+    final traceLayer = _traceLayer;
+    final bort = _bort;
+    final journal = _journal;
+    if (traceLayer == null || bort == null || journal == null) return;
 
     // Capture the text BEFORE any await: safe even when called from
     // dispose, where the controller may be torn down mid-flight.
     final text = _ctrl.text;
     if (text == _lastSent) return;
-
-    final traceLayer = TraceScope.of(context);
-    final bort = BortScope.of(context);
-    final journal = AppScope.of(context).journal;
 
     if (_traceId != -1) {
       await traceLayer.updateText(journal, _traceId, text);
@@ -208,7 +243,10 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
   bool _canSend() => _ctrl.text != _lastSent;
 
   Future<void> _send() async {
-    await _autoSend();
+    // Unfocus is enough: the focus listener runs _autoSend. Calling
+    // _autoSend here as well would race with that listener and could
+    // log the same text twice.
+    _focus.unfocus();
     if (mounted) setState(() {});
   }
 
@@ -234,7 +272,8 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
   // Returns the number of checked and total filled items.
   // Empty items are not counted in either number.
   ({int done, int total}) _checklistCounts() {
-    final traceLayer = TraceScope.of(context);
+    final traceLayer = _traceLayer;
+    if (traceLayer == null) return (done: 0, total: 0);
     final t = traceLayer.findFirstByKindSlot(
       widget.objectId,
       TraceKind.checklist,
@@ -252,7 +291,8 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
   }
 
   List<TraceFile> _files() {
-    final traceLayer = TraceScope.of(context);
+    final traceLayer = _traceLayer;
+    if (traceLayer == null) return const [];
     final t = traceLayer.findFirstByKindSlot(
       widget.objectId,
       TraceKind.text,
@@ -273,7 +313,8 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
 
   void _openMediaViewer(List<TraceFile> files, int index) {
     if (index < 0 || index >= files.length) return;
-    final traceLayer = TraceScope.of(context);
+    final traceLayer = _traceLayer;
+    if (traceLayer == null) return;
     final t = traceLayer.findFirstByKindSlot(
       widget.objectId,
       TraceKind.text,
@@ -317,16 +358,18 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     final files = _files();
 
     // Expansion: in focus — up to the limit or up to the keyboard;
-    // otherwise — three lines.
+    // otherwise — three lines. The line height accounts for the
+    // current text scaler (previously ignored, which made the field
+    // over-estimate how many lines fit). The budget is a fraction
+    // (0.6) of the available height, not the whole screen.
     final int maxLines;
     final int? minLines;
     if (_focused) {
       final viewInsets = MediaQuery.of(context).viewInsets.bottom;
-      final lineH =
-          (widget.side * bort.kNumber * 1.2) *
-          1.4; // adjusted for new font size
-      final keyboardLines =
-          ((MediaQuery.of(context).size.height - viewInsets) / lineH).floor();
+      final textScale = MediaQuery.textScalerOf(context).scale(1.0);
+      final lineH = (widget.side * bort.kNumber * 1.2) * 1.4 * textScale;
+      final availableH = MediaQuery.of(context).size.height - viewInsets;
+      final keyboardLines = (availableH * 0.6 / lineH).floor();
       final limit = keyboardLines < _maxExpandedLines
           ? keyboardLines
           : _maxExpandedLines;

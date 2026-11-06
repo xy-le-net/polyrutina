@@ -13,18 +13,25 @@
 //
 // data.json shape. ONE shape is accepted:
 //   {"schema": 1, "fields": [...], "series": {...}, "routines": [ ... ]}
-// The former «bare object» form is abolished. The `series` block is
-// optional; archives without it simply import no series.
+// The `series` block is optional; archives without it simply import
+// no series. Both the new `notice_before_sec` + `notice_set` pair
+// and the old `planned_seconds` field are accepted; see
+// report_json.dart for the mapping.
 //
-// Field tree. If the "fields" array is present, the importer first
-// creates all nodes (mapping the old IDs to the new ones), then
-// re-attaches the parent-child links, and finally binds routines
-// to the new node IDs. If "fields" is absent, the routines are
-// attached to the current root field.
+// Unified shift in archives. Newer exports carry shift series only
+// under field 0. Older archives may carry per-field entries. On
+// import, any shift month is collapsed under field 0 — the field
+// id in the archive is ignored for the shift kind. Totals are not
+// added: the last entry for a given (year, month) wins, mirroring
+// the way the unified shift keeps a single state rather than a sum.
+// The bort series is already field 0 by construction.
 //
-// Series. Every month from the `series` block is applied to the
-// layer via applySeriesMonth: the file is updated and the month is
-// logged to the journal, so the journal holds the full history.
+// Notice interval. The routine is applied via setNotice when the
+// imported archive carries a notice interval. If the routine has a
+// date and the notice is set, setNotice is called AFTER setSchedule
+// so that the layer does not reject it (setNotice bails when there
+// is no date). If the archive carries no notice, nothing is called;
+// the routine keeps its defaults.
 //
 // Deduplication. The source key of each parsed routine is
 // «deviceId/firstRun/routineId»; re-importing the same archive is
@@ -55,7 +62,6 @@ import '../core/app_scope.dart';
 import '../core/format.dart';
 import 'report_json.dart';
 
-// ─── Aggregated result of one import session ───
 class ImportResult {
   final int routines;
   final int media;
@@ -261,8 +267,22 @@ Future<ImportResult> _importZip(AppContext app, String path) async {
       }
 
       // 3b. Apply series months.
+      // The unified shift lives under field 0; the bort series too.
+      // Old archives that carried per-field shift entries are
+      // collapsed under 0 here — the last entry for a (year, month)
+      // wins, which mirrors the single-state semantics of the
+      // unified shift. A non-zero field id from the archive is
+      // ignored for shift and bort kinds alike.
       for (final m in months) {
-        app.bort.applySeriesMonth(m.kind, m.fieldId, m.year, m.month, m.days);
+        final isUnified = m.kind == 'shift' || m.kind == 'bort';
+        final targetFieldId = isUnified ? 0 : m.fieldId;
+        app.bort.applySeriesMonth(
+          m.kind,
+          targetFieldId,
+          m.year,
+          m.month,
+          m.days,
+        );
       }
 
       // 3c. Apply routines, binding them to the new field IDs.
@@ -332,11 +352,14 @@ Future<void> _applyParsed(
     }
   }
 
+  // Schedule first, then notice: setNotice refuses to act when
+  // there is no date, and the import must not depend on ordering
+  // tricks in the layer.
   if (p.scheduledAt != null) {
     await routineLayer.setSchedule(journal, r.id, p.scheduledAt);
   }
-  if (p.plannedSeconds > 0) {
-    await routineLayer.setPlanned(journal, r.id, p.plannedSeconds);
+  if (p.noticeSet) {
+    await routineLayer.setNotice(journal, r.id, p.noticeBeforeSec);
   }
   if (p.completed) {
     await routineLayer.setCompleted(journal, r.id, true);

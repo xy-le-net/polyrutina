@@ -11,14 +11,30 @@
 //
 // Legend. Always displayed row-by-row (Column) regardless of screen
 // orientation. Each legend item is clickable and opens a pult sheet
-// listing the corresponding routines for the current month.
+// listing the corresponding routines for the visible month.
 //
-// Swipe. A horizontal swipe anywhere on the body (grid, legend,
-// empty space) flips the month: swipe right — previous, swipe left —
-// next.
+// Pagination. The control row (prev button, month title, next
+// button) is fixed at the top; the body below is a PageView. Each
+// page is a full month — grid and legend together — so the legend
+// scrolls with its month rather than staying put. Swiping anywhere
+// below the control row flips the month; the header stays fixed.
 //
-// Scheduling midnight. When a routine is scheduled to a specific
-// day, the time is set to the bort's «midnight» setting.
+// Infinite scroll. The PageView is built with `itemCount: null`,
+// i.e. forward-infinite, and the controller starts at a very large
+// initial page (see _centerPage). Backward movement is bounded only
+// by that starting index, which corresponds to roughly eight
+// thousand years — practically unbounded for a calendar. The month
+// shown on page i is `_baseMonth` shifted by `(i − _centerPage)`
+// months.
+//
+// Button animation. Prev/next animate the controller; a flag
+// (_animating) ignores repeated taps while the transition runs, so a
+// quick double press does not compound the movement.
+//
+// Title update. The month title is on the fixed control row and is
+// driven by _currentPage. The controller's listener updates
+// _currentPage as the page settles, so the title follows the swipe
+// (or the button press) without snapping only at the end.
 //
 // Layout. On narrow screens, the grid and the legend are stacked
 // vertically. On wide screens, they are split into two columns.
@@ -47,50 +63,86 @@ class DaysTab extends StatefulWidget {
 }
 
 class _DaysTabState extends State<DaysTab> {
-  late DateTime _month;
+  // A generous anchor so that both directions are effectively
+  // unbounded. About 8300 years in either direction.
+  static const int _centerPage = 100000;
+
+  late final PageController _controller;
+  late final DateTime _baseMonth;
+
+  int _currentPage = _centerPage;
+  bool _animating = false;
 
   @override
   void initState() {
     super.initState();
     final n = DateTime.now();
-    _month = DateTime(n.year, n.month, 1);
+    _baseMonth = DateTime(n.year, n.month, 1);
+    _controller = PageController(initialPage: _centerPage)
+      ..addListener(_onScroll);
   }
 
-  void _shift(int delta) {
-    setState(() {
-      _month = DateTime(_month.year, _month.month + delta, 1);
-    });
+  @override
+  void dispose() {
+    _controller.removeListener(_onScroll);
+    _controller.dispose();
+    super.dispose();
   }
 
-  void _onSwipe(DragEndDetails details) {
-    final v = details.primaryVelocity ?? 0;
-    if (v.abs() < 100) return;
-    // Swipe right → previous month; swipe left → next month.
-    _shift(v > 0 ? -1 : 1);
+  DateTime _monthOf(int pageIndex) {
+    final delta = pageIndex - _centerPage;
+    return DateTime(_baseMonth.year, _baseMonth.month + delta, 1);
   }
 
-  int? _dayOf(Routine r) {
-    if (r.completed && r.completedAt != null) {
-      return _sameMonth(r.completedAt!);
+  DateTime get _visibleMonth => _monthOf(_currentPage);
+
+  void _onScroll() {
+    final p = _controller.page;
+    if (p == null) return;
+    final rounded = p.round();
+    if (rounded != _currentPage) {
+      setState(() => _currentPage = rounded);
     }
-    if (r.scheduledAt != null) return _sameMonth(r.scheduledAt!);
-    if (r.lastPulseAt != null) return _sameMonth(r.lastPulseAt!);
-    return _sameMonth(r.createdAt);
   }
 
-  int? _sameMonth(int unixSec) {
+  Future<void> _shift(int delta) async {
+    if (_animating) return;
+    _animating = true;
+    try {
+      await _controller.animateToPage(
+        _currentPage + delta,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    } finally {
+      _animating = false;
+    }
+  }
+
+  // ─── Per-month extraction ───
+
+  int? _dayOf(DateTime month, Routine r) {
+    if (r.completed && r.completedAt != null) {
+      return _sameMonthOf(month, r.completedAt!);
+    }
+    if (r.scheduledAt != null) return _sameMonthOf(month, r.scheduledAt!);
+    if (r.lastPulseAt != null) return _sameMonthOf(month, r.lastPulseAt!);
+    return _sameMonthOf(month, r.createdAt);
+  }
+
+  int? _sameMonthOf(DateTime month, int unixSec) {
     final d = DateTime.fromMillisecondsSinceEpoch(unixSec * 1000);
-    if (d.year != _month.year || d.month != _month.month) return null;
+    if (d.year != month.year || d.month != month.month) return null;
     return d.day;
   }
 
-  _Mark _markOfRoutine(Routine r, int day) {
+  _Mark _markOfRoutine(DateTime month, Routine r, int day) {
     if (r.completed &&
         r.completedAt != null &&
-        _sameMonth(r.completedAt!) == day) {
+        _sameMonthOf(month, r.completedAt!) == day) {
       return _Mark.completed;
     }
-    if (r.scheduledAt != null && _sameMonth(r.scheduledAt!) == day) {
+    if (r.scheduledAt != null && _sameMonthOf(month, r.scheduledAt!) == day) {
       return _Mark.scheduled;
     }
     if (!r.completed) {
@@ -108,7 +160,7 @@ class _DaysTabState extends State<DaysTab> {
     bool scheduledSignal,
     bool anySignal,
   })
-  _marksOf(int day, List<Routine> routines) {
+  _marksOf(DateTime month, int day, List<Routine> routines) {
     var completed = false;
     var completedSignal = false;
     var unfinished = false;
@@ -117,7 +169,7 @@ class _DaysTabState extends State<DaysTab> {
     var scheduledSignal = false;
     var anySignal = false;
     for (final r in routines) {
-      final mark = _markOfRoutine(r, day);
+      final mark = _markOfRoutine(month, r, day);
       final sig = r.flags != 0;
       if (sig) anySignal = true;
       switch (mark) {
@@ -175,73 +227,14 @@ class _DaysTabState extends State<DaysTab> {
   @override
   Widget build(BuildContext context) {
     final bort = BortScope.of(context);
-    final routineLayer = RoutineScope.of(context);
     final i18n = I18nScope.of(context);
     final side = PultScope.of(context).smallSide;
 
-    final cells = <int, List<Routine>>{};
-    final scheduledRoutines = <Routine>[];
-    final unfinishedRoutines = <Routine>[];
-    final completedRoutines = <Routine>[];
-
-    for (final r in routineLayer.routines) {
-      final day = _dayOf(r);
-      if (day == null) continue;
-      cells.putIfAbsent(day, () => []).add(r);
-      switch (_markOfRoutine(r, day)) {
-        case _Mark.scheduled:
-          scheduledRoutines.add(r);
-          break;
-        case _Mark.unfinished:
-          unfinishedRoutines.add(r);
-          break;
-        case _Mark.completed:
-          completedRoutines.add(r);
-          break;
-        case _Mark.none:
-          break;
-      }
-    }
-
-    final now = DateTime.now();
-    final int? todayDay = (now.year == _month.year && now.month == _month.month)
-        ? now.day
-        : null;
-
-    final firstWeekday = _month.weekday;
-    final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
-    final totalCells = (((firstWeekday - 1) + daysInMonth + 6) ~/ 7) * 7;
-
-    final grid = <Widget>[];
-    for (var i = 0; i < totalCells; i++) {
-      final dayNum = i - (firstWeekday - 1) + 1;
-      if (dayNum < 1 || dayNum > daysInMonth) {
-        grid.add(const SizedBox.shrink());
-        continue;
-      }
-      final list = cells[dayNum] ?? const <Routine>[];
-      grid.add(_cell(dayNum, list, side, bort, isToday: dayNum == todayDay));
-    }
-
-    final gridWidget = GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 7,
-      childAspectRatio: 1,
-      children: grid,
-    );
-
-    final legendWidget = _legend(
-      side,
-      bort,
-      i18n,
-      scheduled: scheduledRoutines,
-      unfinished: unfinishedRoutines,
-      completed: completedRoutines,
-    );
+    final vm = _visibleMonth;
 
     return Column(
       children: [
+        // Fixed control row: prev · month title · next.
         Padding(
           padding: const EdgeInsets.only(bottom: 8, right: 12),
           child: ControlRow(
@@ -264,8 +257,8 @@ class _DaysTabState extends State<DaysTab> {
                   child: Padding(
                     padding: EdgeInsets.symmetric(horizontal: side * 0.15),
                     child: Text(
-                      '${_month.year}.'
-                      '${_month.month.toString().padLeft(2, '0')}',
+                      '${vm.year}.'
+                      '${vm.month.toString().padLeft(2, '0')}',
                       style: TextStyle(color: bort.fg, fontSize: side * 0.5),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -288,60 +281,131 @@ class _DaysTabState extends State<DaysTab> {
             ),
           ),
         ),
+        // Paged body: grid + legend per month.
         Expanded(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onHorizontalDragEnd: _onSwipe,
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final wide = constraints.maxWidth > 640;
-
-                double maxGridWidth = 600.0;
-                if (wide) {
-                  final availableHeight =
-                      constraints.maxHeight - 40; // padding margin
-                  final maxCellSize = availableHeight / 6;
-                  maxGridWidth = (maxCellSize * 7).clamp(200.0, 600.0);
-                }
-
-                if (!wide) {
-                  return SingleChildScrollView(
-                    padding: EdgeInsets.all(side * 0.3),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        gridWidget,
-                        SizedBox(height: side * 0.8),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: legendWidget,
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
-                return SingleChildScrollView(
-                  padding: EdgeInsets.all(side * 0.6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(width: maxGridWidth, child: gridWidget),
-                      SizedBox(width: side * 1.0),
-                      Expanded(
-                        child: Align(
-                          alignment: Alignment.topLeft,
-                          child: legendWidget,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
+          child: PageView.builder(
+            controller: _controller,
+            itemCount: null,
+            itemBuilder: (context, index) {
+              return _buildMonthPage(index, bort, i18n, side);
+            },
           ),
         ),
       ],
+    );
+  }
+
+  // ─── One month's page (grid + legend) ───
+  Widget _buildMonthPage(
+    int pageIndex,
+    OperationalLayer bort,
+    I18n i18n,
+    double side,
+  ) {
+    final month = _monthOf(pageIndex);
+
+    final cells = <int, List<Routine>>{};
+    final scheduledRoutines = <Routine>[];
+    final unfinishedRoutines = <Routine>[];
+    final completedRoutines = <Routine>[];
+
+    for (final r in RoutineScope.of(context).routines) {
+      final day = _dayOf(month, r);
+      if (day == null) continue;
+      cells.putIfAbsent(day, () => []).add(r);
+      switch (_markOfRoutine(month, r, day)) {
+        case _Mark.scheduled:
+          scheduledRoutines.add(r);
+          break;
+        case _Mark.unfinished:
+          unfinishedRoutines.add(r);
+          break;
+        case _Mark.completed:
+          completedRoutines.add(r);
+          break;
+        case _Mark.none:
+          break;
+      }
+    }
+
+    final now = DateTime.now();
+    final int? todayDay = (now.year == month.year && now.month == month.month)
+        ? now.day
+        : null;
+
+    final firstWeekday = month.weekday;
+    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
+    final totalCells = (((firstWeekday - 1) + daysInMonth + 6) ~/ 7) * 7;
+
+    final grid = <Widget>[];
+    for (var i = 0; i < totalCells; i++) {
+      final dayNum = i - (firstWeekday - 1) + 1;
+      if (dayNum < 1 || dayNum > daysInMonth) {
+        grid.add(const SizedBox.shrink());
+        continue;
+      }
+      final list = cells[dayNum] ?? const <Routine>[];
+      grid.add(
+        _cell(month, dayNum, list, side, bort, isToday: dayNum == todayDay),
+      );
+    }
+
+    final gridWidget = GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 7,
+      childAspectRatio: 1,
+      children: grid,
+    );
+
+    final legendWidget = _legend(
+      side,
+      bort,
+      i18n,
+      scheduled: scheduledRoutines,
+      unfinished: unfinishedRoutines,
+      completed: completedRoutines,
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth > 640;
+
+        double maxGridWidth = 600.0;
+        if (wide) {
+          final availableHeight = constraints.maxHeight - 40;
+          final maxCellSize = availableHeight / 6;
+          maxGridWidth = (maxCellSize * 7).clamp(200.0, 600.0);
+        }
+
+        if (!wide) {
+          return SingleChildScrollView(
+            padding: EdgeInsets.all(side * 0.3),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                gridWidget,
+                SizedBox(height: side * 0.8),
+                Align(alignment: Alignment.centerLeft, child: legendWidget),
+              ],
+            ),
+          );
+        }
+
+        return SingleChildScrollView(
+          padding: EdgeInsets.all(side * 0.6),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(width: maxGridWidth, child: gridWidget),
+              SizedBox(width: side * 1.0),
+              Expanded(
+                child: Align(alignment: Alignment.topLeft, child: legendWidget),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -463,13 +527,14 @@ class _DaysTabState extends State<DaysTab> {
   }
 
   Widget _cell(
+    DateTime month,
     int day,
     List<Routine> routines,
     double side,
     OperationalLayer bort, {
     required bool isToday,
   }) {
-    final m = _marksOf(day, routines);
+    final m = _marksOf(month, day, routines);
 
     final numberColor = m.anySignal ? bort.fgsignal : bort.mid;
     final underlineColor = m.completedSignal ? bort.fgsignal : bort.mid;
@@ -535,7 +600,7 @@ class _DaysTabState extends State<DaysTab> {
 
     return GestureDetector(
       onTap: routines.isEmpty ? null : () => _openDay(routines),
-      onLongPress: () => _createOnDay(day),
+      onLongPress: () => _createOnDay(month, day),
       child: Center(
         child: SizedBox(
           width: boxSide,
@@ -568,11 +633,11 @@ class _DaysTabState extends State<DaysTab> {
     );
   }
 
-  Future<void> _createOnDay(int day) async {
+  Future<void> _createOnDay(DateTime month, int day) async {
     final app = AppScope.of(context);
     final routineLayer = RoutineScope.of(context);
     final r = await routineLayer.createRoutine(app.journal);
-    final dt = DateTime(_month.year, _month.month, day);
+    final dt = DateTime(month.year, month.month, day);
 
     final parts = app.bort.midnight.split(':');
     final hh = int.tryParse(parts.isNotEmpty ? parts[0] : '0') ?? 0;

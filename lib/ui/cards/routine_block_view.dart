@@ -5,14 +5,25 @@
 // (TraceField or summary in «total»), corner pults.
 //
 // Layout tuning. Padding inside blocks and gaps between them are
-// reduced. The title font is slightly smaller to save space. The
-// text trace (TraceField) occupies the remaining width.
+// the halved kFramePad / kBlockGap (see operational_layer); the
+// previous extra 0.75 multiplication is dropped, since the base is
+// already half of what it used to be. The title font is slightly
+// smaller to save space; the text trace (TraceField) occupies the
+// remaining width.
+//
+// Notice interval. The pult that used to set a planned duration now
+// sets a lead time — how long before the due date to remind. It is
+// shown ONLY when a date is assigned (onPickNotice != null); the
+// caller enforces this in routine_card. When a notice is actually
+// set, a long-press subpult «снять предуведомление» clears it.
+//
+// Delete. The summary block gains a delete pult next to export and
+// move, with confirmation. Deleting from the summary is the second
+// route to routine removal (the first being the long-press menu in
+// the list).
 //
 // Field awareness. The toggleBlockWithShift call requires the
 // active field's ID to properly associate the shift.
-//
-// Move routine. The summary block features a "move" pult (next
-// to export) to change the routine's field attachment.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -48,8 +59,11 @@ class RoutineBlockView extends StatelessWidget {
   final int parity;
   final bool scheduledActive;
   final VoidCallback? onPickDate;
-  final VoidCallback? onPickPlanned;
   final VoidCallback? onClearDate;
+  // Notice interval: picker only when a date is assigned; clearing
+  // only when a notice is set.
+  final VoidCallback? onPickNotice;
+  final VoidCallback? onClearNotice;
 
   final VoidCallback onToggleCollapsed;
   final VoidCallback? onStartEdit;
@@ -57,6 +71,7 @@ class RoutineBlockView extends StatelessWidget {
   final VoidCallback? onToggleCompleted;
   final VoidCallback? onExport;
   final VoidCallback? onMove;
+  final VoidCallback? onDelete;
   final VoidCallback onToggleShowAll;
 
   const RoutineBlockView({
@@ -80,12 +95,14 @@ class RoutineBlockView extends StatelessWidget {
     this.onToggleCompleted,
     this.onExport,
     this.onMove,
+    this.onDelete,
     required this.onToggleShowAll,
     this.parity = 0,
     this.scheduledActive = false,
     this.onPickDate,
-    this.onPickPlanned,
     this.onClearDate,
+    this.onPickNotice,
+    this.onClearNotice,
   });
 
   static IconData _blockIcon(String kind) {
@@ -131,10 +148,12 @@ class RoutineBlockView extends StatelessWidget {
       signal = bort.fgsignal;
     }
 
-    // Reduced padding and title size for a tighter layout.
+    // Padding is taken straight from the (now halved) coefficients:
+    // the previous extra 0.75 multiplication would have produced
+    // quarter-sized values, drifting away from the unified scale.
     final titleSize = side * bort.kTitle * 0.8;
-    final pad = side * bort.kFramePad * 0.75;
-    final gap = side * bort.kBlockGap * 0.75;
+    final pad = side * bort.kFramePad;
+    final gap = side * bort.kBlockGap;
 
     final strokeW = side * bort.kStroke;
     final radiusW = side * bort.kRadius;
@@ -300,7 +319,6 @@ class RoutineBlockView extends StatelessWidget {
               children: rows,
             );
     } else {
-      // Pass increased font size for the text trace.
       body = TraceField(
         objectId: routine.id,
         slot: kind,
@@ -350,16 +368,29 @@ class RoutineBlockView extends StatelessWidget {
               signal: signal,
               overrideSize: pultSide,
             );
-      final plannedPult = onPickPlanned == null
+      // Notice pult is shown only with a date; long press clears
+      // the notice when one is set.
+      final noticePult = onPickNotice == null
           ? null
           : Pult(
               spec: PultSpec(
-                id: 'planned_${routine.id}',
-                icon: Icons.schedule,
-                selected: routine.plannedSeconds > 0,
-                onTap: onPickPlanned,
+                id: 'notice_${routine.id}',
+                icon: Icons.notifications_active_outlined,
+                selected: routine.noticeSet,
+                onTap: onPickNotice,
+                longSubs: (routine.noticeSet && onClearNotice != null)
+                    ? () => [
+                        PultSpec(
+                          id: 'clear_notice_${routine.id}',
+                          icon: Icons.notifications_off_outlined,
+                          label: i18n.t('routine.clear_notice'),
+                          confirm: true,
+                          onTap: onClearNotice,
+                        ),
+                      ]
+                    : null,
               ),
-              fg: fg,
+              fg: routine.noticeSet ? signal : fg,
               bg: bg,
               signal: signal,
               overrideSize: pultSide,
@@ -399,10 +430,7 @@ class RoutineBlockView extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (datePult != null) ...[datePult, SizedBox(width: side * 0.15)],
-          if (plannedPult != null) ...[
-            plannedPult,
-            SizedBox(width: side * 0.15),
-          ],
+          if (noticePult != null) ...[noticePult, SizedBox(width: side * 0.15)],
           showAllPult,
           SizedBox(width: side * 0.15),
           flagsPult,
@@ -431,12 +459,27 @@ class RoutineBlockView extends StatelessWidget {
             ),
             SizedBox(width: side * 0.15),
           ],
-          if (onExport != null)
+          if (onExport != null) ...[
             Pult(
               spec: PultSpec(
                 id: 'export_${routine.id}',
                 icon: Icons.ios_share,
                 onTap: onExport,
+              ),
+              fg: fg,
+              bg: bg,
+              signal: signal,
+              overrideSize: pultSide,
+            ),
+            SizedBox(width: side * 0.15),
+          ],
+          if (onDelete != null)
+            Pult(
+              spec: PultSpec(
+                id: 'delete_${routine.id}',
+                icon: Icons.delete_outline,
+                confirm: true,
+                onTap: onDelete,
               ),
               fg: fg,
               bg: bg,

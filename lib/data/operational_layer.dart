@@ -1,15 +1,26 @@
 // ═══════════════════════════════════════════════════════════════════
-// operational_layer.dart — operational layer ("bort").
+// operational_layer.dart — operational layer («bort»).
 //
 // Facade over modules: ThemeStore, BortTime, DraftsStore, InstallStore,
 // BortFile, TimeSeries (registered instances: shift, bort), and
 // FieldShiftState.
 //
-// TimeSeries. One class, N instances — the shift and bort histories
-// both store {fieldId: {year: {month: {day: seconds}}}} in their own
-// JSON file (shift_history.json, bort_history.json) and are accessed
-// via the `series` registry. The class itself lives in
-// time_series.dart.
+// Unified shift. The shift is no longer bound to any field. It is
+// held under the zero-field key in the shifts map for serialization
+// compatibility, but callers use shiftFor(fieldId), which ignores
+// the argument and always returns the single instance. The shift
+// history is written under field 0 as well, mirroring the bort
+// history. Migration from the previous multi-field layout: on first
+// load with schema < 2, the running shift is picked (if any), else
+// the first by field id, else an empty state, and the map is
+// collapsed to that single entry — field sums are not added, to
+// avoid distorting «today».
+//
+// Shift toggle. Controlled by `shiftEnabled`. When false, no shift
+// exists: no state, no history write, no mutex. Turning it off while
+// a shift runs stops the shift and writes an actor entry to the
+// journal, but the mutex is deliberately ignored — running routines
+// are not paused. Turning it on restores the historical series.
 //
 // Journal as source of truth. Every time a day total is written to a
 // series, the whole month is also logged as a `period_month` entry of
@@ -17,15 +28,23 @@
 // restore the series from the journal, so a lost or stale file is
 // rebuilt. The file remains a cache; the journal remains the origin.
 //
-// Shift per field. The concept of "shift" is independent for every
-// field (root node). The layer holds a map of FieldShiftState keyed
-// by fieldId. The state class lives in field_shift_state.dart. The
-// global BortTime remains unified (bort time is not split per field).
-//
 // Theme selection. Three independent settings: custom, night, auto.
 // Night and auto are mutually exclusive; with both off, day is used.
 // Migration from the former `theme_day`/`theme_autoswitch` keys is
-// done with the sense inverted on `theme_day`.
+// done with the sense inverted on `theme_day`. Custom palette: now
+// stored as night; on first load with schema < 2, the saved custom
+// palette is inverted once (the visual appearance is preserved; see
+// theme_store.dart).
+//
+// Schema. The state file carries a `schema` version. Bumping it from
+// 0/1 to 2 triggers the one-time migrations above; afterwards the
+// new version is written out and no further migration runs. Archives
+// and cache files use their own schemas and are not covered here.
+//
+// Sizes. The `k*` coefficients are halved: frame pad, block gap,
+// radius and stroke. This brings the visual density to roughly the
+// same scale as the pult, which is the single unit for layout; see
+// the accompanying comment in defaults.json.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -49,6 +68,8 @@ import 'time_series.dart';
 
 // ─── OperationalLayer ───
 class OperationalLayer extends ChangeNotifier {
+  static const int _schemaVersion = 2;
+
   final ThemeStore _themes = ThemeStore();
   final BortTime _bortTime = BortTime();
   final DraftsStore _draftsStore = DraftsStore();
@@ -60,7 +81,9 @@ class OperationalLayer extends ChangeNotifier {
   // Registry of registered time series (shift, bort).
   final Map<String, TimeSeries> series = {};
 
-  // State of shifts per field (root node ID).
+  // State of the unified shift. Serialized under the zero-field key
+  // in the file, but single-instance in memory. shiftFor() ignores
+  // the caller's field argument.
   final Map<int, FieldShiftState> shifts = {};
 
   Color get bg => _themes.bg;
@@ -98,12 +121,17 @@ class OperationalLayer extends ChangeNotifier {
   bool blockAppearance = false;
   bool blockInterface = false;
   bool blockData = false;
+  bool blockControl = false;
   bool blockPermissions = false;
 
   int mapScale = 40;
   bool mutexShift = true;
   bool mutexRoutines = true;
   bool mutexSlots = true;
+
+  // Unified shift toggle. Off by default. When false, the shift has
+  // no state, no history, no start/stop and no mutex.
+  bool shiftEnabled = false;
 
   int selectedType = 4;
   int selectedFlags = 0;
@@ -115,28 +143,32 @@ class OperationalLayer extends ChangeNotifier {
 
   Map<String, Map<String, int>> exportCounters = {};
 
+  // Halved relative to the previous defaults. One unit (the pult
+  // side, PultScope.side) is the single scale reference.
   double kPult = 1.0;
   double kPultSmall = 0.8889;
-  double kBlockGap = 0.2;
-  double kFramePad = 0.375;
+  double kBlockGap = 0.1;
+  double kFramePad = 0.1875;
   double kTitle = 0.4;
   double kNumber = 0.4;
   double kNumberSmall = 0.3;
   double kName = 0.5;
-  double kRadius = 0.3;
-  double kStroke = 0.015;
+  double kRadius = 0.15;
+  double kStroke = 0.0075;
 
   int _lastMidnightCheck = 0;
 
   OperationalLayer();
 
+  // The single shift. The argument is kept for source compatibility
+  // with the previous multi-field API; it is ignored.
   FieldShiftState shiftFor(int fieldId) =>
-      shifts.putIfAbsent(fieldId, () => FieldShiftState());
+      shifts.putIfAbsent(0, () => FieldShiftState());
 
-  bool onShift(int fieldId) => shiftFor(fieldId).onShift;
-  int totalShiftSeconds(int fieldId) => shiftFor(fieldId).totalShiftSeconds;
-  int? shiftStartedAt(int fieldId) => shiftFor(fieldId).shiftStartedAt;
-  bool shiftEdited(int fieldId) => shiftFor(fieldId).shiftEdited;
+  bool onShift(int fieldId) => shiftFor(0).onShift;
+  int totalShiftSeconds(int fieldId) => shiftFor(0).totalShiftSeconds;
+  int? shiftStartedAt(int fieldId) => shiftFor(0).shiftStartedAt;
+  bool shiftEdited(int fieldId) => shiftFor(0).shiftEdited;
 
   Future<void> init(Brightness system) async {
     _themes.setSystemBrightness(system);
@@ -153,31 +185,27 @@ class OperationalLayer extends ChangeNotifier {
     _themes.ensureThemes();
     _themes.resolve();
 
+    if (!shiftEnabled && shifts[0] != null) {
+      shifts[0]!.onShift = false;
+      shifts[0]!.shiftStartedAt = null;
+    }
+
     final oldPrev = _bortTime.prevMidnight;
     final newMid = _bortTime.checkMidnight();
     if (newMid > 0) {
-      for (final fId in shifts.keys) {
-        _recordShiftDay(fId, newMid, oldPrev);
-      }
+      if (shiftEnabled) _recordShiftDay(0, newMid, oldPrev);
       _recordBortDay(newMid, oldPrev);
-      for (final s in shifts.values) {
-        s.totalShiftSeconds = 0;
-        if (s.onShift &&
-            s.shiftStartedAt != null &&
-            s.shiftStartedAt! < newMid) {
-          s.shiftStartedAt = newMid;
-        }
-        s.shiftEdited = false;
+      final s = shiftFor(0);
+      s.totalShiftSeconds = 0;
+      if (s.onShift && s.shiftStartedAt != null && s.shiftStartedAt! < newMid) {
+        s.shiftStartedAt = newMid;
       }
+      s.shiftEdited = false;
     }
     await _saveToFile();
     notifyListeners();
   }
 
-  // ─── Journal attachment ───
-  // Registers the series handler so that `period_month` entries
-  // restore the histories on reread. Safe to call once, after the
-  // journal has been initialised.
   void attachJournal(JournalLayer journal) {
     if (_journal != null) return;
     _journal = journal;
@@ -217,9 +245,6 @@ class OperationalLayer extends ChangeNotifier {
     }
   }
 
-  // Applies one month to the named series: writes the days to the
-  // file and logs the whole month to the journal, keeping the
-  // journal as the origin of truth. Used by import.
   void applySeriesMonth(
     String kind,
     int fieldId,
@@ -235,9 +260,6 @@ class OperationalLayer extends ChangeNotifier {
     _logSeriesMonth(kind, fieldId, year, month);
   }
 
-  // Writes the whole month for a given kind/field to the journal.
-  // Called after every day total is recorded. Fire-and-forget; the
-  // journal pump will pick it up.
   void _logSeriesMonth(String kind, int fieldId, int year, int month) {
     final journal = _journal;
     if (journal == null) return;
@@ -268,9 +290,9 @@ class OperationalLayer extends ChangeNotifier {
     super.dispose();
   }
 
-  // ─── Shift day recording ───
+  // ─── Shift day recording (unified, field 0) ───
   void _recordShiftDay(int fieldId, int curMid, int oldPrev) {
-    final s = shiftFor(fieldId);
+    final s = shiftFor(0);
     final prevDayStart = curMid - 86400;
     int running = 0;
     if (s.onShift && s.shiftStartedAt != null) {
@@ -285,8 +307,8 @@ class OperationalLayer extends ChangeNotifier {
       if (running > 86400) running = 86400;
       if (running > 0) {
         final dt = DateTime.fromMillisecondsSinceEpoch(prevDayStart * 1000);
-        shiftHistory.addDay(fieldId, dt.year, dt.month, dt.day, running);
-        _logSeriesMonth('shift', fieldId, dt.year, dt.month);
+        shiftHistory.addDay(0, dt.year, dt.month, dt.day, running);
+        _logSeriesMonth('shift', 0, dt.year, dt.month);
       }
     } else {
       if (s.totalShiftSeconds > 0 && oldPrev > 0) {
@@ -294,14 +316,14 @@ class OperationalLayer extends ChangeNotifier {
             ? 86400
             : s.totalShiftSeconds;
         final dt = DateTime.fromMillisecondsSinceEpoch(oldPrev * 1000);
-        shiftHistory.addDay(fieldId, dt.year, dt.month, dt.day, capped);
-        _logSeriesMonth('shift', fieldId, dt.year, dt.month);
+        shiftHistory.addDay(0, dt.year, dt.month, dt.day, capped);
+        _logSeriesMonth('shift', 0, dt.year, dt.month);
       }
       if (running > 0) {
         final capped = running > 86400 ? 86400 : running;
         final dt = DateTime.fromMillisecondsSinceEpoch(prevDayStart * 1000);
-        shiftHistory.addDay(fieldId, dt.year, dt.month, dt.day, capped);
-        _logSeriesMonth('shift', fieldId, dt.year, dt.month);
+        shiftHistory.addDay(0, dt.year, dt.month, dt.day, capped);
+        _logSeriesMonth('shift', 0, dt.year, dt.month);
       }
     }
   }
@@ -318,10 +340,6 @@ class OperationalLayer extends ChangeNotifier {
   }
 
   // ─── Theme migration ───
-  // Old keys: theme_day (true = day), theme_autoswitch (true = auto).
-  // New keys: theme_night (true = night), theme_auto (true = auto).
-  // Sense of theme_day is inverted; theme_autoswitch is carried over.
-  // When both would be true, auto wins.
   void _migrateTheme(Map<String, dynamic> data) {
     final oldDay = data['theme_day'] as bool?;
     final oldAuto = data['theme_autoswitch'] as bool?;
@@ -361,7 +379,9 @@ class OperationalLayer extends ChangeNotifier {
       blockAppearance = data['block_appearance'] as bool? ?? blockAppearance;
       blockInterface = data['block_interface'] as bool? ?? blockInterface;
       blockData = data['block_data'] as bool? ?? blockData;
+      blockControl = data['block_control'] as bool? ?? blockControl;
       blockPermissions = data['block_permissions'] as bool? ?? blockPermissions;
+      shiftEnabled = data['shift_enabled'] as bool? ?? shiftEnabled;
       mutexRoutines = data['mutex_routines'] as bool? ?? mutexRoutines;
       mutexSlots = data['mutex_slots'] as bool? ?? mutexSlots;
       selectedType = (data['selected_type'] as num?)?.toInt() ?? selectedType;
@@ -396,8 +416,11 @@ class OperationalLayer extends ChangeNotifier {
     final data = await _file.read();
     if (data == null) return;
 
-    final t = data['themes'];
-    if (t is Map) _themes.parseThemes(t);
+    final schema = (data['schema'] as num?)?.toInt() ?? 0;
+
+    final rawThemes = data['themes'];
+    final hadCustom = rawThemes is Map && rawThemes.containsKey('custom');
+    if (rawThemes is Map) _themes.parseThemes(rawThemes);
     _themes.customEnabled =
         data['theme_custom'] as bool? ?? _themes.customEnabled;
     _migrateTheme(data);
@@ -409,7 +432,9 @@ class OperationalLayer extends ChangeNotifier {
     blockAppearance = data['block_appearance'] as bool? ?? blockAppearance;
     blockInterface = data['block_interface'] as bool? ?? blockInterface;
     blockData = data['block_data'] as bool? ?? blockData;
+    blockControl = data['block_control'] as bool? ?? blockControl;
     blockPermissions = data['block_permissions'] as bool? ?? blockPermissions;
+    shiftEnabled = data['shift_enabled'] as bool? ?? shiftEnabled;
     mutexRoutines = data['mutex_routines'] as bool? ?? mutexRoutines;
     mutexSlots = data['mutex_slots'] as bool? ?? mutexSlots;
     selectedType = (data['selected_type'] as num?)?.toInt() ?? selectedType;
@@ -481,6 +506,29 @@ class OperationalLayer extends ChangeNotifier {
           exportCounters[day.toString()] = inner;
         }
       }
+    }
+
+    // ─── One-time migration from schema < 2 ───
+    if (schema < 2) {
+      if (hadCustom) {
+        final c = _themes.themes['custom'];
+        if (c != null) {
+          _themes.themes['custom'] = ThemeStore.invert(c);
+        }
+      }
+
+      FieldShiftState? picked;
+      final ids = shifts.keys.toList()..sort();
+      for (final id in ids) {
+        final s = shifts[id]!;
+        if (s.onShift) {
+          picked = s;
+          break;
+        }
+      }
+      picked ??= ids.isEmpty ? null : shifts[ids.first];
+      shifts.clear();
+      if (picked != null) shifts[0] = picked;
     }
   }
 
@@ -597,26 +645,24 @@ class OperationalLayer extends ChangeNotifier {
       final oldPrev = _bortTime.prevMidnight;
       final newMid = _bortTime.checkMidnight();
       if (newMid > 0) {
-        for (final fId in shifts.keys) {
-          _recordShiftDay(fId, newMid, oldPrev);
-        }
+        if (shiftEnabled) _recordShiftDay(0, newMid, oldPrev);
         _recordBortDay(newMid, oldPrev);
-        for (final s in shifts.values) {
-          s.totalShiftSeconds = 0;
-          if (s.onShift &&
-              s.shiftStartedAt != null &&
-              s.shiftStartedAt! < newMid) {
-            s.shiftStartedAt = newMid;
-          }
-          s.shiftEdited = false;
+        final s = shiftFor(0);
+        s.totalShiftSeconds = 0;
+        if (s.onShift &&
+            s.shiftStartedAt != null &&
+            s.shiftStartedAt! < newMid) {
+          s.shiftStartedAt = newMid;
         }
+        s.shiftEdited = false;
         notifyListeners();
       }
     }
   }
 
   void setShiftTime(int fieldId, int seconds) {
-    final s = shiftFor(fieldId);
+    if (!shiftEnabled) return;
+    final s = shiftFor(0);
     s.totalShiftSeconds = seconds;
     s.shiftStartedAt = null;
     s.shiftEdited = seconds > 0;
@@ -642,8 +688,14 @@ class OperationalLayer extends ChangeNotifier {
     defaultSlots = {'work'};
     mutexRoutines = true;
     mutexSlots = true;
+    shiftEnabled = false;
+    blockControl = false;
     lastExportId = 0;
     lastRereadId = 0;
+    kBlockGap = 0.1;
+    kFramePad = 0.1875;
+    kRadius = 0.15;
+    kStroke = 0.0075;
     await _loadDefaults();
     _themes.resolve();
     await _saveToFile();
@@ -695,7 +747,8 @@ class OperationalLayer extends ChangeNotifier {
 
   // ─── Shift ───
   void startShift(int fieldId) {
-    final s = shiftFor(fieldId);
+    if (!shiftEnabled) return;
+    final s = shiftFor(0);
     if (s.onShift) return;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     s.onShift = true;
@@ -706,7 +759,7 @@ class OperationalLayer extends ChangeNotifier {
   }
 
   void stopShift(int fieldId) {
-    final s = shiftFor(fieldId);
+    final s = shiftFor(0);
     if (!s.onShift) return;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     if (s.shiftStartedAt != null) {
@@ -719,7 +772,7 @@ class OperationalLayer extends ChangeNotifier {
   }
 
   int shiftSecondsNow(int fieldId) {
-    final s = shiftFor(fieldId);
+    final s = shiftFor(0);
     final base = s.totalShiftSeconds;
     if (s.shiftStartedAt == null) return base;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -763,6 +816,9 @@ class OperationalLayer extends ChangeNotifier {
       case 'block_data':
         blockData = _parseBool(value) ?? blockData;
         break;
+      case 'block_control':
+        blockControl = _parseBool(value) ?? blockControl;
+        break;
       case 'block_permissions':
         blockPermissions = _parseBool(value) ?? blockPermissions;
         break;
@@ -774,6 +830,26 @@ class OperationalLayer extends ChangeNotifier {
         break;
       case 'mutex_shift':
         mutexShift = _parseBool(value) ?? mutexShift;
+        break;
+      case 'shift_enabled':
+        final v = _parseBool(value) ?? shiftEnabled;
+        if (v == shiftEnabled) break;
+        shiftEnabled = v;
+        if (!v) {
+          final s = shiftFor(0);
+          if (s.onShift) {
+            final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+            if (s.shiftStartedAt != null) {
+              s.totalShiftSeconds += now - s.shiftStartedAt!;
+            }
+            s.onShift = false;
+            s.shiftStartedAt = null;
+            _journal?.log(
+              type: JournalType.actor,
+              body: jsonEncode({'action': 'shift_stop', 'field_id': 0}),
+            );
+          }
+        }
         break;
       case 'selected_type':
         selectedType = int.tryParse(value) ?? selectedType;
@@ -849,6 +925,7 @@ class OperationalLayer extends ChangeNotifier {
       sOut[e.key.toString()] = e.value.toJson();
     }
     return <String, dynamic>{
+      'schema': _schemaVersion,
       'themes': _themes.toJson(),
       'theme_custom': _themes.customEnabled,
       'theme_night': _themes.night,
@@ -860,7 +937,9 @@ class OperationalLayer extends ChangeNotifier {
       'block_appearance': blockAppearance,
       'block_interface': blockInterface,
       'block_data': blockData,
+      'block_control': blockControl,
       'block_permissions': blockPermissions,
+      'shift_enabled': shiftEnabled,
       'mutex_routines': mutexRoutines,
       'mutex_slots': mutexSlots,
       'selected_type': selectedType,
@@ -910,7 +989,9 @@ class OperationalLayer extends ChangeNotifier {
     out['block_appearance'] = blockAppearance.toString();
     out['block_interface'] = blockInterface.toString();
     out['block_data'] = blockData.toString();
+    out['block_control'] = blockControl.toString();
     out['block_permissions'] = blockPermissions.toString();
+    out['shift_enabled'] = shiftEnabled.toString();
     out['mutex_routines'] = mutexRoutines.toString();
     out['mutex_slots'] = mutexSlots.toString();
     out['midnight'] = _bortTime.midnight;
@@ -937,9 +1018,11 @@ class OperationalLayer extends ChangeNotifier {
     'lang': 'string',
     'labels_buttons': 'bool',
     'mutex_routines': 'bool',
+    'mutex_slots': 'bool',
+    'mutex_shift': 'bool',
+    'shift_enabled': 'bool',
     'midnight': 'string',
     'map_scale': 'string',
-    'mutex_shift': 'bool',
     'k_pult': 'string',
     'k_pult_small': 'string',
     'k_block_gap': 'string',

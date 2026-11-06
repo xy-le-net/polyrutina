@@ -9,6 +9,10 @@
 // uniform. Slots — a checklist of five kinds: which slots to show in
 // the routine card permanently.
 //
+// Labels use HelpLabel; each row has a `help.<key>` text in the
+// dictionary. The section subheading «slots» also uses HelpLabel.
+// The block title stays a regular collapse mark.
+//
 // Scopes. Dependencies are read from point scopes: BortScope (scale,
 // language, labels, default slots) and I18nScope (strings). Using
 // BortScope ensures that any change within this block or elsewhere
@@ -22,6 +26,7 @@ import 'package:flutter/material.dart';
 import '../../data/operational_layer.dart';
 import '../core/app_scope.dart';
 import '../core/bort_field.dart';
+import '../core/help_label.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_tick.dart';
 
@@ -37,6 +42,8 @@ class RubkaInterface extends StatelessWidget {
     'idle',
     'closeout',
   ];
+
+  static const double _labelW = 140.0;
 
   @override
   Widget build(BuildContext context) {
@@ -63,8 +70,9 @@ class RubkaInterface extends StatelessWidget {
   Widget _sectionTitle(String text, Color dim, double side) {
     return Padding(
       padding: EdgeInsets.only(top: side * 0.3, bottom: side * 0.1),
-      child: Text(
-        text,
+      child: HelpLabel(
+        helpKey: 'bort.default_slots',
+        text: text,
         style: TextStyle(color: dim, fontSize: side * 0.35),
       ),
     );
@@ -88,9 +96,11 @@ class RubkaInterface extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
-          SizedBox(
-            width: 140,
-            child: Text(i18n.t('bort.lang'), style: TextStyle(color: fg)),
+          HelpLabel(
+            helpKey: 'bort.lang',
+            text: i18n.t('bort.lang'),
+            width: _labelW,
+            style: TextStyle(color: fg),
           ),
           Expanded(
             child: Pult(
@@ -144,8 +154,12 @@ class RubkaInterface extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: Row(
             children: [
+              // Slot row labels are not wrapped in HelpLabel: they
+              // name the blocks, not settings with an explanation of
+              // their own; the section heading above carries the
+              // help text for the whole group.
               SizedBox(
-                width: 140,
+                width: _labelW,
                 child: Text(
                   i18n.t('routine.block.$k'),
                   style: TextStyle(color: fg),
@@ -187,9 +201,11 @@ class RubkaInterface extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
-          SizedBox(
-            width: 140,
-            child: Text(i18n.t('bort.$key'), style: TextStyle(color: fg)),
+          HelpLabel(
+            helpKey: 'bort.$key',
+            text: i18n.t('bort.$key'),
+            width: _labelW,
+            style: TextStyle(color: fg),
           ),
           Expanded(
             child: _settingField(

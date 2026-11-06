@@ -1,17 +1,23 @@
 // ═══════════════════════════════════════════════════════════════════
 // routine_plate.dart — one routine tile in the list.
 //
-// Frame. Computed by borderFor (core/frame.dart).
+// Frame. Computed by borderFor (core/frame.dart). An overdue routine
+// (not completed, due date passed, notice was set) takes the signal
+// frame with doubled stroke — the same visual weight as a running
+// routine, without inverting the palette. If a routine is both
+// overdue and running, the running branch wins (running palette and
+// signal frame); the state is already visually distinct, and adding
+// a second signal-coloured layer would not read more strongly.
 //
 // Running palette. When running, uses the opposite theme.
 //
 // Resume. The "play" button starts the last worked-on block
 // (routine.lastBlockKind), falling back to "work" if none exists.
-// It uses the active field's ID to correctly associate the shift.
+// It uses the active field's ID; the shift is unified, so its
+// identity is not consulted by the toggle.
 //
-// Multiselect abolished. Long press anywhere on the plate (including
-// the right-hand pult) opens the routine options sheet; the caller
-// decides what goes into it.
+// Long press anywhere on the plate (including the right-hand pult)
+// opens the routine options sheet; the caller decides the contents.
 //
 // Font. Name, date, and number sizes are reduced by a fifth relative
 // to the former values.
@@ -57,6 +63,12 @@ class RoutinePlate extends StatelessWidget {
     final side = PultScope.of(context).smallSide;
     final running = routine.runningBlock != null;
 
+    // Overdue is a visual state of its own: signal frame with doubled
+    // stroke, normal palette. Running wins if both apply — its frame
+    // is already signal-doubled and its palette is inverted, so the
+    // doubled-signal rule is subsumed.
+    final overdue = !running && routine.isOverdue;
+
     final Color plateBg;
     final Color textMain;
     final Color textSoft;
@@ -85,7 +97,7 @@ class RoutinePlate extends StatelessWidget {
 
     final frame = borderFor(
       parity: parity,
-      active: running,
+      active: running || overdue,
       strokeW: strokeW,
       fg: textMain,
       mid: textSoft,
@@ -161,6 +173,19 @@ class RoutinePlate extends StatelessWidget {
             ),
           );
 
+    // Overdue marker: the word "просрочено" in the signal colour,
+    // right after the date line. The doubled frame already says the
+    // routine demands attention; the word says why.
+    final Widget? overdueLabel = overdue
+        ? Padding(
+            padding: EdgeInsets.only(top: dateSize * 0.3),
+            child: Text(
+              i18n.t('routine.overdue'),
+              style: TextStyle(color: accent, fontSize: dateSize * 0.9),
+            ),
+          )
+        : null;
+
     final body = IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -208,6 +233,7 @@ class RoutinePlate extends StatelessWidget {
                       fmtDate(routine.createdAt, i18n.t),
                       style: TextStyle(color: textSoft, fontSize: dateSize),
                     ),
+                  if (overdueLabel != null) overdueLabel,
                 ],
               ),
             ),

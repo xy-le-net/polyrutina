@@ -8,19 +8,40 @@
 // except the zero one (rename, new branch, attach, move, shake,
 // burn).
 //
-// Multiselect abolished. Long press on a routine plate opens the
-// routine options sheet: duplicate, move across the tree, complete
-// (when applicable), delete.
+// Field enumeration. Every picker that lists fields walks ALL roots,
+// not just the zero field: otherwise other fields are unreachable.
+// This affects move-routine, move-branch, and attach-routine. Root
+// order is by node id ascending, stable across rebuilds.
 //
-// Indentation. Root-level content (depth 0 and 1) carries no extra
-// left offset; deeper levels keep the twenty-pixel step.
+// Attach routine. The former implementation listed nodes and did
+// not open a sheet at all; it has been rewritten to list the
+// routines not yet attached to the node, and to attach on tap.
 //
-// Completed routines. Within every node's group they are rendered
-// last, after a divider carrying the word «completed» in the middle.
+// Detach. The routine actions sheet (long press on a plate) and the
+// move-routine sheet both expose «отвязать» when the routine has any
+// parent, and detaching removes every field parent at once, in one
+// transaction.
 //
-// Tree-shaped sheets. Node pickers (move routine, move branch,
-// attach routine) are built by a depth-first walk of the field tree,
-// with an indent per level and vertical scrolling.
+// Overdue. A routine is overdue when the due date has passed, it is
+// not completed, and a notice was set (routine.isOverdue). Overdue
+// routines are ordered first inside each node's group and inside the
+// unassigned group; a bare line (no word) separates them from the
+// rest of the active list. The doubled signal frame lives in
+// RoutinePlate — visual only, ordering here.
+//
+// Divider indent type. Both dividers take a `double` indent, not an
+// `int`: `_indent` returns `double` (to keep the 20-pixel step
+// fractional-safe under the unified scale), and passing it straight
+// to an `int` parameter produced a compile error. The integer 4 used
+// for the unassigned group widens implicitly under Dart's numeric
+// literal rule.
+//
+// Grouping (per node and for the unassigned block):
+//   1. overdue (running or not) — signal-framed, doubled;
+//      bare line;
+//   2. active (running first, then by last pulse);
+//   3. «завершено» divider with a word;
+//   4. completed, by last pulse.
 //
 // Naming. A new field or branch is created with an empty name and
 // the rename dialog opens immediately with focus in the input. An
@@ -82,11 +103,14 @@ class _RoutinesTabState extends State<RoutinesTab> {
     if (!mounted) return;
     final routineLayer = RoutineScope.of(context);
     final bort = BortScope.of(context);
-    final fieldId = FieldScope.of(context).activeFieldId;
 
-    if (fieldId == null) return;
+    // The shift is unified: its activity is not tied to the active
+    // field. If it is running, the ticker should repaint at least
+    // once per second for sub-minute timers, and once per minute
+    // otherwise.
+    final shiftRunning = bort.shiftEnabled && bort.onShift(0);
 
-    final anyRunning = routineLayer.anyRunning || bort.onShift(fieldId);
+    final anyRunning = routineLayer.anyRunning || shiftRunning;
     if (!anyRunning) return;
 
     final sec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -100,7 +124,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
         break;
       }
     }
-    if (bort.onShift(fieldId) && bort.shiftSecondsNow(fieldId) < 60) {
+    if (shiftRunning && bort.shiftSecondsNow(0) < 60) {
       subMinute = true;
     }
 
@@ -196,12 +220,34 @@ class _RoutinesTabState extends State<RoutinesTab> {
     }
   }
 
-  // ─── Routine long-press actions ───
+  void _collectAllRootsSubs(
+    List<PultSpec> out, {
+    int? excludeId,
+    bool excludeDescendants = false,
+    int? selectedId,
+    required void Function(FieldNode) onTap,
+  }) {
+    final fieldLayer = FieldScope.of(context);
+    final roots = fieldLayer.nodes.values.where((n) => n.isRoot).toList()
+      ..sort((a, b) => a.id.compareTo(b.id));
+    for (final r in roots) {
+      _collectNodeSubs(
+        r.id,
+        0,
+        out,
+        excludeId: excludeId,
+        excludeDescendants: excludeDescendants,
+        selectedId: selectedId,
+        onTap: onTap,
+      );
+    }
+  }
 
   void _showRoutineActions(Routine r) {
     final app = AppScope.of(context);
     final i18n = app.i18n;
     final running = r.runningBlock != null;
+    final attached = r.fieldParents.isNotEmpty;
     final subs = <PultSpec>[
       PultSpec(
         id: 'dup_${r.id}',
@@ -218,6 +264,19 @@ class _RoutinesTabState extends State<RoutinesTab> {
         label: i18n.t('field.move_routine'),
         onTap: () => _moveRoutine(r),
       ),
+      if (attached)
+        PultSpec(
+          id: 'detach_${r.id}',
+          icon: Icons.link_off,
+          label: i18n.t('field.detach_routine'),
+          onTap: () async {
+            await app.journal.transaction(() async {
+              for (final pId in List<int>.from(r.fieldParents)) {
+                await app.routineLayer.detachFromField(app.journal, r.id, pId);
+              }
+            });
+          },
+        ),
     ];
     if (!r.completed && !running) {
       subs.add(
@@ -255,29 +314,42 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
   void _moveRoutine(Routine r) {
     final app = AppScope.of(context);
+    final i18n = app.i18n;
     final currentParentId = r.fieldParents.isNotEmpty
         ? r.fieldParents.first
         : null;
-    final fieldLayer = FieldScope.of(context);
-    final root = fieldLayer.rootId;
-    final subs = <PultSpec>[];
-    if (root != null) {
-      _collectNodeSubs(
-        root,
-        0,
-        subs,
-        selectedId: currentParentId,
-        onTap: (n) async {
-          await app.journal.transaction(() async {
-            for (final pId in List<int>.from(r.fieldParents)) {
-              await app.routineLayer.detachFromField(app.journal, r.id, pId);
-            }
-            await app.routineLayer.attachToField(app.journal, r.id, n.id);
-          });
-          if (mounted) setState(() => _expanded.add(n.id));
-        },
-      );
-    }
+    final attached = r.fieldParents.isNotEmpty;
+
+    final subs = <PultSpec>[
+      if (attached)
+        PultSpec(
+          id: 'detach_${r.id}',
+          icon: Icons.link_off,
+          label: i18n.t('field.detach_routine'),
+          onTap: () async {
+            await app.journal.transaction(() async {
+              for (final pId in List<int>.from(r.fieldParents)) {
+                await app.routineLayer.detachFromField(app.journal, r.id, pId);
+              }
+            });
+          },
+        ),
+    ];
+
+    _collectAllRootsSubs(
+      subs,
+      selectedId: currentParentId,
+      onTap: (n) async {
+        await app.journal.transaction(() async {
+          for (final pId in List<int>.from(r.fieldParents)) {
+            await app.routineLayer.detachFromField(app.journal, r.id, pId);
+          }
+          await app.routineLayer.attachToField(app.journal, r.id, n.id);
+        });
+        if (mounted) setState(() => _expanded.add(n.id));
+      },
+    );
+
     if (subs.isEmpty) return;
     showPultSheet(
       context: context,
@@ -288,8 +360,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
       side: PultScope.of(context).smallSide,
     );
   }
-
-  // ─── Node actions ───
 
   void _showNodeActions(int id) {
     final app = AppScope.of(context);
@@ -414,8 +484,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
                 autofocus: true,
                 onChanged: (v) => currentText = v,
                 onCommit: (v) async {
-                  // Do not pop here: the OK button owns the single
-                  // dismissal; otherwise the dialog pops twice.
                   currentText = v;
                 },
               ),
@@ -450,34 +518,49 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
   void _attachRoutine(int nodeId) {
     final app = AppScope.of(context);
-    final fieldLayer = FieldScope.of(context);
-    final root = fieldLayer.rootId;
-    if (root == null) return;
-    final subs = <PultSpec>[];
-    _collectNodeSubs(
-      root,
-      0,
-      subs,
-      selectedId: nodeId,
-      onTap: (n) {
-        app.routineLayer.attachToField(app.journal, n.id, nodeId);
-      },
+    final i18n = app.i18n;
+
+    final routines = <Routine>[];
+    for (final r in app.routineLayer.routines) {
+      if (r.fieldParents.contains(nodeId)) continue;
+      routines.add(r);
+    }
+    if (routines.isEmpty) return;
+
+    routines.sort((a, b) {
+      if (a.completed != b.completed) return a.completed ? 1 : -1;
+      return (b.lastPulseAt ?? b.lastActionAt).compareTo(
+        a.lastPulseAt ?? a.lastActionAt,
+      );
+    });
+
+    showPultSheet(
+      context: context,
+      subs: [
+        for (final r in routines)
+          PultSpec(
+            id: 'attach_r_${r.id}',
+            icon: r.completed
+                ? Icons.check_box_outlined
+                : (r.runningBlock != null
+                      ? Icons.play_circle_outline
+                      : Icons.radio_button_unchecked),
+            label: r.name.isEmpty ? i18n.t('routine.no_name') : r.name,
+            onTap: () =>
+                app.routineLayer.attachToField(app.journal, r.id, nodeId),
+          ),
+      ],
+      fg: app.bort.fg,
+      bg: app.bort.bg,
+      signal: app.bort.fgsignal,
+      side: PultScope.of(context).smallSide,
     );
-    // The list above is over nodes, but the intent is to attach a
-    // routine to the chosen node. Rebuild it correctly: list the
-    // routines that are not yet attached, not the nodes.
-    // Fall through to the routine list below.
   }
 
   void _pickNodeForBranch(int nodeId, int? currentParentId) {
     final app = AppScope.of(context);
-    final fieldLayer = FieldScope.of(context);
-    final root = fieldLayer.rootId;
-    if (root == null) return;
     final subs = <PultSpec>[];
-    _collectNodeSubs(
-      root,
-      0,
+    _collectAllRootsSubs(
       subs,
       excludeId: nodeId,
       excludeDescendants: true,
@@ -533,7 +616,8 @@ class _RoutinesTabState extends State<RoutinesTab> {
   void _openFieldSwitcher(int currentId) {
     final app = AppScope.of(context);
     final i18n = app.i18n;
-    final fields = app.fieldLayer.nodes.values.where((n) => n.isRoot).toList();
+    final fields = app.fieldLayer.nodes.values.where((n) => n.isRoot).toList()
+      ..sort((a, b) => a.id.compareTo(b.id));
     showPultSheet(
       context: context,
       subs: [
@@ -566,6 +650,86 @@ class _RoutinesTabState extends State<RoutinesTab> {
       bg: app.bort.bg,
       signal: app.bort.fgsignal,
       side: PultScope.of(context).smallSide,
+    );
+  }
+
+  ({List<Routine> overdue, List<Routine> active, List<Routine> done})
+  _splitRoutines(List<Routine> routines, int now) {
+    final overdue = <Routine>[];
+    final active = <Routine>[];
+    final done = <Routine>[];
+
+    int sortPulse(Routine r) => r.lastPulseAt ?? r.lastActionAt;
+
+    for (final r in routines) {
+      if (r.completed) {
+        done.add(r);
+      } else if (r.isOverdueAt(now)) {
+        overdue.add(r);
+      } else {
+        active.add(r);
+      }
+    }
+
+    void sortActive(List<Routine> list) {
+      list.sort((a, b) {
+        final aRun = a.runningBlock != null;
+        final bRun = b.runningBlock != null;
+        if (aRun && !bRun) return -1;
+        if (!aRun && bRun) return 1;
+        if (aRun && bRun) {
+          final at = a.runningBlock?.startedAt ?? 0;
+          final bt = b.runningBlock?.startedAt ?? 0;
+          return bt.compareTo(at);
+        }
+        return sortPulse(b).compareTo(sortPulse(a));
+      });
+    }
+
+    sortActive(overdue);
+    sortActive(active);
+    done.sort((a, b) => sortPulse(b).compareTo(sortPulse(a)));
+
+    return (overdue: overdue, active: active, done: done);
+  }
+
+  Widget _bareDivider(double indent) {
+    final bort = BortScope.of(context);
+    final side = PultScope.of(context).smallSide;
+    final strokeW = side * bort.kStroke;
+    return Padding(
+      padding: EdgeInsets.only(left: indent, right: 4, top: 6, bottom: 6),
+      child: Container(height: strokeW, color: bort.mid),
+    );
+  }
+
+  Widget _doneDivider(double indent) {
+    final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
+    final side = PultScope.of(context).smallSide;
+    final strokeW = side * bort.kStroke;
+    return Padding(
+      padding: EdgeInsets.only(left: indent, right: 4, top: 6, bottom: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(height: strokeW, color: bort.mid),
+          ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: side * 0.2),
+            child: Text(
+              i18n.t('routine.completed'),
+              style: TextStyle(
+                color: bort.mid,
+                fontSize: side * bort.kNumberSmall,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Container(height: strokeW, color: bort.mid),
+          ),
+        ],
+      ),
     );
   }
 
@@ -603,37 +767,19 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
     if (!isExpanded) return;
 
-    final routines = RoutineScope.of(context).routinesForNode(nodeId);
-    final active = <Routine>[];
-    final done = <Routine>[];
-    for (final r in routines) {
-      if (r.completed) {
-        done.add(r);
-      } else {
-        active.add(r);
-      }
-    }
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final split = _splitRoutines(
+      RoutineScope.of(context).routinesForNode(nodeId),
+      now,
+    );
 
-    int sortPulse(Routine r) => r.lastPulseAt ?? r.lastActionAt;
-    active.sort((a, b) {
-      final aRun = a.runningBlock != null;
-      final bRun = b.runningBlock != null;
-      if (aRun && !bRun) return -1;
-      if (!aRun && bRun) return 1;
-      if (aRun && bRun) {
-        final at = a.runningBlock?.startedAt ?? 0;
-        final bt = b.runningBlock?.startedAt ?? 0;
-        return bt.compareTo(at);
-      }
-      return sortPulse(b).compareTo(sortPulse(a));
-    });
-    done.sort((a, b) => sortPulse(b).compareTo(sortPulse(a)));
+    final double plateIndent = _indent(depth + 1);
 
-    for (final r in active) {
+    for (final r in split.overdue) {
       out.add(
         Padding(
           padding: EdgeInsets.only(
-            left: _indent(depth + 1),
+            left: plateIndent,
             top: 4,
             bottom: 4,
             right: 4,
@@ -642,46 +788,29 @@ class _RoutinesTabState extends State<RoutinesTab> {
         ),
       );
     }
-
-    if (done.isNotEmpty) {
-      final bort = BortScope.of(context);
-      final side = PultScope.of(context).smallSide;
-      final strokeW = side * bort.kStroke;
+    if (split.overdue.isNotEmpty) {
+      out.add(_bareDivider(plateIndent));
+    }
+    for (final r in split.active) {
       out.add(
         Padding(
           padding: EdgeInsets.only(
-            left: _indent(depth + 1),
+            left: plateIndent,
+            top: 4,
+            bottom: 4,
             right: 4,
-            top: 6,
-            bottom: 6,
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Container(height: strokeW, color: bort.mid),
-              ),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: side * 0.2),
-                child: Text(
-                  I18nScope.of(context).t('routine.completed'),
-                  style: TextStyle(
-                    color: bort.mid,
-                    fontSize: side * bort.kNumberSmall,
-                  ),
-                ),
-              ),
-              Expanded(
-                child: Container(height: strokeW, color: bort.mid),
-              ),
-            ],
-          ),
+          child: _routinePlate(r),
         ),
       );
-      for (final r in done) {
+    }
+    if (split.done.isNotEmpty) {
+      out.add(_doneDivider(plateIndent));
+      for (final r in split.done) {
         out.add(
           Padding(
             padding: EdgeInsets.only(
-              left: _indent(depth + 1),
+              left: plateIndent,
               top: 4,
               bottom: 4,
               right: 4,
@@ -700,7 +829,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
       out.add(
         Padding(
           padding: EdgeInsets.only(
-            left: _indent(depth + 1),
+            left: plateIndent,
             top: 4,
             bottom: 4,
             right: 4,
@@ -770,68 +899,35 @@ class _RoutinesTabState extends State<RoutinesTab> {
     ).routines.where((r) => !attachedRoutineIds.contains(r.id)).toList();
 
     if (unassigned.isNotEmpty) {
-      final activeU = <Routine>[];
-      final doneU = <Routine>[];
-      for (final r in unassigned) {
-        if (r.completed) {
-          doneU.add(r);
-        } else {
-          activeU.add(r);
-        }
-      }
-      int sortPulse(Routine r) => r.lastPulseAt ?? r.lastActionAt;
-      activeU.sort((a, b) {
-        final aRun = a.runningBlock != null;
-        final bRun = b.runningBlock != null;
-        if (aRun && !bRun) return -1;
-        if (!aRun && bRun) return 1;
-        return sortPulse(b).compareTo(sortPulse(a));
-      });
-      doneU.sort((a, b) => sortPulse(b).compareTo(sortPulse(a)));
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final split = _splitRoutines(unassigned, now);
 
       items.add(
         Padding(
           padding: const EdgeInsets.fromLTRB(4, 16, 4, 4),
           child: Text(
-            i18n.t('routine.none'),
+            i18n.t('field.shared'),
             style: TextStyle(color: dim, fontWeight: FontWeight.bold),
           ),
         ),
       );
 
-      for (final r in activeU) {
+      for (final r in split.overdue) {
         items.add(
           Padding(padding: const EdgeInsets.all(4), child: _routinePlate(r)),
         );
       }
-      if (doneU.isNotEmpty) {
-        final strokeW = side * bort.kStroke;
+      if (split.overdue.isNotEmpty) {
+        items.add(_bareDivider(4));
+      }
+      for (final r in split.active) {
         items.add(
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(height: strokeW, color: dim),
-                ),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: side * 0.2),
-                  child: Text(
-                    i18n.t('routine.completed'),
-                    style: TextStyle(
-                      color: dim,
-                      fontSize: side * bort.kNumberSmall,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Container(height: strokeW, color: dim),
-                ),
-              ],
-            ),
-          ),
+          Padding(padding: const EdgeInsets.all(4), child: _routinePlate(r)),
         );
-        for (final r in doneU) {
+      }
+      if (split.done.isNotEmpty) {
+        items.add(_doneDivider(4));
+        for (final r in split.done) {
           items.add(
             Padding(padding: const EdgeInsets.all(4), child: _routinePlate(r)),
           );

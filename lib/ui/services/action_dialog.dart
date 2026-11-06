@@ -6,10 +6,14 @@
 // flag, and the live-value callback — captured in a small
 // descriptor map below.
 //
-// Field awareness. Shifts are now per-field. The dialog accepts a
-// fieldId (default 0 for the bort, or the active field's ID for
-// the shift) and passes it to the TimeSeries to fetch the correct
-// data.
+// Unified shift. The shift is no longer per-field: one timer for
+// the entire application, stored under the zero-field key. The
+// caller may still pass a fieldId (kept for source compatibility
+// with rubka_control and any future call site), but the dialog
+// ignores it for the shift kind: shift history is always read from
+// field 0. Bort history is likewise under field 0 by construction.
+// The parameter is therefore preserved only as a shape of the API;
+// every internal call uses field 0.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -36,8 +40,7 @@ class _SeriesUi {
   });
 }
 
-int _liveShift(OperationalLayer bort, int fieldId) =>
-    bort.shiftSecondsNow(fieldId);
+int _liveShift(OperationalLayer bort, int fieldId) => bort.shiftSecondsNow(0);
 int _liveBort(OperationalLayer bort, int fieldId) => bort.bortTime;
 
 const Map<String, _SeriesUi> _ui = {
@@ -60,7 +63,9 @@ Future<void> showTimeHistory(
     context: context,
     barrierColor: Colors.transparent,
     builder: (ctx) {
-      return _TimeHistoryDialog(side: side, seriesKey: key, fieldId: fieldId);
+      // The field id parameter is retained for API symmetry; both
+      // registered series are unified under field 0.
+      return _TimeHistoryDialog(side: side, seriesKey: key, fieldId: 0);
     },
   );
 }

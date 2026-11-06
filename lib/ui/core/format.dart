@@ -11,6 +11,14 @@
 // Leading zero — only on the second number of a pair («3ч 07м»,
 // «3д 05ч»). A single number carries no zero («7м», «5с»).
 //
+// Notice interval. The former planned-duration field is now a
+// notice interval: how long before the due date to remind the
+// user. The format and parser are the same («days:hours:minutes»,
+// capped at kNoticeMaxSec), only the name and the meaning changed.
+// The old names (fmtPlannedTime, parsePlannedTime, kPlannedMaxSec)
+// are gone; the imports in routine_card/planned_picker were updated
+// accordingly.
+//
 // File names. safeFileName strips characters forbidden by the
 // filesystem (backslash, slash, colon, asterisk, question mark,
 // quote, angle brackets, pipe) and replaces each with an uppercase
@@ -104,14 +112,14 @@ int? parseEditable(String s) {
   return null;
 }
 
-// ─── Planned time: «days:hours:minutes» ───
+// ─── Notice interval: «days:hours:minutes» ───
 // Days — up to three digits; hours and minutes — always two.
 // The ceiling is 999 days short of a full year.
-const int kPlannedMaxSec = 999 * 86400 + 23 * 3600 + 59 * 60;
+const int kNoticeMaxSec = 999 * 86400 + 23 * 3600 + 59 * 60;
 
-String fmtPlannedTime(int sec) {
+String fmtNoticeTime(int sec) {
   if (sec < 0) sec = 0;
-  if (sec > kPlannedMaxSec) sec = kPlannedMaxSec;
+  if (sec > kNoticeMaxSec) sec = kNoticeMaxSec;
   final d = sec ~/ 86400;
   final h = (sec % 86400) ~/ 3600;
   final m = (sec % 3600) ~/ 60;
@@ -119,13 +127,13 @@ String fmtPlannedTime(int sec) {
   return '$d:${two(h)}:${two(m)}';
 }
 
-// ─── Planned time parsing ───
+// ─── Notice interval parsing ───
 // One number — minutes. Two, colon-separated — hours and minutes.
 // Three — days, hours, minutes. Any part must be a non-negative
 // integer without a digit limit; the canonical reduction happens
-// in fmtPlannedTime. Returns seconds; null when the input contains
+// in fmtNoticeTime. Returns seconds; null when the input contains
 // non-numeric or negative parts, or the total exceeds the ceiling.
-int? parsePlannedTime(String s) {
+int? parseNoticeTime(String s) {
   final t = s.trim();
   if (t.isEmpty) return 0;
   final parts = t.split(':');
@@ -154,7 +162,7 @@ int? parsePlannedTime(String s) {
   } else {
     return null;
   }
-  if (total > kPlannedMaxSec) return null;
+  if (total > kNoticeMaxSec) return null;
   return total;
 }
 
@@ -181,17 +189,12 @@ String weekdayKey(int weekday) {
 }
 
 // ─── Forbidden-character replacement ───
-// Every occurrence of a filesystem-reserved character is replaced
-// with an uppercase «X». No trimming, no fallback: the caller
-// decides what to do with an empty result.
 String safeFileName(String s) {
   final bad = RegExp(r'[\\/:*?"<>|]');
   return s.replaceAllMapped(bad, (_) => 'X');
 }
 
 // ─── Forbidden-character replacement with fallback ───
-// Same as safeFileName, but an empty (or whitespace-only) result
-// becomes «noname» — the export report's convention.
 String safeFileNameOr(String s) {
   final out = safeFileName(s).trim();
   return out.isEmpty ? 'noname' : out;

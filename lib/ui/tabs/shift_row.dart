@@ -1,16 +1,26 @@
 // ═══════════════════════════════════════════════════════════════════
 // shift_row.dart — the shift row above the routines list.
 //
-// Extracted from routines_tab. Contains: the shift pulse
-// (start/pause), the time label, and time editing on long press.
+// Contains: the shift pulse (start/pause), the time label, and time
+// editing on long press.
 //
-// Field awareness. The shift is now per-field. This row reads the
-// activeFieldId from FieldScope and displays the shift state (and
-// elapsed time) for that specific field. Toggling the shift affects
-// only the active field.
+// Unified shift. The shift is no longer bound to the active field:
+// one timer for the entire application. The previous implementation
+// read FieldScope.activeFieldId and drove the shift for that field;
+// now the shift is global and the field argument is irrelevant. All
+// bort APIs that take a field id are called with 0, the zero-field
+// key under which the unified shift is stored (see
+// operational_layer.dart).
 //
-// Time edit: «dd:hh:mm:ss»; Enter or the confirm pult saves.
-// A long press on the shift pulse opens the field.
+// Shift toggle. When bort.shiftEnabled is false, this widget is
+// invisible: no pulse, no time label, no editing. Turning the
+// toggle off while a shift runs is handled in operational_layer —
+// the shift stops, an actor entry is written, but running routines
+// are deliberately not paused.
+//
+// Time edit: «dd:hh:mm:ss»; Enter or the confirm pult saves. A long
+// press on the shift pulse opens the field. The journal entry is
+// written with field_id = 0, matching the unified shift.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -33,6 +43,9 @@ class ShiftRow extends StatefulWidget {
 }
 
 class _ShiftRowState extends State<ShiftRow> {
+  // The zero-field key. The unified shift is stored under it.
+  static const int _fieldId = 0;
+
   bool _editing = false;
   TextEditingController? _ctrl;
   FocusNode? _focus;
@@ -64,7 +77,7 @@ class _ShiftRowState extends State<ShiftRow> {
     _focus = null;
   }
 
-  Future<void> _confirm(int fieldId) async {
+  Future<void> _confirm() async {
     final bort = BortScope.of(context);
     final journal = AppScope.of(context).journal;
     final sec = parseEditable(_ctrl?.text ?? '');
@@ -72,15 +85,17 @@ class _ShiftRowState extends State<ShiftRow> {
       _cancel();
       return;
     }
-    if (sec == bort.shiftSecondsNow(fieldId)) {
+    if (sec == bort.shiftSecondsNow(_fieldId)) {
       _cancel();
       return;
     }
     await journal.log(
       type: JournalType.actor,
-      body: '{"action":"shift_edit","field_id":$fieldId,"seconds":$sec}',
+      body:
+          '{"action":"shift_edit","field_id":$_fieldId,'
+          '"seconds":$sec}',
     );
-    bort.setShiftTime(fieldId, sec);
+    bort.setShiftTime(_fieldId, sec);
     if (mounted) setState(() => _editing = false);
     _ctrl?.dispose();
     _focus?.dispose();
@@ -95,14 +110,14 @@ class _ShiftRowState extends State<ShiftRow> {
     final i18n = I18nScope.of(context);
     final ticker = TickerScope.of(context);
     final app = AppScope.of(context);
-    final fieldId = FieldScope.of(context).activeFieldId;
     final side = PultScope.of(context).smallSide;
     final fg = bort.fg;
     final dim = bort.mid;
     final bg = bort.bg;
     final signal = bort.fgsignal;
 
-    if (fieldId == null) {
+    // When the shift toggle is off, no shift exists: no row at all.
+    if (!bort.shiftEnabled) {
       return const SizedBox.shrink();
     }
 
@@ -126,7 +141,7 @@ class _ShiftRowState extends State<ShiftRow> {
                   border: const OutlineInputBorder(),
                   contentPadding: EdgeInsets.all(side * 0.1),
                 ),
-                onSubmitted: (_) => _confirm(fieldId),
+                onSubmitted: (_) => _confirm(),
               ),
             ),
             SizedBox(width: side * 0.1),
@@ -134,7 +149,7 @@ class _ShiftRowState extends State<ShiftRow> {
               spec: PultSpec(
                 id: 'shift_confirm',
                 icon: Icons.check,
-                onTap: () => _confirm(fieldId),
+                onTap: _confirm,
               ),
               fg: fg,
               bg: bg,
@@ -147,21 +162,21 @@ class _ShiftRowState extends State<ShiftRow> {
     }
 
     final bool ticking =
-        bort.onShift(fieldId) && bort.shiftStartedAt(fieldId) != null;
+        bort.onShift(_fieldId) && bort.shiftStartedAt(_fieldId) != null;
 
     Widget pulse = Pulse(
       spec: PultSpec(
         id: 'shift',
-        icon: bort.onShift(fieldId) ? Icons.pause : Icons.play_arrow,
-        selected: bort.onShift(fieldId),
+        icon: bort.onShift(_fieldId) ? Icons.pause : Icons.play_arrow,
+        selected: bort.onShift(_fieldId),
         onTap: () async {
           FocusManager.instance.primaryFocus?.unfocus();
-          await app.toggleShift(fieldId);
+          await app.toggleShift(_fieldId);
           widget.onChanged();
         },
-        onLongPress: () => _startEdit(bort.shiftSecondsNow(fieldId)),
+        onLongPress: () => _startEdit(bort.shiftSecondsNow(_fieldId)),
       ),
-      seconds: bort.shiftSecondsNow(fieldId),
+      seconds: bort.shiftSecondsNow(_fieldId),
       running: ticking,
       fg: fg,
       dim: dim,
@@ -174,7 +189,7 @@ class _ShiftRowState extends State<ShiftRow> {
       ticker: ticker,
     );
 
-    if (bort.shiftEdited(fieldId)) {
+    if (bort.shiftEdited(_fieldId)) {
       pulse = Container(
         decoration: BoxDecoration(
           border: Border(

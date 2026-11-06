@@ -30,6 +30,7 @@
     "routine.waiting": "ожидает",
     "routine.completed": "завершено",
     "routine.mark_completed": "завершено",
+    "routine.overdue": "просрочено",
 
     "routine.block.note": "описание",
     "routine.block.prep": "подготовка",
@@ -39,11 +40,13 @@
     "routine.block.closeout": "завершение",
     "routine.summary": "итог",
     "routine.clear_date": "снять дату",
-    "routine.planned_hint": "план",
-    "routine.planned_title": "срок",
+    "routine.clear_notice": "снять предуведомление",
+    "routine.notice_title": "предуведомление",
+    "routine.notice_hint": "дд:чч:мм",
 
     "block.appearance": "оформление",
     "block.interface": "интерфейс",
+    "block.control": "управление",
     "block.data": "данные",
 
     "theme.custom": "своя",
@@ -108,16 +111,22 @@
     "field.burn": "сжечь",
     "field.burn_confirm": "сжечь ветвь и всё содержимое?",
     "field.move_routine": "переместить",
-    "field.link_routine": "связать",
     "field.detach_routine": "отвязать",
+    "field.link_routine": "связать",
+    "field.detach_routine_from": "отвязать",
     "field.move_branch": "переместить ветвь",
     "field.rename": "переименовать",
+    "field.shared": "общее",
 
     "notif.running": "выполняется",
     "notif.total": "всего",
+    "notif.current": "текущее",
+    "notif.today": "сегодня",
+    "notif.overdue_title": "просрочено",
+    "notif.overdue_body": "срок прошёл",
 
     "hint.time": "дд:чч:мм:сс",
-    "hint.planned": "дд:чч:мм",
+    "hint.notice": "дд:чч:мм",
 
     "size.b": "Б",
     "size.kb": "КБ",
@@ -139,6 +148,7 @@
     "common.ok": "ок",
     "common.cancel": "отмена",
     "common.wait": "простите, придётся подождать",
+    "common.help": "пояснение",
     "export.prep": "подготовка архива",
     "export.cancel": "отмена",
 
@@ -184,7 +194,31 @@
     "days.legend.completed": "завершённые",
 
     "stub.title": "раздел",
-    "stub.text": "ещё не готов"
+    "stub.text": "ещё не готов",
+
+    "help.theme.custom": "своя палитра; ниже можно править цвета.",
+    "help.theme.night": "принудительная ночь, независимо от системы.",
+    "help.theme.auto": "следовать яркости системы; несовместимо с ночью.",
+    "help.bort.scale": "общий масштаб интерфейса.",
+    "help.bort.lang": "язык надписей.",
+    "help.bort.labels_buttons": "показывать подписи у пультов.",
+    "help.bort.default_slots": "слоты, видимые в карточке постоянно.",
+    "help.bort.midnight": "начало суток для борта и смены.",
+    "help.bort.bort": "время активности в приложении за сегодня; касание — история.",
+    "help.bort.shift": "единый таймер смены; касание — история.",
+    "help.bort.mutex_routines": "запуск блока останавливает прочие рутины.",
+    "help.bort.mutex_slots": "запуск блока останавливает прочие слоты той же рутины.",
+    "help.bort.mutex_shift": "запуск блока пускает смену; останов смены ставит блоки на паузу.",
+    "help.bort.map_scale": "метров по меньшей стороне карты.",
+    "help.bort.journal": "объём файлов борта.",
+    "help.bort.reload": "перечитать журнал с начала.",
+    "help.bort.delete": "стереть все записи журнала.",
+    "help.bort.compress": "схлопнуть журнал в снимки.",
+    "help.bort.media": "объём вложений.",
+    "help.bort.shake": "удалить файлы без привязок.",
+    "help.bort.export": "собрать архив рутин и поделиться.",
+    "help.bort.import": "принять архивы рутин.",
+    "help.bort.reset": "сбросить кэши и умолчания."
   },
 
   "en": {
@@ -218,6 +252,7 @@
     "routine.waiting": "waiting",
     "routine.completed": "completed",
     "routine.mark_completed": "completed",
+    "routine.overdue": "overdue",
 
     "routine.block.note": "note",
     "routine.block.prep": "prep",
@@ -227,11 +262,13 @@
     "routine.block.closeout": "closeout",
     "routine.summary": "total",
     "routine.clear_date": "clear date",
-    "routine.planned_hint": "plan",
-    "routine.planned_title": "due",
+    "routine.clear_notice": "clear notice",
+    "routine.notice_title": "notice",
+    "routine.notice_hint": "dd:hh:mm",
 
     "block.appearance": "appearance",
     "block.interface": "interface",
+    "block.control": "control",
     "block.data": "data",
 
     "theme.custom": "custom",
@@ -296,16 +333,22 @@
     "field.burn": "burn",
     "field.burn_confirm": "burn branch and all content?",
     "field.move_routine": "move",
-    "field.link_routine": "link",
     "field.detach_routine": "detach",
+    "field.link_routine": "link",
+    "field.detach_routine_from": "detach",
     "field.move_branch": "move branch",
     "field.rename": "rename",
+    "field.shared": "shared",
 
     "notif.running": "running",
     "notif.total": "total",
+    "notif.current": "current",
+    "notif.today": "today",
+    "notif.overdue_title": "overdue",
+    "notif.overdue_body": "deadline passed",
 
     "hint.time": "dd:hh:mm:ss",
-    "hint.planned": "dd:hh:mm",
+    "hint.notice": "dd:hh:mm",
 
     "size.b": "B",
     "size.kb": "KB",
@@ -327,6 +370,7 @@
     "common.ok": "ok",
     "common.cancel": "cancel",
     "common.wait": "please wait, this may take a moment",
+    "common.help": "help",
     "export.prep": "preparing archive",
     "export.cancel": "cancel",
 
@@ -372,6 +416,30 @@
     "days.legend.completed": "completed",
 
     "stub.title": "section",
-    "stub.text": "not ready yet"
+    "stub.text": "not ready yet",
+
+    "help.theme.custom": "custom palette; colours below can be edited.",
+    "help.theme.night": "force night regardless of the system.",
+    "help.theme.auto": "follow the system brightness; incompatible with night.",
+    "help.bort.scale": "global interface scale.",
+    "help.bort.lang": "language of labels.",
+    "help.bort.labels_buttons": "show pult labels.",
+    "help.bort.default_slots": "slots visible in the card at all times.",
+    "help.bort.midnight": "day boundary for bort time and shift.",
+    "help.bort.bort": "active time in the app today; tap for history.",
+    "help.bort.shift": "single shift timer; tap for history.",
+    "help.bort.mutex_routines": "starting a block pauses other routines.",
+    "help.bort.mutex_slots": "starting a block pauses other slots of the same routine.",
+    "help.bort.mutex_shift": "starting a block runs the shift; stopping the shift pauses blocks.",
+    "help.bort.map_scale": "meters along the smaller side of the map.",
+    "help.bort.journal": "size of the bort files.",
+    "help.bort.reload": "re-read the journal from the start.",
+    "help.bort.delete": "erase every journal entry.",
+    "help.bort.compress": "collapse the journal into snapshots.",
+    "help.bort.media": "size of attachments.",
+    "help.bort.shake": "delete files not attached to anything.",
+    "help.bort.export": "build a routines archive and share it.",
+    "help.bort.import": "accept routines archives.",
+    "help.bort.reset": "reset caches and defaults."
   }
 }

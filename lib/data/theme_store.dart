@@ -9,20 +9,32 @@
 //   5 — fgsignal: content of signal elements, the accent color.
 //
 // Theme selection. Three independent settings:
-//   customEnabled — use the «custom» palette (the source palette);
+//   customEnabled — use the «custom» palette;
 //   night         — force the night palette (mutually exclusive
 //                   with auto);
 //   auto          — follow the system brightness (mutually
 //                   exclusive with night).
 // When both night and auto are false, the day palette is used.
 //
-// Resolving. With customEnabled, the source palette is the custom
-// one; otherwise the built-in day or night. Then:
-//   — night on: the night palette is used (custom night = the
-//     mirror of the custom palette);
-//   — auto on: the palette follows the system brightness (day or
-//     night, mirrored for custom as above);
-//   — neither: the day palette (built-in day or custom as is).
+// Custom palette — stored as night. The custom entry in the theme
+// map is the NIGHT form; the day view is its mirror. When the
+// effective mode resolves to night (night on, or auto with a dark
+// system), the custom palette is shown as stored; when it resolves
+// to day, the mirrored form is shown. The visual appearance of the
+// custom palette is unchanged: day looks like the old day, night
+// like the old night, only the internal representation is inverted.
+// The built-in default custom colours are therefore given in their
+// night form: the mirror of the former day values. Saved user data
+// is flipped once, in operational_layer._loadFromFile, guarded by
+// the state-file schema.
+//
+// Built-in day and night are unchanged.
+//
+// Resolving. With customEnabled, the source palette is custom (night
+// form); otherwise the built-in day or night. Then:
+//   — night on: custom as stored, or built-in night;
+//   — auto on and dark system: custom as stored, or built-in night;
+//   — otherwise (day): mirrored custom, or built-in day.
 //
 // Opposite palette. Always the mirror of the current one
 // (bg ↔ fg, bgsignal ↔ fgsignal, mid fixed), for running blocks.
@@ -114,16 +126,12 @@ class ThemeStore {
     Map<String, Color> builtin(String name) =>
         Map<String, Color>.from(_themes[name] ?? _builtinThemes[name]!);
 
-    if (_night) {
-      return source != null ? _invert(source) : builtin('night');
+    final wantNight = _night || (_auto && _systemBrightness == Brightness.dark);
+
+    if (source != null) {
+      return wantNight ? source : _invert(source);
     }
-    if (_auto) {
-      if (_systemBrightness == Brightness.dark) {
-        return source != null ? _invert(source) : builtin('night');
-      }
-      return source ?? builtin('day');
-    }
-    return source ?? builtin('day');
+    return wantNight ? builtin('night') : builtin('day');
   }
 
   Map<String, Color> _computeOpposite() => _invert(_cur);
@@ -135,6 +143,9 @@ class ThemeStore {
     'fg': cur['bg']!,
     'fgsignal': cur['bgsignal']!,
   };
+
+  // Public — used by operational_layer when migrating saved palettes.
+  static Map<String, Color> invert(Map<String, Color> c) => _invert(c);
 
   void parseThemes(Map<dynamic, dynamic> t) {
     final out = <String, Map<String, Color>>{};
@@ -233,12 +244,17 @@ class ThemeStore {
     'fgsignal': Color(0xFFFBF5E9),
   };
 
+  // Night form of the default custom palette: the mirror of the
+  // former day values, so the visual appearance is preserved.
+  // day bg (#3F4D5A) ↔ night fg; day bgsignal (#071232) ↔ night
+  // fgsignal; day fg (#B9B3A6) ↔ night bg; day fgsignal (#FFCB4F)
+  // ↔ night bgsignal; mid unchanged.
   static const Map<String, Color> _customColors = {
-    'bg': Color(0xFF3F4D5A),
-    'bgsignal': Color(0xFF071232),
+    'bg': Color(0xFFB9B3A6),
+    'bgsignal': Color(0xFFFFCB4F),
     'mid': Color(0xFF7A868F),
-    'fg': Color(0xFFB9B3A6),
-    'fgsignal': Color(0xFFFFCB4F),
+    'fg': Color(0xFF3F4D5A),
+    'fgsignal': Color(0xFF071232),
   };
 
   static const Map<String, Map<String, Color>> _builtinThemes = {

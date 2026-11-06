@@ -2,7 +2,9 @@
 // main.dart — entry point and governor.
 //
 // Startup order: journal, bort, trace, field (with root creation),
-// routine, dictionary, notification manager. Then — journal.start().
+// routine, dictionary, overdue scheduler, notification manager.
+// Then — journal.start(). Finally — a one-pass reconciliation of
+// deferred notices and overdue routines.
 //
 // Field tab merged into routines. The separate «field» tab has been
 // removed; the tree is now built on top of the routines tab.
@@ -11,13 +13,50 @@
 // with its block in the rubka; the tab list now carries routines,
 // days, and rubka only.
 //
-// Theme selection. Three independent settings — custom, day, and
-// autoswitch — replace the former five-theme model. Effective
-// brightness is derived from the resolved background colour, so an
-// edited custom palette is honoured.
+// Shade actions. The «stop» buttons on ongoing notifications do not
+// open the app (showsUserInterface: false). The Android plugin calls
+// the background isolate, which writes pending_action.json; the
+// application reads and deletes that file. Two paths consume it:
+//
+//   — on resume (a prompt reaction when the user comes back);
+//   — on a periodic 2-second timer (when the app is in the
+//     foreground, the state is applied within two seconds; this is
+//     slower than the ticker's 500 ms, and the poll cost is a single
+//     `exists` call — no flicker, no per-tick I/O storm).
+//
+// Both paths go through _applyShadeAction, so the semantics are
+// identical: stop the shift or the routine exactly as an in-app
+// press does, honouring the mutexes (mutexShift on shift stop,
+// mutexRoutines/mutexSlots on routine stop), and cancel the
+// corresponding notification immediately.
+//
+// Overdue scheduler. A small adapter (_OverdueSchedulerImpl) is
+// attached to RoutineLayer after init. On every mutation that can
+// affect the deferred notice — schedule change, notice change,
+// completion, deletion — the layer calls refresh or cancel; the
+// adapter cancels the old schedule, and, when the routine is still
+// unfinished and has a future notice moment, schedules a fresh one
+// via NotificationService.scheduleOverdueNotice (zonedSchedule).
+//
+// Startup reconciliation (_reconcileOverdue). Once per launch, after
+// init and language setup:
+//
+//   — cancel every scheduled notice for every routine (a clean
+//     slate; the plugin's alarms survive app restarts, so a stale
+//     one must not linger);
+//   — for each unfinished routine with a date and a notice:
+//       notice moment in the future → schedule it;
+//       notice moment past, due in the future → audible push now;
+//       both past → audible overdue push now (and every launch
+//       thereafter, until the routine is completed).
+//
+// The push is routine-scoped (per-routine id), so several overdue
+// routines coexist in the shade.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -28,12 +67,14 @@ import 'data/i18n.dart';
 import 'data/journal_layer.dart';
 import 'data/journal_types.dart';
 import 'data/operational_layer.dart';
+import 'data/routine.dart';
 import 'data/routine_layer.dart';
 import 'data/ticker.dart';
 import 'data/trace_layer.dart';
 import 'ui/cards/routine_card.dart';
 import 'ui/core/app_scope.dart';
 import 'ui/core/control_row.dart';
+import 'ui/core/format.dart';
 import 'ui/pults/pult_core.dart';
 import 'ui/pults/pult_sheet.dart';
 import 'ui/pults/root_pult.dart';
@@ -61,6 +102,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   late final FieldLayer _fieldLayer;
   late final AppTicker _ticker;
   NotificationManager? _notificationManager;
+  _OverdueSchedulerImpl? _scheduler;
+
   final _pultState = PultState();
   final _navigatorKey = GlobalKey<NavigatorState>();
 
@@ -73,6 +116,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   VoidCallback? _onTickerTick;
   String _bortSignature = '';
+
+  // Periodic consumer of pending_action.json. Started on init.
+  Timer? _pendingPollTimer;
 
   static const List<RootTabItem> _allTabs = [
     RootTabItem(icon: Icons.checklist, labelKey: 'tab.routines'),
@@ -94,6 +140,13 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       NotificationService.payloadNotifier.addListener(_onNotificationTap);
       _onNotificationTap();
     });
+
+    // Periodic safety net for shade actions. A prompt pass also
+    // happens on resume (see didChangeAppLifecycleState).
+    _pendingPollTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _handlePendingNotificationAction(),
+    );
 
     _db = AppDb();
     _journal = JournalLayer(_db);
@@ -160,6 +213,12 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       _tab = 0;
       _bortSignature = _computeBortSignature();
 
+      // Attach the overdue scheduler before anything else uses the
+      // layer, then run the startup reconciliation.
+      _scheduler = _OverdueSchedulerImpl(_i18n!);
+      _routineLayer.scheduler = _scheduler;
+      unawaited(_reconcileOverdue());
+
       _notificationManager = NotificationManager(
         bort: _bort,
         routineLayer: _routineLayer,
@@ -173,6 +232,70 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     }
 
     if (mounted) setState(() {});
+  }
+
+  // ─── Startup reconciliation of deferred notices ───
+  // Cancel every scheduled notice (clean slate), then re-evaluate
+  // every unfinished routine with a date and a notice. See the file
+  // header for the three branches.
+  Future<void> _reconcileOverdue() async {
+    final i18n = _i18n;
+    if (i18n == null) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
+    for (final r in _routineLayer.routines) {
+      await NotificationService.cancelOverdueNotice(r.id);
+    }
+
+    for (final r in _routineLayer.routines) {
+      if (r.completed) continue;
+      final due = r.scheduledAt;
+      if (due == null || due <= 0) continue;
+      if (!r.noticeSet) continue;
+
+      final moment = r.noticeMoment();
+      if (moment == null) continue;
+
+      if (moment > now) {
+        // Future: schedule the deferred notice.
+        await NotificationService.scheduleOverdueNotice(
+          routineId: r.id,
+          at: DateTime.fromMillisecondsSinceEpoch(moment * 1000),
+          title: _overdueTitle(i18n, r),
+          body: _overdueBody(i18n, r, overdue: false),
+        );
+      } else if (due > now) {
+        // Notice moment passed, due still ahead: audible push now.
+        await NotificationService.showOverdue(
+          routineId: r.id,
+          title: _overdueTitle(i18n, r),
+          body: _overdueBody(i18n, r, overdue: false),
+        );
+      } else {
+        // Both passed: audible overdue push now, and at every
+        // startup until the routine is completed.
+        await NotificationService.showOverdue(
+          routineId: r.id,
+          title: _overdueTitle(i18n, r),
+          body: _overdueBody(i18n, r, overdue: true),
+        );
+      }
+    }
+  }
+
+  String _overdueTitle(I18n i18n, Routine r) {
+    if (r.name.isEmpty) return i18n.t('routine.no_name');
+    return r.name;
+  }
+
+  String _overdueBody(I18n i18n, Routine r, {required bool overdue}) {
+    final due = r.scheduledAt;
+    final dueStr = due != null ? fmtDateFull(due, i18n.t) : '—';
+    final prefix = overdue
+        ? i18n.t('routine.overdue')
+        : i18n.t('routine.notice_title');
+    return '$prefix: $dueStr';
   }
 
   Future<void> _afterJournalReset() async {
@@ -203,6 +326,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           ticker: _ticker,
           i18n: i18n,
         );
+        _scheduler = _OverdueSchedulerImpl(i18n);
+        _routineLayer.scheduler = _scheduler;
       });
     }
   }
@@ -211,6 +336,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     if (mounted) setState(() {});
   }
 
+  // ─── Body-tap routing ───
   void _onNotificationTap() {
     final payload = NotificationService.payloadNotifier.value;
     if (payload == null) return;
@@ -227,33 +353,33 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     }
   }
 
+  // ─── Pending shade action ───
   Future<void> _handlePendingNotificationAction() async {
     final data = await NotificationService.consumePendingAction();
     if (data == null) return;
 
-    final action = data['action'];
+    final action = data['action'] ?? '';
     final payload = data['payload'] ?? '';
+    await _applyShadeAction(action, payload);
 
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _applyShadeAction(String action, String payload) async {
     if (action == 'stop_shift' && payload.startsWith('shift_')) {
-      final fId = int.tryParse(payload.split('_').last);
-      if (fId != null && _bort.onShift(fId)) {
+      if (!_bort.shiftEnabled) {
+        await NotificationService.cancelShift();
+        return;
+      }
+      if (_bort.onShift(0)) {
         await _journal.log(
           type: JournalType.actor,
-          body: '{"action":"shift_stop","field_id":$fId}',
+          body: '{"action":"shift_stop","field_id":0}',
         );
-        _bort.stopShift(fId);
+        _bort.stopShift(0);
 
         if (_bort.mutexShift) {
           for (final r in _routineLayer.routines) {
-            bool inField = false;
-            for (final parentId in r.fieldParents) {
-              if (_fieldLayer.isDescendant(parentId, fId)) {
-                inField = true;
-                break;
-              }
-            }
-            if (!inField) continue;
-
             for (final b in r.blocks) {
               if (b.isRunning) {
                 await _routineLayer.pauseBlock(_journal, r.id, b.kind);
@@ -262,7 +388,11 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           }
         }
       }
-    } else if (action == 'stop_routine' && payload.startsWith('routine_')) {
+      await NotificationService.cancelShift();
+      return;
+    }
+
+    if (action == 'stop_routine' && payload.startsWith('routine_')) {
       final rId = int.tryParse(payload.split('_').last);
       if (rId != null) {
         final r = _routineLayer.findRoutine(rId);
@@ -274,16 +404,16 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           }
         }
       }
+      await NotificationService.cancelRoutine();
+      return;
     }
-
-    await NotificationService.cancelAll();
-    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     NotificationService.payloadNotifier.removeListener(_onNotificationTap);
+    _pendingPollTimer?.cancel();
     if (_onTickerTick != null) {
       _ticker.removeListener(_onTickerTick!);
     }
@@ -591,5 +721,72 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
         child: Scaffold(body: _tabBody()),
       ),
     );
+  }
+}
+
+// ─── Overdue scheduler adapter ───
+// The layer knows only the contract (refresh / cancel); the adapter
+// owns the formatting and the platform calls. Kept in main.dart so
+// the layer stays UI-free.
+class _OverdueSchedulerImpl implements OverdueScheduler {
+  final I18n i18n;
+  _OverdueSchedulerImpl(this.i18n);
+
+  @override
+  void refresh(Routine routine) {
+    unawaited(_doRefresh(routine));
+  }
+
+  @override
+  void cancel(int routineId) {
+    unawaited(NotificationService.cancelOverdueNotice(routineId));
+  }
+
+  Future<void> _doRefresh(Routine r) async {
+    await NotificationService.cancelOverdueNotice(r.id);
+    if (r.completed) return;
+    final due = r.scheduledAt;
+    if (due == null || due <= 0) return;
+    if (!r.noticeSet) return;
+
+    final moment = r.noticeMoment();
+    if (moment == null) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
+    if (moment > now) {
+      await NotificationService.scheduleOverdueNotice(
+        routineId: r.id,
+        at: DateTime.fromMillisecondsSinceEpoch(moment * 1000),
+        title: _title(r),
+        body: _body(r, overdue: false),
+      );
+      return;
+    }
+
+    // The moment already passed. Fire an audible push now, so that
+    // setting a notice whose lead time is longer than the time left
+    // before the due date does not silently do nothing. Startup
+    // will fire again for the same routine (by design — see the
+    // file header).
+    await NotificationService.showOverdue(
+      routineId: r.id,
+      title: _title(r),
+      body: _body(r, overdue: due <= now),
+    );
+  }
+
+  String _title(Routine r) {
+    if (r.name.isEmpty) return i18n.t('routine.no_name');
+    return r.name;
+  }
+
+  String _body(Routine r, {required bool overdue}) {
+    final due = r.scheduledAt;
+    final dueStr = due != null ? fmtDateFull(due, i18n.t) : '—';
+    final prefix = overdue
+        ? i18n.t('routine.overdue')
+        : i18n.t('routine.notice_title');
+    return '$prefix: $dueStr';
   }
 }

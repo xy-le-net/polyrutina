@@ -2,19 +2,35 @@
 // notification_manager.dart — orchestrates ongoing notifications.
 //
 // Listens to the ticker and the layer states to show, update, and
-// cancel the ongoing notifications for the active field's shift and
-// the active routine block.
+// cancel the ongoing notifications for the unified shift and the
+// active routine block.
+//
+// Unified shift. The shift is no longer bound to a field: one timer
+// for the entire application, stored under the zero-field key.
+//
+// Bodies. The manager formats the content; the service only shows
+// and cancels. Shift: title «смена» (no field name), body two lines
+// — «текущее» (live time since start, ticking) and «сегодня»
+// (today's total, refreshed once per minute via the same change
+// detector used for routines). Routine: title is the field name (or
+// «общее» if unattached), body four lines — routine name, current
+// slot with its time, and «всего: X». No field name is prepended to
+// the routine title itself; the field lives on the first body line.
 //
 // Throttling. The system's chronometer handles the ticking display.
-// To save battery and avoid spamming the platform channel, the
-// notification is only updated when its text actually changes (e.g.,
-// once a minute, or when the block state changes).
+// The notification is only updated when its body string actually
+// changes (e.g., once a minute, or when a block changes). No
+// redundant platform-channel calls.
 //
-// Timer synchronization. The chronometer (when) is set to the
-// current block's elapsed time. The total time (body) is calculated
-// separately and formatted via the unified dictionary and format
-// helpers, ensuring both display consistent information without
-// desynchronization.
+// Stop buttons. The «stop» actions reach the app through
+// pending_action.json; they are applied by main.dart with the same
+// semantics as an in-app press (mutexes honoured). The manager only
+// makes sure that when the shift or the routine stops, the
+// corresponding notification is cancelled promptly.
+//
+// Shift gating. When bort.shiftEnabled is false, no shift
+// notification is shown or refreshed; a stale one is cancelled if
+// present.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -41,6 +57,9 @@ class NotificationManager {
   int? _lastRoutineId;
   String? _lastBlockKind;
 
+  // The shift is unified: its identity is the zero-field key.
+  static const int _shiftFieldId = 0;
+
   NotificationManager({
     required this.bort,
     required this.routineLayer,
@@ -62,92 +81,121 @@ class NotificationManager {
 
   void _update({bool force = false}) {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final activeFieldId = fieldLayer.activeFieldId;
+    _updateShift(now, force: force);
+    _updateRoutine(now, force: force);
+  }
 
-    // ─── Shift ───
-    final shiftActive = activeFieldId != null && bort.onShift(activeFieldId);
+  // ─── Shift notification ───
+  // Title: «смена» — the field is deliberately not mentioned.
+  // Body: «текущее: X» and «сегодня: Y» on separate lines. «текущее»
+  // is the elapsed time since the current shift started; «сегодня»
+  // is today's total, recalculated at each tick, but pushed to the
+  // platform only when the visible string changes (the chronometer
+  // in the notification handles the seconds).
+  void _updateShift(int now, {bool force = false}) {
+    final shiftActive = bort.shiftEnabled && bort.onShift(_shiftFieldId);
 
-    if (shiftActive) {
-      final sessionSec = bort.shiftStartedAt(activeFieldId) != null
-          ? now - bort.shiftStartedAt(activeFieldId)!
-          : 0;
-      final totalSec = bort.shiftSecondsNow(activeFieldId);
-
-      final fieldName =
-          fieldLayer.nodes[activeFieldId]?.name ?? i18n.t('field.root');
-      final title = '${i18n.t('bort.shift')}: $fieldName';
-      final body = '${i18n.t('notif.total')}: ${fmtTime(totalSec, i18n.t)}';
-
-      if (force || !_wasShiftActive || body != _lastShiftBody) {
-        NotificationService.showShift(
-          fieldId: activeFieldId,
-          title: title,
-          body: body,
-          elapsedSec: sessionSec,
-          lang: bort.lang,
-        );
-        _lastShiftBody = body;
-      }
-      _wasShiftActive = true;
-    } else {
+    if (!shiftActive) {
       if (_wasShiftActive || force) {
         NotificationService.cancelShift();
       }
       _wasShiftActive = false;
       _lastShiftBody = '';
+      return;
     }
 
-    // ─── Routine ───
+    final startedAt = bort.shiftStartedAt(_shiftFieldId);
+    final sessionSec = startedAt != null ? now - startedAt : 0;
+    final totalSec = bort.shiftSecondsNow(_shiftFieldId);
+
+    final title = i18n.t('bort.shift');
+    final body =
+        '${i18n.t('notif.current')}: ${fmtTime(sessionSec, i18n.t)}\n'
+        '${i18n.t('notif.today')}: ${fmtTime(totalSec, i18n.t)}';
+
+    if (force || !_wasShiftActive || body != _lastShiftBody) {
+      NotificationService.showShift(
+        fieldId: _shiftFieldId,
+        title: title,
+        body: body,
+        elapsedSec: sessionSec,
+        stopLabel: _stopLabel(),
+      );
+      _lastShiftBody = body;
+    }
+    _wasShiftActive = true;
+  }
+
+  // ─── Routine notification ───
+  // Title: the field name, or «общее» if the routine is unattached.
+  // Body (four lines):
+  //   <routine name>
+  //   <current slot>: <its time>
+  //   всего: <total>
+  // The current slot's time restarts on every slot change, but the
+  // total never resets. On slot change the body string differs, so
+  // the push is refreshed immediately.
+  void _updateRoutine(int now, {bool force = false}) {
     final currentId = routineLayer.currentRoutineId;
     final currentRoutine = currentId != null
         ? routineLayer.findRoutine(currentId)
         : null;
     final runningBlock = currentRoutine?.runningBlock;
 
-    if (currentRoutine != null && runningBlock != null) {
-      final elapsedSec = runningBlock.secondsNowAt(now);
-      final totalSec = currentRoutine.totalSeconds;
-
-      // Determine field name for the routine
-      String fieldName = i18n.t('field.root');
-      if (currentRoutine.fieldParents.isNotEmpty) {
-        final fId = currentRoutine.fieldParents.first;
-        final node = fieldLayer.nodes[fId];
-        if (node != null) fieldName = node.name;
-      }
-
-      final rTitle = currentRoutine.name.isEmpty
-          ? i18n.t('routine.no_name')
-          : currentRoutine.name;
-      final title = '$fieldName · $rTitle';
-
-      final blockTitle = i18n.t('routine.block.${runningBlock.kind}');
-      final body =
-          '$blockTitle ${i18n.t('notif.running')}\n'
-          '${i18n.t('notif.total')}: ${fmtTime(totalSec, i18n.t)}';
-
-      if (force ||
-          _lastRoutineId != currentId ||
-          _lastBlockKind != runningBlock.kind ||
-          body != _lastRoutineBody) {
-        NotificationService.showRoutine(
-          routineId: currentRoutine.id,
-          title: title,
-          body: body,
-          elapsedSec: elapsedSec,
-          lang: bort.lang,
-        );
-        _lastRoutineBody = body;
-        _lastBlockKind = runningBlock.kind;
-      }
-      _lastRoutineId = currentId;
-    } else {
+    if (currentRoutine == null || runningBlock == null) {
       if (_lastRoutineId != null || force) {
         NotificationService.cancelRoutine();
       }
       _lastRoutineId = null;
       _lastBlockKind = null;
       _lastRoutineBody = '';
+      return;
     }
+
+    // Field label: first bound field's name, or «общее» when the
+    // routine has no field parents.
+    String fieldName;
+    if (currentRoutine.fieldParents.isNotEmpty) {
+      final fId = currentRoutine.fieldParents.first;
+      final node = fieldLayer.nodes[fId];
+      fieldName = (node != null && node.name.isNotEmpty)
+          ? node.name
+          : i18n.t('field.root');
+    } else {
+      fieldName = i18n.t('field.shared');
+    }
+
+    final rTitle = currentRoutine.name.isEmpty
+        ? i18n.t('routine.no_name')
+        : currentRoutine.name;
+    final blockTitle = i18n.t('routine.block.${runningBlock.kind}');
+    final blockSec = runningBlock.secondsNowAt(now);
+    final totalSec = currentRoutine.totalSeconds;
+
+    // The title carries the field label; the routine name opens
+    // the body, so the field name is not repeated inside.
+    final title = fieldName;
+    final body =
+        '$rTitle\n'
+        '$blockTitle: ${fmtTime(blockSec, i18n.t)}\n'
+        '${i18n.t('notif.total')}: ${fmtTime(totalSec, i18n.t)}';
+
+    if (force ||
+        _lastRoutineId != currentId ||
+        _lastBlockKind != runningBlock.kind ||
+        body != _lastRoutineBody) {
+      NotificationService.showRoutine(
+        routineId: currentRoutine.id,
+        title: title,
+        body: body,
+        elapsedSec: blockSec,
+        stopLabel: _stopLabel(),
+      );
+      _lastRoutineBody = body;
+      _lastBlockKind = runningBlock.kind;
+    }
+    _lastRoutineId = currentId;
   }
+
+  String _stopLabel() => bort.lang == 'ru' ? 'Остановить' : 'Stop';
 }

@@ -1,12 +1,23 @@
 // ═══════════════════════════════════════════════════════════════════
-// planned_picker.dart — planned-time input dialog.
+// notice_picker.dart — notice-interval input dialog.
 //
-// Extracted from routine_card to give the dialog its own name and
-// contract. Returns the planned time in seconds, or null when the
-// user cancels or the input cannot be parsed.
+// Replaces planned_picker.dart. The pult used to set a planned
+// duration; it now sets a lead time — how long before the due date
+// the user should be reminded. The input and output format is the
+// same («days:hours:minutes»), parsed by parseNoticeTime and
+// rendered by fmtNoticeTime (core/format.dart). The old names
+// (showPlannedPicker, routine.planned_title, hint.planned) are
+// gone; the caller (routine_card) was updated accordingly.
 //
-// Input and output format is «days:hours:minutes», parsed by
-// parsePlannedTime and rendered by fmtPlannedTime (core/format.dart).
+// Returns the notice interval in seconds, or null when the user
+// cancels or the input cannot be parsed. Zero is a legitimate
+// return value («remind right at the due moment»); whether the
+// notice was actually assigned is decided by the caller, which
+// always treats a successful return as assignment (see
+// RoutineLayer.setNotice).
+//
+// Shown only when a date is assigned. The caller enforces that; the
+// picker itself is not date-aware.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -19,7 +30,7 @@ import '../core/dialog_frame.dart';
 import '../core/format.dart';
 import '../pults/pult_core.dart';
 
-Future<int?> showPlannedPicker(
+Future<int?> showNoticePicker(
   BuildContext context, {
   required int initialSeconds,
 }) async {
@@ -27,7 +38,7 @@ Future<int?> showPlannedPicker(
   final bort = BortScope.of(context);
   final side = PultScope.of(context).smallSide;
 
-  final initial = fmtPlannedTime(initialSeconds);
+  final initial = fmtNoticeTime(initialSeconds);
 
   final result = await showDialog<String>(
     context: context,
@@ -41,7 +52,7 @@ Future<int?> showPlannedPicker(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              i18n.t('routine.planned_title'),
+              i18n.t('routine.notice_title'),
               style: TextStyle(color: bort.fg, fontSize: side * bort.kTitle),
             ),
             const SizedBox(height: 12),
@@ -49,7 +60,7 @@ Future<int?> showPlannedPicker(
               initial: initial,
               fg: bort.fg,
               readOnly: false,
-              hint: i18n.t('hint.planned'),
+              hint: i18n.t('hint.notice'),
               onChanged: (v) => currentText = v,
               onCommit: (v) async {
                 Navigator.of(ctx).pop(v);
@@ -77,5 +88,5 @@ Future<int?> showPlannedPicker(
   );
 
   if (result == null) return null;
-  return parsePlannedTime(result);
+  return parseNoticeTime(result);
 }
