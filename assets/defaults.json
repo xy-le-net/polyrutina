@@ -17,11 +17,11 @@
       "fgsignal": "#FBF5E9"
     },
     "custom": {
-      "bg": "#B9B3A6",
-      "bgsignal": "#FFCB4F",
+      "bg": "#3F4D5A",
+      "bgsignal": "#071232",
       "mid": "#7A868F",
-      "fg": "#3F4D5A",
-      "fgsignal": "#071232"
+      "fg": "#B9B3A6",
+      "fgsignal": "#FFCB4F"
     }
   },
 

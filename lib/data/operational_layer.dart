@@ -10,11 +10,7 @@
 // compatibility, but callers use shiftFor(fieldId), which ignores
 // the argument and always returns the single instance. The shift
 // history is written under field 0 as well, mirroring the bort
-// history. Migration from the previous multi-field layout: on first
-// load with schema < 2, the running shift is picked (if any), else
-// the first by field id, else an empty state, and the map is
-// collapsed to that single entry — field sums are not added, to
-// avoid distorting «today».
+// history.
 //
 // Shift toggle. Controlled by `shiftEnabled`. When false, no shift
 // exists: no state, no history write, no mutex. Turning it off while
@@ -31,15 +27,22 @@
 // Theme selection. Three independent settings: custom, night, auto.
 // Night and auto are mutually exclusive; with both off, day is used.
 // Migration from the former `theme_day`/`theme_autoswitch` keys is
-// done with the sense inverted on `theme_day`. Custom palette: now
-// stored as night; on first load with schema < 2, the saved custom
-// palette is inverted once (the visual appearance is preserved; see
-// theme_store.dart).
+// done with the sense inverted on `theme_day`.
 //
-// Schema. The state file carries a `schema` version. Bumping it from
-// 0/1 to 2 triggers the one-time migrations above; afterwards the
-// new version is written out and no further migration runs. Archives
-// and cache files use their own schemas and are not covered here.
+// Custom palette — stored as night. The custom entry in the theme
+// map is the NIGHT form; the day view is its mirror. The default
+// custom palette is the original dark one (bg #3F4D5A, fg #B9B3A6),
+// which already IS night under this convention. The previous build
+// (schema 2) inverted both the stored palette and the defaults by
+// mistake; the defaults are fixed in code (theme_store.dart), and a
+// palette already saved by schema 2 is flipped back once on load.
+//
+// Schema. The state file carries a `schema` version.
+//   v1 → v2: shifts collapse (per-field map → single instance).
+//   v2 → v3: undo the wrong custom-palette inversion done by v2.
+//            v1 data is not touched by this step: what the user saw
+//            in v1 is already the night form under the new
+//            convention.
 //
 // Sizes. The `k*` coefficients are halved: frame pad, block gap,
 // radius and stroke. This brings the visual density to roughly the
@@ -68,7 +71,7 @@ import 'time_series.dart';
 
 // ─── OperationalLayer ───
 class OperationalLayer extends ChangeNotifier {
-  static const int _schemaVersion = 2;
+  static const int _schemaVersion = 3;
 
   final ThemeStore _themes = ThemeStore();
   final BortTime _bortTime = BortTime();
@@ -508,15 +511,20 @@ class OperationalLayer extends ChangeNotifier {
       }
     }
 
-    // ─── One-time migration from schema < 2 ───
+    // ─── Migrations ───
+    //
+    // v1 → v2: shift collapse (per-field map → single instance).
+    //          Pick the running one; else the first by field id;
+    //          else empty. Totals are not added across fields, to
+    //          avoid distorting «today».
+    //
+    // v2 → v3: undo the wrong custom-palette inversion that v2 did.
+    //          v2 flipped the stored palette AND the defaults; the
+    //          defaults are fixed in code, but a palette already
+    //          saved by v2 needs to be flipped back. v1 data is not
+    //          touched here: what the user saw in v1 is already the
+    //          night form under the new convention.
     if (schema < 2) {
-      if (hadCustom) {
-        final c = _themes.themes['custom'];
-        if (c != null) {
-          _themes.themes['custom'] = ThemeStore.invert(c);
-        }
-      }
-
       FieldShiftState? picked;
       final ids = shifts.keys.toList()..sort();
       for (final id in ids) {
@@ -529,6 +537,13 @@ class OperationalLayer extends ChangeNotifier {
       picked ??= ids.isEmpty ? null : shifts[ids.first];
       shifts.clear();
       if (picked != null) shifts[0] = picked;
+    }
+
+    if (schema == 2 && hadCustom) {
+      final c = _themes.themes['custom'];
+      if (c != null) {
+        _themes.themes['custom'] = ThemeStore.invert(c);
+      }
     }
   }
 

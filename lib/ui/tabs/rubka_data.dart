@@ -317,6 +317,11 @@ class _RubkaDataState extends State<RubkaData> {
     );
     if (!ok || !mounted) return;
 
+    // The navigator is captured before any await; if the tree is
+    // rebuilt mid-flow (I18n reload fires through _onBortChanged),
+    // `context` stays valid, but caching the navigator is safer and
+    // makes the pop unconditional on the finally branch.
+    final nav = Navigator.of(context, rootNavigator: true);
     final token = ProgressToken();
     showDialog<void>(
       context: context,
@@ -325,21 +330,26 @@ class _RubkaDataState extends State<RubkaData> {
       builder: (_) => ProgressDialog(token: token, title: i18n.t('bort.reset')),
     );
 
-    // Every awaited call is wrapped so that the progress dialog is
-    // dismissed even if one of them throws: a stray exception used
-    // to leave the dialog on screen with no way to close it.
+    // Progress is reported at each stage so the ring is not stuck at
+    // 0% while the work proceeds. Failures are logged but never
+    // prevent the dialog from closing: leaving it on screen was the
+    // symptom of the earlier version.
     try {
+      token.report(0.05);
       await bort.resetCache();
+      token.report(0.30);
       await app.journal.reread();
+      token.report(0.55);
       bort.setLastRereadId(await app.journal.lastEntryId());
       await app.afterJournalReset();
-      await app.reloadI18n();
+      token.report(0.80);
       await _refreshSize();
-    } catch (_) {
-      // Swallowed on purpose: the dialog must close regardless.
+      token.report(1.0);
+    } catch (e, st) {
+      debugPrint('reset failed: $e\n$st');
     } finally {
       if (mounted) {
-        Navigator.of(context, rootNavigator: true).pop();
+        if (nav.canPop()) nav.pop();
         setState(() {});
       }
     }

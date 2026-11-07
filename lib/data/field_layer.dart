@@ -124,7 +124,11 @@ class FieldLayer extends ChangeNotifier {
           try {
             final n = FieldNode.fromJson(Map<String, dynamic>.from(e));
             nodes[n.id] = n;
-            if (n.isRoot) rootId = n.id;
+            // The buffer root is the FIRST root seen, not the last.
+            // The previous «last wins» overwrote rootId on every new
+            // root, so the fallback used by migrateFieldParents
+            // attached every legacy routine to the newest field.
+            if (n.isRoot && rootId == null) rootId = n.id;
           } catch (_) {
             // Skip a single malformed node; keep the rest.
           }
