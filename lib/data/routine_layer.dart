@@ -5,6 +5,15 @@
 //
 // Journal. Registered in JournalLayer for the routine kind.
 //
+// Cache invalidation. _loadFromFile returns true when the file
+// exists but its schema is older than the required version (or the
+// file is malformed). In that case the layer has no data, and the
+// persisted journal mark for it would short-circuit pump — the
+// routine list would stay empty forever. To avoid that, init calls
+// journal.clearMark('routine') after register, so the next pump
+// replays the journal for this layer only. Other layers keep their
+// marks and are not re-processed.
+//
 // Transactions. Actions producing several entries at once
 // (completing a routine, starting a block while stopping the others,
 // switching blocks between routines, clearing the date together with
@@ -14,31 +23,20 @@
 // reconstructed on startup from the first running block. Cache
 // writes go through atomicWriteJson.
 //
-// Notice interval. The former «planned duration» pult is now a
-// notice interval; see routine.dart for the semantics. It is stored
-// as noticeBeforeSec + noticeSet, journalled as `set_notice` and
-// `clear_notice`. Clearing the date clears the notice in the same
-// transaction. Old caches that carried planned_seconds are dropped
-// by the schema bump (cache schema 2) and rebuilt from the journal;
-// planned-to-notice mapping is not attempted, because the two
-// concepts are semantically different (duration versus lead time).
+// Notice interval. Stored as noticeBeforeSec + noticeSet, journalled
+// as `set_notice` and `clear_notice`. Clearing the date clears the
+// notice in the same transaction. Old caches that carried
+// planned_seconds are dropped by the schema bump (cache schema 2)
+// and rebuilt from the journal.
 //
 // Overdue scheduler. The layer does not format notifications and
 // does not talk to the platform. Instead it exposes a slot of type
 // OverdueScheduler; main.dart attaches a real implementation after
 // init. Every mutation that can affect the deferred notice — date
 // change, notice change, completion, deletion — calls _refreshSchedule
-// or _cancelSchedule. When the slot is null (during import, during
-// tests, before init), these calls are no-ops; the next application
-// startup scans every routine and reschedules from scratch, so a
-// missed refresh is never a silent loss.
-//
-// Indices. To avoid O(N) lookups on every UI frame and heavy
-// operations, three indices are maintained:
-//   _sourceKeyIndex — maps sourceKey to routine ID for fast deduplication.
-//   _nodeRoutinesIndex — maps field node ID to a set of routine IDs.
-//   _runningRoutineIds — tracks IDs of routines with running blocks,
-//     allowing the mutex logic to iterate only over active routines.
+// or _cancelSchedule. When the slot is null, these calls are no-ops;
+// the next application startup scans every routine and reschedules
+// from scratch.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -59,12 +57,7 @@ import 'journal_types.dart';
 import 'routine.dart';
 import 'trace_layer.dart';
 
-/// Hook for the deferred-notice scheduler. The layer only knows that
-/// a routine's schedule may need refreshing or that a routine is
-/// gone; the implementation decides whether to schedule, reschedule,
-/// or cancel, and owns all formatting. Attached from main.dart after
-/// the layers are initialised; null means "not ready yet", and
-/// refreshes are silently skipped.
+/// Hook for the deferred-notice scheduler.
 abstract class OverdueScheduler {
   void refresh(Routine routine);
   void cancel(int routineId);
@@ -73,18 +66,15 @@ abstract class OverdueScheduler {
 class RoutineLayer extends ChangeNotifier {
   static const int _schemaVersion = 2;
 
-  // ─── Current state ───
   List<Routine> routines = [];
 
   int? currentRoutineId;
   String? lastActiveBlockKind;
 
-  // ─── Scheduler slot ───
   OverdueScheduler? _scheduler;
 
   set scheduler(OverdueScheduler? s) => _scheduler = s;
 
-  // ─── Indices ───
   final Map<String, int> _sourceKeyIndex = {};
   final Map<int, Set<int>> _nodeRoutinesIndex = {};
   final Set<int> _runningRoutineIds = {};
@@ -154,7 +144,10 @@ class RoutineLayer extends ChangeNotifier {
     _field = field;
     final dir = await getApplicationDocumentsDirectory();
     _file = File(p.join(dir.path, 'routine_layer.json'));
-    await _loadFromFile();
+
+    // Cache may be stale or malformed; either way the journal will
+    // have to be replayed for this layer.
+    final needsRebuild = await _loadFromFile();
 
     journal.register(
       name: 'routine',
@@ -163,11 +156,14 @@ class RoutineLayer extends ChangeNotifier {
       reset: _resetMemory,
     );
 
+    if (needsRebuild) {
+      journal.clearMark('routine');
+    }
+
     notifyListeners();
   }
 
   // ─── Scheduler refresh helpers ───
-
   void _refreshSchedule(Routine r) {
     try {
       _scheduler?.refresh(r);
@@ -180,7 +176,6 @@ class RoutineLayer extends ChangeNotifier {
     } catch (_) {}
   }
 
-  // ─── Index Maintenance ───
   void _rebuildIndices() {
     _sourceKeyIndex.clear();
     _nodeRoutinesIndex.clear();
@@ -249,15 +244,18 @@ class RoutineLayer extends ChangeNotifier {
   }
 
   // ─── Cache ───
-  Future<void> _loadFromFile() async {
-    if (_file == null || !await _file!.exists()) return;
+  // Returns true when the journal must be replayed for this layer
+  // (stale schema or malformed file). In that case routines stays as
+  // is (empty on a fresh start) and init calls journal.clearMark.
+  Future<bool> _loadFromFile() async {
+    if (_file == null || !await _file!.exists()) return false;
     try {
       final raw = await _file!.readAsString();
       final data = jsonDecode(raw) as Map<String, dynamic>;
 
       final schema = (data['schema'] as num?)?.toInt() ?? 0;
       if (schema < _schemaVersion) {
-        return;
+        return true;
       }
 
       final r = data['routines'];
@@ -280,7 +278,11 @@ class RoutineLayer extends ChangeNotifier {
         }
       }
       _rebuildIndices();
-    } catch (_) {}
+      return false;
+    } catch (_) {
+      // Malformed cache — rebuild from journal.
+      return true;
+    }
   }
 
   void _scheduleSave() {
@@ -307,7 +309,6 @@ class RoutineLayer extends ChangeNotifier {
     await _saveToFile();
   }
 
-  // ─── Applying a journal entry ───
   void _applyEntry(JournalData e) {
     try {
       final data = jsonDecode(e.body) as Map<String, dynamic>;
@@ -335,8 +336,6 @@ class RoutineLayer extends ChangeNotifier {
                 routines.add(r);
                 _indexAdd(r);
               }
-              // Journal replay does not reschedule: main.dart's
-              // startup scan covers this on the next launch.
             } catch (_) {}
           }
           break;
@@ -507,7 +506,6 @@ class RoutineLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ─── Duplication ───
   Future<Routine?> duplicateRoutine(JournalLayer journal, int sourceId) async {
     final src = findRoutine(sourceId);
     if (src == null) return null;
@@ -576,7 +574,6 @@ class RoutineLayer extends ChangeNotifier {
     return result;
   }
 
-  // ─── Mutations ───
   Future<Routine> createRoutine(
     JournalLayer journal, {
     String sourceKey = '',

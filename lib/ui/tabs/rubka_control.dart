@@ -221,7 +221,7 @@ class RubkaControl extends StatelessWidget {
     final mutexes = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        section('bort.mutex_routines', i18n.t('bort.mutex_routines')),
+        section('bort.mutexes', i18n.t('bort.mutexes')),
         row(
           helpKey: 'bort.mutex_routines',
           label: i18n.t('bort.mutex_routines'),

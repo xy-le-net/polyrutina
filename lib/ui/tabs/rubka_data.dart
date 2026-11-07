@@ -325,16 +325,23 @@ class _RubkaDataState extends State<RubkaData> {
       builder: (_) => ProgressDialog(token: token, title: i18n.t('bort.reset')),
     );
 
-    await bort.resetCache();
-    await app.journal.reread();
-    bort.setLastRereadId(await app.journal.lastEntryId());
-    await app.afterJournalReset();
-    await app.reloadI18n();
-    await _refreshSize();
-
-    if (mounted) {
-      Navigator.of(context, rootNavigator: true).pop();
-      setState(() {});
+    // Every awaited call is wrapped so that the progress dialog is
+    // dismissed even if one of them throws: a stray exception used
+    // to leave the dialog on screen with no way to close it.
+    try {
+      await bort.resetCache();
+      await app.journal.reread();
+      bort.setLastRereadId(await app.journal.lastEntryId());
+      await app.afterJournalReset();
+      await app.reloadI18n();
+      await _refreshSize();
+    } catch (_) {
+      // Swallowed on purpose: the dialog must close regardless.
+    } finally {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        setState(() {});
+      }
     }
   }
 

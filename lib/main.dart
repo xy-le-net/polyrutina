@@ -181,8 +181,14 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     final s = _computeBortSignature();
     if (s == _bortSignature) return;
     _bortSignature = s;
+    // Deferred to the next frame: calling _reloadI18n synchronously
+    // here triggers a NotificationManager rebuild in the middle of
+    // bort.resetCache(), which (if a routine is running) may raise a
+    // system permission dialog on top of the progress dialog.
     if (_i18n != null && _i18n!.lang != _bort.lang) {
-      _reloadI18n();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _reloadI18n();
+      });
     }
     if (mounted) setState(() {});
   }
