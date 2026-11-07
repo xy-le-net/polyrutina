@@ -145,8 +145,8 @@ class RoutineLayer extends ChangeNotifier {
     final dir = await getApplicationDocumentsDirectory();
     _file = File(p.join(dir.path, 'routine_layer.json'));
 
-    // Cache may be stale or malformed; either way the journal will
-    // have to be replayed for this layer.
+    // Cache may be stale, malformed, or empty; in every such case
+    // the journal has to be replayed for this layer.
     final needsRebuild = await _loadFromFile();
 
     journal.register(
@@ -158,6 +158,12 @@ class RoutineLayer extends ChangeNotifier {
 
     if (needsRebuild) {
       journal.clearMark('routine');
+      // Explicit pump, awaited here: watchAll's initial emission
+      // would also trigger pump, but the UI asks for routines right
+      // after init, and a scheduled pump may run a frame later. This
+      // await guarantees the list is populated before the first
+      // build sees it.
+      await journal.pump();
     }
 
     notifyListeners();
@@ -244,9 +250,18 @@ class RoutineLayer extends ChangeNotifier {
   }
 
   // ─── Cache ───
-  // Returns true when the journal must be replayed for this layer
-  // (stale schema or malformed file). In that case routines stays as
-  // is (empty on a fresh start) and init calls journal.clearMark.
+  // Returns true when the journal must be replayed for this layer.
+  //
+  // Three cases yield true: stale schema, malformed file, and — the
+  // subtle one — an EMPTY routine list in a valid cache. The last
+  // case handles the failure loop seen in the field: a failed start
+  // wrote a schema-valid cache with no routines; on every next
+  // launch that cache was trusted, the mark from journal_layer.json
+  // pointed at the end of the journal, the pump found nothing to
+  // read, and the routines stayed empty forever, even after an
+  // import. Treating an empty cache as «needs replay» breaks the
+  // loop: the cost is one full journal pass on a genuinely empty
+  // state, which is bounded by journal size and harmless.
   Future<bool> _loadFromFile() async {
     if (_file == null || !await _file!.exists()) return false;
     try {
@@ -278,7 +293,8 @@ class RoutineLayer extends ChangeNotifier {
         }
       }
       _rebuildIndices();
-      return false;
+      // Empty but schema-valid cache is treated as «needs replay».
+      return routines.isEmpty;
     } catch (_) {
       // Malformed cache — rebuild from journal.
       return true;
