@@ -107,7 +107,7 @@
     "bort.select": "выбрать",
     "bort.deselect": "снять выделение",
 
-    "field.root": "Поле",
+    "field.root": "все",
     "field.new_field": "новое поле",
     "field.new_node": "новая ветвь",
     "field.attach_routine": "прикрепить",
@@ -334,7 +334,7 @@
     "bort.select": "select",
     "bort.deselect": "deselect",
 
-    "field.root": "Field",
+    "field.root": "all",
     "field.new_field": "new field",
     "field.new_node": "new branch",
     "field.attach_routine": "attach",

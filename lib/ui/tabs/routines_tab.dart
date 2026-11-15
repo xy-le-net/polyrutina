@@ -11,37 +11,55 @@
 // Field enumeration. Every picker that lists fields walks ALL roots,
 // not just the zero field: otherwise other fields are unreachable.
 // This affects move-routine, move-branch, and attach-routine. Root
-// order is by node id ascending, stable across rebuilds.
+// order is by node id ascending, stable across rebuilds. The zero
+// field (rootId) is the catch-all «все»: it is created first, it
+// cannot be deleted, and any content detached from its field lands
+// here.
+//
+// Shaking. Shaking a node re-attaches every routine and trace bound
+// to it directly to the root («все») before the node is removed;
+// child nodes are re-attached to the root as before. Burning removes
+// the branch and all its nodes; its routines are handled separately
+// (semantics unchanged).
 //
 // Attach routine. The former implementation listed nodes and did
 // not open a sheet at all; it has been rewritten to list the
 // routines not yet attached to the node, and to attach on tap.
 //
 // Detach. The routine actions sheet (long press on a plate) and the
-// move-routine sheet both expose «отвязать» when the routine has any
-// parent, and detaching removes every field parent at once, in one
-// transaction.
+// move-routine sheet both expose «отвязать» when the routine has
+// any parent other than the root; detaching removes every field
+// parent at once, then binds the routine to the root («все»). A
+// routine that lives only in the root has no detach action — it is
+// already where detaching would put it.
 //
 // Overdue. A routine is overdue when the due date has passed, it is
 // not completed, and a notice was set (routine.isOverdue). Overdue
-// routines are ordered first inside each node's group and inside the
-// unassigned group; a bare line (no word) separates them from the
-// rest of the active list. The doubled signal frame lives in
-// RoutinePlate — visual only, ordering here.
+// routines are ordered first inside each node's group; a bare line
+// (no word) separates them from the rest of the active list. The
+// doubled signal frame lives in RoutinePlate — visual only, ordering
+// here.
+//
+// Completed. Completed routines are collapsed by default under a
+// divider carrying the word «завершено» and the count in
+// parentheses. Tapping the divider toggles visibility. The expanded
+// state is per node (keyed by node id in _expandedDone) and reset
+// when the tab is rebuilt from scratch.
+//
+// Field plates. Roots and branches share one design: mid background,
+// normal-width signal frame, signal text and icons. Routine plates
+// are unchanged (parity 0, fg frame).
 //
 // Divider indent type. Both dividers take a `double` indent, not an
-// `int`: `_indent` returns `double` (to keep the 20-pixel step
-// fractional-safe under the unified scale), and passing it straight
-// to an `int` parameter produced a compile error. The integer 4 used
-// for the unassigned group widens implicitly under Dart's numeric
-// literal rule.
+// `int`.
 //
-// Grouping (per node and for the unassigned block):
+// Grouping (per node):
 //   1. overdue (running or not) — signal-framed, doubled;
 //      bare line;
 //   2. active (running first, then by last pulse);
-//   3. «завершено» divider with a word;
-//   4. completed, by last pulse.
+//   3. «завершено (N)» divider;
+//   4. completed, by last pulse — visible only when the divider is
+//      expanded.
 //
 // Naming. A new field or branch is created with an empty name and
 // the rename dialog opens immediately with focus in the input. An
@@ -61,7 +79,6 @@ import '../core/bort_field.dart';
 import '../core/confirm_dialog.dart';
 import '../core/control_row.dart';
 import '../core/dialog_frame.dart';
-import '../core/frame.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_sheet.dart';
 import 'routine_plate.dart';
@@ -78,6 +95,8 @@ class _RoutinesTabState extends State<RoutinesTab> {
   AppTicker? _ticker;
 
   final Set<int> _expanded = {};
+  // Per-node visibility of the completed section. Absent = collapsed.
+  final Set<int> _expandedDone = {};
 
   int _lastMinute = 0;
   int _lastSecond = 0;
@@ -104,10 +123,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final routineLayer = RoutineScope.of(context);
     final bort = BortScope.of(context);
 
-    // The shift is unified: its activity is not tied to the active
-    // field. If it is running, the ticker should repaint at least
-    // once per second for sub-minute timers, and once per minute
-    // otherwise.
     final shiftRunning = bort.shiftEnabled && bort.onShift(0);
 
     final anyRunning = routineLayer.anyRunning || shiftRunning;
@@ -164,6 +179,16 @@ class _RoutinesTabState extends State<RoutinesTab> {
         _expanded.remove(id);
       } else {
         _expanded.add(id);
+      }
+    });
+  }
+
+  void _toggleDone(int id) {
+    setState(() {
+      if (_expandedDone.contains(id)) {
+        _expandedDone.remove(id);
+      } else {
+        _expandedDone.add(id);
       }
     });
   }
@@ -247,7 +272,11 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final app = AppScope.of(context);
     final i18n = app.i18n;
     final running = r.runningBlock != null;
-    final attached = r.fieldParents.isNotEmpty;
+    final rootId = app.fieldLayer.rootId;
+    final onlyInRoot =
+        rootId != null &&
+        r.fieldParents.length == 1 &&
+        r.fieldParents.first == rootId;
     final subs = <PultSpec>[
       PultSpec(
         id: 'dup_${r.id}',
@@ -264,15 +293,19 @@ class _RoutinesTabState extends State<RoutinesTab> {
         label: i18n.t('field.move_routine'),
         onTap: () => _moveRoutine(r),
       ),
-      if (attached)
+      if (r.fieldParents.isNotEmpty && !onlyInRoot)
         PultSpec(
           id: 'detach_${r.id}',
           icon: Icons.link_off,
           label: i18n.t('field.detach_routine'),
           onTap: () async {
             await app.journal.transaction(() async {
+              final root = app.fieldLayer.rootId;
               for (final pId in List<int>.from(r.fieldParents)) {
                 await app.routineLayer.detachFromField(app.journal, r.id, pId);
+              }
+              if (root != null) {
+                await app.routineLayer.attachToField(app.journal, r.id, root);
               }
             });
           },
@@ -315,21 +348,29 @@ class _RoutinesTabState extends State<RoutinesTab> {
   void _moveRoutine(Routine r) {
     final app = AppScope.of(context);
     final i18n = app.i18n;
+    final rootId = app.fieldLayer.rootId;
     final currentParentId = r.fieldParents.isNotEmpty
         ? r.fieldParents.first
         : null;
-    final attached = r.fieldParents.isNotEmpty;
+    final onlyInRoot =
+        rootId != null &&
+        r.fieldParents.length == 1 &&
+        r.fieldParents.first == rootId;
 
     final subs = <PultSpec>[
-      if (attached)
+      if (r.fieldParents.isNotEmpty && !onlyInRoot)
         PultSpec(
           id: 'detach_${r.id}',
           icon: Icons.link_off,
           label: i18n.t('field.detach_routine'),
           onTap: () async {
             await app.journal.transaction(() async {
+              final root = app.fieldLayer.rootId;
               for (final pId in List<int>.from(r.fieldParents)) {
                 await app.routineLayer.detachFromField(app.journal, r.id, pId);
+              }
+              if (root != null) {
+                await app.routineLayer.attachToField(app.journal, r.id, root);
               }
             });
           },
@@ -406,7 +447,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
           icon: Icons.alt_route,
           label: i18n.t('field.shake'),
           confirm: true,
-          onTap: () => app.fieldLayer.deleteNode(app.journal, id, burn: false),
+          onTap: () => _shakeNode(id),
         ),
       );
       subs.add(
@@ -438,6 +479,39 @@ class _RoutinesTabState extends State<RoutinesTab> {
       signal: app.bort.fgsignal,
       side: PultScope.of(context).smallSide,
     );
+  }
+
+  // ─── Shake a node ───
+  // Re-attach routines and traces bound directly to this node to
+  // the root («все»), then delete the node. Child nodes are
+  // re-attached to the root by FieldLayer.deleteNode itself.
+  Future<void> _shakeNode(int id) async {
+    final app = AppScope.of(context);
+    final root = app.fieldLayer.rootId;
+    if (root == null || root == id) return;
+
+    await app.journal.transaction(() async {
+      final affectedRoutines = <int>[];
+      for (final r in app.routineLayer.routines) {
+        if (r.fieldParents.contains(id)) affectedRoutines.add(r.id);
+      }
+      final affectedTraces = <int>[];
+      for (final t in app.traceLayer.traces.values) {
+        if (t.deleted) continue;
+        if (t.fieldParents.contains(id)) affectedTraces.add(t.id);
+      }
+
+      await app.fieldLayer.deleteNode(app.journal, id, burn: false);
+
+      for (final rId in affectedRoutines) {
+        await app.routineLayer.detachFromField(app.journal, rId, id);
+        await app.routineLayer.attachToField(app.journal, rId, root);
+      }
+      for (final tId in affectedTraces) {
+        await app.traceLayer.detachFromField(app.journal, tId, id);
+        await app.traceLayer.attachToField(app.journal, tId, root);
+      }
+    });
   }
 
   Future<void> _createChildNode(int parentId) async {
@@ -703,32 +777,55 @@ class _RoutinesTabState extends State<RoutinesTab> {
     );
   }
 
-  Widget _doneDivider(double indent) {
+  Widget _doneDivider(
+    double indent, {
+    int count = 0,
+    bool expanded = false,
+    VoidCallback? onTap,
+  }) {
     final bort = BortScope.of(context);
     final i18n = I18nScope.of(context);
     final side = PultScope.of(context).smallSide;
     final strokeW = side * bort.kStroke;
-    return Padding(
-      padding: EdgeInsets.only(left: indent, right: 4, top: 6, bottom: 6),
-      child: Row(
-        children: [
-          Expanded(
-            child: Container(height: strokeW, color: bort.mid),
-          ),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: side * 0.2),
-            child: Text(
-              i18n.t('routine.completed'),
-              style: TextStyle(
-                color: bort.mid,
-                fontSize: side * bort.kNumberSmall,
+    final label = count > 0
+        ? '${i18n.t('routine.completed')} ($count)'
+        : i18n.t('routine.completed');
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: EdgeInsets.only(left: indent, right: 4, top: 6, bottom: 6),
+        child: Row(
+          children: [
+            Expanded(
+              child: Container(height: strokeW, color: bort.mid),
+            ),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: side * 0.2),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: bort.mid,
+                      fontSize: side * bort.kNumberSmall,
+                    ),
+                  ),
+                  SizedBox(width: side * 0.1),
+                  Icon(
+                    expanded ? Icons.unfold_less : Icons.unfold_more,
+                    color: bort.mid,
+                    size: side * bort.kNumberSmall * 1.2,
+                  ),
+                ],
               ),
             ),
-          ),
-          Expanded(
-            child: Container(height: strokeW, color: bort.mid),
-          ),
-        ],
+            Expanded(
+              child: Container(height: strokeW, color: bort.mid),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -740,9 +837,23 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
     final nextVisited = Set<int>.from(visited)..add(nodeId);
     final isExpanded = _expanded.contains(nodeId) || node.isRoot;
+
+    // Routines for this node. Unattached routines (empty
+    // fieldParents) are folded into the root («все») defensively;
+    // normally migration and the detach fallback keep that set
+    // empty.
+    final nodeRoutines = <Routine>[];
+    for (final r in RoutineScope.of(context).routines) {
+      if (r.fieldParents.contains(nodeId)) {
+        nodeRoutines.add(r);
+      } else if (nodeId == fieldLayer.rootId && r.fieldParents.isEmpty) {
+        nodeRoutines.add(r);
+      }
+    }
+
     final hasChildren =
         node.children.isNotEmpty ||
-        RoutineScope.of(context).routinesForNode(nodeId).isNotEmpty ||
+        nodeRoutines.isNotEmpty ||
         TraceScope.of(context).attachedToField(nodeId).isNotEmpty;
 
     if (!node.isRoot) {
@@ -768,10 +879,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     if (!isExpanded) return;
 
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final split = _splitRoutines(
-      RoutineScope.of(context).routinesForNode(nodeId),
-      now,
-    );
+    final split = _splitRoutines(nodeRoutines, now);
 
     final double plateIndent = _indent(depth + 1);
 
@@ -805,19 +913,29 @@ class _RoutinesTabState extends State<RoutinesTab> {
       );
     }
     if (split.done.isNotEmpty) {
-      out.add(_doneDivider(plateIndent));
-      for (final r in split.done) {
-        out.add(
-          Padding(
-            padding: EdgeInsets.only(
-              left: plateIndent,
-              top: 4,
-              bottom: 4,
-              right: 4,
+      final doneExpanded = _expandedDone.contains(nodeId);
+      out.add(
+        _doneDivider(
+          plateIndent,
+          count: split.done.length,
+          expanded: doneExpanded,
+          onTap: () => _toggleDone(nodeId),
+        ),
+      );
+      if (doneExpanded) {
+        for (final r in split.done) {
+          out.add(
+            Padding(
+              padding: EdgeInsets.only(
+                left: plateIndent,
+                top: 4,
+                bottom: 4,
+                right: 4,
+              ),
+              child: _routinePlate(r),
             ),
-            child: _routinePlate(r),
-          ),
-        );
+          );
+        }
       }
     }
 
@@ -888,53 +1006,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
       _buildTree(activeFieldId, 0, {}, items);
     }
 
-    final attachedRoutineIds = <int>{};
-    for (final n in fieldLayer.nodes.values) {
-      for (final r in RoutineScope.of(context).routinesForNode(n.id)) {
-        attachedRoutineIds.add(r.id);
-      }
-    }
-    final unassigned = RoutineScope.of(
-      context,
-    ).routines.where((r) => !attachedRoutineIds.contains(r.id)).toList();
-
-    if (unassigned.isNotEmpty) {
-      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      final split = _splitRoutines(unassigned, now);
-
-      items.add(
-        Padding(
-          padding: const EdgeInsets.fromLTRB(4, 16, 4, 4),
-          child: Text(
-            i18n.t('field.shared'),
-            style: TextStyle(color: dim, fontWeight: FontWeight.bold),
-          ),
-        ),
-      );
-
-      for (final r in split.overdue) {
-        items.add(
-          Padding(padding: const EdgeInsets.all(4), child: _routinePlate(r)),
-        );
-      }
-      if (split.overdue.isNotEmpty) {
-        items.add(_bareDivider(4));
-      }
-      for (final r in split.active) {
-        items.add(
-          Padding(padding: const EdgeInsets.all(4), child: _routinePlate(r)),
-        );
-      }
-      if (split.done.isNotEmpty) {
-        items.add(_doneDivider(4));
-        for (final r in split.done) {
-          items.add(
-            Padding(padding: const EdgeInsets.all(4), child: _routinePlate(r)),
-          );
-        }
-      }
-    }
-
     return LayoutBuilder(
       builder: (context, constraints) {
         Widget body;
@@ -977,7 +1048,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
                             child: Text(
                               fieldName,
                               style: TextStyle(
-                                color: fg,
+                                color: signal,
                                 fontSize: side * bort.kName * 0.8,
                               ),
                               maxLines: 1,
@@ -1038,16 +1109,11 @@ class _FieldPlate extends StatelessWidget {
   Widget build(BuildContext context) {
     final bort = BortScope.of(context);
     final side = PultScope.of(context).smallSide;
-    final frame = borderFor(
-      parity: 0,
-      active: false,
-      strokeW: side * bort.kStroke,
-      fg: bort.fg,
-      mid: bort.mid,
-      fgsignal: bort.fgsignal,
-    );
+    final strokeW = side * bort.kStroke;
     final radius = side * bort.kRadius;
     final pad = side * bort.kFramePad * 0.6;
+    final signal = bort.fgsignal;
+    final mid = bort.mid;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -1055,8 +1121,8 @@ class _FieldPlate extends StatelessWidget {
       onLongPress: onLongPress,
       child: Container(
         decoration: BoxDecoration(
-          color: bort.bg,
-          border: Border.all(color: frame.color, width: frame.width),
+          color: mid,
+          border: Border.all(color: signal, width: strokeW),
           borderRadius: BorderRadius.circular(radius),
         ),
         padding: EdgeInsets.all(pad),
@@ -1065,23 +1131,19 @@ class _FieldPlate extends StatelessWidget {
             if (hasChildren)
               Icon(
                 expanded ? Icons.expand_more : Icons.chevron_right,
-                color: bort.mid,
+                color: signal,
                 size: side * 0.5,
               )
             else
               SizedBox(width: side * 0.5),
             const SizedBox(width: 6),
-            Icon(
-              Icons.account_tree_outlined,
-              color: bort.mid,
-              size: side * 0.5,
-            ),
+            Icon(Icons.account_tree_outlined, color: signal, size: side * 0.5),
             const SizedBox(width: 6),
             Expanded(
               child: Text(
                 title,
                 style: TextStyle(
-                  color: bort.fg,
+                  color: signal,
                   fontSize: side * bort.kName * 0.75,
                 ),
                 maxLines: 1,
