@@ -44,11 +44,17 @@
 //   — cancel every scheduled notice for every routine (a clean
 //     slate; the plugin's alarms survive app restarts, so a stale
 //     one must not linger);
-//   — for each unfinished routine with a date and a notice:
+//   — for each unfinished routine with a date:
 //       notice moment in the future → schedule it;
 //       notice moment past, due in the future → audible push now;
 //       both past → audible overdue push now (and every launch
 //       thereafter, until the routine is completed).
+//
+// The notice moment is derived by Routine.noticeMoment: the due
+// moment minus the lead time when a notice was assigned, and the
+// technical noon of the due day (capped at the due moment itself)
+// otherwise. A routine with a date therefore always has a moment,
+// whether or not a notice was set.
 //
 // The push is routine-scoped (per-routine id), so several overdue
 // routines coexist in the shade.
@@ -258,7 +264,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       if (r.completed) continue;
       final due = r.scheduledAt;
       if (due == null || due <= 0) continue;
-      if (!r.noticeSet) continue;
 
       final moment = r.noticeMoment();
       if (moment == null) continue;
@@ -753,7 +758,6 @@ class _OverdueSchedulerImpl implements OverdueScheduler {
     if (r.completed) return;
     final due = r.scheduledAt;
     if (due == null || due <= 0) return;
-    if (!r.noticeSet) return;
 
     final moment = r.noticeMoment();
     if (moment == null) return;

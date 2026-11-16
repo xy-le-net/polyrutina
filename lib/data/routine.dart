@@ -52,10 +52,12 @@
 //
 // timeEdited (per block). True when time was edited manually.
 //
-// isOverdue. A derived predicate: the due date has passed, the
-// routine is not completed, and a notice was set. This drives the
-// first-place, doubled-frame rendering in the routines list and
-// the overdue push at startup.
+// isOverdue. A derived predicate: the due date has passed and the
+// routine is not completed. A notice is not required: any assigned
+// due date makes the routine overdue once it is past, and the
+// scheduler falls back to the technical noon of the due day when
+// no lead time was set. This drives the first-place, doubled-frame
+// rendering in the routines list and the overdue push at startup.
 //
 // Block kinds: prep, transit, work, idle, closeout.
 // ═══════════════════════════════════════════════════════════════════
@@ -219,7 +221,6 @@ class Routine {
   // the rule: due date passed, not completed, notice was set.
   bool isOverdueAt(int now) {
     if (completed) return false;
-    if (!noticeSet) return false;
     final due = scheduledAt;
     if (due == null || due <= 0) return false;
     return due < now;
@@ -231,10 +232,17 @@ class Routine {
   // The moment a notice should fire (unix seconds), or null when
   // the notice is not applicable. Used by the scheduler.
   int? noticeMoment() {
-    if (!noticeSet) return null;
     final due = scheduledAt;
     if (due == null || due <= 0) return null;
-    return due - noticeBeforeSec;
+    if (noticeSet) return due - noticeBeforeSec;
+    // No notice assigned: fall back to the technical noon of the
+    // due day, capped at the due moment itself when the deadline
+    // falls earlier than noon. This guarantees a reminder for every
+    // assigned due date, whether or not a lead time was set.
+    final d = DateTime.fromMillisecondsSinceEpoch(due * 1000);
+    final noon = DateTime(d.year, d.month, d.day, 12, 0);
+    final sec = noon.millisecondsSinceEpoch ~/ 1000;
+    return sec < due ? sec : due;
   }
 
   Map<String, dynamic> toJson() => {

@@ -325,6 +325,7 @@ class _RoutineCardState extends State<RoutineCard> {
     final total = await showNoticePicker(
       context,
       initialSeconds: r.noticeBeforeSec,
+      noticeSet: r.noticeSet,
     );
     if (total == null) return;
     await routineLayer.setNotice(journal, r.id, total);

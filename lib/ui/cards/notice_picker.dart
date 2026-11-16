@@ -33,12 +33,13 @@ import '../pults/pult_core.dart';
 Future<int?> showNoticePicker(
   BuildContext context, {
   required int initialSeconds,
+  bool noticeSet = false,
 }) async {
   final i18n = I18nScope.of(context);
   final bort = BortScope.of(context);
   final side = PultScope.of(context).smallSide;
 
-  final initial = fmtNoticeTime(initialSeconds);
+  final initial = noticeSet ? fmtNoticeTime(initialSeconds) : '';
 
   final result = await showDialog<String>(
     context: context,

@@ -42,7 +42,7 @@
     "routine.clear_date": "снять дату",
     "routine.clear_notice": "снять предуведомление",
     "routine.notice_title": "предуведомление",
-    "routine.notice_hint": "дд:чч:мм",
+    "routine.notice_hint": "дни:часы:минуты",
 
     "block.appearance": "оформление",
     "block.interface": "интерфейс",
@@ -130,7 +130,7 @@
     "notif.overdue_body": "срок прошёл",
 
     "hint.time": "дд:чч:мм:сс",
-    "hint.notice": "дд:чч:мм",
+    "hint.notice": "дни:часы:минуты",
 
     "size.b": "Б",
     "size.kb": "КБ",
@@ -269,7 +269,7 @@
     "routine.clear_date": "clear date",
     "routine.clear_notice": "clear notice",
     "routine.notice_title": "notice",
-    "routine.notice_hint": "dd:hh:mm",
+    "routine.notice_hint": "days:hours:minutes",
 
     "block.appearance": "appearance",
     "block.interface": "interface",
@@ -357,7 +357,7 @@
     "notif.overdue_body": "deadline passed",
 
     "hint.time": "dd:hh:mm:ss",
-    "hint.notice": "dd:hh:mm",
+    "hint.notice": "days:hours:minutes",
 
     "size.b": "B",
     "size.kb": "KB",
