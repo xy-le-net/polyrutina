@@ -61,6 +61,7 @@ dependencies:
   # offers a jump to the system settings on the latter.
   permission_handler: ^11.3.1
 
+  material_ui: any
 dev_dependencies:
   flutter_test:
     sdk: flutter
