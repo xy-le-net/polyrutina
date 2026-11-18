@@ -23,6 +23,12 @@
 
 const int kBortTimeoutSec = 20;
 
+// Technical noon: the time of day assumed when a scheduled routine
+// is given a date without a chosen time. Sits alongside midnight
+// as a named moment of the day: midnight opens it, noon bisects it.
+const int kBortTechNoonHour = 12;
+const int kBortTechNoonMinute = 0;
+
 // Parsed form of the midnight string.
 class _ParsedMidnight {
   final int hh;

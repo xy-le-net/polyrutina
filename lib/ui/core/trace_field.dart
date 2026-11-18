@@ -1,19 +1,36 @@
 // ═══════════════════════════════════════════════════════════════════
 // trace_field.dart — trace field. Universal embeddable widget.
 //
-// Left — text field. Right — column: checklist pult, send/media pult.
+// Left — the field area. Right — column: checklist pult, send/media
+// pult.
 //
-// Expansion. On focus, the field grows in height — inside the block,
-// without a separate layer; other elements remain visible, the layout
-// scrolls. Limit — twenty-four lines or up to the keyboard start,
-// whichever is less. On focus loss — return to three lines.
+// Three states of the field area:
 //
-// Font size. The text trace font is increased for better readability.
-// The field is wrapped in an Expanded widget to prevent horizontal
-// overflow on small screens.
+//   — view: text is present, no focus, not being edited. The text is
+//     rendered as plain text, less than a third of one screen tall
+//     (single scroll inside the box). Tapping turns it into the
+//     input field.
+//   — empty: no text, no focus, not being edited. A two-line input
+//     is shown, ready for typing.
+//   — editing: focused (or in a brief unfocused moment between the
+//     tap and the input). The field expands on focus — inside the
+//     block, without a separate layer; other elements remain
+//     visible, the layout scrolls. Limit — twenty-four lines or up
+//     to the keyboard start, whichever is less. On focus loss —
+//     back to the view or to the two-line state, per whether text
+//     remains.
+//
+// Height safety. The expanded budget subtracts a reserve for the
+// block header and pults and then takes a fraction (0.55) of the
+// remaining height; the line height accounts for the current text
+// scaler. Previously the fraction (0.6) was taken from the whole
+// available height, which overshot the viewport at large scales.
+//
+// Font size. The text trace font is increased for readability. The
+// field area is wrapped in Expanded to prevent horizontal overflow.
 //
 // Keep visible. Whenever the field expands — on focus gain, on any
-// metrics change — the field is scrolled into view by the enclosing
+// metrics change — the area is scrolled into view by the enclosing
 // Scrollable.
 //
 // Trace is distinguished by the pair (objectId, slot). Checklist
@@ -22,22 +39,13 @@
 // Dependency capture. The three layers this widget writes to (trace,
 // bort, journal) are captured once in didChangeDependencies as plain
 // fields. This lets _autoSend run from dispose after the widget has
-// been unmounted, when dependOnInheritedWidgetOfExactType would
-// assert in debug mode; the layers themselves outlive the widget.
+// been unmounted; the layers themselves outlive the widget.
 //
 // Send pult. When the pult shows the send glyph (edit_note), tapping
-// it unfocuses the field. The focus listener then runs _autoSend, and
-// the keyboard hides — exactly the same flow as the attach pult. The
-// caller no longer awaits _autoSend explicitly (that would race with
-// the focus listener and risk a duplicate journal entry).
-//
-// Line budget. The per-line height is multiplied by the current text
-// scaler, and the resulting budget is a fraction (0.6) of the
-// available height (screen minus keyboard), not the whole screen.
-// Previously the scaler was ignored, so the field over-estimated the
-// number of lines that would fit and overflowed the bottom of the
-// screen. Fraction and scaler together keep the expanded field within
-// the visible area.
+// it unfocuses the field. The focus listener then runs _autoSend,
+// and the keyboard hides — exactly the same flow as the attach pult.
+// The caller no longer awaits _autoSend explicitly (that would race
+// with the focus listener and risk a duplicate journal entry).
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -89,15 +97,22 @@ class TraceField extends StatefulWidget {
 class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
   // Expansion limit: twenty-four lines.
   static const int _maxExpandedLines = 24;
+  // Editing an existing text, unfocused: three lines.
   static const int _collapsedLines = 3;
+  // Empty, unfocused: two lines.
+  static const int _emptyLines = 2;
 
   late final TextEditingController _ctrl;
   final _focus = FocusNode();
-  // Captured on the TextField itself; used by _ensureVisible.
+  // Captured on the field area itself; used by _ensureVisible.
   final _fieldKey = GlobalKey();
 
   bool _initialized = false;
   bool _focused = false;
+  // True between a tap on the view text and the moment the focus
+  // either lands or is lost; while true, the field stays in the
+  // input state.
+  bool _editing = false;
   String _lastSent = '';
 
   int _traceId = -1;
@@ -121,7 +136,10 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
   void _onFocusChanged() {
     final f = _focus.hasFocus;
     if (_focused != f) {
-      setState(() => _focused = f);
+      setState(() {
+        _focused = f;
+        if (!f) _editing = false;
+      });
       if (f) _ensureVisible();
     }
     if (!f) _autoSend();
@@ -347,8 +365,8 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     final canSend = _canSend();
     final pultSide = widget.side * bort.kPultSmall;
 
-    // The checklist pult shows the number of unchecked items. When all
-    // are checked (and there is at least one item) — the pult is
+    // The checklist pult shows the number of unchecked items. When
+    // all are checked (and there is at least one item) — the pult is
     // signal-colored, the task is closed.
     final counts = _checklistCounts();
     final int unchecked = counts.total - counts.done;
@@ -357,11 +375,25 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
 
     final files = _files();
 
+    final textStyle = TextStyle(
+      color: widget.fg,
+      fontSize: widget.side * bort.kNumber * 1.2,
+    );
+
+    // View mode: text is present, the field is not focused, and the
+    // user is not in the tap-to-edit window. The text is rendered as
+    // plain text, less than a third of one screen tall; a tap turns
+    // it into the input field.
+    final hasText = _ctrl.text.trim().isNotEmpty;
+    final viewMode = !_focused && !_editing && hasText;
+
     // Expansion: in focus — up to the limit or up to the keyboard;
-    // otherwise — three lines. The line height accounts for the
-    // current text scaler (previously ignored, which made the field
-    // over-estimate how many lines fit). The budget is a fraction
-    // (0.6) of the available height, not the whole screen.
+    // otherwise — three lines when editing an existing text, two
+    // when the field is empty. The line height accounts for the
+    // current text scaler. The budget subtracts a reserve for the
+    // block header and pults and is a fraction (0.55) of the
+    // remaining height, so the expanded field does not overshoot
+    // the viewport at large scales.
     final int maxLines;
     final int? minLines;
     if (_focused) {
@@ -369,22 +401,83 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
       final textScale = MediaQuery.textScalerOf(context).scale(1.0);
       final lineH = (widget.side * bort.kNumber * 1.2) * 1.4 * textScale;
       final availableH = MediaQuery.of(context).size.height - viewInsets;
-      final keyboardLines = (availableH * 0.6 / lineH).floor();
+      final reserved = widget.side * 4;
+      final budget = (availableH - reserved) * 0.55;
+      final keyboardLines = budget <= 0
+          ? _collapsedLines
+          : (budget / lineH).floor();
       final limit = keyboardLines < _maxExpandedLines
           ? keyboardLines
           : _maxExpandedLines;
       maxLines = limit < _collapsedLines ? _collapsedLines : limit;
       minLines = maxLines;
     } else {
-      maxLines = _collapsedLines;
-      minLines = _collapsedLines;
+      maxLines = _editing ? _collapsedLines : _emptyLines;
+      minLines = maxLines;
     }
 
-    // Increased font size for the text trace.
-    final textStyle = TextStyle(
-      color: widget.fg,
-      fontSize: widget.side * bort.kNumber * 1.2, // Increased from kNumberSmall
-    );
+    Widget fieldWidget;
+    if (viewMode) {
+      final maxViewH = MediaQuery.of(context).size.height / 3;
+      fieldWidget = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          setState(() => _editing = true);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _focus.requestFocus();
+          });
+        },
+        child: Container(
+          width: double.infinity,
+          constraints: BoxConstraints(maxHeight: maxViewH),
+          padding: EdgeInsets.all(widget.side * 0.15),
+          decoration: BoxDecoration(
+            color: widget.fieldBg,
+            border: Border.all(color: widget.dim),
+            borderRadius: BorderRadius.circular(widget.side * bort.kRadius),
+          ),
+          child: SingleChildScrollView(
+            child: Text(_ctrl.text, style: textStyle),
+          ),
+        ),
+      );
+    } else {
+      fieldWidget = TextField(
+        controller: _ctrl,
+        focusNode: _focus,
+        maxLines: maxLines,
+        minLines: minLines,
+        style: textStyle,
+        decoration: InputDecoration(
+          isDense: true,
+          filled: true,
+          fillColor: widget.fieldBg,
+          hintText: i18n.t('routine.block.note'),
+          hintStyle: TextStyle(color: widget.dim, fontSize: textStyle.fontSize),
+          border: OutlineInputBorder(
+            borderSide: BorderSide(color: widget.dim),
+            borderRadius: BorderRadius.circular(widget.side * bort.kRadius),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderSide: BorderSide(color: widget.dim),
+            borderRadius: BorderRadius.circular(widget.side * bort.kRadius),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderSide: BorderSide(color: widget.fg),
+            borderRadius: BorderRadius.circular(widget.side * bort.kRadius),
+          ),
+          contentPadding: EdgeInsets.all(widget.side * 0.15),
+        ),
+        onChanged: (v) {
+          bort.setDraft(_key, v);
+          setState(() {});
+        },
+        onSubmitted: (_) {
+          _autoSend();
+          _focus.unfocus();
+        },
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -394,57 +487,9 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
           children: [
             Expanded(
               // KeyedSubtree ensures _fieldKey.currentContext points at
-              // the field's own render object, so ensureVisible scrolls
-              // to the TextField's bounds — not to the surrounding Row.
-              child: KeyedSubtree(
-                key: _fieldKey,
-                child: TextField(
-                  controller: _ctrl,
-                  focusNode: _focus,
-                  maxLines: maxLines,
-                  minLines: minLines,
-                  style: textStyle,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    // Input field — on the normal background, regardless
-                    // of block dimming.
-                    filled: true,
-                    fillColor: widget.fieldBg,
-                    hintText: i18n.t('routine.block.note'),
-                    hintStyle: TextStyle(
-                      color: widget.dim,
-                      fontSize: textStyle.fontSize,
-                    ),
-                    border: OutlineInputBorder(
-                      borderSide: BorderSide(color: widget.dim),
-                      borderRadius: BorderRadius.circular(
-                        widget.side * bort.kRadius,
-                      ),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: widget.dim),
-                      borderRadius: BorderRadius.circular(
-                        widget.side * bort.kRadius,
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: widget.fg),
-                      borderRadius: BorderRadius.circular(
-                        widget.side * bort.kRadius,
-                      ),
-                    ),
-                    contentPadding: EdgeInsets.all(widget.side * 0.15),
-                  ),
-                  onChanged: (v) {
-                    bort.setDraft(_key, v);
-                    setState(() {});
-                  },
-                  onSubmitted: (_) {
-                    _autoSend();
-                    _focus.unfocus();
-                  },
-                ),
-              ),
+              // the field area's own render object, so ensureVisible
+              // scrolls to its bounds — not to the surrounding Row.
+              child: KeyedSubtree(key: _fieldKey, child: fieldWidget),
             ),
             SizedBox(width: widget.side * 0.15),
             Column(

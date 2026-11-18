@@ -30,7 +30,7 @@
     "routine.waiting": "ожидает",
     "routine.completed": "завершено",
     "routine.mark_completed": "завершено",
-    "routine.overdue": "просрочено",
+    "routine.overdue": "срочно",
 
     "routine.block.note": "описание",
     "routine.block.prep": "подготовка",
@@ -53,8 +53,8 @@
     "theme.night": "ночь",
     "theme.auto": "авто",
 
-    "lang.ru": "русский",
-    "lang.en": "english",
+    "lang.ru": "РУ",
+    "lang.en": "EN",
 
     "bort.bg": "фон",
     "bort.bgdim": "мягкий фон",
@@ -126,7 +126,7 @@
     "notif.total": "всего",
     "notif.current": "текущее",
     "notif.today": "сегодня",
-    "notif.overdue_title": "просрочено",
+    "notif.overdue_title": "срочно",
     "notif.overdue_body": "срок прошёл",
 
     "hint.time": "дд:чч:мм:сс",
@@ -200,6 +200,8 @@
     "stub.title": "раздел",
     "stub.text": "ещё не готов",
 
+    "slogans": "след работы остаётся на месте.\nжурнал ведётся не для отчёта, а для памяти.\nпорядок в записях — порядок в мыслях.\nзаписанное — существует.\nместо помнит руки, которые его трогали.\nне доверяй памяти там, где есть журнал.\nрутина — это след, оставленный намеренно.\nсначала запись, потом вывод.\nто, что не отмечено, не считается.\nкаждое поле — маленькая вселенная.\nсмена кончается, запись остаётся.\nследы ведут туда, где что-то было сделано.\nмолчание журнала красноречивее отчёта.\nинструмент, который не мешает.\nпамять места — это память тех, кто здесь был.\nжурнал не судит, он свидетельствует.\nхорошая запись читается как приключение.\nработа любит порядок, а порядок — запись.\nодна строка сегодня стоит десяти завтра.\nполе №1 начинается с первой заметки.",
+
     "help.theme.custom": "своя палитра; ниже можно править цвета.",
     "help.theme.night": "принудительная ночь, независимо от системы.",
     "help.theme.auto": "следовать яркости системы; несовместимо с ночью.",
@@ -257,7 +259,7 @@
     "routine.waiting": "waiting",
     "routine.completed": "completed",
     "routine.mark_completed": "completed",
-    "routine.overdue": "overdue",
+    "routine.overdue": "urgent",
 
     "routine.block.note": "note",
     "routine.block.prep": "prep",
@@ -280,8 +282,8 @@
     "theme.night": "night",
     "theme.auto": "auto",
 
-    "lang.ru": "русский",
-    "lang.en": "english",
+    "lang.ru": "РУ",
+    "lang.en": "EN",
 
     "bort.bg": "background",
     "bort.bgdim": "soft background",
@@ -353,7 +355,7 @@
     "notif.total": "total",
     "notif.current": "current",
     "notif.today": "today",
-    "notif.overdue_title": "overdue",
+    "notif.overdue_title": "urgent",
     "notif.overdue_body": "deadline passed",
 
     "hint.time": "dd:hh:mm:ss",
@@ -426,6 +428,8 @@
 
     "stub.title": "section",
     "stub.text": "not ready yet",
+
+    "slogans": "the trace of work remains in place.\nthe journal is kept for memory, not for the report.\norder in the records is order in the thoughts.\nwhat is written down exists.\na place remembers the hands that touched it.\ndo not trust memory where there is a journal.\na routine is a trace left on purpose.\nfirst the record, then the conclusion.\nwhat is not marked does not count.\nevery field is a small universe.\nthe shift ends, the record remains.\ntraces lead to where something was done.\nthe silence of the journal is more eloquent than a report.\na tool that does not get in the way.\nthe memory of a place is the memory of those who were here.\nthe journal does not judge, it bears witness.\na good record reads like an adventure.\nwork loves order, and order is a record.\none line today is worth ten tomorrow.\nfield #1 begins with the first note.",
 
     "help.theme.custom": "custom palette; colours below can be edited.",
     "help.theme.night": "force night regardless of the system.",

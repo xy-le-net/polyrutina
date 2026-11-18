@@ -6,6 +6,20 @@
 // Then — journal.start(). Finally — a one-pass reconciliation of
 // deferred notices and overdue routines.
 //
+// Waiting screen. Before the layers are ready the app paints a
+// waiting screen, not a blank: the app icon (BoxFit.contain) on a
+// fixed background, and a slogan below it. The background is pinned
+// to the same colour as the native splash (flutter_native_splash
+// `color` in pubspec.yaml), which in turn mirrors `splash_bg` in
+// assets/defaults.json; a theme-dependent background would flash
+// between two colours during startup. The slogan is read from the
+// dictionary under the key `slogans` (one entry per language, lines
+// separated by «\n») and alternates on each launch. To have the
+// dictionary available before the layers are ready, the language is
+// peeked from assets/defaults.json and the dictionary is loaded at
+// the top of _init; the waiting screen then shows the slogan
+// immediately.
+//
 // Field tab merged into routines. The separate «field» tab has been
 // removed; the tree is now built on top of the routines tab.
 //
@@ -63,6 +77,7 @@
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -115,6 +130,15 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   I18n? _i18n;
   String? _initError;
+  // True only after _init has completed successfully and the app is
+  // ready to show. Until then, the waiting screen is painted.
+  bool _bootDone = false;
+
+  // Fixed waiting-screen background. Mirrors `splash_bg` in
+  // assets/defaults.json and `color` in the flutter_native_splash
+  // section of pubspec.yaml, so the hand-off from the native splash
+  // to the Dart waiting screen does not flash.
+  static const Color _splashBg = Color(0xFFD9D3C7);
 
   int _tab = 0; // Routines
   int? _openedRoutineId;
@@ -201,6 +225,24 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   Future<void> _init() async {
     try {
+      // Preload the dictionary: peek the language from defaults.json
+      // and load the dictionary first, so the waiting screen can
+      // show a slogan before the layers are ready. If the persisted
+      // bort language differs, _onBortChanged will trigger a reload
+      // once bort.init() has read the file; that path is already
+      // in place.
+      try {
+        final raw = await rootBundle.loadString('assets/defaults.json');
+        final data = jsonDecode(raw) as Map<String, dynamic>;
+        final lang = data['lang'] as String? ?? 'ru';
+        _i18n = await I18n.load(lang);
+        if (mounted) setState(() {});
+      } catch (_) {
+        // The dictionary is loaded again below after bort.init; a
+        // failure here only means the waiting screen shows without
+        // a slogan.
+      }
+
       final systemBrightness =
           WidgetsBinding.instance.platformDispatcher.platformBrightness;
 
@@ -238,6 +280,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
         ticker: _ticker,
         i18n: _i18n!,
       );
+
+      _bootDone = true;
     } catch (e, st) {
       debugPrint('INIT FAILED: $e\n$st');
       _initError = '$e';
@@ -566,25 +610,92 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_i18n == null) {
-      if (_initError == null) return const SizedBox.shrink();
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        home: Scaffold(
-          backgroundColor: Colors.black,
-          body: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: SelectableText(
-                'init failed:\n$_initError',
-                style: const TextStyle(color: Colors.red, fontSize: 12),
-              ),
+  // ─── Waiting screen ───
+  // Painted until _bootDone is set. Shows the app icon on the fixed
+  // splash background, and a slogan below when the dictionary is
+  // already loaded. The slogan is picked from `slogans` (one entry
+  // per language, lines separated by «\n») by the launch instant, so
+  // it alternates across launches.
+  Widget _waitingScreen() {
+    final fg = _splashBg.computeLuminance() > 0.5
+        ? Colors.black87
+        : Colors.white70;
+
+    String? slogan;
+    final i18n = _i18n;
+    if (i18n != null) {
+      final raw = i18n.t('slogans');
+      final parts = raw
+          .split('\n')
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+      if (parts.isNotEmpty) {
+        final idx = DateTime.now().millisecondsSinceEpoch % parts.length;
+        slogan = parts[idx];
+      }
+    }
+
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: _splashBg,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                Expanded(
+                  child: Center(
+                    child: Image.asset('assets/icon.jpg', fit: BoxFit.contain),
+                  ),
+                ),
+                if (slogan != null) ...[
+                  const SizedBox(height: 24),
+                  Text(
+                    slogan,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: fg, fontSize: 14, height: 1.4),
+                  ),
+                ],
+              ],
             ),
           ),
         ),
-      );
+      ),
+    );
+  }
+
+  // ─── Error screen ───
+  Widget _errorScreen() {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: SelectableText(
+              'init failed:\n$_initError',
+              style: const TextStyle(color: Colors.red, fontSize: 12),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_bootDone) {
+      if (_initError != null) return _errorScreen();
+      return _waitingScreen();
+    }
+
+    if (_i18n == null) {
+      // Should not happen: _bootDone implies a loaded dictionary.
+      // Fall back to the waiting screen rather than to a blank.
+      return _waitingScreen();
     }
 
     if (!_tabVisible(_tab)) {

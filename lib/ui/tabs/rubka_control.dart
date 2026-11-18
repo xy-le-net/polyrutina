@@ -6,8 +6,11 @@
 //   — midnight;
 //   — bort: a row with today's active time; tap on the time opens
 //     the bort history dialog;
-//   — shift: a checkbox «смена», and when it is on, a row with
-//     today's shift time that opens the shift history;
+//   — shift: the word «смена» with a checkbox; when the shift is
+//     on, today's shift time follows the word in parentheses, one
+//     space apart. The word opens help; the time in parentheses
+//     opens the shift history (the parentheses themselves are not
+//     underlined, only the time inside);
 //   — separator;
 //   — mutexes: routines and slots, and the shift mutex only when
 //     the shift checkbox is on (the stored value is preserved
@@ -15,23 +18,18 @@
 //   — separator;
 //   — map scale.
 //
-// The bort-history row moved here from the «data» block; the «artel»
-// block is finally abolished and has no successor.
+// Pult width. Every Pult placed inside an Expanded is wrapped in
+// Align(centerLeft): under the tight width constraint that Expanded
+// supplies, the pult's internal Container would otherwise stretch
+// to fill the row (and the GestureDetector, opaque, would swallow
+// taps across the whole width). Align loosens the constraint so
+// the pult keeps its natural size and hit area.
 //
 // Toggling the shift off is handled inside operational_layer: the
 // running shift stops, an actor entry is written to the journal,
 // but no routine is paused — the spec says the mutex is deliberately
 // ignored on that transition. Toggling it on restores the historical
 // series.
-//
-// Tapping the shift checkbox while the shift is running is allowed
-// and behaves exactly as if the user pressed «stop» first, then
-// unchecked: the entry is written, the running blocks are left
-// alone.
-//
-// Labels use HelpLabel; each setting has a `help.<key>` text in the
-// dictionary. Section subheadings (mutexes) also use HelpLabel.
-// Block title is a regular collapse mark and stays as-is.
 //
 // Transparency is not applied.
 // ═══════════════════════════════════════════════════════════════════
@@ -52,7 +50,6 @@ class RubkaControl extends StatelessWidget {
 
   const RubkaControl({super.key, this.parity = 2});
 
-  // Shared label column width, matching the other rubka blocks.
   static const double _labelW = 140.0;
 
   @override
@@ -78,7 +75,6 @@ class RubkaControl extends StatelessWidget {
       child: Container(height: strokeW, color: mid),
     );
 
-    // ─── Label + control row ───
     Widget row({
       required String helpKey,
       required String label,
@@ -100,7 +96,6 @@ class RubkaControl extends StatelessWidget {
       );
     }
 
-    // ─── Section heading ───
     Widget section(String helpKey, String text) {
       return Padding(
         padding: EdgeInsets.only(top: side * 0.3, bottom: side * 0.1),
@@ -137,19 +132,22 @@ class RubkaControl extends StatelessWidget {
             style: TextStyle(color: fg),
           ),
           Expanded(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => showTimeHistory(context, key: 'bort'),
-              child: Text(
-                bort.bortTime <= 0
-                    ? '0${i18n.t('time.m')}'
-                    : fmtTime(bort.bortTime, i18n.t),
-                style: TextStyle(
-                  color: fgsignal,
-                  fontFamily: 'monospace',
-                  decoration: TextDecoration.underline,
-                  decorationColor: fgsignal,
-                  decorationThickness: 1.0,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => showTimeHistory(context, key: 'bort'),
+                child: Text(
+                  bort.bortTime <= 0
+                      ? '0${i18n.t('time.m')}'
+                      : fmtTime(bort.bortTime, i18n.t),
+                  style: TextStyle(
+                    color: fgsignal,
+                    fontFamily: 'monospace',
+                    decoration: TextDecoration.underline,
+                    decorationColor: fgsignal,
+                    decorationThickness: 1.0,
+                  ),
                 ),
               ),
             ),
@@ -158,66 +156,79 @@ class RubkaControl extends StatelessWidget {
       ),
     );
 
-    // ─── Shift: checkbox, and a time row when enabled ───
-    final shiftCheckRow = Padding(
+    // ─── Shift: word + «(time)» on one line, checkbox at right ───
+    final shiftTimeStr = bort.shiftSecondsNow(0) <= 0
+        ? '0${i18n.t('time.m')}'
+        : fmtTime(bort.shiftSecondsNow(0), i18n.t);
+
+    final shiftLabel = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        HelpLabel(
+          helpKey: 'bort.shift',
+          text: i18n.t('bort.shift'),
+          width: side * 2.5,
+          style: TextStyle(color: fg),
+        ),
+        if (bort.shiftEnabled) ...[
+          Text(
+            ' (',
+            style: TextStyle(color: fgsignal, fontFamily: 'monospace'),
+          ),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => showTimeHistory(context, key: 'shift', fieldId: 0),
+            child: Text(
+              shiftTimeStr,
+              style: TextStyle(
+                color: fgsignal,
+                fontFamily: 'monospace',
+                decoration: TextDecoration.underline,
+                decorationColor: fgsignal,
+                decorationThickness: 1.0,
+              ),
+            ),
+          ),
+          Text(
+            ')',
+            style: TextStyle(color: fgsignal, fontFamily: 'monospace'),
+          ),
+        ],
+      ],
+    );
+
+    final shiftRow = Padding(
       padding: rowPad,
       child: Row(
         children: [
-          HelpLabel(
-            helpKey: 'bort.shift',
-            text: i18n.t('bort.shift'),
+          SizedBox(
             width: _labelW,
-            style: TextStyle(color: fg),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: shiftLabel,
+            ),
           ),
-          PultTick(
-            id: 'shift_enabled',
-            value: bort.shiftEnabled,
-            binary: true,
-            fg: fg,
-            bg: bg,
-            signal: fgsignal,
-            overrideSize: side,
-            onTap: () => bort.setBool('shift_enabled', !bort.shiftEnabled),
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: PultTick(
+                id: 'shift_enabled',
+                value: bort.shiftEnabled,
+                binary: true,
+                fg: fg,
+                bg: bg,
+                signal: fgsignal,
+                overrideSize: side,
+                onTap: () => bort.setBool('shift_enabled', !bort.shiftEnabled),
+              ),
+            ),
           ),
         ],
       ),
     );
 
-    final shiftTimeRow = bort.shiftEnabled
-        ? Padding(
-            padding: rowPad,
-            child: Row(
-              children: [
-                // Empty label column: this row is a continuation of
-                // the checkbox row above, not a new setting.
-                const SizedBox(width: _labelW),
-                Expanded(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () =>
-                        showTimeHistory(context, key: 'shift', fieldId: 0),
-                    child: Text(
-                      bort.shiftSecondsNow(0) <= 0
-                          ? '0${i18n.t('time.m')}'
-                          : fmtTime(bort.shiftSecondsNow(0), i18n.t),
-                      style: TextStyle(
-                        color: fgsignal,
-                        fontFamily: 'monospace',
-                        decoration: TextDecoration.underline,
-                        decorationColor: fgsignal,
-                        decorationThickness: 1.0,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          )
-        : const SizedBox.shrink();
-
     // ─── Mutexes ───
-    // Shift mutex is hidden while the checkbox is off. The stored
-    // value is preserved; it simply does not apply.
     final mutexes = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -225,44 +236,53 @@ class RubkaControl extends StatelessWidget {
         row(
           helpKey: 'bort.mutex_routines',
           label: i18n.t('bort.mutex_routines'),
-          control: PultTick(
-            id: 'mutex_routines',
-            value: bort.mutexRoutines,
-            binary: true,
-            fg: fg,
-            bg: bg,
-            signal: fgsignal,
-            overrideSize: side,
-            onTap: () => bort.setBool('mutex_routines', !bort.mutexRoutines),
+          control: Align(
+            alignment: Alignment.centerLeft,
+            child: PultTick(
+              id: 'mutex_routines',
+              value: bort.mutexRoutines,
+              binary: true,
+              fg: fg,
+              bg: bg,
+              signal: fgsignal,
+              overrideSize: side,
+              onTap: () => bort.setBool('mutex_routines', !bort.mutexRoutines),
+            ),
           ),
         ),
         row(
           helpKey: 'bort.mutex_slots',
           label: i18n.t('bort.mutex_slots'),
-          control: PultTick(
-            id: 'mutex_slots',
-            value: bort.mutexSlots,
-            binary: true,
-            fg: fg,
-            bg: bg,
-            signal: fgsignal,
-            overrideSize: side,
-            onTap: () => bort.setBool('mutex_slots', !bort.mutexSlots),
+          control: Align(
+            alignment: Alignment.centerLeft,
+            child: PultTick(
+              id: 'mutex_slots',
+              value: bort.mutexSlots,
+              binary: true,
+              fg: fg,
+              bg: bg,
+              signal: fgsignal,
+              overrideSize: side,
+              onTap: () => bort.setBool('mutex_slots', !bort.mutexSlots),
+            ),
           ),
         ),
         if (bort.shiftEnabled)
           row(
             helpKey: 'bort.mutex_shift',
             label: i18n.t('bort.mutex_shift'),
-            control: PultTick(
-              id: 'mutex_shift',
-              value: bort.mutexShift,
-              binary: true,
-              fg: fg,
-              bg: bg,
-              signal: fgsignal,
-              overrideSize: side,
-              onTap: () => bort.setBool('mutex_shift', !bort.mutexShift),
+            control: Align(
+              alignment: Alignment.centerLeft,
+              child: PultTick(
+                id: 'mutex_shift',
+                value: bort.mutexShift,
+                binary: true,
+                fg: fg,
+                bg: bg,
+                signal: fgsignal,
+                overrideSize: side,
+                onTap: () => bort.setBool('mutex_shift', !bort.mutexShift),
+              ),
             ),
           ),
       ],
@@ -301,8 +321,7 @@ class RubkaControl extends StatelessWidget {
         children: [
           midnightRow,
           bortRow,
-          shiftCheckRow,
-          if (bort.shiftEnabled) shiftTimeRow,
+          shiftRow,
           divider(),
           mutexes,
           divider(),

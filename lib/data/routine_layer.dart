@@ -712,6 +712,16 @@ class RoutineLayer extends ChangeNotifier {
     final r = findRoutine(id);
     if (r == null) return;
     if (r.scheduledAt == null) return;
+    // Zero seconds annuls the notice: a zero interval is a valid
+    // «remind at the due moment» value only at the moment of
+    // assignment, but stored it would make the pult read «notice
+    // set» while nothing distinguishable is scheduled. Clearing is
+    // routed through clearNotice so the journal carries
+    // clear_notice and the pult state matches the number.
+    if (seconds <= 0) {
+      await clearNotice(journal, id);
+      return;
+    }
     if (r.noticeSet && r.noticeBeforeSec == seconds) return;
     r.noticeBeforeSec = seconds;
     r.noticeSet = true;

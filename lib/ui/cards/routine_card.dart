@@ -5,10 +5,19 @@
 // Here — card state: name editing, block time editing, show/hide
 // slots, collapse, auto-scroll, completion, export, move to field.
 //
-// Scheduled date. The custom picker lives in bort_date_picker.dart;
+// Scheduled moment. The custom picker lives in bort_date_picker.dart;
 // the notice-interval dialog in notice_picker.dart. Both are invoked
-// here; results are applied to the routine. The bort's «midnight»
-// setting is applied to the picked date by this caller.
+// here. The picker now returns a full moment (date and time); the
+// caller stores it as is. The bort's «midnight» setting no longer
+// participates. When the routine has no moment yet, the picker is
+// handed a date-only value and seeds its time field with the
+// technical noon (see bort_time.dart).
+//
+// Expansion on open. The card opens with the last active block
+// expanded: the running one, when a block is running; the routine
+// layer's lastActiveBlockKind otherwise; the note for a freshly
+// created routine. So a revisited routine shows where work had
+// stopped, rather than a collapsed stack.
 //
 // Notice interval. The pult that used to set a planned duration now
 // sets a lead time; see routine.dart for the semantics. It is shown
@@ -92,7 +101,8 @@ class _RoutineCardState extends State<RoutineCard> {
 
     if (!_initializedExpand) {
       _initializedExpand = true;
-      final r = RoutineScope.of(context).findRoutine(widget.routineId);
+      final layer = RoutineScope.of(context);
+      final r = layer.findRoutine(widget.routineId);
       if (r != null) {
         final fresh =
             (DateTime.now().millisecondsSinceEpoch ~/ 1000) - r.createdAt < 60;
@@ -100,7 +110,14 @@ class _RoutineCardState extends State<RoutineCard> {
           _expanded.add('note');
         } else {
           final running = r.runningBlock;
-          if (running != null) _expanded.add(running.kind);
+          if (running != null) {
+            _expanded.add(running.kind);
+          } else {
+            // No block running right now: open the last active one,
+            // so a revisited routine shows where work had stopped.
+            final last = layer.lastActiveBlockKind;
+            if (last != null) _expanded.add(last);
+          }
         }
       }
     }
@@ -288,31 +305,23 @@ class _RoutineCardState extends State<RoutineCard> {
   Future<void> _pickSchedule(Routine r) async {
     final routineLayer = RoutineScope.of(context);
     final journal = AppScope.of(context).journal;
-    final bort = BortScope.of(context);
 
+    // A moment, not a date. When the routine has none, hand the
+    // picker a date-only value so its time field seeds from the
+    // technical noon. The midnight setting no longer participates:
+    // the picker returns the full moment, and it is stored as is.
     final now = DateTime.now();
     final initial = r.scheduledAt != null
         ? DateTime.fromMillisecondsSinceEpoch(r.scheduledAt! * 1000)
-        : now;
+        : DateTime(now.year, now.month, now.day);
 
     final picked = await showBortDatePicker(context, initial);
     if (picked == null) return;
 
-    final parts = bort.midnight.split(':');
-    final hh = int.tryParse(parts.isNotEmpty ? parts[0] : '0') ?? 0;
-    final mm = int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0;
-    final withMidnight = DateTime(
-      picked.year,
-      picked.month,
-      picked.day,
-      hh,
-      mm,
-    );
-
     await routineLayer.setSchedule(
       journal,
       r.id,
-      withMidnight.millisecondsSinceEpoch ~/ 1000,
+      picked.millisecondsSinceEpoch ~/ 1000,
     );
   }
 

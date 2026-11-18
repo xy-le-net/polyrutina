@@ -17,6 +17,8 @@
 
 import 'package:flutter/material.dart';
 
+import 'app_scope.dart';
+
 class BortField extends StatefulWidget {
   final String initial;
   final Color fg;
@@ -79,11 +81,20 @@ class _BortFieldState extends State<BortField> {
 
   @override
   Widget build(BuildContext context) {
+    // Cursor uses the first palette role (bgsignal), not the fifth.
+    // On the third role's background the first reads better, and
+    // the first is the one used elsewhere for selection — the cursor
+    // must match.
+    Color cursor = widget.fg;
+    try {
+      cursor = BortScope.of(context).bgsignal;
+    } catch (_) {}
     return TextField(
       controller: _ctrl,
       focusNode: _focus,
       readOnly: widget.readOnly,
       autofocus: widget.autofocus,
+      cursorColor: cursor,
       style: TextStyle(color: widget.fg),
       decoration: InputDecoration(
         isDense: true,

@@ -103,31 +103,34 @@ class RubkaInterface extends StatelessWidget {
             style: TextStyle(color: fg),
           ),
           Expanded(
-            child: Pult(
-              spec: PultSpec(
-                id: 'lang',
-                icon: Icons.translate,
-                label: i18n.t('lang.${bort.lang}'),
-                subsBuilder: () {
-                  final out = <PultSpec>[];
-                  for (final l in langs) {
-                    if (l.$1 == bort.lang) continue;
-                    out.add(
-                      PultSpec(
-                        id: 'lang_${l.$1}',
-                        icon: Icons.language,
-                        label: i18n.t(l.$2),
-                        onTap: () => onSet('lang', l.$1),
-                      ),
-                    );
-                  }
-                  return out;
-                },
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Pult(
+                spec: PultSpec(
+                  id: 'lang',
+                  icon: Icons.language,
+                  centerText: i18n.t('lang.${bort.lang}'),
+                  subsBuilder: () {
+                    final out = <PultSpec>[];
+                    for (final l in langs) {
+                      if (l.$1 == bort.lang) continue;
+                      out.add(
+                        PultSpec(
+                          id: 'lang_${l.$1}',
+                          icon: Icons.language,
+                          centerText: i18n.t(l.$2),
+                          onTap: () => onSet('lang', l.$1),
+                        ),
+                      );
+                    }
+                    return out;
+                  },
+                ),
+                fg: fg,
+                bg: bg,
+                signal: signal,
+                overrideSize: side,
               ),
-              fg: fg,
-              bg: bg,
-              signal: signal,
-              overrideSize: side,
             ),
           ),
         ],

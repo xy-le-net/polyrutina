@@ -79,6 +79,7 @@ import '../core/bort_field.dart';
 import '../core/confirm_dialog.dart';
 import '../core/control_row.dart';
 import '../core/dialog_frame.dart';
+import '../core/link_text.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_sheet.dart';
 import 'routine_plate.dart';
@@ -527,10 +528,20 @@ class _RoutinesTabState extends State<RoutinesTab> {
     _renameNodeDialog(node.id, '', defaultName: i18n.t('field.new_node'));
   }
 
+  // Empty name → automatic «поле №x» where x is the node's journal
+  // id. The id is sparse by construction (it is the journal entry
+  // id), but it is stable and never reused; that is preferable to a
+  // dense ordinal that would shift after a neighbour is deleted.
+  String _autoName(int id) {
+    final lang = AppScope.of(context).bort.lang;
+    return lang == 'en' ? 'field #$id' : 'поле №$id';
+  }
+
   void _renameNodeDialog(int id, String currentName, {String? defaultName}) {
     final app = AppScope.of(context);
     final i18n = app.i18n;
     final bort = app.bort;
+    final side = PultScope.of(context).smallSide;
     String currentText = currentName;
 
     showDialog<void>(
@@ -545,10 +556,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
             children: [
               Text(
                 i18n.t('field.rename'),
-                style: TextStyle(
-                  color: bort.fg,
-                  fontSize: PultScope.of(context).smallSide * bort.kTitle,
-                ),
+                style: TextStyle(color: bort.fg, fontSize: side * bort.kTitle),
               ),
               const SizedBox(height: 12),
               BortField(
@@ -562,24 +570,56 @@ class _RoutinesTabState extends State<RoutinesTab> {
                 },
               ),
               const SizedBox(height: 16),
+              // Links: first palette role (bgsignal), single
+              // underline, one size. Same as the other dialogs.
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    child: Text(i18n.t('common.cancel')),
+                  LinkText(
+                    text: i18n.t('common.cancel'),
+                    color: bort.bgsignal,
+                    fontSize: side * bort.kName / 1.6,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: side * 0.3,
+                      vertical: side * 0.1,
+                    ),
+                    onTap: () async {
+                      // Cancelling an empty name still assigns the
+                      // automatic name — the spec says an empty
+                      // confirmation, via either «ок» or «отмена»,
+                      // must not leave the field unnamed.
+                      final wasEmpty =
+                          currentText.trim().isEmpty &&
+                          currentName.trim().isEmpty;
+                      Navigator.of(ctx).pop();
+                      if (wasEmpty) {
+                        await app.fieldLayer.renameNode(
+                          app.journal,
+                          id,
+                          _autoName(id),
+                        );
+                        if (mounted) setState(() => _expanded.add(id));
+                      }
+                    },
                   ),
-                  const SizedBox(width: 8),
-                  TextButton(
-                    onPressed: () async {
-                      final name = currentText.trim().isEmpty
-                          ? (defaultName ?? currentName)
+                  SizedBox(width: side * 0.3),
+                  LinkText(
+                    text: i18n.t('common.ok'),
+                    color: bort.bgsignal,
+                    fontSize: side * bort.kName / 1.6,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: side * 0.3,
+                      vertical: side * 0.1,
+                    ),
+                    onTap: () async {
+                      final trimmed = currentText.trim();
+                      final name = trimmed.isEmpty
+                          ? _autoName(id)
                           : currentText;
                       Navigator.of(ctx).pop();
                       await app.fieldLayer.renameNode(app.journal, id, name);
                       if (mounted) setState(() => _expanded.add(id));
                     },
-                    child: Text(i18n.t('common.ok')),
                   ),
                 ],
               ),
