@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -51,6 +52,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   final _navigatorKey = GlobalKey<NavigatorState>();
 
   I18n? _i18n;
+  String? _splashSlogan;
   String? _initError;
   // True only after _init has completed successfully and the app is
   // ready to show. Until then, the waiting screen is painted.
@@ -146,6 +148,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   }
 
   Future<void> _init() async {
+    final minimumSplashDuration = Future<void>.delayed(
+      const Duration(seconds: 3),
+    );
     try {
       // Preload the dictionary: peek the language from defaults.json
       // and load the dictionary first, so the waiting screen can
@@ -158,6 +163,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
         final data = jsonDecode(raw) as Map<String, dynamic>;
         final lang = data['lang'] as String? ?? 'ru';
         _i18n = await I18n.load(lang);
+        _splashSlogan = _chooseSplashSlogan(_i18n!);
         if (mounted) setState(() {});
       } catch (_) {
         // The dictionary is loaded again below after bort.init; a
@@ -172,7 +178,11 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       await _bort.init(systemBrightness);
       await _traceLayer.init(_journal);
 
+      final previousLang = _i18n?.lang;
       _i18n = await I18n.load(_bort.lang);
+      if (previousLang != _i18n!.lang || _splashSlogan == null) {
+        _splashSlogan = _chooseSplashSlogan(_i18n!);
+      }
 
       await _fieldLayer.init(_journal);
       await _fieldLayer.createRootIfNeeded(
@@ -203,6 +213,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
         i18n: _i18n!,
       );
 
+      await minimumSplashDuration;
       _bootDone = true;
     } catch (e, st) {
       debugPrint('INIT FAILED: $e\n$st');
@@ -535,27 +546,22 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   // Painted until _bootDone is set. Shows the app icon on the fixed
   // splash background, and a slogan below when the dictionary is
   // already loaded. The slogan is picked from `slogans` (one entry
-  // per language, lines separated by «\n») by the launch instant, so
-  // it alternates across launches.
+  // per language, lines separated by «\n»); one is chosen randomly
+  // when the dictionary is loaded.
+  String? _chooseSplashSlogan(I18n i18n) {
+    final parts = i18n
+        .t('slogans')
+        .split('\n')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    return parts.isEmpty ? null : parts[Random().nextInt(parts.length)];
+  }
+
   Widget _waitingScreen() {
     final fg = _splashBg.computeLuminance() > 0.5
         ? Colors.black87
         : Colors.white70;
-
-    String? slogan;
-    final i18n = _i18n;
-    if (i18n != null) {
-      final raw = i18n.t('slogans');
-      final parts = raw
-          .split('\n')
-          .map((s) => s.trim())
-          .where((s) => s.isNotEmpty)
-          .toList();
-      if (parts.isNotEmpty) {
-        final idx = DateTime.now().millisecondsSinceEpoch % parts.length;
-        slogan = parts[idx];
-      }
-    }
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -568,13 +574,13 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
               children: [
                 Expanded(
                   child: Center(
-                    child: Image.asset('assets/icon.jpg', fit: BoxFit.contain),
+                    child: Image.asset('assets/icon.png', fit: BoxFit.contain),
                   ),
                 ),
-                if (slogan != null) ...[
+                if (_splashSlogan != null) ...[
                   const SizedBox(height: 24),
                   Text(
-                    slogan,
+                    _splashSlogan!,
                     textAlign: TextAlign.center,
                     style: TextStyle(color: fg, fontSize: 14, height: 1.4),
                   ),

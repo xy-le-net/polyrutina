@@ -76,10 +76,7 @@ dev_dependencies:
   flutter_launcher_icons: ^0.14.1
 
   # Native splash screen generator: one fixed background and the
-  # user's own icon, so the hand-off from the native splash to the
-  # Dart waiting screen is seamless. The background is pinned to
-  # `splash_bg` in assets/defaults.json; the icon is assets/icon.jpg
-  # as is, without an adaptive foreground.
+  # transparent app icon, matching the Dart waiting screen.
   flutter_native_splash: ^2.4.4
 
 flutter:
@@ -87,25 +84,29 @@ flutter:
   assets:
     - assets/i18n.json
     - assets/defaults.json
-    - assets/icon.jpg
+    - assets/icon.png
 
-# Launcher icon configuration. The user's own icon is used as is;
+# Launcher icon configuration. The transparent app icon is used as is;
 # the adaptive foreground is not generated, so no `adaptive_*`
 # keys are set.
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: false
-  image_path: "assets/icon.jpg"
+  image_path: "assets/icon.png"
   min_sdk_android: 21
 
 # Native splash configuration. One fixed background (matching the
 # Dart waiting screen; see splash_bg in assets/defaults.json) and
-# the user's own icon as is. The background is fixed and does not
+# the transparent app icon. The background is fixed and does not
 # follow the theme, by design: a theme-dependent background would
 # flash between two colours during startup.
 flutter_native_splash:
   color: "#D9D3C7"
-  image: assets/icon.jpg
+  image: assets/icon.png
+  android_12:
+    image: assets/icon.png
+    color: "#D9D3C7"
+    icon_background_color: "#D9D3C7"
   android: true
   ios: false
   fullscreen: false
