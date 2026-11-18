@@ -1,24 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// database.dart — journal table and database class.
-//
-// Structure only: which fields, which types, where the file lives.
-// Reading and writing live in journal_repository.dart.
-//
-// WAL. The connection is opened in Write-Ahead Logging mode, so
-// that readers do not block on writers, and a crash mid-transaction
-// cannot corrupt the main file. journal_compactor already relies on
-// PRAGMA wal_checkpoint(TRUNCATE); this is the piece that makes
-// that checkpoint meaningful. synchronous = NORMAL is a safe
-// companion: it preserves database integrity across power loss
-// (the last transaction may be lost, but the file stays valid),
-// while avoiding the cost of FULL on every commit.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
-// ─── Imports ───
-
-// dart:io gives File — disk operations.
 import 'dart:io';
 
 // The main drift package: column types (IntColumn, TextColumn),
@@ -35,7 +14,6 @@ import 'package:path/path.dart' as p;
 // path_provider — resolve the application's documents folder.
 import 'package:path_provider/path_provider.dart';
 
-// ─── Generated part ───
 //
 // The part directive links this file with database.g.dart,
 // which Drift generates after:
@@ -57,14 +35,12 @@ part 'database.g.dart';
 // created. This avoids storing "kind + name" pairs.
 // ═══════════════════════════════════════════════════════════════════
 class Journal extends Table {
-  // ─── id field ───
   // Primary key, autoincrement.
   // This is the "detached" (local) entry number.
   // Filled by SQLite itself; no manual assignment.
   // Monotone: used as the object identifier in links.
   IntColumn get id => integer().autoIncrement()();
 
-  // ─── time field ───
   // Timestamp in seconds since the Unix epoch (1 Jan 1970 UTC).
   //
   // Why seconds, not milliseconds:
@@ -75,7 +51,6 @@ class Journal extends Table {
   //     schema.
   IntColumn get time => integer()();
 
-  // ─── flags field ───
   // Bit field of marks.
   //
   // Eight bits are used:
@@ -95,18 +70,14 @@ class Journal extends Table {
   // store zero.
   IntColumn get flags => integer().withDefault(const Constant(0))();
 
-  // ─── type field ───
   // Entry kind as a number. Decoding lives in journal_types.dart:
   //   0 — trace
   //   1 — routine
-  //   2 — reserved (formerly timer)
   //   3 — actor (shift, session)
-  //   4 — reserved (formerly bort)
   //
   // Stored as a number, not a string: cheaper and faster.
   IntColumn get type => integer()();
 
-  // ─── body field ───
   // Entry body — a JSON string.
   // Everything related to a given entry lives inside:
   //   — trace:    {"kind":"text","text":"...","parents":[..],"children":[..]}
@@ -114,7 +85,6 @@ class Journal extends Table {
   //   — shift:    {"action":"shift_start"}
   //
   // JSON gives flexibility: fields can be added without database
-  // migrations.
   TextColumn get body => text()();
 }
 

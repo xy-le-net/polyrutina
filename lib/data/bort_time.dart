@@ -1,26 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// bort_time.dart — active work time in the application.
-//
-// Bort time is cumulative for the CURRENT day: from midnight (the
-// one configured in the rubka) to the next. It lives in the bort
-// file and is not written to the journal: the kind «bort» has been
-// abolished, and the number 4 is reserved.
-//
-// Runs on user actions with a 20-second timeout. Longer inactivity
-// stops it. Backgrounding or closing the app stops it.
-//
-// Across midnight: the accumulated value is placed into yesterday
-// (for display in the rubka), the counter is reset. Checked at
-// startup and by the ticker.
-//
-// Parsing cache. The midnight string (HH:MM) is parsed lazily and
-// cached. Any write to midnight invalidates the cache. This avoids
-// re-parsing on every lastMidnightBefore call (which happens on
-// every checkMidnight tick and on every shiftSecondsNow read).
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 const int kBortTimeoutSec = 20;
 
 // Technical noon: the time of day assumed when a scheduled routine
@@ -37,7 +14,6 @@ class _ParsedMidnight {
 }
 
 class BortTime {
-  // ─── State ───
   // Cumulative for the current day.
   int bortTime = 0;
   // Yesterday's total — for display in the rubka.
@@ -75,7 +51,6 @@ class BortTime {
     return p;
   }
 
-  // ─── User action ───
   void pulse() {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     if (lastActionAt != 0) {
@@ -87,7 +62,6 @@ class BortTime {
     lastActionAt = now;
   }
 
-  // ─── Tick ───
   void tick() {
     if (lastActionAt == 0) return;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -96,12 +70,10 @@ class BortTime {
     }
   }
 
-  // ─── Background / close ───
   void stopNow() {
     lastActionAt = 0;
   }
 
-  // ─── Midnight check ───
   // Returns the passed midnight moment if it has passed, else 0.
   // On transition: yesterday = bortTime, bortTime = 0.
   int checkMidnight() {
@@ -118,7 +90,6 @@ class BortTime {
     return curMidnight;
   }
 
-  // ─── Nearest midnight before the moment ───
   // Public — the shift needs it.
   int lastMidnightBefore(DateTime now) {
     final p = _parse();
@@ -129,7 +100,6 @@ class BortTime {
     return candidate.millisecondsSinceEpoch ~/ 1000;
   }
 
-  // ─── Serialization ───
   Map<String, dynamic> toJson() => {
     'bort_time': bortTime,
     'bort_yesterday': yesterday,
@@ -144,7 +114,6 @@ class BortTime {
     prevMidnight = (data['bort_prev_midnight'] as num?)?.toInt() ?? 0;
   }
 
-  // ─── Reset ───
   void reset() {
     bortTime = 0;
     yesterday = 0;

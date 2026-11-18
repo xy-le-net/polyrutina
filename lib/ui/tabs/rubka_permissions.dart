@@ -1,32 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// rubka_permissions.dart — «permissions» block in the rubka.
-//
-// A short diagnostic list: notifications, location, camera, micro-
-// phone. Each row shows a pult with a three-state indicator:
-//   — granted: check mark, signal-colored;
-//   — denied / limited / provisional: hollow circle;
-//   — permanentlyDenied / restricted: crossed circle.
-//
-// Tap semantics:
-//   — granted: openAppSettings() — modern OS versions forbid apps
-//     from revoking a permission themselves; the user must flip the
-//     switch in the system settings, so the tap takes them there;
-//   — denied / limited / provisional: request() — the OS prompt;
-//   — permanentlyDenied / restricted: openAppSettings().
-// Statuses are re-read after every request and on returning from
-// the system settings (via a lifecycle observer).
-//
-// Permission.storage is intentionally absent: on Android 13+ it
-// maps to READ_EXTERNAL_STORAGE, which the system ignores and
-// reports as «denied»; file access goes through FilePicker, no
-// runtime permission needed.
-//
-// Collapse. The block is collapsible like the other rubka blocks;
-// its state lives in bort.blockPermissions.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 

@@ -1,35 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// journal_layer.dart — journal layer.
-//
-// The single keeper of the database and the entry body format.
-//
-// Registration. The layer calls register with a name, a list of
-// kinds, and an apply function. JournalLayer remembers, per layer,
-// the id of the last entry handed to it.
-//
-// Distribution. pump reads everything after the smallest mark,
-// distributes to each layer its kinds, advances the marks.
-//
-// Mark reset. clearMark(name) drops the persisted mark for one
-// layer and resets its in-memory lastId to 0, so that the next pump
-// replays the journal for that layer only. Used when a layer's
-// cache was discarded by a schema bump: otherwise the caught-up
-// mark would make pump a no-op and the layer would start empty.
-//
-// Subscription. Set up in start, not init — after all layers have
-// registered. This avoids dropping early entries.
-//
-// Transactions. Actions that produce several entries at once are
-// wrapped in a transaction. Inside it, log does not run pump;
-// pump runs once on leaving the outer transaction.
-//
-// Sync flags. deleteSynced, countSynced, and markSynced operate via
-// SQL conditions (bitwise AND against JournalFlag.synced) rather
-// than by loading every row and filtering in Dart.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -107,7 +75,6 @@ class JournalLayer extends ChangeNotifier {
     );
   }
 
-  // ─── Mark reset ───
   // Drops the persisted mark for one layer and zeroes its in-memory
   // lastId, so that the next pump replays the journal from the
   // beginning for that layer only. Called by a layer whose cache was

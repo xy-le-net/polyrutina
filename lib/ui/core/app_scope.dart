@@ -1,50 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// app_scope.dart — application context and point scopes.
-//
-// AppContext — an immutable set of dependencies and delegates. Lives
-// as long as the app; recreated on language change.
-//
-// AppScope (InheritedWidget) provides AppContext. Notifies only when
-// the context itself changes.
-//
-// Point scopes:
-//   BortScope    — OperationalLayer: theme, shift, bort time.
-//   RoutineScope — RoutineLayer: cards, lists, days.
-//   TraceScope   — TraceLayer: trace fields, checklists, media.
-//   FieldScope   — FieldLayer: tree of field nodes, active field.
-//   TickerScope  — AppTicker: timers and colon blink.
-//   I18nScope    — dictionary: interface strings.
-//
-// Unified shift. The shift is no longer bound to any field: one
-// timer for the entire application, stored under the zero-field key
-// (see operational_layer). Shift toggling and shift auto-start are
-// therefore independent of the caller's field argument; the argument
-// is retained in signatures for source compatibility only and is not
-// consulted.
-//
-// Shift toggle gating. When bort.shiftEnabled is false, no shift
-// exists at all: toggleShift is a no-op, and toggleBlockWithShift
-// skips the auto-start branch. Turning the toggle off while a shift
-// runs is handled in operational_layer (it stops the shift and
-// journals it, but does not pause routines).
-//
-// Shift and routine synchronization. The relationship is dictated
-// by the mutexShift flag:
-//   — if mutexShift is true, they are linked: starting any block
-//     starts the shift if it is not running (already running shifts
-//     are not restarted), and stopping the shift pauses every
-//     running block across every field — no subtree filtering, since
-//     the shift is global.
-//   — if mutexShift is false, they are independent.
-//
-// afterJournalReset. A callback invoked after the journal is cleared
-// or fully replaced (e.g., via import). It recreates the default root
-// field node if missing and rebinds the active field, ensuring the
-// UI does not go blank.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'dart:convert';
 import 'package:flutter/material.dart';
 
@@ -67,7 +20,7 @@ class AppContext {
   final I18n i18n;
   final Future<void> Function() refresh;
   final Future<void> Function() reloadI18n;
-  final Future<void> Function(int routineId) openRoutine;
+  final Future<void> Function(int routineId, {bool autofocusName}) openRoutine;
   final Future<void> Function() afterJournalReset;
 
   const AppContext({
@@ -84,7 +37,6 @@ class AppContext {
     required this.afterJournalReset,
   });
 
-  // ─── Start a routine block with shift logic ───
   // The field argument is kept for source compatibility; the shift
   // is global, so its identity is ignored here.
   Future<void> toggleBlockWithShift(
@@ -120,7 +72,6 @@ class AppContext {
     );
   }
 
-  // ─── Shift ───
   // The field argument is kept for source compatibility; the shift
   // is unified, so the identity is ignored. When shiftEnabled is
   // false, this is a no-op: no shift, no state change, no journal
@@ -158,13 +109,11 @@ class AppContext {
     }
   }
 
-  // ─── User action ───
   void pulseBort() {
     bort.pulseBort();
   }
 }
 
-// ─── AppScope: permanent context ───
 class AppScope extends InheritedWidget {
   final AppContext appContext;
 
@@ -192,7 +141,6 @@ class AppScope extends InheritedWidget {
   }
 }
 
-// ─── BortScope ───
 class BortScope extends InheritedNotifier<OperationalLayer> {
   const BortScope({
     super.key,
@@ -207,7 +155,6 @@ class BortScope extends InheritedNotifier<OperationalLayer> {
   }
 }
 
-// ─── RoutineScope ───
 class RoutineScope extends InheritedNotifier<RoutineLayer> {
   const RoutineScope({
     super.key,
@@ -222,7 +169,6 @@ class RoutineScope extends InheritedNotifier<RoutineLayer> {
   }
 }
 
-// ─── TraceScope ───
 class TraceScope extends InheritedNotifier<TraceLayer> {
   const TraceScope({
     super.key,
@@ -237,7 +183,6 @@ class TraceScope extends InheritedNotifier<TraceLayer> {
   }
 }
 
-// ─── FieldScope ───
 // Subscribers: FieldTab, RoutineCard (on field attach/detach),
 // and anything tracking the active field.
 class FieldScope extends InheritedNotifier<FieldLayer> {
@@ -254,7 +199,6 @@ class FieldScope extends InheritedNotifier<FieldLayer> {
   }
 }
 
-// ─── TickerScope ───
 class TickerScope extends InheritedNotifier<AppTicker> {
   const TickerScope({
     super.key,
@@ -269,7 +213,6 @@ class TickerScope extends InheritedNotifier<AppTicker> {
   }
 }
 
-// ─── I18nScope ───
 class I18nScope extends InheritedWidget {
   final I18n i18n;
 

@@ -1,39 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// lib/ui/services/media_picker.dart — media selection and addition.
-//
-// Five kinds: audio, photo, video, geo, file. Audio — via a
-// separate dialog (audio_dialog.dart). The rest — here.
-//
-// Opened via the single left-side sheet (pult_sheet.dart) —
-// the same as all other subpults. The former
-// showModalBottomSheet is removed.
-//
-// The file is copied to media/ with a template name:
-//   <kind>_<index>_<deviceId>_<firstRun>.<ext>
-// The index is a monotone per-device counter (InstallStore),
-// independent of routine ids, so compaction does not invalidate
-// names. Forbidden characters are replaced by safeFileName
-// (format.dart) — one shared implementation for the whole app.
-//
-// Atomic copy. The file is first copied into <target>.tmp, then
-// renamed onto the final name. A crash mid-copy cannot leave a
-// half-written media file under the canonical name; the trace
-// body (if written) points to a whole file, not a torn one.
-//
-// Photo/video series: after returning from the system camera
-// the sheet does not close — it opens again. Exit — «back».
-//
-// Geo. No separate json file is written: coordinates are in
-// the trace file structure (TraceFile). The geo point is picked
-// on a custom map (geo_picker.dart): a tap on the map,
-// confirmation — a widget snapshot and coordinates are put into
-// media/ as the geo kind.
-//
-// Application context (AppContext) is taken BEFORE awaits.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -105,7 +69,6 @@ Future<void> showMediaPicker({
   );
 }
 
-// ─── Copying and attaching ───
 Future<void> _attach(
   AppContext app, {
   required int objectId,
@@ -145,7 +108,6 @@ Future<void> _attach(
   );
 }
 
-// ─── Photo: series ───
 Future<void> _addPhotoLoop(AppContext app, int objectId, String slot) async {
   while (true) {
     final took = await _pickOncePhoto(app, objectId, slot);
@@ -173,7 +135,6 @@ Future<bool> _pickOncePhoto(AppContext app, int objectId, String slot) async {
   }
 }
 
-// ─── Video: series ───
 Future<void> _addVideoLoop(AppContext app, int objectId, String slot) async {
   while (true) {
     final took = await _pickOnceVideo(app, objectId, slot);
@@ -201,7 +162,6 @@ Future<bool> _pickOnceVideo(AppContext app, int objectId, String slot) async {
   }
 }
 
-// ─── File ───
 Future<void> _addFile(AppContext app, int objectId, String slot) async {
   try {
     final r = await FilePicker.platform.pickFiles();
@@ -220,7 +180,6 @@ Future<void> _addFile(AppContext app, int objectId, String slot) async {
   } catch (_) {}
 }
 
-// The former direct geolocator call is removed: the user did not see
 // where the point was placed. Now — a custom map (geo_picker.dart),
 // where the point is confirmed visually, and a snapshot of the map
 // widget is saved along with the coordinates.

@@ -1,31 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// lib/ui/core/confirm_dialog.dart — modal confirmation.
-//
-// Frame geometry lives in DialogFrame: bg fill, dim border,
-// kRadius corners, kFramePad inset. Inside — title, optional
-// subtitle, and two words: cancel (dim, underlined) and confirm
-// (signal, underlined). Both words go through LinkText, so the
-// underline and the hit area are uniform across the app.
-//
-// Tap on cancel, on confirm, or outside the frame dismisses the
-// dialog; the result is a bool — true for confirm, false otherwise.
-//
-// Usage:
-//   final ok = await showConfirm(context,
-//       title: 'Delete all entries?',
-//       confirmLabel: 'Delete',
-//       cancelLabel: 'Cancel');
-//   if (ok) { ... }
-//
-// Button labels are set at kName / 1.6: at the full kName size the
-// words overflow the frame on narrow screens (notably with long
-// Russian labels such as «удалить» and «отмена»). The height is
-// normalized to 1.0 so that the tightened line does not drift
-// vertically against the right-aligned row.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import '../pults/pult_core.dart';

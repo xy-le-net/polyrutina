@@ -1,28 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// help_label.dart — tappable setting label with a help dialog.
-//
-// Per the rubka spec, any setting label (but not block titles)
-// reveals a short explanation on tap, in a plain dialog with an
-// «ok» button. Section subheadings get the same treatment.
-//
-// The explanation text is taken from the dictionary by the help
-// key (`help.<key>`). When the key is missing, tapping does
-// nothing: no empty popup, no stray «help.xxx» string — the label
-// simply behaves as static text.
-//
-// One text per label; no long-press variant. This widget covers
-// only the tap. Existing call sites that already wrap a label in
-// a Row (for alignment) are not disturbed: HelpLabel is designed
-// to sit inside the fixed-width label column used throughout the
-// rubka rows.
-//
-// The dialog is the ordinary notice frame (showNotice) — same
-// geometry, same signal-colored «ok». No animation, no translucent
-// scrim.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import 'app_scope.dart';

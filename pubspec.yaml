@@ -1,5 +1,5 @@
 name: polyrutina
-description: Бортовой журнал — след работы, привязанный к месту.
+description: Location-bound field journal and routines.
 publish_to: 'none'
 version: 0.1.1+3
 

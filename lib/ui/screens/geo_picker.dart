@@ -1,29 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// lib/ui/screens/geo_picker.dart — geo point picking on a map.
-//
-// Opened from the media picker sheet. Structure:
-//   — map (flutter_map) full-screen;
-//   — initial center — current position (if available);
-//   — live GPS tracking until the user touches the map. The marker
-//     follows the position stream and stops on the first tap;
-//   — tap on the map places a pin;
-//   — «save» pult fixes the coordinates and a snapshot of the map
-//     widget (RepaintBoundary → PNG) into media/ under the geo kind;
-//   — exit pult closes without saving.
-//
-// Scale. The default zoom is calculated so that the smaller side of
-// the screen corresponds to `bort.mapScale` meters (default 40). The
-// formula depends on the latitude and the screen size.
-//
-// User-Agent. Changed to 'com.polyrutina.app' to avoid blocks from
-// OSM tile servers.
-//
-// Tile sources. Five alternative raster sources are built in, none
-// requiring an API key (OSM, Esri, OpenTopo, HOT, CyclOSM).
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;

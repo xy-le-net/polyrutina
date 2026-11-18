@@ -1,30 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// routine_plate.dart — one routine tile in the list.
-//
-// Frame. Computed by borderFor (core/frame.dart). An overdue routine
-// (not completed, due date passed, notice was set) takes the signal
-// frame with doubled stroke — the same visual weight as a running
-// routine, without inverting the palette. If a routine is both
-// overdue and running, the running branch wins (running palette and
-// signal frame); the state is already visually distinct, and adding
-// a second signal-coloured layer would not read more strongly.
-//
-// Running palette. When running, uses the opposite theme.
-//
-// Resume. The "play" button starts the last worked-on block
-// (routine.lastBlockKind), falling back to "work" if none exists.
-// It uses the active field's ID; the shift is unified, so its
-// identity is not consulted by the toggle.
-//
-// Long press anywhere on the plate (including the right-hand pult)
-// opens the routine options sheet; the caller decides the contents.
-//
-// Font. Name, date, and number sizes are reduced by a fifth relative
-// to the former values.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import '../../data/routine.dart';
@@ -86,7 +59,6 @@ class RoutinePlate extends StatelessWidget {
       accent = bort.fgsignal;
     }
 
-    // Font sizes reduced by a fifth relative to the former values.
     final nameSize = side * bort.kName * 0.8;
     final dateSize = side * bort.kTitle * 0.7 * 0.8;
     final numberSize = side * bort.kNumberSmall * 0.8;
@@ -173,7 +145,6 @@ class RoutinePlate extends StatelessWidget {
             ),
           );
 
-    // Overdue marker: the word "просрочено" in the signal colour,
     // right after the date line. The doubled frame already says the
     // routine demands attention; the word says why.
     final Widget? overdueLabel = overdue

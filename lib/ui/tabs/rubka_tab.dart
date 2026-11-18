@@ -1,28 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// rubka_tab.dart — rubka tab.
-//
-// Five blocks: appearance, interface, control, data, permissions.
-// The «control» block is new (midnight, bort, shift toggle, mutexes,
-// map scale). The «artel» block was abolished earlier; the bort
-// history row moved from «data» to «control».
-//
-// Layout. Narrow: single column. Wide: two columns with chessboard
-// frame parity. Column composition on wide screens:
-//   left  — interface, control, data;
-//   right — appearance, permissions.
-// Parity alternates down each column independently: the first item
-// of each column is parity 0 (or 1, chosen so the two columns do not
-// start with the same thickness at the top edge — this keeps the
-// horizontal rhythm consistent with the previous two-column layout).
-//
-// BlockWrapper. Still needed: the child blocks (RubkaAppearance,
-// RubkaPermissions, RubkaControl) carry their own default parity; the
-// wrapper overrides it. The Block branch is retained for callers that
-// build a Block directly (interface, data).
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import '../core/app_scope.dart';

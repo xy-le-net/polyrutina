@@ -1,38 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// trace_layer.dart — trace layer.
-//
-// A trace is a universal entity: a note, a comment, a checklist,
-// an attachment to a file.
-//
-// Journal entry body (kind trace):
-//   {
-//     "kind": "text" | "checklist",
-//     "slot": "work",
-//     "text": "...",
-//     "items": [...],
-//     "parents": [...],
-//     "children": [...],
-//     "files": [{"kind":"audio","path":"...","name":"..."}],
-//     "field_parents": [...],
-//     "deleted": true
-//   }
-//
-// slot — routine block kind. kind — display form (text | checklist).
-//
-// Indices. To avoid O(N) lookups on every UI frame (TraceField
-// rebuilds, RoutineCard checks), a _traceIndex is maintained:
-//   Map<int parentId, Map<String "kind:slot", int traceId>>.
-// It caches the minimum ID found for a given parent, kind, and slot.
-// A fallback linear scan is performed if the index is stale (e.g.,
-// a trace was deleted or detached).
-//
-// Schema. The cache file includes a 'schema' version field. If the
-// loaded schema is older, the cache is discarded and rebuilt from
-// the journal.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -46,13 +11,11 @@ import 'database.dart';
 import 'journal_layer.dart';
 import 'journal_types.dart';
 
-// ─── Trace display form ───
 class TraceKind {
   static const String text = 'text';
   static const String checklist = 'checklist';
 }
 
-// ─── Media kinds ───
 class MediaKind {
   static const String audio = 'audio';
   static const String photo = 'photo';
@@ -63,7 +26,6 @@ class MediaKind {
   static const List<String> all = [audio, photo, video, geo, file];
 }
 
-// ─── One trace in memory ───
 class Trace {
   final int id;
   String kind;
@@ -233,7 +195,6 @@ class TraceLayer extends ChangeNotifier {
     super.dispose();
   }
 
-  // ─── Index maintenance ───
   void _rebuildIndices() {
     _traceIndex.clear();
     for (final t in traces.values) {

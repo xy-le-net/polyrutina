@@ -1,47 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// lib/data/theme_store.dart — colors and themes.
-//
-// Five roles, in the ladder order used across the app:
-//   1 — bgsignal: background of signal elements;
-//   2 — bg:       base background;
-//   3 — mid:      secondary content and soft strokes;
-//   4 — fg:       base content;
-//   5 — fgsignal: content of signal elements, the accent color.
-//
-// Theme selection. Three independent settings:
-//   customEnabled — use the «custom» palette;
-//   night         — force the night palette (mutually exclusive
-//                   with auto);
-//   auto          — follow the system brightness (mutually
-//                   exclusive with night).
-// When both night and auto are false, the day palette is used.
-//
-// Custom palette — stored as night. The custom entry in the theme
-// map is the NIGHT form; the day view is its mirror. When the
-// effective mode resolves to night (night on, or auto with a dark
-// system), the custom palette is shown as stored; when it resolves
-// to day, the mirrored form is shown. The visual appearance of the
-// custom palette is unchanged: day looks like the old day, night
-// like the old night, only the internal representation is inverted.
-// The built-in default custom colours are therefore given in their
-// night form: the mirror of the former day values. Saved user data
-// is flipped once, in operational_layer._loadFromFile, guarded by
-// the state-file schema.
-//
-// Built-in day and night are unchanged.
-//
-// Resolving. With customEnabled, the source palette is custom (night
-// form); otherwise the built-in day or night. Then:
-//   — night on: custom as stored, or built-in night;
-//   — auto on and dark system: custom as stored, or built-in night;
-//   — otherwise (day): mirrored custom, or built-in day.
-//
-// Opposite palette. Always the mirror of the current one
-// (bg ↔ fg, bgsignal ↔ fgsignal, mid fixed), for running blocks.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 class ThemeStore {
@@ -52,7 +8,6 @@ class ThemeStore {
     _invalidate();
   }
 
-  // ─── Theme selection ───
   bool _customEnabled = false;
   bool get customEnabled => _customEnabled;
   set customEnabled(bool v) {
@@ -117,7 +72,6 @@ class ThemeStore {
     systemBrightness = b;
   }
 
-  // ─── Resolution ───
   Map<String, Color> _computeCurrent() {
     final source = _customEnabled
         ? Map<String, Color>.from(_themes['custom'] ?? _customColors)
@@ -247,7 +201,6 @@ class ThemeStore {
   // Default custom palette, in its night form (dark background,
   // light text). This is the original custom palette: under the
   // new convention it already IS night, and the day view is its
-  // mirror (light background, dark text). The previous build
   // inverted these defaults by mistake, which showed the light
   // form in night mode.
   static const Map<String, Color> _customColors = {

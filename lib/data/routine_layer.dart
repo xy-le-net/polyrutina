@@ -1,46 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// routine_layer.dart — routine layer.
-//
-// Holds the list of routines and their blocks.
-//
-// Journal. Registered in JournalLayer for the routine kind.
-//
-// Cache invalidation. _loadFromFile returns true when the file
-// exists but its schema is older than the required version (or the
-// file is malformed). In that case the layer has no data, and the
-// persisted journal mark for it would short-circuit pump — the
-// routine list would stay empty forever. To avoid that, init calls
-// journal.clearMark('routine') after register, so the next pump
-// replays the journal for this layer only. Other layers keep their
-// marks and are not re-processed.
-//
-// Transactions. Actions producing several entries at once
-// (completing a routine, starting a block while stopping the others,
-// switching blocks between routines, clearing the date together with
-// the notice) are wrapped in journal.transaction.
-//
-// Cache. Written with a 200 ms debounce. currentRoutineId is
-// reconstructed on startup from the first running block. Cache
-// writes go through atomicWriteJson.
-//
-// Notice interval. Stored as noticeBeforeSec + noticeSet, journalled
-// as `set_notice` and `clear_notice`. Clearing the date clears the
-// notice in the same transaction. Old caches that carried
-// planned_seconds are dropped by the schema bump (cache schema 2)
-// and rebuilt from the journal.
-//
-// Overdue scheduler. The layer does not format notifications and
-// does not talk to the platform. Instead it exposes a slot of type
-// OverdueScheduler; main.dart attaches a real implementation after
-// init. Every mutation that can affect the deferred notice — date
-// change, notice change, completion, deletion — calls _refreshSchedule
-// or _cancelSchedule. When the slot is null, these calls are no-ops;
-// the next application startup scans every routine and reschedules
-// from scratch.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -169,7 +126,6 @@ class RoutineLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ─── Scheduler refresh helpers ───
   void _refreshSchedule(Routine r) {
     try {
       _scheduler?.refresh(r);
@@ -249,7 +205,6 @@ class RoutineLayer extends ChangeNotifier {
     super.dispose();
   }
 
-  // ─── Cache ───
   // Returns true when the journal must be replayed for this layer.
   //
   // Three cases yield true: stale schema, malformed file, and — the

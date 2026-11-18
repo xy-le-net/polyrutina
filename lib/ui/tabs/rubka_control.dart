@@ -1,39 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// rubka_control.dart — «control» block in the rubka.
-//
-// Contents, top to bottom:
-//
-//   — midnight;
-//   — bort: a row with today's active time; tap on the time opens
-//     the bort history dialog;
-//   — shift: the word «смена» with a checkbox; when the shift is
-//     on, today's shift time follows the word in parentheses, one
-//     space apart. The word opens help; the time in parentheses
-//     opens the shift history (the parentheses themselves are not
-//     underlined, only the time inside);
-//   — separator;
-//   — mutexes: routines and slots, and the shift mutex only when
-//     the shift checkbox is on (the stored value is preserved
-//     while the checkbox is off, and simply hidden);
-//   — separator;
-//   — map scale.
-//
-// Pult width. Every Pult placed inside an Expanded is wrapped in
-// Align(centerLeft): under the tight width constraint that Expanded
-// supplies, the pult's internal Container would otherwise stretch
-// to fill the row (and the GestureDetector, opaque, would swallow
-// taps across the whole width). Align loosens the constraint so
-// the pult keeps its natural size and hit area.
-//
-// Toggling the shift off is handled inside operational_layer: the
-// running shift stops, an actor entry is written to the journal,
-// but no routine is paused — the spec says the mutex is deliberately
-// ignored on that transition. Toggling it on restores the historical
-// series.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import '../core/app_scope.dart';
@@ -107,7 +71,6 @@ class RubkaControl extends StatelessWidget {
       );
     }
 
-    // ─── Midnight ───
     final midnightRow = row(
       helpKey: 'bort.midnight',
       label: i18n.t('bort.midnight'),
@@ -120,7 +83,6 @@ class RubkaControl extends StatelessWidget {
       ),
     );
 
-    // ─── Bort: a tappable link that shows today's time ───
     final bortRow = Padding(
       padding: rowPad,
       child: Row(
@@ -156,7 +118,6 @@ class RubkaControl extends StatelessWidget {
       ),
     );
 
-    // ─── Shift: word + «(time)» on one line, checkbox at right ───
     final shiftTimeStr = bort.shiftSecondsNow(0) <= 0
         ? '0${i18n.t('time.m')}'
         : fmtTime(bort.shiftSecondsNow(0), i18n.t);
@@ -228,7 +189,6 @@ class RubkaControl extends StatelessWidget {
       ),
     );
 
-    // ─── Mutexes ───
     final mutexes = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -288,7 +248,6 @@ class RubkaControl extends StatelessWidget {
       ],
     );
 
-    // ─── Map scale ───
     final mapScaleRow = row(
       helpKey: 'bort.map_scale',
       label: i18n.t('bort.map_scale'),

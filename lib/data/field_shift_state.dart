@@ -1,16 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// field_shift_state.dart — per-field shift state.
-//
-// The shift is independent for every field (root node). One instance
-// per field is kept in the operational layer's `shifts` map, keyed
-// by field id.
-//
-// Extracted from operational_layer to give the state its own name
-// and contract; the facade keeps only the map and the operations.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 class FieldShiftState {
   bool onShift = false;
   int totalShiftSeconds = 0;

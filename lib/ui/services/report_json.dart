@@ -1,48 +1,9 @@
-// ═══════════════════════════════════════════════════════════════════
-// lib/ui/services/report_json.dart — build and parse of the
-// portable routine format.
-//
-// data.json (schema = 1):
-//   {
-//     "schema": 1,
-//     "fields": [ { "id": 1, "name": "...", "parents": [], "is_root": true } ],
-//     "series": {
-//       "shift": [ { "field_id": 0, "year": 2026, "month": 11,
-//                    "days": { "1": 3600, "2": 7200 } } ],
-//       "bort":  [ { "field_id": 0, ... } ]
-//     },
-//     "routines": [ ... ]
-//   }
-//
-// The `series` block carries every month of every registered time
-// series. Shift is unified under field 0; the exporter therefore
-// walks only field 0 (the per-field loop is gone), keeping the
-// archive compact and the import side unambiguous. Archives produced
-// by older builds that contained per-field shift entries are still
-// read: the importer collapses them under field 0 (see
-// import_service.dart). No schema bump: the routine field rename
-// (planned_seconds → notice_before_sec + notice_set) is handled
-// leniently at parse time, and old archives carry the old name,
-// which the parser accepts.
-//
-// Notice interval. The former planned duration is now a lead time;
-// the JSON carries `notice_before_sec` (integer) and `notice_set`
-// (bool). Old archives carry `planned_seconds`; a non-zero value is
-// treated as «notice was set», with notice_before_sec taken as-is.
-// Because the two concepts are semantically different (duration vs
-// lead time), the numeric value is preserved verbatim — archives
-// round-trip byte-for-byte, even though the meaning is re-interpreted.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import '../../data/routine.dart';
 import '../core/app_scope.dart';
 
 class ReportJson {
   static const int schemaVersion = 1;
 
-  // ─── Build fields array ───
   static List<Map<String, dynamic>> buildFields(AppContext app) {
     final out = <Map<String, dynamic>>[];
     for (final n in app.fieldLayer.nodes.values) {
@@ -56,7 +17,6 @@ class ReportJson {
     return out;
   }
 
-  // ─── Build series block ───
   // Shift is unified: only field 0 is walked. Bort is always under 0.
   static Map<String, dynamic> buildSeries(AppContext app) {
     final out = <String, dynamic>{};
@@ -81,7 +41,6 @@ class ReportJson {
     return out;
   }
 
-  // ─── Build a single routine object ───
   static Map<String, dynamic> buildRoutine(AppContext app, Routine r) {
     final bort = app.bort;
     final traces = <Map<String, dynamic>>[];
@@ -135,7 +94,6 @@ class ReportJson {
     };
   }
 
-  // ─── Parse ───
   static ParsedRoutine? parseRoutine(Map<String, dynamic> j) {
     final schema = (j['schema'] as num?)?.toInt();
     if (schema == null || schema > schemaVersion) return null;
@@ -211,7 +169,6 @@ class ReportJson {
       }
     }
 
-    // Notice: prefer the new pair; fall back to the old name.
     final hasNewNotice =
         j.containsKey('notice_before_sec') || j.containsKey('notice_set');
     final int noticeBeforeSec;
@@ -245,7 +202,6 @@ class ReportJson {
     );
   }
 
-  // ─── Parse the series block ───
   // Returns a flat list of month records; an absent or malformed
   // block yields an empty list. Shift entries under non-zero fields
   // are collapsed under 0 at import time (see import_service.dart);

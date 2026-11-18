@@ -1,57 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// operational_layer.dart — operational layer («bort»).
-//
-// Facade over modules: ThemeStore, BortTime, DraftsStore, InstallStore,
-// BortFile, TimeSeries (registered instances: shift, bort), and
-// FieldShiftState.
-//
-// Unified shift. The shift is no longer bound to any field. It is
-// held under the zero-field key in the shifts map for serialization
-// compatibility, but callers use shiftFor(fieldId), which ignores
-// the argument and always returns the single instance. The shift
-// history is written under field 0 as well, mirroring the bort
-// history.
-//
-// Shift toggle. Controlled by `shiftEnabled`. When false, no shift
-// exists: no state, no history write, no mutex. Turning it off while
-// a shift runs stops the shift and writes an actor entry to the
-// journal, but the mutex is deliberately ignored — running routines
-// are not paused. Turning it on restores the historical series.
-//
-// Journal as source of truth. Every time a day total is written to a
-// series, the whole month is also logged as a `period_month` entry of
-// the actor kind. On reread (or after attachJournal) those entries
-// restore the series from the journal, so a lost or stale file is
-// rebuilt. The file remains a cache; the journal remains the origin.
-//
-// Theme selection. Three independent settings: custom, night, auto.
-// Night and auto are mutually exclusive; with both off, day is used.
-// Migration from the former `theme_day`/`theme_autoswitch` keys is
-// done with the sense inverted on `theme_day`.
-//
-// Custom palette — stored as night. The custom entry in the theme
-// map is the NIGHT form; the day view is its mirror. The default
-// custom palette is the original dark one (bg #3F4D5A, fg #B9B3A6),
-// which already IS night under this convention. The previous build
-// (schema 2) inverted both the stored palette and the defaults by
-// mistake; the defaults are fixed in code (theme_store.dart), and a
-// palette already saved by schema 2 is flipped back once on load.
-//
-// Schema. The state file carries a `schema` version.
-//   v1 → v2: shifts collapse (per-field map → single instance).
-//   v2 → v3: undo the wrong custom-palette inversion done by v2.
-//            v1 data is not touched by this step: what the user saw
-//            in v1 is already the night form under the new
-//            convention.
-//
-// Sizes. The `k*` coefficients are halved: frame pad, block gap,
-// radius and stroke. This brings the visual density to roughly the
-// same scale as the pult, which is the single unit for layout; see
-// the accompanying comment in defaults.json.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'dart:async';
 import 'dart:convert';
 
@@ -69,7 +15,6 @@ import 'journal_types.dart';
 import 'theme_store.dart';
 import 'time_series.dart';
 
-// ─── OperationalLayer ───
 class OperationalLayer extends ChangeNotifier {
   static const int _schemaVersion = 3;
 
@@ -146,7 +91,6 @@ class OperationalLayer extends ChangeNotifier {
 
   Map<String, Map<String, int>> exportCounters = {};
 
-  // Halved relative to the previous defaults. One unit (the pult
   // side, PultScope.side) is the single scale reference.
   double kPult = 1.0;
   double kPultSmall = 0.8889;
@@ -164,7 +108,6 @@ class OperationalLayer extends ChangeNotifier {
   OperationalLayer();
 
   // The single shift. The argument is kept for source compatibility
-  // with the previous multi-field API; it is ignored.
   FieldShiftState shiftFor(int fieldId) =>
       shifts.putIfAbsent(0, () => FieldShiftState());
 
@@ -293,7 +236,6 @@ class OperationalLayer extends ChangeNotifier {
     super.dispose();
   }
 
-  // ─── Shift day recording (unified, field 0) ───
   void _recordShiftDay(int fieldId, int curMid, int oldPrev) {
     final s = shiftFor(0);
     final prevDayStart = curMid - 86400;
@@ -342,7 +284,6 @@ class OperationalLayer extends ChangeNotifier {
     _logSeriesMonth('bort', 0, dt.year, dt.month);
   }
 
-  // ─── Theme migration ───
   void _migrateTheme(Map<String, dynamic> data) {
     final oldDay = data['theme_day'] as bool?;
     final oldAuto = data['theme_autoswitch'] as bool?;
@@ -511,7 +452,6 @@ class OperationalLayer extends ChangeNotifier {
       }
     }
 
-    // ─── Migrations ───
     //
     // v1 → v2: shift collapse (per-field map → single instance).
     //          Pick the running one; else the first by field id;
@@ -760,7 +700,6 @@ class OperationalLayer extends ChangeNotifier {
   static String traceDraftKey(int objectId, String slot) =>
       DraftsStore.traceKey(objectId, slot);
 
-  // ─── Shift ───
   void startShift(int fieldId) {
     if (!shiftEnabled) return;
     final s = shiftFor(0);

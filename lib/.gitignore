@@ -29,6 +29,6 @@ linux/flutter/ephemeral/
 .DS_Store
 Thumbs.db
 
-# локальное
+# local
 operational_layer.json
 *.sqlite

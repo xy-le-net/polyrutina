@@ -1,18 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// i18n.dart — dictionary.
-//
-// Reads assets/i18n.json, holds the current language, returns strings
-// by key. The dictionary file is edited by hand; the code is not
-// touched when adding languages.
-//
-// Resilient load. If the asset is missing, malformed, or (worst case)
-// a JSON array instead of an object, the loader falls back to an empty
-// dictionary so the app can still start. Previously a single typo in
-// i18n.json took down the whole app with a black screen.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';

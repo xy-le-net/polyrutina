@@ -1,16 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// time_series.dart — monthly totals for any registered series.
-//
-// One class for any monthly totals (shift, bort, and future kinds).
-// Instances differ only in their file name. The data shape is
-// {fieldId: {year: {month: {day: seconds}}}}.
-//
-// Extracted from operational_layer to give the series its own name
-// and contract; the facade keeps only the registry.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'dart:convert';
 import 'dart:io';
 

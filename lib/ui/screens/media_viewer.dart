@@ -1,63 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// lib/ui/screens/media_viewer.dart — full-screen media viewer.
-//
-// Shows media of a single kind, paged in reverse chronology: start
-// at the latest added, «back» — older, «forward» — newer. Buttons
-// are absent when there is nowhere to page.
-//
-// Embedded kinds. A TraceFile whose kind is «file» is inspected by
-// its extension: images, video, and audio are embedded exactly as
-// if they had been captured through the native pickers — same
-// viewers, same sliders, same play/pause pult. Only files with no
-// matching extension (archives, documents, unknown blobs) fall back
-// to the plain-name screen: basename (no internal path), open in
-// the system application via the bottom center pult.
-//
-// Header. ScreenHeader reserves the left zone for the root pult,
-// prints the block title and the routine subtitle (with the frame
-// counter when there is somewhere to page), and puts the exit pult
-// on the right.
-//
-// The bottom center pult varies by effective kind. Audio and video:
-// play/pause. Photo: share. Geo and unknown files: open externally.
-//
-// Subpult dot. Since the center pult carries a subpult, the pult
-// core draws a small fgsignal-colored dot in its bottom-right corner.
-//
-// Playback. Photo — InteractiveViewer. Video — video_player with
-// the play/pause on the bottom center pult; a position slider sits
-// above the pult row, with the position and total duration at its
-// ends (small). Audio — just_audio likewise; the total duration
-// sits at the screen center. Geo opens via url_launcher with the
-// geo: scheme, falling back to the web map. File opens via
-// open_filex in a system application.
-//
-// Geo view. The screenshot (if any) is stretched as the page
-// background (BoxFit.cover). The coordinates line is tap-to-copy;
-// feedback is a brief «copied» label over the coordinates, shown
-// for 1200 ms and then gone. No SnackBar (its slide-in is an
-// animation, which the project rules out).
-//
-// Scopes. BortScope (theme and colors), TraceScope (the layer used
-// for deletion), I18nScope (strings), AppScope (journal).
-//
-// Position ticks. The audio position stream fires roughly sixty
-// times per second. It is consumed by a StreamBuilder wrapping ONLY
-// the slider and the small position label, so the rest of the tree
-// is not rebuilt on every tick.
-//
-// Lifecycle. Players are created when the current frame appears
-// and are disposed on frame change, kind change, or screen exit;
-// unfinished initialization is cancelled via the mounted flag.
-//
-// Deletion. The removed frame is dropped from the local list; the
-// viewer moves to the previous valid frame (or the next, if there
-// is no previous). If nothing remains in this kind — the screen
-// closes. The file on disk stays as evidence of history.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'dart:async';
 import 'dart:io';
 
@@ -168,7 +108,6 @@ class _MediaViewerState extends State<MediaViewer> {
     super.dispose();
   }
 
-  // ─── Effective kind ───
   // For a TraceFile whose kind is «file», the extension decides
   // whether the content is embedded as photo, video, or audio.
   // Everything else (including unknown extensions) keeps the «file»
@@ -182,7 +121,6 @@ class _MediaViewerState extends State<MediaViewer> {
     return MediaKind.file;
   }
 
-  // ─── Bring players in accord with the current frame ───
   void _syncPlayers() {
     _audioStateSub?.cancel();
     _audioStateSub = null;
@@ -271,7 +209,6 @@ class _MediaViewerState extends State<MediaViewer> {
     } catch (_) {}
   }
 
-  // ─── Open externally ───
   Future<void> _openExternal(TraceFile f) async {
     try {
       if (f.kind == MediaKind.geo) {
@@ -294,7 +231,6 @@ class _MediaViewerState extends State<MediaViewer> {
     } catch (_) {}
   }
 
-  // ─── Copy geo coordinates ───
   // Tapping the «lat, lon» line copies it. Feedback is a brief
   // label over the coordinates; no SnackBar (its slide-in is an
   // animation).
@@ -308,7 +244,6 @@ class _MediaViewerState extends State<MediaViewer> {
     });
   }
 
-  // ─── Deletion ───
   Future<void> _remove(TraceFile f) async {
     final traceLayer = TraceScope.of(context);
     final journal = AppScope.of(context).journal;
@@ -361,7 +296,6 @@ class _MediaViewerState extends State<MediaViewer> {
     if (mounted) setState(() {});
   }
 
-  // ─── Duration/position as mm:ss (h:mm:ss above an hour) ───
   String _fmtDur(Duration d) {
     final h = d.inHours;
     final m = d.inMinutes.remainder(60);
@@ -421,7 +355,6 @@ class _MediaViewerState extends State<MediaViewer> {
     );
   }
 
-  // ─── Bottom row: prev · center · next ───
   Widget _bottomRow(TraceFile? f, OperationalLayer bort, double side) {
     final i18n = I18nScope.of(context);
     final ek = f == null ? null : _effectiveKind(f);
@@ -510,7 +443,6 @@ class _MediaViewerState extends State<MediaViewer> {
     return row(_audioPlaying);
   }
 
-  // ─── Subpult for the center pult ───
   List<PultSpec> _subsFor(TraceFile f, I18n i18n) => [
     PultSpec(
       id: 'media_share',
@@ -527,7 +459,6 @@ class _MediaViewerState extends State<MediaViewer> {
     ),
   ];
 
-  // ─── Slider for audio/video ───
   // No overlay on the thumb: the overlay color would be a soft
   // translucent halo, which the project rules out. Active track and
   // thumb share the signal color; the inactive track is mid.
@@ -609,7 +540,6 @@ class _MediaViewerState extends State<MediaViewer> {
     );
   }
 
-  // ─── Body of the current frame ───
   Widget _body(TraceFile? f, OperationalLayer bort, double side) {
     final i18n = I18nScope.of(context);
     if (f == null) {
@@ -727,7 +657,6 @@ class _MediaViewerState extends State<MediaViewer> {
     );
   }
 
-  // ─── Video body ───
   Widget _videoBody(TraceFile f, OperationalLayer bort, double side) {
     final ctrl = _video;
     if (ctrl == null || !ctrl.value.isInitialized) {
@@ -775,7 +704,6 @@ class _MediaViewerState extends State<MediaViewer> {
     );
   }
 
-  // ─── Audio body: total duration at the center, always ───
   Widget _audioBody(TraceFile f, OperationalLayer bort, double side) {
     final player = _audio;
     final dur = player?.duration;

@@ -1,41 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// lib/ui/screens/checklist_screen.dart — block checklist screen.
-//
-// Full-screen, opened from TraceField.
-//
-// Header. The AppBar is removed: the header is laid out through
-// ScreenHeader inside a SafeArea. ScreenHeader reserves the left
-// zone for the root pult, prints the block title and the routine
-// subtitle, and puts the exit pult on the right. The former
-// per-screen Padding + ControlRow + manual title column has been
-// pulled out into ScreenHeader so the header matches the other
-// full-screen sheets.
-//
-// Exit pult. Shows the number of unchecked items when there are
-// any; otherwise — a down arrow. Long press opens the subpult:
-// mark all, unmark, clear. There are no other counters on the
-// screen.
-//
-// Trace is distinguished by the pair (objectId, slot) and kind
-// (kind=checklist).
-//
-// Item list: PultTick on the left, text field on the right. At the
-// end — an empty field, from which the list grows. An empty non-last
-// one disappears on focus loss.
-//
-// Enter on the keyboard — commits the item and moves to the last
-// (empty) item.
-//
-// Saving — the whole body, an entry in the journal with the
-// «correction» flag.
-//
-// Scopes. Dependencies are read from point scopes: BortScope
-// (theme, sizes), TraceScope (the layer), I18nScope (strings).
-// AppScope is consulted only for the journal.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import '../../data/trace_layer.dart';
@@ -357,6 +319,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                               style: TextStyle(
                                 color: bort.fg,
                                 fontSize: itemSize,
+                                decoration: TextDecoration.none,
                               ),
                               decoration: InputDecoration(
                                 isDense: true,

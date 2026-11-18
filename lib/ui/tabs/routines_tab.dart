@@ -1,74 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// routines_tab.dart — routines and field tree (merged).
-//
-// This tab hosts both the routines list and the active field's tree.
-// Only the active field is shown; its name sits in the control row
-// together with the shift pulse (right edge). Tap on the name
-// switches fields; long press opens the node actions for any field
-// except the zero one (rename, new branch, attach, move, shake,
-// burn).
-//
-// Field enumeration. Every picker that lists fields walks ALL roots,
-// not just the zero field: otherwise other fields are unreachable.
-// This affects move-routine, move-branch, and attach-routine. Root
-// order is by node id ascending, stable across rebuilds. The zero
-// field (rootId) is the catch-all «все»: it is created first, it
-// cannot be deleted, and any content detached from its field lands
-// here.
-//
-// Shaking. Shaking a node re-attaches every routine and trace bound
-// to it directly to the root («все») before the node is removed;
-// child nodes are re-attached to the root as before. Burning removes
-// the branch and all its nodes; its routines are handled separately
-// (semantics unchanged).
-//
-// Attach routine. The former implementation listed nodes and did
-// not open a sheet at all; it has been rewritten to list the
-// routines not yet attached to the node, and to attach on tap.
-//
-// Detach. The routine actions sheet (long press on a plate) and the
-// move-routine sheet both expose «отвязать» when the routine has
-// any parent other than the root; detaching removes every field
-// parent at once, then binds the routine to the root («все»). A
-// routine that lives only in the root has no detach action — it is
-// already where detaching would put it.
-//
-// Overdue. A routine is overdue when the due date has passed, it is
-// not completed, and a notice was set (routine.isOverdue). Overdue
-// routines are ordered first inside each node's group; a bare line
-// (no word) separates them from the rest of the active list. The
-// doubled signal frame lives in RoutinePlate — visual only, ordering
-// here.
-//
-// Completed. Completed routines are collapsed by default under a
-// divider carrying the word «завершено» and the count in
-// parentheses. Tapping the divider toggles visibility. The expanded
-// state is per node (keyed by node id in _expandedDone) and reset
-// when the tab is rebuilt from scratch.
-//
-// Field plates. Roots and branches share one design: mid background,
-// normal-width signal frame, signal text and icons. Routine plates
-// are unchanged (parity 0, fg frame).
-//
-// Divider indent type. Both dividers take a `double` indent, not an
-// `int`.
-//
-// Grouping (per node):
-//   1. overdue (running or not) — signal-framed, doubled;
-//      bare line;
-//   2. active (running first, then by last pulse);
-//   3. «завершено (N)» divider;
-//   4. completed, by last pulse — visible only when the divider is
-//      expanded.
-//
-// Naming. A new field or branch is created with an empty name and
-// the rename dialog opens immediately with focus in the input. An
-// empty confirmation falls back to the default name; a non-empty one
-// is taken as is.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import '../../data/field_layer.dart';
@@ -170,7 +99,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final openRoutine = AppScope.of(context).openRoutine;
     final r = await routineLayer.createRoutine(journal);
     if (context.mounted) {
-      await openRoutine(r.id);
+      await openRoutine(r.id, autofocusName: true);
     }
   }
 
@@ -195,8 +124,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
   }
 
   double _indent(int depth) => depth <= 1 ? 4.0 : 4.0 + (depth - 1) * 20.0;
-
-  // ─── Tree-shaped node sheets ───
 
   void _collectNodeSubs(
     int nodeId,
@@ -482,9 +409,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     );
   }
 
-  // ─── Shake a node ───
   // Re-attach routines and traces bound directly to this node to
-  // the root («все»), then delete the node. Child nodes are
   // re-attached to the root by FieldLayer.deleteNode itself.
   Future<void> _shakeNode(int id) async {
     final app = AppScope.of(context);
@@ -528,7 +453,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
     _renameNodeDialog(node.id, '', defaultName: i18n.t('field.new_node'));
   }
 
-  // Empty name → automatic «поле №x» where x is the node's journal
   // id. The id is sparse by construction (it is the journal entry
   // id), but it is stable and never reused; that is preferable to a
   // dense ordinal that would shift after a neighbour is deleted.
@@ -586,7 +510,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
                     onTap: () async {
                       // Cancelling an empty name still assigns the
                       // automatic name — the spec says an empty
-                      // confirmation, via either «ок» or «отмена»,
                       // must not leave the field unnamed.
                       final wasEmpty =
                           currentText.trim().isEmpty &&
@@ -879,8 +802,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final isExpanded = _expanded.contains(nodeId) || node.isRoot;
 
     // Routines for this node. Unattached routines (empty
-    // fieldParents) are folded into the root («все») defensively;
-    // normally migration and the detach fallback keep that set
     // empty.
     final nodeRoutines = <Routine>[];
     for (final r in RoutineScope.of(context).routines) {

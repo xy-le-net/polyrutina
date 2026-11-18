@@ -1,50 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// import_service.dart — receiving routines from zip.
-//
-// Opened from the rubka's «import» pult: the system file sheet
-// (FileType.custom, *.zip, multiple). Each archive is read:
-//   data.json — routines, the field tree, and the series block;
-//   media/<name> — media files, matched by name against the traces.
-//
-// Streaming. The archive is decoded using a stream (InputFileStream)
-// rather than loading the entire file into memory, preventing OOM
-// errors on large archives. Media files are also streamed directly
-// to disk.
-//
-// data.json shape. ONE shape is accepted:
-//   {"schema": 1, "fields": [...], "series": {...}, "routines": [ ... ]}
-// The `series` block is optional; archives without it simply import
-// no series. Both the new `notice_before_sec` + `notice_set` pair
-// and the old `planned_seconds` field are accepted; see
-// report_json.dart for the mapping.
-//
-// Unified shift in archives. Newer exports carry shift series only
-// under field 0. Older archives may carry per-field entries. On
-// import, any shift month is collapsed under field 0 — the field
-// id in the archive is ignored for the shift kind. Totals are not
-// added: the last entry for a given (year, month) wins, mirroring
-// the way the unified shift keeps a single state rather than a sum.
-// The bort series is already field 0 by construction.
-//
-// Notice interval. The routine is applied via setNotice when the
-// imported archive carries a notice interval. If the routine has a
-// date and the notice is set, setNotice is called AFTER setSchedule
-// so that the layer does not reject it (setNotice bails when there
-// is no date). If the archive carries no notice, nothing is called;
-// the routine keeps its defaults.
-//
-// Deduplication. The source key of each parsed routine is
-// «deviceId/firstRun/routineId»; re-importing the same archive is
-// idempotent.
-//
-// Media orphan prevention. Media files are copied into media/ ONLY
-// for routines that are actually going to be imported, under fresh
-// monotone names (via nextMediaIndex). If the transaction fails,
-// every file written during the attempt is removed.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'dart:convert';
 import 'dart:io';
 
@@ -268,7 +221,6 @@ Future<ImportResult> _importZip(AppContext app, String path) async {
 
       // 3b. Apply series months.
       // The unified shift lives under field 0; the bort series too.
-      // Old archives that carried per-field shift entries are
       // collapsed under 0 here — the last entry for a (year, month)
       // wins, which mirrors the single-state semantics of the
       // unified shift. A non-zero field id from the archive is

@@ -1,50 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// days_tab.dart — «days» tab. Month calendar.
-//
-// The routine's day is determined as follows: completedAt, otherwise
-// scheduledAt, otherwise lastPulseAt, otherwise createdAt.
-//
-// Marks in the cell:
-//   — completed — underlined number;
-//   — scheduled — square border;
-//   — unfinished — round border.
-//
-// Legend. Always displayed row-by-row (Column) regardless of screen
-// orientation. Each legend item is clickable and opens a pult sheet
-// listing the corresponding routines for the visible month.
-//
-// Pagination. The control row (prev button, month title, next
-// button) is fixed at the top; the body below is a PageView. Each
-// page is a full month — grid and legend together — so the legend
-// scrolls with its month rather than staying put. Swiping anywhere
-// below the control row flips the month; the header stays fixed.
-//
-// Infinite scroll. The PageView is built with `itemCount: null`,
-// i.e. forward-infinite, and the controller starts at a very large
-// initial page (see _centerPage). Backward movement is bounded only
-// by that starting index, which corresponds to roughly eight
-// thousand years — practically unbounded for a calendar. The month
-// shown on page i is `_baseMonth` shifted by `(i − _centerPage)`
-// months.
-//
-// Button animation. Prev/next animate the controller; a flag
-// (_animating) ignores repeated taps while the transition runs, so a
-// quick double press does not compound the movement.
-//
-// Title update. The month title is on the fixed control row and is
-// driven by _currentPage. The controller's listener updates
-// _currentPage as the page settles, so the title follows the swipe
-// (or the button press) without snapping only at the end.
-//
-// Layout. On narrow screens, the grid and the legend are stacked
-// vertically. On wide screens, they are split into two columns.
-// Crucially, the grid's width is constrained based on the available
-// HEIGHT (at most 6 rows), ensuring the entire month fits on the
-// screen without vertical scrolling even in landscape mode.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import '../../data/i18n.dart';
@@ -118,8 +71,6 @@ class _DaysTabState extends State<DaysTab> {
       _animating = false;
     }
   }
-
-  // ─── Per-month extraction ───
 
   int? _dayOf(DateTime month, Routine r) {
     if (r.completed && r.completedAt != null) {
@@ -295,7 +246,6 @@ class _DaysTabState extends State<DaysTab> {
     );
   }
 
-  // ─── One month's page (grid + legend) ───
   Widget _buildMonthPage(
     int pageIndex,
     OperationalLayer bort,
@@ -650,7 +600,7 @@ class _DaysTabState extends State<DaysTab> {
       withMidnight.millisecondsSinceEpoch ~/ 1000,
     );
     if (!mounted) return;
-    await app.openRoutine(r.id);
+    await app.openRoutine(r.id, autofocusName: true);
   }
 
   IconData _statusIcon(Routine r) {

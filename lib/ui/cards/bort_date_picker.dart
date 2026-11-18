@@ -1,29 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// bort_date_picker.dart — custom date-and-time picker in the bort
-// style.
-//
-// Contract. Returns a full moment (year, month, day, hour, minute).
-// The moment is what the caller stores in the routine; the caller no
-// longer applies the midnight setting on top. When a routine is
-// given a date without an explicit time, the caller should pass an
-// `initial` whose time-of-day is zero (DateTime(y, m, d)); the
-// picker then seeds the time field with the technical noon
-// (kBortTechNoonHour : kBortTechNoonMinute).
-//
-// Fixed month block. The grid is pinned to six rows: a 31-day month
-// beginning on Sunday needs six rows, and six fits every month. The
-// block therefore never changes size while the user pages through
-// months, and no days are ever cut.
-//
-// Time field. A single hh:mm field sits below the grid. It is
-// pre-seeded from the initial moment's time-of-day when the caller
-// supplied one, or from technical noon otherwise. Tapping a day
-// reads the field; an unparseable or out-of-range value falls back
-// to technical noon.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import '../../data/bort_time.dart';
@@ -153,7 +127,11 @@ Future<DateTime?> showBortDatePicker(
                       ),
                       Text(
                         '${viewing.year}.${two(viewing.month)}',
-                        style: TextStyle(color: bort.fg, fontSize: side * 0.5),
+                        style: TextStyle(
+                          color: bort.fg,
+                          fontSize: side * 0.5,
+                          decoration: TextDecoration.none,
+                        ),
                       ),
                       Pult(
                         spec: PultSpec(
@@ -191,7 +169,11 @@ Future<DateTime?> showBortDatePicker(
                     child: TextField(
                       controller: timeCtrl,
                       keyboardType: TextInputType.datetime,
-                      style: TextStyle(color: bort.fg, fontSize: side * 0.5),
+                      style: TextStyle(
+                        color: bort.fg,
+                        fontSize: side * 0.5,
+                        decoration: TextDecoration.none,
+                      ),
                       textAlign: TextAlign.center,
                       decoration: InputDecoration(
                         isDense: true,

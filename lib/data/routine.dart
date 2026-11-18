@@ -1,67 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// lib/data/routine.dart — routine and its blocks.
-//
-// Routine: id, name, creation time, last action time, last
-// effective pulse time, completion-install time, scheduled date,
-// notice interval, five blocks, flags, completion flag, sourceKey,
-// fieldParents (nodes of the field graph this routine is attached to),
-// and lastBlockKind.
-//
-// Block: kind, accumulated seconds, start mark, time-edited flag.
-//
-// lastActionAt. Time of the last action — for sorting.
-//
-// lastPulseAt. Time of the last effective pulse — on block start
-// or stop. Used to pick the day in the «days» calendar, where
-// other actions (rename, flag change) must not shift the mark.
-//
-// completedAt. The moment completion was set; cleared when it is
-// unset. The senior measure of the day when the mark is chosen in
-// the calendar.
-//
-// scheduledAt. Planned end date (Unix seconds). Zero or null means
-// absent.
-//
-// noticeBeforeSec. Notice interval: how long before the due date
-// the user should be reminded. This replaces the former
-// «plannedSeconds» (planned duration) — the pult now sets a lead
-// time, not a target effort. Zero is a valid value («remind right
-// at the due moment»); whether a notice was actually set is told
-// apart by noticeSet.
-//
-// noticeSet. True when a notice interval was explicitly assigned.
-// This is what makes «overdue» distinguishable from «never had a
-// notice»: zero seconds is a legitimate interval, so the flag,
-// not the number, carries the fact of assignment. Cleared when
-// the date is cleared, per the spec.
-//
-// flags. JournalFlag bits. Edited in the card.
-//
-// completed. Completion flag. Set in the «summary» block.
-//
-// sourceKey. Identifier of the source routine this one was
-// imported from: «deviceId/firstRun/routineId» of the exporting
-// device. Empty for routines created natively or via duplication.
-//
-// fieldParents. Identifiers of the field nodes (graph vertices)
-// to which this routine is attached. An empty list means the
-// routine is unattached; the UI treats such a routine as belonging
-// to no field (and the notification body labels it «shared»).
-//
-// lastBlockKind. The kind of the most recently active block.
-//
-// timeEdited (per block). True when time was edited manually.
-//
-// isOverdue. A derived predicate: the due date has passed and the
-// routine is not completed. A notice is not required: any assigned
-// due date makes the routine overdue once it is past, and the
-// scheduler falls back to the technical noon of the due day when
-// no lead time was set. This drives the first-place, doubled-frame
-// rendering in the routines list and the overdue push at startup.
-//
-// Block kinds: prep, transit, work, idle, closeout.
-// ═══════════════════════════════════════════════════════════════════
-
 class RoutineBlock {
   static const String prep = 'prep'; // preparation
   static const String transit = 'transit'; // transit
@@ -215,8 +151,6 @@ class Routine {
     return null;
   }
 
-  // ─── Derived status ───
-
   // Whether this routine is presently overdue. See the header for
   // the rule: due date passed, not completed, notice was set.
   bool isOverdueAt(int now) {
@@ -237,7 +171,6 @@ class Routine {
     if (noticeSet) return due - noticeBeforeSec;
     // No notice assigned: fall back to the technical noon of the
     // due day, capped at the due moment itself when the deadline
-    // falls earlier than noon. This guarantees a reminder for every
     // assigned due date, whether or not a lead time was set.
     final d = DateTime.fromMillisecondsSinceEpoch(due * 1000);
     final noon = DateTime(d.year, d.month, d.day, 12, 0);
@@ -264,9 +197,7 @@ class Routine {
   };
 
   // Lenient parsing: a damaged record must not take down the whole
-  // cache. Only `id` and `created_at` are mandatory. Both the old
-  // planned_seconds and the new notice_before_sec are accepted so
-  // that archives built before the rename still load.
+  // cache. Only `id` and `created_at` are mandatory.
   factory Routine.fromJson(Map<String, dynamic> j) {
     final id = (j['id'] as num?)?.toInt();
     final createdAt = (j['created_at'] as num?)?.toInt();
@@ -286,7 +217,6 @@ class Routine {
       }
     }
 
-    // Notice field: prefer the new name, fall back to the old one.
     final rawNotice =
         (j['notice_before_sec'] as num?)?.toInt() ??
         (j['planned_seconds'] as num?)?.toInt() ??
@@ -296,9 +226,7 @@ class Routine {
     if (hasNewNoticeFlag) {
       noticeSet = j['notice_set'] as bool? ?? false;
     } else {
-      // Old archives carried no explicit flag; a non-zero interval
-      // is the historical signal of assignment. Zero seconds was
-      // never a real value under the old semantics.
+      // A non-zero interval indicates that a notice was assigned.
       noticeSet = rawNotice > 0;
     }
 

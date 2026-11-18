@@ -1,36 +1,5 @@
-// ═══════════════════════════════════════════════════════════════════
-// format.dart — shared formatters for dates, durations, and names.
-//
-// Everything language-dependent (time-unit labels, weekdays) goes
-// through the translator Translate (a String Function(String)).
-//
-// Unit labels: time.d, time.h, time.m, time.s.
-// Weekdays: time.mon, time.tue, time.wed, time.thu, time.fri,
-//           time.sat, time.sun.
-//
-// Leading zero — only on the second number of a pair («3ч 07м»,
-// «3д 05ч»). A single number carries no zero («7м», «5с»).
-//
-// Notice interval. The former planned-duration field is now a
-// notice interval: how long before the due date to remind the
-// user. The format and parser are the same («days:hours:minutes»,
-// capped at kNoticeMaxSec), only the name and the meaning changed.
-// The old names (fmtPlannedTime, parsePlannedTime, kPlannedMaxSec)
-// are gone; the imports in routine_card/planned_picker were updated
-// accordingly.
-//
-// File names. safeFileName strips characters forbidden by the
-// filesystem (backslash, slash, colon, asterisk, question mark,
-// quote, angle brackets, pipe) and replaces each with an uppercase
-// «X». safeFileNameOr additionally falls back to «noname» when the
-// result is empty — the convention used by the export report.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 typedef Translate = String Function(String key);
 
-// ─── Date «пн 06.10 10:31» ───
 String fmtDate(int unixSec, Translate t) {
   final d = DateTime.fromMillisecondsSinceEpoch(unixSec * 1000);
   final wd = weekdayKey(d.weekday);
@@ -39,7 +8,6 @@ String fmtDate(int unixSec, Translate t) {
       '${two(d.hour)}:${two(d.minute)}';
 }
 
-// ─── Full date with the year — for the report ───
 String fmtDateFull(int unixSec, Translate t) {
   final d = DateTime.fromMillisecondsSinceEpoch(unixSec * 1000);
   final wd = weekdayKey(d.weekday);
@@ -48,7 +16,6 @@ String fmtDateFull(int unixSec, Translate t) {
       '${two(d.hour)}:${two(d.minute)}';
 }
 
-// ─── Short time «9ч 03м», «3д 5ч», «7м» ───
 String fmtTime(int sec, Translate t) {
   if (sec < 0) sec = 0;
   final days = sec ~/ 86400;
@@ -60,7 +27,6 @@ String fmtTime(int sec, Translate t) {
   return '$minutes${t('time.m')}';
 }
 
-// ─── Editable time format: «дд:чч:мм:сс» ───
 String fmtEditable(int sec) {
   if (sec < 0) sec = 0;
   final d = sec ~/ 86400;
@@ -73,7 +39,6 @@ String fmtEditable(int sec) {
   return '${two(m)}:${two(s)}';
 }
 
-// ─── Editable time parsing ───
 // 1 part: minutes (e.g., "30" -> 30 minutes).
 // 2 parts: minutes:seconds.
 // 3 parts: hours:minutes:seconds.
@@ -112,7 +77,6 @@ int? parseEditable(String s) {
   return null;
 }
 
-// ─── Notice interval: «days:hours:minutes» ───
 // Days — up to three digits; hours and minutes — always two.
 // The ceiling is 999 days short of a full year.
 const int kNoticeMaxSec = 999 * 86400 + 23 * 3600 + 59 * 60;
@@ -127,7 +91,6 @@ String fmtNoticeTime(int sec) {
   return '$d:${two(h)}:${two(m)}';
 }
 
-// ─── Notice interval parsing ───
 // One number — minutes. Two, colon-separated — hours and minutes.
 // Three — days, hours, minutes. Any part must be a non-negative
 // integer without a digit limit; the canonical reduction happens
@@ -166,7 +129,6 @@ int? parseNoticeTime(String s) {
   return total;
 }
 
-// ─── Weekday key ───
 // Public: both the formatters above and action_dialog use it.
 String weekdayKey(int weekday) {
   switch (weekday) {
@@ -188,13 +150,11 @@ String weekdayKey(int weekday) {
   }
 }
 
-// ─── Forbidden-character replacement ───
 String safeFileName(String s) {
   final bad = RegExp(r'[\\/:*?"<>|]');
   return s.replaceAllMapped(bad, (_) => 'X');
 }
 
-// ─── Forbidden-character replacement with fallback ───
 String safeFileNameOr(String s) {
   final out = safeFileName(s).trim();
   return out.isEmpty ? 'noname' : out;

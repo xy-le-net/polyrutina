@@ -1,81 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// main.dart — entry point and governor.
-//
-// Startup order: journal, bort, trace, field (with root creation),
-// routine, dictionary, overdue scheduler, notification manager.
-// Then — journal.start(). Finally — a one-pass reconciliation of
-// deferred notices and overdue routines.
-//
-// Waiting screen. Before the layers are ready the app paints a
-// waiting screen, not a blank: the app icon (BoxFit.contain) on a
-// fixed background, and a slogan below it. The background is pinned
-// to the same colour as the native splash (flutter_native_splash
-// `color` in pubspec.yaml), which in turn mirrors `splash_bg` in
-// assets/defaults.json; a theme-dependent background would flash
-// between two colours during startup. The slogan is read from the
-// dictionary under the key `slogans` (one entry per language, lines
-// separated by «\n») and alternates on each launch. To have the
-// dictionary available before the layers are ready, the language is
-// peeked from assets/defaults.json and the dictionary is loaded at
-// the top of _init; the waiting screen then shows the slogan
-// immediately.
-//
-// Field tab merged into routines. The separate «field» tab has been
-// removed; the tree is now built on top of the routines tab.
-//
-// Artel tab removed. The former stub has been abolished together
-// with its block in the rubka; the tab list now carries routines,
-// days, and rubka only.
-//
-// Shade actions. The «stop» buttons on ongoing notifications do not
-// open the app (showsUserInterface: false). The Android plugin calls
-// the background isolate, which writes pending_action.json; the
-// application reads and deletes that file. Two paths consume it:
-//
-//   — on resume (a prompt reaction when the user comes back);
-//   — on a periodic 2-second timer (when the app is in the
-//     foreground, the state is applied within two seconds; this is
-//     slower than the ticker's 500 ms, and the poll cost is a single
-//     `exists` call — no flicker, no per-tick I/O storm).
-//
-// Both paths go through _applyShadeAction, so the semantics are
-// identical: stop the shift or the routine exactly as an in-app
-// press does, honouring the mutexes (mutexShift on shift stop,
-// mutexRoutines/mutexSlots on routine stop), and cancel the
-// corresponding notification immediately.
-//
-// Overdue scheduler. A small adapter (_OverdueSchedulerImpl) is
-// attached to RoutineLayer after init. On every mutation that can
-// affect the deferred notice — schedule change, notice change,
-// completion, deletion — the layer calls refresh or cancel; the
-// adapter cancels the old schedule, and, when the routine is still
-// unfinished and has a future notice moment, schedules a fresh one
-// via NotificationService.scheduleOverdueNotice (zonedSchedule).
-//
-// Startup reconciliation (_reconcileOverdue). Once per launch, after
-// init and language setup:
-//
-//   — cancel every scheduled notice for every routine (a clean
-//     slate; the plugin's alarms survive app restarts, so a stale
-//     one must not linger);
-//   — for each unfinished routine with a date:
-//       notice moment in the future → schedule it;
-//       notice moment past, due in the future → audible push now;
-//       both past → audible overdue push now (and every launch
-//       thereafter, until the routine is completed).
-//
-// The notice moment is derived by Routine.noticeMoment: the due
-// moment minus the lead time when a notice was assigned, and the
-// technical noon of the due day (capped at the due moment itself)
-// otherwise. A routine with a date therefore always has a moment,
-// whether or not a notice was set.
-//
-// The push is routine-scoped (per-routine id), so several overdue
-// routines coexist in the shade.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'dart:async';
 import 'dart:convert';
 
@@ -290,7 +212,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     if (mounted) setState(() {});
   }
 
-  // ─── Startup reconciliation of deferred notices ───
   // Cancel every scheduled notice (clean slate), then re-evaluate
   // every unfinished routine with a date and a notice. See the file
   // header for the three branches.
@@ -391,7 +312,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     if (mounted) setState(() {});
   }
 
-  // ─── Body-tap routing ───
   void _onNotificationTap() {
     final payload = NotificationService.payloadNotifier.value;
     if (payload == null) return;
@@ -408,7 +328,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     }
   }
 
-  // ─── Pending shade action ───
   Future<void> _handlePendingNotificationAction() async {
     final data = await NotificationService.consumePendingAction();
     if (data == null) return;
@@ -525,10 +444,13 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     if (_tab != i) setState(() => _tab = i);
   }
 
-  Future<void> _openRoutine(int id) async {
+  Future<void> _openRoutine(int id, {bool autofocusName = false}) async {
     setState(() => _openedRoutineId = id);
     await _navigatorKey.currentState?.push(
-      MaterialPageRoute(builder: (_) => RoutineCard(routineId: id)),
+      MaterialPageRoute(
+        builder: (_) =>
+            RoutineCard(routineId: id, autofocusName: autofocusName),
+      ),
     );
     if (mounted) setState(() => _openedRoutineId = null);
   }
@@ -610,7 +532,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     }
   }
 
-  // ─── Waiting screen ───
   // Painted until _bootDone is set. Shows the app icon on the fixed
   // splash background, and a slogan below when the dictionary is
   // already loaded. The slogan is picked from `slogans` (one entry
@@ -666,7 +587,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     );
   }
 
-  // ─── Error screen ───
   Widget _errorScreen() {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -846,7 +766,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   }
 }
 
-// ─── Overdue scheduler adapter ───
 // The layer knows only the contract (refresh / cancel); the adapter
 // owns the formatting and the platform calls. Kept in main.dart so
 // the layer stays UI-free.

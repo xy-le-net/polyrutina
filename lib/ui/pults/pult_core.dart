@@ -1,24 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// pult_core.dart — pult core: specification, state, provider, and
-// the Pult widget.
-//
-// Confirmation. A confirmable pult (confirm && onTap) does not act
-// on tap at once: the first tap grows it via AnimatedScale (only the
-// core, not the label) to indicate the need for a second tap.
-// The confirming state also applies the signal palette (coreColor =
-// signal, iconColor = bg) to visually separate the first tap from
-// a normal press.
-//
-// Error Handling. Callbacks (onTap) are wrapped in a try-catch block
-// to prevent unexpected exceptions from crashing the application or
-// breaking the widget tree.
-//
-// Caching. Text width calculations for labels are cached statically
-// to avoid creating TextPainter instances on every frame.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import '../core/app_scope.dart';
@@ -240,13 +219,11 @@ class Pult extends StatelessWidget {
     final rInner = side * 0.14;
     final rCore = side * 0.10;
 
-    // Icon size increased by a third (former 0.45 and 0.60).
     final baseIconSize = selected ? side * 0.80 : side * 0.60;
 
     final hasCenter = spec.centerText != null;
     final centerLen = spec.centerText?.length ?? 0;
 
-    // Numeric reflection retains its former size (0.45 or 0.60)
     final numBaseSize = selected ? side * 0.60 : side * 0.45;
     final centerSize = centerLen <= 1
         ? numBaseSize

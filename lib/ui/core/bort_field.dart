@@ -1,20 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// bort_field.dart — input field for a bort value.
-//
-// Own state, own controller, own focus.
-//
-// Commit: on focus loss or on Enter (the check mark on the keyboard).
-// Enter additionally drops focus, so the cursor goes out and the
-// keyboard hides.
-//
-// Optional hint is shown while the field is empty.
-//
-// autofocus — when true, the field requests focus on first build;
-// used by the rename dialog so the user can type at once.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import 'app_scope.dart';
@@ -95,7 +78,7 @@ class _BortFieldState extends State<BortField> {
       readOnly: widget.readOnly,
       autofocus: widget.autofocus,
       cursorColor: cursor,
-      style: TextStyle(color: widget.fg),
+      style: TextStyle(color: widget.fg, decoration: TextDecoration.none),
       decoration: InputDecoration(
         isDense: true,
         border: widget.showBorder

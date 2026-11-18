@@ -1,33 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// field_layer.dart — field layer (graph of nodes).
-//
-// Holds the tree/graph of field nodes. The default root node (buffer)
-// is created on first run and cannot be deleted. User-created root
-// nodes represent separate fields (e.g. construction sites) and can
-// be switched between.
-//
-// activeFieldId. The ID of the field currently being viewed.
-// Determines which shift is displayed and which field new routines
-// are attached to.
-//
-// Renaming. All nodes, including roots, can be renamed.
-//
-// Deletion. Every node except the zero field (the default root) can
-// be deleted. Deleting a node with children is a multi-step
-// operation: on shake, the children are re-attached to the zero
-// field; on burn, they are removed recursively. This is wrapped in
-// a single journal transaction to avoid multiple pumps and
-// intermediate states.
-//
-// isDescendant. A public method used to determine if a node is a
-// descendant of another. Crucial for preventing cycles during
-// attachment and for mutex shift logic in AppScope.
-//
-// Atomic write. Uses the shared atomicWriteJson helper.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -125,9 +95,7 @@ class FieldLayer extends ChangeNotifier {
             final n = FieldNode.fromJson(Map<String, dynamic>.from(e));
             nodes[n.id] = n;
             // The buffer root is the FIRST root seen, not the last.
-            // The previous «last wins» overwrote rootId on every new
             // root, so the fallback used by migrateFieldParents
-            // attached every legacy routine to the newest field.
             if (n.isRoot && rootId == null) rootId = n.id;
           } catch (_) {
             // Skip a single malformed node; keep the rest.
@@ -260,8 +228,6 @@ class FieldLayer extends ChangeNotifier {
     activeFieldId = null;
     notifyListeners();
   }
-
-  // ─── Mutations ───
 
   Future<FieldNode> createRootIfNeeded(
     JournalLayer journal, {

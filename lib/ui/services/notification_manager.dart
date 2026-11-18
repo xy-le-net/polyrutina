@@ -1,40 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// notification_manager.dart — orchestrates ongoing notifications.
-//
-// Listens to the ticker and the layer states to show, update, and
-// cancel the ongoing notifications for the unified shift and the
-// active routine block.
-//
-// Unified shift. The shift is no longer bound to a field: one timer
-// for the entire application, stored under the zero-field key.
-//
-// Bodies. The manager formats the content; the service only shows
-// and cancels. Shift: title «смена» (no field name), body two lines
-// — «текущее» (live time since start, ticking) and «сегодня»
-// (today's total, refreshed once per minute via the same change
-// detector used for routines). Routine: title is the field name (or
-// «общее» if unattached), body four lines — routine name, current
-// slot with its time, and «всего: X». No field name is prepended to
-// the routine title itself; the field lives on the first body line.
-//
-// Throttling. The system's chronometer handles the ticking display.
-// The notification is only updated when its body string actually
-// changes (e.g., once a minute, or when a block changes). No
-// redundant platform-channel calls.
-//
-// Stop buttons. The «stop» actions reach the app through
-// pending_action.json; they are applied by main.dart with the same
-// semantics as an in-app press (mutexes honoured). The manager only
-// makes sure that when the shift or the routine stops, the
-// corresponding notification is cancelled promptly.
-//
-// Shift gating. When bort.shiftEnabled is false, no shift
-// notification is shown or refreshed; a stale one is cancelled if
-// present.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import '../../data/field_layer.dart';
 import '../../data/i18n.dart';
 import '../../data/operational_layer.dart';
@@ -85,10 +48,6 @@ class NotificationManager {
     _updateRoutine(now, force: force);
   }
 
-  // ─── Shift notification ───
-  // Title: «смена» — the field is deliberately not mentioned.
-  // Body: «текущее: X» and «сегодня: Y» on separate lines. «текущее»
-  // is the elapsed time since the current shift started; «сегодня»
   // is today's total, recalculated at each tick, but pushed to the
   // platform only when the visible string changes (the chronometer
   // in the notification handles the seconds).
@@ -126,12 +85,9 @@ class NotificationManager {
     _wasShiftActive = true;
   }
 
-  // ─── Routine notification ───
-  // Title: the field name, or «общее» if the routine is unattached.
   // Body (four lines):
   //   <routine name>
   //   <current slot>: <its time>
-  //   всего: <total>
   // The current slot's time restarts on every slot change, but the
   // total never resets. On slot change the body string differs, so
   // the push is refreshed immediately.
@@ -152,7 +108,6 @@ class NotificationManager {
       return;
     }
 
-    // Field label: first bound field's name, or «общее» when the
     // routine has no field parents.
     String fieldName;
     if (currentRoutine.fieldParents.isNotEmpty) {

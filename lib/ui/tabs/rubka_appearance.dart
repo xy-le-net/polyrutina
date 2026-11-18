@@ -1,28 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// lib/ui/tabs/rubka_appearance.dart — «appearance» block in the rubka.
-//
-// Three theme toggles:
-//   — «custom»: use the custom palette;
-//   — «night»: force the night palette (mutually exclusive with auto);
-//   — «auto»: follow the system brightness (mutually exclusive with
-//     night). With both off, day is used.
-//
-// The custom role editor is shown only when the custom palette is
-// enabled. The custom palette is now stored in its night form (see
-// theme_store.dart); the editor therefore writes to the same entry,
-// and the visible day view is the mirror. No logic change is needed
-// here: the fields are the same five roles, the stored hex strings
-// come from ThemeStore.toFlatStrings() and go back through
-// applyThemeKey.
-//
-// Labels use HelpLabel; the three theme toggles each have a
-// `help.theme.*` text. Role labels (bg, fg, …) stay plain — they are
-// not settings, only slots of the palette; the section heading above
-// carries the group help.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import '../../data/theme_store.dart';

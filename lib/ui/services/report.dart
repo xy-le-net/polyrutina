@@ -1,33 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// report.dart — routines report and zip packing.
-//
-// The report is textual and human-readable. Each routine is a
-// section: completion mark, name, state, creation date, scheduled
-// date, notice interval (if set), blocks with time, all traces
-// (text, checklists, geo, files).
-//
-// Notice interval. The former planned duration is now a lead time —
-// how long before the due date to remind. It is printed ONLY when
-// the routine has a due date; the caption is «предуведомление» and
-// the value uses the same «days:hours:minutes» format the pult
-// accepts. Zero seconds is a legitimate value («remind right at the
-// due moment») and is printed as 0:00:00.
-//
-// The archive contains report.txt, data.json, and media/.
-//
-// data.json carries routines, fields, and the full series block
-// (shift under field 0, bort under field 0, every month). Media
-// files are packed as before.
-//
-// Streaming. The archive is packed using ZipFileEncoder directly to
-// disk, avoiding loading the entire zip into memory.
-//
-// Isolate. Zip compression and media reading are offloaded to a
-// background isolate (Isolate.run) to keep the UI thread responsive.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
@@ -46,7 +16,6 @@ import '../core/format.dart';
 import '../core/progress_dialog.dart';
 import 'report_json.dart';
 
-// ─── Isolate helper ───
 Future<void> _buildArchiveIsolate(Map<String, dynamic> args) async {
   final zipPath = args['zipPath'] as String;
   final reportText = args['report'] as String;

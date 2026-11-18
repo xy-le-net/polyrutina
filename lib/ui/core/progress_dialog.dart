@@ -1,23 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// lib/ui/core/progress_dialog.dart — circular progress dialog.
-//
-// Frame geometry lives in DialogFrame: bg fill, dim border,
-// kRadius corners, kFramePad inset. Inside — title, circular
-// progress with a percentage at the center, and a text prompt.
-//
-// No cancel button. The app might freeze during heavy synchronous
-// operations (though we try to avoid it), so a cancel button that
-// doesn't actually abort the work is deceptive. Instead, the user
-// is shown a polite message: 'common.wait' (e.g. "please wait").
-//
-// Progress. The value runs from 0.0 to 1.0. Percentages are shown
-// as integers (no decimals). The ring is drawn with the standard
-// CircularProgressIndicator at `value`; the arc is signal-colored,
-// the track is dim.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import '../pults/pult_core.dart';

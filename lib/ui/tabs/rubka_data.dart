@@ -1,41 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// rubka_data.dart — «data» block in the rubka.
-//
-// Contents, top to bottom:
-//
-//   Group 1 — journal and transfer:
-//     — journal: volume of the bort files;
-//     — reread: reset layer memory and run through all entries;
-//     — delete: erase all journal entries (progress + confirm);
-//     — compress: JournalCompactor over a progress dialog;
-//     — separator;
-//     — media: volume of the attachments folder;
-//     — shake: delete files not attached to anything;
-//     — separator;
-//     — export: build the routines zip and share it. The row also
-//       shows the total size of the exports folder; a long press
-//       opens a subpult to clear that folder (with confirmation);
-//     — import: open the system file sheet and report totals
-//       (progress shown during import).
-//
-//   Group 2 — other:
-//     — reset: caches and defaults to the initial state (progress +
-//       confirm).
-//
-// The bort-history row that lived here has moved to the «control»
-// block, per the spec. The _linkRow helper is therefore gone.
-//
-// Labels use HelpLabel; each row has a `help.<key>` text in the
-// dictionary. The block title stays a regular collapse mark.
-//
-// Post-reset recovery. After clearing the journal, importing, or
-// resetting caches, `afterJournalReset` is called on the AppContext
-// to recreate the root field node and rebind the active field,
-// preventing a blank UI state.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -333,7 +295,6 @@ class _RubkaDataState extends State<RubkaData> {
     // Progress is reported at each stage so the ring is not stuck at
     // 0% while the work proceeds. Failures are logged but never
     // prevent the dialog from closing: leaving it on screen was the
-    // symptom of the earlier version.
     try {
       token.report(0.05);
       await bort.resetCache();

@@ -1,32 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// lib/ui/core/screen_header.dart — unified screen header.
-//
-// The full-screen sheets (checklist, media viewer, geo picker) each
-// used to lay out the same header by hand: Padding + ControlRow
-// with the root pult's space reserved on the left, titles on the
-// remaining width, and an exit pult on the right. That block has
-// been extracted here so the header is identical across screens
-// and any future padding or alignment change lands in one place.
-//
-// Structure. ControlRow reserves the left zone for the root pult
-// (drawn separately in main.dart). Inside the reserved row: an
-// Expanded Column with the title and an optional subtitle on the
-// left, and an optional exit pult on the right. The exit pult is
-// the down chevron — the single exit pattern of every full-screen
-// sheet.
-//
-// The header does not draw the root pult itself: main.dart paints
-// it in the Stack above the navigator, so this widget only reserves
-// its space. The former per-screen Padding(top: 6, bottom: 8,
-// right: 6) is now inside, keeping the vertical rhythm uniform.
-//
-// Padding is chosen to align flush with the compass in the top-left
-// corner: top and right equal the root pult's offset (6), bottom
-// adds the block gap (8).
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import '../pults/pult_core.dart';

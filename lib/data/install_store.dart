@@ -1,25 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// install_store.dart — installation data of the bort.
-//
-// First run (Unix seconds) and device id. Stored in install.json
-// alongside the other bort files.
-//
-// Device id is taken from the system; if unavailable — a random
-// one, generated on first launch.
-//
-// media_counter — a monotone counter for media file names. Every
-// media file written by the application takes the next value:
-//   <kind>_<index>_<deviceId>_<firstRun>.<ext>
-// The counter is per device+first-run, monotone and never reused.
-//
-// Serialized save. Previous versions fired _save() without awaiting,
-// which could lead to two concurrent writes racing for the same
-// target file. Now writes are serialized via _saveQueue, ensuring
-// the last write always wins.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -38,7 +16,6 @@ class InstallStore {
   File? _file;
   Future<void> _saveQueue = Future.value();
 
-  // ─── Startup: read or create ───
   Future<void> init() async {
     final dir = await getApplicationDocumentsDirectory();
     _file = File(p.join(dir.path, 'install.json'));
@@ -64,9 +41,7 @@ class InstallStore {
     await _save();
   }
 
-  // ─── Next media index ───
   // Monotone: every call returns a new value greater than the
-  // previous one. The value is persisted, so that a crash does not
   // cause the same index to be reused after a restart. The actual
   // write is queued to prevent race conditions.
   int nextMediaIndex() {

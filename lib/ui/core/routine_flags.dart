@@ -1,18 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// routine_flags.dart — routine flag bit lists, keys, icons, and the
-// subpult builder.
-//
-// The five senior bits are editable from the card; the remaining
-// bits (local, synced, correction) are service and are not shown
-// here.
-//
-// buildFlagSubs() returns the subpult list for a given current
-// value. The caller supplies the toggle callback; nothing in this
-// file knows about layers or the journal.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import '../../data/i18n.dart';

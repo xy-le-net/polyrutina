@@ -1,18 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// lib/ui/services/audio_dialog.dart — audio recording dialog.
-//
-// Extracted from media_picker. Opened by the «audio» pult in the
-// media subpult. Recording goes through the record package; the
-// result is a file in media/ attached to the slot's trace.
-//
-// File index is taken ONCE at recording start — so the on-disk
-// name and the registration in the trace body match. Forbidden
-// characters are replaced by safeFileName (format.dart) — one
-// shared implementation for the whole app.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'dart:io';
 
 import 'package:flutter/material.dart';

@@ -1,26 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// rubka_interface.dart — «interface» block in the rubka.
-//
-// Extracted from rubka_tab.
-//
-// Scale, language, labels — one per row. Language is a human-readable
-// dropdown (русский / english). «Labels» is the former «system
-// labels» flag; «field labels» were abolished: pult labels are
-// uniform. Slots — a checklist of five kinds: which slots to show in
-// the routine card permanently.
-//
-// Labels use HelpLabel; each row has a `help.<key>` text in the
-// dictionary. The section subheading «slots» also uses HelpLabel.
-// The block title stays a regular collapse mark.
-//
-// Scopes. Dependencies are read from point scopes: BortScope (scale,
-// language, labels, default slots) and I18nScope (strings). Using
-// BortScope ensures that any change within this block or elsewhere
-// immediately rebuilds the surrounding UI.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import '../../data/operational_layer.dart';
@@ -78,7 +55,6 @@ class RubkaInterface extends StatelessWidget {
     );
   }
 
-  // ─── Language: dropdown ───
   Widget _langRow(
     BuildContext context,
     Color fg,
@@ -138,7 +114,6 @@ class RubkaInterface extends StatelessWidget {
     );
   }
 
-  // ─── Default slots ───
   List<Widget> _slotTicks(
     BuildContext context,
     Color fg,

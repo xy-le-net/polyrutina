@@ -1,21 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// pulse.dart — pulse: a pult with a timer.
-//
-// Pulse is a row: timer (TimerText) on the left, pult (Pult) on the
-// right.
-//
-// Colors come from the passed quartet (bg, dim, fg, signal).
-// The translator t is needed for time-unit labels.
-//
-// Running state. The caller supplies the pult with `selected: true`
-// when the slot is running, which automatically applies the signal
-// palette (coreColor = fgsignal, iconColor = bg). This ensures the
-// running pult is clearly visible against the inverted block
-// background. The pulse no longer overrides the selected flag.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import '../../data/ticker.dart';

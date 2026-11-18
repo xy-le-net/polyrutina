@@ -1,16 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// bort_file.dart — bort file.
-//
-// Path, reading, deferred writing of operational_layer.json. Fields
-// are taken and put by the layer itself: this module knows only Map.
-//
-// Atomic write. The target file is never written in place: data
-// goes to <name>.tmp first, which is then renamed onto the target.
-// The shared helper atomicWriteJson is used for this purpose.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -33,7 +20,6 @@ class BortFile {
     _saveTimer?.cancel();
   }
 
-  // ─── Read ───
   Future<Map<String, dynamic>?> read() async {
     if (_file == null || !await _file!.exists()) return null;
     try {
@@ -44,7 +30,6 @@ class BortFile {
     }
   }
 
-  // ─── Deferred write ───
   // builder is called when the timer fires: the map is assembled
   // from the layer's current fields.
   void schedule(Map<String, dynamic> Function() builder) {
@@ -54,7 +39,6 @@ class BortFile {
     });
   }
 
-  // ─── Immediate write ───
   Future<void> writeNow(Map<String, dynamic> Function() builder) async {
     _saveTimer?.cancel();
     _saveTimer = null;

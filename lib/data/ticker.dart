@@ -1,27 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// ticker.dart — unified application ticker.
-//
-// Purpose: one Timer for the entire application instead of separate
-// timers in each widget. Widgets that need to update by the clock
-// listen to this ticker and call setState on its signal.
-//
-// Period — five hundred milliseconds. Half a second visible, half a
-// second not — this is how the colon of a running timer blinks. Two
-// ticks per second are negligible for a modern device.
-//
-// Wall-second. The timer runs in half-seconds, but the time on the
-// wall clock changes once a second. The wallSecond method returns
-// the current epoch second — based on it, widgets decide whether
-// the visible unit (minute, hour) has changed, and whether they
-// need to redraw.
-//
-// Lifecycle. The pause and resume methods allow the main application
-// to stop the ticker when going to background and restart it when
-// returning to the foreground, saving battery.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';

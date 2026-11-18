@@ -1,27 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// notice_picker.dart — notice-interval input dialog.
-//
-// Replaces planned_picker.dart. The pult used to set a planned
-// duration; it now sets a lead time — how long before the due date
-// the user should be reminded. The input and output format is the
-// same («days:hours:minutes»), parsed by parseNoticeTime and
-// rendered by fmtNoticeTime (core/format.dart). The old names
-// (showPlannedPicker, routine.planned_title, hint.planned) are
-// gone; the caller (routine_card) was updated accordingly.
-//
-// Returns the notice interval in seconds, or null when the user
-// cancels or the input cannot be parsed. Zero is a legitimate
-// return value («remind right at the due moment»); whether the
-// notice was actually assigned is decided by the caller, which
-// always treats a successful return as assignment (see
-// RoutineLayer.setNotice).
-//
-// Shown only when a date is assigned. The caller enforces that; the
-// picker itself is not date-aware.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import '../core/app_scope.dart';

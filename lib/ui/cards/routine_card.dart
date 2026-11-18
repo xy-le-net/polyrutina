@@ -1,47 +1,7 @@
-// ═══════════════════════════════════════════════════════════════════
-// routine_card.dart — routine card.
-//
-// Slots are built by RoutineBlockView (routine_block_view.dart).
-// Here — card state: name editing, block time editing, show/hide
-// slots, collapse, auto-scroll, completion, export, move to field.
-//
-// Scheduled moment. The custom picker lives in bort_date_picker.dart;
-// the notice-interval dialog in notice_picker.dart. Both are invoked
-// here. The picker now returns a full moment (date and time); the
-// caller stores it as is. The bort's «midnight» setting no longer
-// participates. When the routine has no moment yet, the picker is
-// handed a date-only value and seeds its time field with the
-// technical noon (see bort_time.dart).
-//
-// Expansion on open. The card opens with the last active block
-// expanded: the running one, when a block is running; the routine
-// layer's lastActiveBlockKind otherwise; the note for a freshly
-// created routine. So a revisited routine shows where work had
-// stopped, rather than a collapsed stack.
-//
-// Notice interval. The pult that used to set a planned duration now
-// sets a lead time; see routine.dart for the semantics. It is shown
-// only when a date is assigned (the parameter onPickNotice is null
-// otherwise, and RoutineBlockView hides the pult accordingly). When
-// a notice is set, a long-press subpult «снять предуведомление»
-// clears it; this is routed through RoutineLayer.clearNotice, and
-// the layer logs a clear_notice entry so the journal is complete.
-// Clearing the date clears the notice automatically (setSchedule).
-//
-// Move to field. The dropdown enumerates ALL roots, not just the
-// zero field; an «отвязать» item is prepended when the routine is
-// attached to anything, and detaching removes every field parent at
-// once (a routine can be bound to several fields). Same option is
-// wired in routines_tab's general routine menu.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import '../../data/routine.dart';
 import '../../data/ticker.dart';
-import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
 import '../core/bort_field.dart';
 import '../core/control_row.dart';
@@ -55,7 +15,13 @@ import 'routine_block_view.dart';
 
 class RoutineCard extends StatefulWidget {
   final int routineId;
-  const RoutineCard({super.key, required this.routineId});
+  final bool autofocusName;
+
+  const RoutineCard({
+    super.key,
+    required this.routineId,
+    this.autofocusName = false,
+  });
 
   @override
   State<RoutineCard> createState() => _RoutineCardState();
@@ -172,25 +138,9 @@ class _RoutineCardState extends State<RoutineCard> {
 
   bool _hasTrace(int routineId, String kind) {
     if (kind == 'summary') return false;
-    final traceLayer = TraceScope.of(context);
-    final text = traceLayer.findFirstByKindSlot(
-      routineId,
-      TraceKind.text,
-      kind,
-    );
-    if (text != null && text.text.trim().isNotEmpty) return true;
-    if (text != null && text.files.isNotEmpty) return true;
-    final chk = traceLayer.findFirstByKindSlot(
-      routineId,
-      TraceKind.checklist,
-      kind,
-    );
-    if (chk != null) {
-      for (final it in chk.items) {
-        if (it.text.trim().isNotEmpty) return true;
-      }
-    }
-    return false;
+    return TraceScope.of(
+      context,
+    ).attachedTo(routineId).any((trace) => trace.slot == kind);
   }
 
   bool _shouldShowSlot(Routine r, String kind) {
@@ -207,9 +157,11 @@ class _RoutineCardState extends State<RoutineCard> {
     return _hasTrace(r.id, kind);
   }
 
-  bool _isExpanded(String kind) => _expanded.contains(kind);
+  bool _isExpanded(String kind) =>
+      _expanded.contains(kind) || _hasTrace(widget.routineId, kind);
 
   void _toggleExpanded(String kind) {
+    if (_hasTrace(widget.routineId, kind)) return;
     setState(() {
       if (_expanded.contains(kind)) {
         _expanded.remove(kind);
@@ -308,7 +260,6 @@ class _RoutineCardState extends State<RoutineCard> {
 
     // A moment, not a date. When the routine has none, hand the
     // picker a date-only value so its time field seeds from the
-    // technical noon. The midnight setting no longer participates:
     // the picker returns the full moment, and it is stored as is.
     final now = DateTime.now();
     final initial = r.scheduledAt != null
@@ -515,6 +466,7 @@ class _RoutineCardState extends State<RoutineCard> {
                   fg: bort.fg,
                   readOnly: false,
                   showBorder: false,
+                  autofocus: widget.autofocusName,
                   hint: i18n.t('routine.no_name'),
                   onCommit: (v) => routineLayer.renameRoutine(
                     AppScope.of(context).journal,

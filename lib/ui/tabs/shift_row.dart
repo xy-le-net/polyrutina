@@ -1,30 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// shift_row.dart — the shift row above the routines list.
-//
-// Contains: the shift pulse (start/pause), the time label, and time
-// editing on long press.
-//
-// Unified shift. The shift is no longer bound to the active field:
-// one timer for the entire application. The previous implementation
-// read FieldScope.activeFieldId and drove the shift for that field;
-// now the shift is global and the field argument is irrelevant. All
-// bort APIs that take a field id are called with 0, the zero-field
-// key under which the unified shift is stored (see
-// operational_layer.dart).
-//
-// Shift toggle. When bort.shiftEnabled is false, this widget is
-// invisible: no pulse, no time label, no editing. Turning the
-// toggle off while a shift runs is handled in operational_layer —
-// the shift stops, an actor entry is written, but running routines
-// are deliberately not paused.
-//
-// Time edit: «dd:hh:mm:ss»; Enter or the confirm pult saves. A long
-// press on the shift pulse opens the field. The journal entry is
-// written with field_id = 0, matching the unified shift.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import '../../data/journal_types.dart';
@@ -133,7 +106,11 @@ class _ShiftRowState extends State<ShiftRow> {
                 controller: _ctrl,
                 focusNode: _focus,
                 autofocus: true,
-                style: TextStyle(color: fg, fontSize: side * 0.4),
+                style: TextStyle(
+                  color: fg,
+                  fontSize: side * 0.4,
+                  decoration: TextDecoration.none,
+                ),
                 decoration: InputDecoration(
                   isDense: true,
                   hintText: i18n.t('hint.time'),

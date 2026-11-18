@@ -1,55 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// trace_field.dart — trace field. Universal embeddable widget.
-//
-// Left — the field area. Right — column: checklist pult, send/media
-// pult.
-//
-// Three states of the field area:
-//
-//   — view: text is present, no focus, not being edited. The text is
-//     rendered as plain text, less than a third of one screen tall
-//     (single scroll inside the box). Tapping turns it into the
-//     input field.
-//   — empty: no text, no focus, not being edited. A two-line input
-//     is shown, ready for typing.
-//   — editing: focused (or in a brief unfocused moment between the
-//     tap and the input). The field expands on focus — inside the
-//     block, without a separate layer; other elements remain
-//     visible, the layout scrolls. Limit — twenty-four lines or up
-//     to the keyboard start, whichever is less. On focus loss —
-//     back to the view or to the two-line state, per whether text
-//     remains.
-//
-// Height safety. The expanded budget subtracts a reserve for the
-// block header and pults and then takes a fraction (0.55) of the
-// remaining height; the line height accounts for the current text
-// scaler. Previously the fraction (0.6) was taken from the whole
-// available height, which overshot the viewport at large scales.
-//
-// Font size. The text trace font is increased for readability. The
-// field area is wrapped in Expanded to prevent horizontal overflow.
-//
-// Keep visible. Whenever the field expands — on focus gain, on any
-// metrics change — the area is scrolled into view by the enclosing
-// Scrollable.
-//
-// Trace is distinguished by the pair (objectId, slot). Checklist
-// search — by kind=checklist + slot.
-//
-// Dependency capture. The three layers this widget writes to (trace,
-// bort, journal) are captured once in didChangeDependencies as plain
-// fields. This lets _autoSend run from dispose after the widget has
-// been unmounted; the layers themselves outlive the widget.
-//
-// Send pult. When the pult shows the send glyph (edit_note), tapping
-// it unfocuses the field. The focus listener then runs _autoSend,
-// and the keyboard hides — exactly the same flow as the attach pult.
-// The caller no longer awaits _autoSend explicitly (that would race
-// with the focus listener and risk a duplicate journal entry).
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import '../../data/journal_layer.dart';
@@ -221,7 +169,6 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
   Future<void> _autoSend() async {
     if (!_initialized) return;
 
-    // Captured layers: the dispose path no longer touches `context`,
     // but the layers themselves remain valid.
     final traceLayer = _traceLayer;
     final bort = _bort;
@@ -286,7 +233,6 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
         });
   }
 
-  // ─── Checklist count ───
   // Returns the number of checked and total filled items.
   // Empty items are not counted in either number.
   ({int done, int total}) _checklistCounts() {
@@ -378,6 +324,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     final textStyle = TextStyle(
       color: widget.fg,
       fontSize: widget.side * bort.kNumber * 1.2,
+      decoration: TextDecoration.none,
     );
 
     // View mode: text is present, the field is not focused, and the

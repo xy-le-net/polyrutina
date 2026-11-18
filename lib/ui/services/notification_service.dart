@@ -1,67 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// notification_service.dart — ongoing, overdue, and deferred
-// notifications.
-//
-// Three channels, three purposes:
-//
-//   polyrutina_ongoing_v4 — SILENT. Everything that runs while the
-//     user works (shift, routine, running block). Icon in the status
-//     bar and an entry in the shade, but no sound and no vibration —
-//     never, on any platform, in any state. The channel ID was bumped
-//     from v3 to force Android 13+ to apply the new sound policy, as
-//     Android caches channel importance and sound on first creation.
-//
-//   polyrutina_overdue_v1 — AUDIBLE. Used for:
-//     — the immediate overdue push at startup (a routine whose due
-//       date passed, is not completed, and had a notice assigned);
-//     — the deferred notice fired N seconds before the due date, in
-//       the background, via zonedSchedule.
-//     The two share the channel because they share the intent: this
-//     is the one place the user must be alerted, not merely
-//     informed.
-//
-// Permissions on demand. The notification permission is requested
-// the FIRST time a notification is about to be shown or scheduled,
-// not in init(). A permanently-denied state means no prompts any
-// more and no notifications; that is by design.
-//
-// Deferred notices. `zonedSchedule` hands the notification to the
-// OS with an exact moment; AlarmManager inside the plugin fires it
-// in the background. The timezone package provides the rule set,
-// flutter_timezone reads the device's zone identifier. The zone is
-// initialised once, lazily, on first schedule — there is no point
-// paying for it when the user never sets a notice. The API in
-// flutter_local_notifications 18 requires
-// `uiLocalNotificationDateInterpretation`; the value is
-// `absoluteTime` because the moment supplied is already an absolute
-// wall-clock instant, not a repeated daily rule.
-//
-// Bodies. This service does not format content: the caller passes
-// fully formatted titles and bodies. In particular, the shift
-// notification carries NO field name — the shift is unified — and
-// the routine body is four lines: field (or «общее»), routine name,
-// current slot with its time, and the total. Formatting lives in
-// NotificationManager, which owns the layer access.
-//
-// Launch details. On initialization, the service checks if the app
-// was launched by tapping a notification; that payload is placed in
-// payloadNotifier for main.dart to route.
-//
-// Background actions. The «stop» button on the ongoing notification
-// writes the action to pending_action.json. The main application
-// polls that file at a modest interval (a few seconds, not per
-// tick), reads and deletes it, and applies the stop. The button has
-// showsUserInterface: false — the app is not brought to the front.
-//
-// Identifier scheme. Ongoing notifications use fixed ids (1001
-// routine, 1002 shift). Overdue and deferred ones share a
-// routine-derived id (200000 + routineId & 0xFFFFF); the two states
-// are mutually exclusive for a given routine, so the same id is
-// safe.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'dart:convert';
 import 'dart:io';
 
@@ -79,7 +15,6 @@ class NotificationService {
   static bool _permissionAsked = false;
   static bool _tzInitialized = false;
 
-  // Used to route taps on the notification body to the app.
   static final ValueNotifier<String?> payloadNotifier = ValueNotifier(null);
 
   // Ongoing: silent. Bumped from v3 to force the new sound policy.
@@ -170,7 +105,6 @@ class NotificationService {
     }
   }
 
-  // ─── Timezone boot ───
   // Loads the timezone database once and sets the local location to
   // the device's zone. Called lazily from scheduleOverdueNotice; the
   // immediate paths (show/cancel ongoing) never touch the zone.
@@ -192,7 +126,6 @@ class NotificationService {
     _tzInitialized = true;
   }
 
-  // ─── Silent channel: ongoing routine ───
   static Future<void> showRoutine({
     required int routineId,
     required String title,
@@ -255,7 +188,6 @@ class NotificationService {
     }
   }
 
-  // ─── Silent channel: ongoing shift ───
   static Future<void> showShift({
     required int fieldId,
     required String title,
@@ -318,7 +250,6 @@ class NotificationService {
     }
   }
 
-  // ─── Audible channel: immediate overdue at startup ───
   static Future<void> showOverdue({
     required int routineId,
     required String title,
@@ -372,11 +303,9 @@ class NotificationService {
     }
   }
 
-  // ─── Audible channel: deferred notice ───
   // Schedules a one-shot notification at `at`. Used for the lead
   // time before the due date; fires in the background via
   // AlarmManager. Safe to call repeatedly for the same routine: the
-  // previous schedule with the same id is replaced.
   static Future<void> scheduleOverdueNotice({
     required int routineId,
     required DateTime at,
@@ -463,7 +392,6 @@ class NotificationService {
     await _plugin.cancelAll();
   }
 
-  // ─── Action handlers ───
   static void _onNotificationResponse(NotificationResponse response) {
     // If the body is tapped (no actionId), notify the app to route.
     if (response.actionId == null && response.payload != null) {

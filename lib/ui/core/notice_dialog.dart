@@ -1,20 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// lib/ui/core/notice_dialog.dart — floating notice.
-//
-// Frame geometry lives in DialogFrame: bg fill, dim border,
-// kRadius corners, kFramePad inset. Inside — title, optional
-// subtitle, and a confirm word (signal-colored), as in «reset»
-// elsewhere. Dismissed by the button or by a tap outside the frame.
-// No other buttons.
-//
-// Usage:
-//   await showNotice(context, title: 'сирот не нашлось');
-//   await showNotice(context, title: 'удалено: 3',
-//                    subtitle: 'освобождено: 12 МБ');
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import '../pults/pult_core.dart';

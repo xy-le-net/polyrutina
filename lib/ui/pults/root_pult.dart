@@ -1,15 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// root_pult.dart — корневой пульт (компас).
-//
-// Свёрнутый — компас в левом верхнем углу. Касание просит открыть
-// единый левосторонний лист подпультов с родами вкладок.
-//
-// Икона компаса увеличена на треть (до 0.60 от стороны), дабы
-// соответствовать новым размерам икон в pult_core.
-//
-// Прозрачность не применяется.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 class RootTabItem {
@@ -43,7 +31,6 @@ class RootPult extends StatelessWidget {
     );
   }
 
-  // Ядро пульта: тройная вложенная обводка.
   Widget _core(IconData icon, bool selected, double s) {
     final coreColor = selected ? signal : fg;
     final iconColor = bg;
@@ -52,7 +39,6 @@ class RootPult extends StatelessWidget {
     final rInner = s * 0.14;
     final rCore = s * 0.10;
 
-    // Увеличение иконы на треть (было 0.45, стало 0.60)
     final iconSize = selected ? s * 0.80 : s * 0.60;
 
     Widget core = Container(

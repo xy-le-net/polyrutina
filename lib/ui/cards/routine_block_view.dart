@@ -1,33 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// routine_block_view.dart — widget of one routine slot.
-//
-// Extracted from routine_card: frame, title, time pulse, content
-// (TraceField or summary in «total»), corner pults.
-//
-// Layout tuning. Padding inside blocks and gaps between them are
-// the halved kFramePad / kBlockGap (see operational_layer); the
-// previous extra 0.75 multiplication is dropped, since the base is
-// already half of what it used to be. The title font is slightly
-// smaller to save space; the text trace (TraceField) occupies the
-// remaining width.
-//
-// Notice interval. The pult that used to set a planned duration now
-// sets a lead time — how long before the due date to remind. It is
-// shown ONLY when a date is assigned (onPickNotice != null); the
-// caller enforces this in routine_card. When a notice is actually
-// set, a long-press subpult «снять предуведомление» clears it.
-//
-// Delete. The summary block gains a delete pult next to export and
-// move, with confirmation. Deleting from the summary is the second
-// route to routine removal (the first being the long-press menu in
-// the list).
-//
-// Field awareness. The toggleBlockWithShift call requires the
-// active field's ID to properly associate the shift.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 
 import '../../data/routine.dart';
@@ -149,7 +119,6 @@ class RoutineBlockView extends StatelessWidget {
     }
 
     // Padding is taken straight from the (now halved) coefficients:
-    // the previous extra 0.75 multiplication would have produced
     // quarter-sized values, drifting away from the unified scale.
     final titleSize = side * bort.kTitle * 0.8;
     final pad = side * bort.kFramePad;
@@ -173,7 +142,11 @@ class RoutineBlockView extends StatelessWidget {
                 controller: editCtrl,
                 focusNode: editFocus,
                 autofocus: true,
-                style: TextStyle(color: fg, fontSize: numberSize),
+                style: TextStyle(
+                  color: fg,
+                  fontSize: numberSize,
+                  decoration: TextDecoration.none,
+                ),
                 decoration: InputDecoration(
                   isDense: true,
                   hintText: i18n.t('hint.time'),

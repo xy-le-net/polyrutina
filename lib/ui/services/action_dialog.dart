@@ -1,23 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// lib/ui/services/action_dialog.dart — time history viewer.
-//
-// One dialog for any registered TimeSeries (shift, bort, and future
-// kinds). Kinds differ in three points — the label key, the share
-// flag, and the live-value callback — captured in a small
-// descriptor map below.
-//
-// Unified shift. The shift is no longer per-field: one timer for
-// the entire application, stored under the zero-field key. The
-// caller may still pass a fieldId (kept for source compatibility
-// with rubka_control and any future call site), but the dialog
-// ignores it for the shift kind: shift history is always read from
-// field 0. Bort history is likewise under field 0 by construction.
-// The parameter is therefore preserved only as a shape of the API;
-// every internal call uses field 0.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 

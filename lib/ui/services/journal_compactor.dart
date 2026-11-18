@@ -1,35 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════
-// journal_compactor.dart — journal compaction.
-//
-// Collapses the journal into a compact form: erases all entries,
-// writes routine snapshots (action "snapshot"), writes field node
-// snapshots, rewrites traces with remapped trace-to-trace references,
-// saves ALL monthly records for every registered TimeSeries (per
-// field for shifts, global for bort), and resets the export and
-// reread marks.
-//
-// Unified shift. The shift now lives under the zero-field key; the
-// compactor no longer enumerates `bort.shifts.keys` and writes one
-// snapshot per field. Only field 0 is written for the shift series,
-// matching the single-state semantics. Historical per-field entries
-// that may still exist in older series files are left untouched but
-// are not emitted: the unified view does not read them.
-//
-// Notice interval. Routine snapshots carry notice_before_sec and
-// notice_set verbatim (via Routine.toJson); the compactor does not
-// interpret or normalize them. Date and notice are stored
-// independently, so a snapshot preserves the pair exactly as the
-// layer holds it. The layer's invariant — no notice without a date —
-// is enforced at mutation time (setSchedule clears the notice) and
-// therefore holds in the snapshots too.
-//
-// CompactResult. Every run returns a CompactResult carrying the
-// entry count and the database byte size, measured before and
-// after the reclaim step.
-//
-// Transparency is not applied.
-// ═══════════════════════════════════════════════════════════════════
-
 import 'dart:convert';
 import 'dart:io';
 
