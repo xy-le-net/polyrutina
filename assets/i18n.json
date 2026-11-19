@@ -123,6 +123,7 @@
     "bort.deselect": "снять выделение",
 
     "field.root": "все",
+    "field.orphans": "сироты",
     "field.new_field": "новое поле",
     "field.new_node": "новая ветвь",
     "field.attach_routine": "прикрепить",
@@ -367,6 +368,7 @@
     "bort.deselect": "deselect",
 
     "field.root": "all",
+    "field.orphans": "orphans",
     "field.new_field": "new field",
     "field.new_node": "new branch",
     "field.attach_routine": "attach",

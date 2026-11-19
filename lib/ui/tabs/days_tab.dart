@@ -190,7 +190,9 @@ class _DaysTabState extends State<DaysTab> {
           padding: const EdgeInsets.only(bottom: 8, right: 12),
           child: ControlRow(
             rootSide: side,
+            alignment: Alignment.center,
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 Pult(
@@ -512,6 +514,8 @@ class _DaysTabState extends State<DaysTab> {
       color: numberColor,
       fontSize: side * 0.4,
       height: 1.0,
+      decoration: m.completed ? TextDecoration.underline : TextDecoration.none,
+      decorationColor: bort.mid,
     );
 
     final boxSide = side * 0.9;

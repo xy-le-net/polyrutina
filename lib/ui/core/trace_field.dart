@@ -366,27 +366,54 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     Widget fieldWidget;
     if (viewMode) {
       final maxViewH = MediaQuery.of(context).size.height / 3;
-      fieldWidget = GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          setState(() => _editing = true);
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _focus.requestFocus();
-          });
+      final viewPadding = widget.side * 0.15;
+      const borderWidth = 1.0;
+      final viewTextStyle = textStyle.copyWith(
+        fontSize: textStyle.fontSize! * 0.75,
+      );
+      fieldWidget = LayoutBuilder(
+        builder: (context, constraints) {
+          final textPainter =
+              TextPainter(
+                text: TextSpan(text: _ctrl.text, style: textStyle),
+                textDirection: Directionality.of(context),
+                textScaler: MediaQuery.textScalerOf(context),
+              )..layout(
+                maxWidth:
+                    (constraints.maxWidth - viewPadding * 2 - borderWidth * 2)
+                        .clamp(0.0, double.infinity)
+                        .toDouble(),
+              );
+          // Measure with the original style so the read-only slot keeps its
+          // previous height even though its displayed text is smaller.
+          final viewHeight =
+              (textPainter.height + viewPadding * 2 + borderWidth * 2)
+                  .clamp(0.0, maxViewH)
+                  .toDouble();
+
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              setState(() => _editing = true);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) _focus.requestFocus();
+              });
+            },
+            child: Container(
+              width: double.infinity,
+              height: viewHeight,
+              padding: EdgeInsets.all(viewPadding),
+              decoration: BoxDecoration(
+                color: widget.fieldBg,
+                border: Border.all(color: widget.dim, width: borderWidth),
+                borderRadius: BorderRadius.circular(widget.side * bort.kRadius),
+              ),
+              child: SingleChildScrollView(
+                child: Text(_ctrl.text, style: viewTextStyle),
+              ),
+            ),
+          );
         },
-        child: Container(
-          width: double.infinity,
-          constraints: BoxConstraints(maxHeight: maxViewH),
-          padding: EdgeInsets.all(widget.side * 0.15),
-          decoration: BoxDecoration(
-            color: widget.fieldBg,
-            border: Border.all(color: widget.dim),
-            borderRadius: BorderRadius.circular(widget.side * bort.kRadius),
-          ),
-          child: SingleChildScrollView(
-            child: Text(_ctrl.text, style: textStyle),
-          ),
-        ),
       );
     } else {
       fieldWidget = TextField(

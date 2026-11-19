@@ -27,6 +27,10 @@ class _RoutinesTabState extends State<RoutinesTab> {
   final Set<int> _expanded = {};
   // Per-node visibility of the completed section. Absent = collapsed.
   final Set<int> _expandedDone = {};
+  final Set<int> _expandedAllFields = {};
+  final Set<int> _knownAllRoots = {};
+  bool _orphansExpanded = true;
+  bool _orphansDoneExpanded = false;
 
   int _lastMinute = 0;
   int _lastSecond = 0;
@@ -123,6 +127,16 @@ class _RoutinesTabState extends State<RoutinesTab> {
     });
   }
 
+  void _toggleAllField(int id) {
+    setState(() {
+      if (_expandedAllFields.contains(id)) {
+        _expandedAllFields.remove(id);
+      } else {
+        _expandedAllFields.add(id);
+      }
+    });
+  }
+
   double _indent(int depth) => depth <= 1 ? 4.0 : 4.0 + (depth - 1) * 20.0;
 
   void _collectNodeSubs(
@@ -131,7 +145,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     List<PultSpec> out, {
     int? excludeId,
     bool excludeDescendants = false,
-    int? selectedId,
+    Set<int>? selectedIds,
     required void Function(FieldNode) onTap,
     IconData? rootIcon,
     IconData? childIcon,
@@ -152,7 +166,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
             ? (rootIcon ?? Icons.layers)
             : (childIcon ?? Icons.subdirectory_arrow_right),
         label: node.name.isEmpty ? '—' : node.name,
-        selected: node.id == selectedId,
+        selected: selectedIds?.contains(node.id) ?? false,
         indent: depth * 20.0,
         onTap: () => onTap(node),
       ),
@@ -165,7 +179,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
         out,
         excludeId: excludeId,
         excludeDescendants: excludeDescendants,
-        selectedId: selectedId,
+        selectedIds: selectedIds,
         onTap: onTap,
         rootIcon: rootIcon,
         childIcon: childIcon,
@@ -177,7 +191,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     List<PultSpec> out, {
     int? excludeId,
     bool excludeDescendants = false,
-    int? selectedId,
+    Set<int>? selectedIds,
     required void Function(FieldNode) onTap,
   }) {
     final fieldLayer = FieldScope.of(context);
@@ -190,7 +204,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
         out,
         excludeId: excludeId,
         excludeDescendants: excludeDescendants,
-        selectedId: selectedId,
+        selectedIds: selectedIds,
         onTap: onTap,
       );
     }
@@ -277,9 +291,6 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final app = AppScope.of(context);
     final i18n = app.i18n;
     final rootId = app.fieldLayer.rootId;
-    final currentParentId = r.fieldParents.isNotEmpty
-        ? r.fieldParents.first
-        : null;
     final onlyInRoot =
         rootId != null &&
         r.fieldParents.length == 1 &&
@@ -307,7 +318,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
     _collectAllRootsSubs(
       subs,
-      selectedId: currentParentId,
+      selectedIds: r.fieldParents.toSet(),
       onTap: (n) async {
         await app.journal.transaction(() async {
           for (final pId in List<int>.from(r.fieldParents)) {
@@ -601,7 +612,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
       subs,
       excludeId: nodeId,
       excludeDescendants: true,
-      selectedId: currentParentId,
+      selectedIds: currentParentId == null ? null : {currentParentId},
       onTap: (n) async {
         if (n.id != currentParentId) {
           await app.journal.transaction(() async {
@@ -742,6 +753,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
   Widget _doneDivider(
     double indent, {
+    String? title,
     int count = 0,
     bool expanded = false,
     VoidCallback? onTap,
@@ -750,9 +762,8 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final i18n = I18nScope.of(context);
     final side = PultScope.of(context).smallSide;
     final strokeW = side * bort.kStroke;
-    final label = count > 0
-        ? '${i18n.t('routine.completed')} ($count)'
-        : i18n.t('routine.completed');
+    final titleText = title ?? i18n.t('routine.completed');
+    final label = count > 0 ? '$titleText ($count)' : titleText;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -793,7 +804,13 @@ class _RoutinesTabState extends State<RoutinesTab> {
     );
   }
 
-  void _buildTree(int nodeId, int depth, Set<int> visited, List<Widget> out) {
+  void _buildTree(
+    int nodeId,
+    int depth,
+    Set<int> visited,
+    List<Widget> out, {
+    bool includeOrphans = true,
+  }) {
     final fieldLayer = FieldScope.of(context);
     final node = fieldLayer.nodes[nodeId];
     if (node == null || visited.contains(nodeId)) return;
@@ -801,13 +818,14 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final nextVisited = Set<int>.from(visited)..add(nodeId);
     final isExpanded = _expanded.contains(nodeId) || node.isRoot;
 
-    // Routines for this node. Unattached routines (empty
-    // empty.
+    // Empty parent lists belong in the default "all" root only.
     final nodeRoutines = <Routine>[];
     for (final r in RoutineScope.of(context).routines) {
       if (r.fieldParents.contains(nodeId)) {
         nodeRoutines.add(r);
-      } else if (nodeId == fieldLayer.rootId && r.fieldParents.isEmpty) {
+      } else if (includeOrphans &&
+          nodeId == fieldLayer.rootId &&
+          r.fieldParents.isEmpty) {
         nodeRoutines.add(r);
       }
     }
@@ -934,7 +952,121 @@ class _RoutinesTabState extends State<RoutinesTab> {
     }
 
     for (final c in node.children) {
-      _buildTree(c, depth + 1, nextVisited, out);
+      _buildTree(
+        c,
+        depth + 1,
+        nextVisited,
+        out,
+        includeOrphans: includeOrphans,
+      );
+    }
+  }
+
+  // Keep unattached routines separate so the default root tree cannot duplicate them.
+  void _buildAllFields(List<Widget> out, FieldLayer fieldLayer) {
+    final roots = fieldLayer.nodes.values.where((node) => node.isRoot).toList()
+      ..sort((a, b) => a.id.compareTo(b.id));
+    final rootIds = roots.map((node) => node.id).toSet();
+
+    for (final id in rootIds.difference(_knownAllRoots)) {
+      _expandedAllFields.add(id);
+    }
+    _expandedAllFields.removeWhere((id) => !rootIds.contains(id));
+    _knownAllRoots
+      ..clear()
+      ..addAll(rootIds);
+
+    final routines = RoutineScope.of(context).routines;
+    final i18n = I18nScope.of(context);
+    final orphans = routines.where((r) => r.fieldParents.isEmpty).toList();
+    if (orphans.isNotEmpty) {
+      out.add(
+        _doneDivider(
+          _indent(1),
+          title: i18n.t('field.orphans'),
+          count: orphans.length,
+          expanded: _orphansExpanded,
+          onTap: () => setState(() => _orphansExpanded = !_orphansExpanded),
+        ),
+      );
+      if (_orphansExpanded) {
+        final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+        final split = _splitRoutines(orphans, now);
+        for (final routine in split.overdue) {
+          out.add(
+            Padding(
+              padding: EdgeInsets.only(
+                left: _indent(1),
+                top: 4,
+                bottom: 4,
+                right: 4,
+              ),
+              child: _routinePlate(routine),
+            ),
+          );
+        }
+        if (split.overdue.isNotEmpty) {
+          out.add(_bareDivider(_indent(1)));
+        }
+        for (final routine in split.active) {
+          out.add(
+            Padding(
+              padding: EdgeInsets.only(
+                left: _indent(1),
+                top: 4,
+                bottom: 4,
+                right: 4,
+              ),
+              child: _routinePlate(routine),
+            ),
+          );
+        }
+        if (split.done.isNotEmpty) {
+          out.add(
+            _doneDivider(
+              _indent(1),
+              count: split.done.length,
+              expanded: _orphansDoneExpanded,
+              onTap: () =>
+                  setState(() => _orphansDoneExpanded = !_orphansDoneExpanded),
+            ),
+          );
+          if (_orphansDoneExpanded) {
+            for (final routine in split.done) {
+              out.add(
+                Padding(
+                  padding: EdgeInsets.only(
+                    left: _indent(1),
+                    top: 4,
+                    bottom: 4,
+                    right: 4,
+                  ),
+                  child: _routinePlate(routine),
+                ),
+              );
+            }
+          }
+        }
+      }
+    }
+
+    for (final root in roots) {
+      final expanded = _expandedAllFields.contains(root.id);
+      out.add(
+        _doneDivider(
+          _indent(1),
+          title: root.id == fieldLayer.rootId
+              ? i18n.t('field.root')
+              : root.name.isEmpty
+              ? '—'
+              : root.name,
+          expanded: expanded,
+          onTap: () => _toggleAllField(root.id),
+        ),
+      );
+      if (expanded) {
+        _buildTree(root.id, 0, {}, out, includeOrphans: false);
+      }
     }
   }
 
@@ -963,7 +1095,9 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final items = <Widget>[];
     final fieldLayer = FieldScope.of(context);
     final activeFieldId = fieldLayer.activeFieldId;
-    if (activeFieldId != null) {
+    if (activeFieldId != null && activeFieldId == fieldLayer.rootId) {
+      _buildAllFields(items, fieldLayer);
+    } else if (activeFieldId != null) {
       _buildTree(activeFieldId, 0, {}, items);
     }
 
@@ -984,7 +1118,9 @@ class _RoutinesTabState extends State<RoutinesTab> {
         final activeNode = activeFieldId != null
             ? fieldLayer.nodes[activeFieldId]
             : null;
-        final fieldName = activeNode?.name ?? '';
+        final fieldName = activeFieldId == fieldLayer.rootId
+            ? i18n.t('field.root')
+            : activeNode?.name ?? '';
 
         return Stack(
           children: [

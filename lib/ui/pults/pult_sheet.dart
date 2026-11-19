@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/control_row.dart';
 import 'pult_core.dart';
 
 // The currently open pult-sheet route, if any. Used by showPultSheet
@@ -63,20 +64,24 @@ Future<void> showPultSheet({
       );
       return Align(
         alignment: Alignment.centerLeft,
-        child: rebuildOn == null || subsBuilder == null
-            ? body
-            : ListenableBuilder(
-                listenable: rebuildOn,
-                builder: (_, __) => _SheetBody(
-                  subs: subsBuilder(),
-                  fg: fg,
-                  bg: bg,
-                  signal: signal,
-                  side: side,
-                  state: state,
-                  closeSheet: closeNow,
+        child: Padding(
+          // Keep the submenu below the fixed top-left root pult.
+          padding: EdgeInsets.only(top: ControlRow.reserve(state.smallSide)),
+          child: rebuildOn == null || subsBuilder == null
+              ? body
+              : ListenableBuilder(
+                  listenable: rebuildOn,
+                  builder: (_, __) => _SheetBody(
+                    subs: subsBuilder(),
+                    fg: fg,
+                    bg: bg,
+                    signal: signal,
+                    side: side,
+                    state: state,
+                    closeSheet: closeNow,
+                  ),
                 ),
-              ),
+        ),
       );
     },
   );
