@@ -207,13 +207,31 @@ class _DaysTabState extends State<DaysTab> {
                 Flexible(
                   child: Padding(
                     padding: EdgeInsets.symmetric(horizontal: side * 0.15),
-                    child: Text(
-                      '${vm.year}.'
-                      '${vm.month.toString().padLeft(2, '0')}',
-                      style: TextStyle(color: bort.fg, fontSize: side * 0.5),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${vm.year}.'
+                          '${vm.month.toString().padLeft(2, '0')}',
+                          style: TextStyle(
+                            color: bort.fg,
+                            fontSize: side * 0.5,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                        ),
+                        Text(
+                          '(${i18n.t('month.${vm.month}')})',
+                          style: TextStyle(
+                            color: bort.mid,
+                            fontSize: side * 0.25,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -487,7 +505,7 @@ class _DaysTabState extends State<DaysTab> {
     final m = _marksOf(month, day, routines);
 
     final numberColor = m.anySignal ? bort.fgsignal : bort.mid;
-    final underlineColor = m.completedSignal ? bort.fgsignal : bort.mid;
+    final underlineColor = bort.bgsignal;
     final scheduledColor = m.scheduledSignal ? bort.fgsignal : bort.mid;
     final unfinishedColor = m.unfinishedSignal ? bort.fgsignal : bort.mid;
 

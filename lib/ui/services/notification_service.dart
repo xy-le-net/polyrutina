@@ -365,6 +365,24 @@ class NotificationService {
       );
     } catch (e) {
       debugPrint('NotificationService.scheduleOverdueNotice error: $e');
+      try {
+        await _plugin.zonedSchedule(
+          _scheduledIdFor(routineId),
+          title,
+          body,
+          tz.TZDateTime.from(at, tz.local),
+          details,
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+          payload: 'routine_$routineId',
+        );
+      } catch (fallbackError) {
+        debugPrint(
+          'NotificationService.scheduleOverdueNotice fallback error: '
+          '$fallbackError',
+        );
+      }
     }
   }
 

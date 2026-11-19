@@ -180,8 +180,9 @@ class OperationalLayer extends ChangeNotifier {
         final d = int.tryParse(dk.toString());
         if (d == null) continue;
         final v = (days[dk] as num?)?.toInt() ?? 0;
-        s.addDay(fieldId, year, month, d, v);
+        s.addDay(fieldId, year, month, d, v, persist: false);
       }
+      unawaited(s.saveNow());
     } catch (_) {}
   }
 
@@ -201,8 +202,9 @@ class OperationalLayer extends ChangeNotifier {
     final s = series[kind];
     if (s == null) return;
     for (final e in days.entries) {
-      s.addDay(fieldId, year, month, e.key, e.value);
+      s.addDay(fieldId, year, month, e.key, e.value, persist: false);
     }
+    unawaited(s.saveNow());
     _logSeriesMonth(kind, fieldId, year, month);
   }
 
@@ -233,6 +235,9 @@ class OperationalLayer extends ChangeNotifier {
   @override
   void dispose() {
     _file.dispose();
+    for (final s in series.values) {
+      s.dispose();
+    }
     super.dispose();
   }
 
@@ -618,9 +623,15 @@ class OperationalLayer extends ChangeNotifier {
   void setShiftTime(int fieldId, int seconds) {
     if (!shiftEnabled) return;
     final s = shiftFor(0);
-    s.totalShiftSeconds = seconds;
-    s.shiftStartedAt = null;
-    s.shiftEdited = seconds > 0;
+    if (s.onShift) {
+      s.totalShiftSeconds = seconds;
+      s.shiftStartedAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      s.shiftEdited = false;
+    } else {
+      s.totalShiftSeconds = seconds;
+      s.shiftStartedAt = null;
+      s.shiftEdited = seconds > 0;
+    }
     _scheduleSave();
     notifyListeners();
   }

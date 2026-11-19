@@ -7,6 +7,7 @@ import '../core/format.dart';
 import '../core/routine_flags.dart';
 import '../core/timer_text.dart';
 import '../core/trace_field.dart';
+import '../core/wheel_picker.dart';
 import '../pults/pulse.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_tick.dart';
@@ -133,46 +134,70 @@ class RoutineBlockView extends StatelessWidget {
 
     if (showPulse) {
       if (editingKind == kind) {
-        cornerTop = Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: side * 2.6,
-              child: TextField(
-                controller: editCtrl,
-                focusNode: editFocus,
-                autofocus: true,
-                style: TextStyle(
-                  color: fg,
-                  fontSize: numberSize,
-                  decoration: TextDecoration.none,
-                ),
-                decoration: InputDecoration(
-                  isDense: true,
-                  hintText: i18n.t('hint.time'),
-                  hintStyle: TextStyle(color: dim, fontSize: numberSize * 0.7),
-                  border: OutlineInputBorder(
-                    borderSide: BorderSide(color: dim),
-                    borderRadius: BorderRadius.circular(radiusW),
+        var hours = seconds ~/ 3600;
+        var minutes = (seconds % 3600) ~/ 60;
+        var secs = seconds % 60;
+        cornerTop = StatefulBuilder(
+          builder: (context, setWheelState) {
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: side * 3.0,
+                  height: side * 2.0,
+                  child: WheelValuePicker(
+                    columns: [
+                      WheelColumn(
+                        label: '',
+                        separator: ':',
+                        value: hours,
+                        itemCount: 100,
+                        onChanged: (v) => setWheelState(() => hours = v),
+                        formatter: (v) => v.toString().padLeft(2, '0'),
+                      ),
+                      WheelColumn(
+                        label: '',
+                        separator: ':',
+                        value: minutes,
+                        itemCount: 60,
+                        onChanged: (v) => setWheelState(() => minutes = v),
+                        formatter: (v) => v.toString().padLeft(2, '0'),
+                      ),
+                      WheelColumn(
+                        label: '',
+                        value: secs,
+                        itemCount: 60,
+                        onChanged: (v) => setWheelState(() => secs = v),
+                        formatter: (v) => v.toString().padLeft(2, '0'),
+                      ),
+                    ],
+                    side: side,
+                    onCancel: () {},
+                    onOk: () {},
+                    cancelText: '',
+                    okText: '',
                   ),
-                  contentPadding: EdgeInsets.all(side * 0.1),
                 ),
-                onSubmitted: (_) => onConfirmEdit?.call(),
-              ),
-            ),
-            SizedBox(width: side * 0.1),
-            Pult(
-              spec: PultSpec(
-                id: 'confirm_$kind',
-                icon: Icons.check,
-                onTap: onConfirmEdit,
-              ),
-              fg: fg,
-              bg: bg,
-              signal: signal,
-              overrideSize: pultSide,
-            ),
-          ],
+                SizedBox(width: side * 0.1),
+                Pult(
+                  spec: PultSpec(
+                    id: 'confirm_$kind',
+                    icon: Icons.check,
+                    onTap: () {
+                      editCtrl?.text =
+                          '$hours:${minutes.toString().padLeft(2, '0')}:'
+                          '${secs.toString().padLeft(2, '0')}';
+                      onConfirmEdit?.call();
+                    },
+                  ),
+                  fg: fg,
+                  bg: bg,
+                  signal: signal,
+                  overrideSize: pultSide,
+                ),
+              ],
+            );
+          },
         );
       } else {
         Widget pulse = Pulse(

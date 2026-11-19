@@ -687,9 +687,14 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
             borderSide: BorderSide(color: _bort.fg),
           ),
           focusedBorder: OutlineInputBorder(
-            borderSide: BorderSide(color: _bort.fg, width: 2),
+            borderSide: BorderSide(color: _bort.bgsignal, width: 2),
           ),
           hintStyle: TextStyle(color: _bort.mid),
+        ),
+        textSelectionTheme: TextSelectionThemeData(
+          cursorColor: _bort.bgsignal,
+          selectionColor: _bort.bgsignal.withValues(alpha: 0.35),
+          selectionHandleColor: _bort.bgsignal,
         ),
         iconTheme: IconThemeData(color: _bort.fg),
       ),

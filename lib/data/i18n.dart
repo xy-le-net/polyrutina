@@ -6,25 +6,32 @@ class I18n {
   final Map<String, Map<String, String>> _data;
   final String lang;
 
+  static Future<Map<String, Map<String, String>>>? _dictionaryFuture;
+
   I18n._(this._data, this.lang);
 
   // Load the dictionary. `lang` is «ru» or «en». Other languages are
   // added to the JSON without touching the code.
   static Future<I18n> load(String lang) async {
+    final future = _dictionaryFuture ??= _loadDictionary();
+    final data = await future;
+    return I18n._(data, lang);
+  }
+
+  static Future<Map<String, Map<String, String>>> _loadDictionary() async {
     try {
       final raw = await rootBundle.loadString('assets/i18n.json');
       final decoded = jsonDecode(raw);
       if (decoded is Map<String, dynamic>) {
-        final data = decoded.map(
+        return decoded.map(
           (k, v) => MapEntry(k, Map<String, String>.from(v as Map)),
         );
-        return I18n._(data, lang);
       }
       debugPrint('i18n.json is not a JSON object');
     } catch (e) {
       debugPrint('Failed to load i18n.json: $e');
     }
-    return I18n._({'ru': {}, 'en': {}}, lang);
+    return {'ru': {}, 'en': {}};
   }
 
   // String by key. If the key is missing in the current language, the

@@ -104,10 +104,10 @@ class RubkaControl extends StatelessWidget {
                       ? '0${i18n.t('time.m')}'
                       : fmtTime(bort.bortTime, i18n.t),
                   style: TextStyle(
-                    color: fgsignal,
+                    color: bort.bgsignal,
                     fontFamily: 'monospace',
                     decoration: TextDecoration.underline,
-                    decorationColor: fgsignal,
+                    decorationColor: bort.bgsignal,
                     decorationThickness: 1.0,
                   ),
                 ),
@@ -142,10 +142,10 @@ class RubkaControl extends StatelessWidget {
             child: Text(
               shiftTimeStr,
               style: TextStyle(
-                color: fgsignal,
+                color: bort.bgsignal,
                 fontFamily: 'monospace',
                 decoration: TextDecoration.underline,
-                decorationColor: fgsignal,
+                decorationColor: bort.bgsignal,
                 decorationThickness: 1.0,
               ),
             ),

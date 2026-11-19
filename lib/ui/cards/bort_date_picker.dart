@@ -4,6 +4,7 @@ import '../../data/bort_time.dart';
 import '../core/app_scope.dart';
 import '../core/dialog_frame.dart';
 import '../core/link_text.dart';
+import '../core/wheel_picker.dart';
 import '../pults/pult_core.dart';
 
 Future<DateTime?> showBortDatePicker(
@@ -18,21 +19,13 @@ Future<DateTime?> showBortDatePicker(
 
   String two(int n) => n.toString().padLeft(2, '0');
 
-  // Seed the time field: the caller's time when it carries one, the
-  // technical noon otherwise.
+  // Seed the wheel: the caller's time when it carries one, technical noon otherwise.
   final hasTime = initial.hour != 0 || initial.minute != 0;
-  final hh0 = hasTime ? initial.hour : kBortTechNoonHour;
-  final mm0 = hasTime ? initial.minute : kBortTechNoonMinute;
-  final timeCtrl = TextEditingController(text: '${two(hh0)}:${two(mm0)}');
-
-  (int, int) readTime() {
-    final parts = timeCtrl.text.trim().split(':');
-    int? hh = parts.isNotEmpty ? int.tryParse(parts[0]) : null;
-    int? mm = parts.length > 1 ? int.tryParse(parts[1]) : null;
-    if (hh == null || hh < 0 || hh > 23) hh = kBortTechNoonHour;
-    if (mm == null || mm < 0 || mm > 59) mm = kBortTechNoonMinute;
-    return (hh, mm);
-  }
+  var selectedDay = initial.day;
+  var selectedMonth = initial.month;
+  var selectedYear = initial.year;
+  var hour = hasTime ? initial.hour : kBortTechNoonHour;
+  var minute = hasTime ? initial.minute : kBortTechNoonMinute;
 
   try {
     final picked = await showDialog<DateTime>(
@@ -61,17 +54,18 @@ Future<DateTime?> showBortDatePicker(
                 continue;
               }
               final isSelected =
-                  dayNum == initial.day &&
-                  viewing.month == initial.month &&
-                  viewing.year == initial.year;
+                  dayNum == selectedDay &&
+                  viewing.month == selectedMonth &&
+                  viewing.year == selectedYear;
 
               grid.add(
                 GestureDetector(
                   onTap: () {
-                    final (hh, mm) = readTime();
-                    Navigator.of(ctx).pop(
-                      DateTime(viewing.year, viewing.month, dayNum, hh, mm),
-                    );
+                    setState(() {
+                      selectedDay = dayNum;
+                      selectedMonth = viewing.month;
+                      selectedYear = viewing.year;
+                    });
                   },
                   child: Center(
                     child: Container(
@@ -118,6 +112,18 @@ Future<DateTime?> showBortDatePicker(
                               viewing.month - 1,
                               1,
                             );
+                            selectedYear = viewing.year;
+                            selectedMonth = viewing.month;
+                            selectedDay = selectedDay
+                                .clamp(
+                                  1,
+                                  DateTime(
+                                    viewing.year,
+                                    viewing.month + 1,
+                                    0,
+                                  ).day,
+                                )
+                                .toInt();
                           }),
                         ),
                         fg: bort.fg,
@@ -143,6 +149,18 @@ Future<DateTime?> showBortDatePicker(
                               viewing.month + 1,
                               1,
                             );
+                            selectedYear = viewing.year;
+                            selectedMonth = viewing.month;
+                            selectedDay = selectedDay
+                                .clamp(
+                                  1,
+                                  DateTime(
+                                    viewing.year,
+                                    viewing.month + 1,
+                                    0,
+                                  ).day,
+                                )
+                                .toInt();
                           }),
                         ),
                         fg: bort.fg,
@@ -165,61 +183,76 @@ Future<DateTime?> showBortDatePicker(
                   ),
                   SizedBox(height: side * 0.5),
                   SizedBox(
-                    width: side * 2.0,
-                    child: TextField(
-                      controller: timeCtrl,
-                      keyboardType: TextInputType.datetime,
-                      style: TextStyle(
-                        color: bort.fg,
-                        fontSize: side * 0.5,
-                        decoration: TextDecoration.none,
-                      ),
-                      textAlign: TextAlign.center,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        hintText: '${two(0)}:${two(0)}',
-                        hintStyle: TextStyle(
-                          color: bort.mid,
-                          fontSize: side * 0.4,
+                    height: side * 2.0,
+                    child: WheelValuePicker(
+                      columns: [
+                        WheelColumn(
+                          label: '',
+                          separator: ':',
+                          value: hour,
+                          itemCount: 24,
+                          onChanged: (v) => setState(() => hour = v),
+                          formatter: (v) => two(v),
                         ),
-                        border: OutlineInputBorder(
-                          borderSide: BorderSide(color: bort.mid),
-                          borderRadius: BorderRadius.circular(
-                            side * bort.kRadius,
-                          ),
+                        WheelColumn(
+                          label: '',
+                          separator: ':',
+                          value: minute,
+                          itemCount: 60,
+                          onChanged: (v) => setState(() => minute = v),
+                          formatter: (v) => two(v),
                         ),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: bort.mid),
-                          borderRadius: BorderRadius.circular(
-                            side * bort.kRadius,
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: bort.fg, width: 2),
-                          borderRadius: BorderRadius.circular(
-                            side * bort.kRadius,
-                          ),
-                        ),
-                        contentPadding: EdgeInsets.symmetric(
-                          vertical: side * 0.1,
-                          horizontal: side * 0.2,
-                        ),
-                      ),
+                      ],
+                      side: side,
+                      onCancel: () => Navigator.of(ctx).pop(),
+                      onOk: () {},
+                      cancelText: i18n.t('common.cancel'),
+                      okText: i18n.t('common.ok'),
                     ),
                   ),
                   SizedBox(height: side * 0.5),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: LinkText(
-                      text: i18n.t('common.cancel'),
-                      color: bort.mid,
-                      fontSize: side * bort.kName / 1.6,
-                      padding: EdgeInsets.symmetric(
-                        horizontal: side * 0.3,
-                        vertical: side * 0.1,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      LinkText(
+                        text: i18n.t('common.cancel'),
+                        color: bort.bgsignal,
+                        fontSize: side * bort.kName / 1.6,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: side * 0.3,
+                          vertical: side * 0.1,
+                        ),
+                        onTap: () => Navigator.of(ctx).pop(),
                       ),
-                      onTap: () => Navigator.of(ctx).pop(),
-                    ),
+                      SizedBox(width: side * 0.3),
+                      LinkText(
+                        text: i18n.t('common.ok'),
+                        color: bort.bgsignal,
+                        fontSize: side * bort.kName / 1.6,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: side * 0.3,
+                          vertical: side * 0.1,
+                        ),
+                        onTap: () => Navigator.of(ctx).pop(
+                          DateTime(
+                            selectedYear,
+                            selectedMonth,
+                            selectedDay
+                                .clamp(
+                                  1,
+                                  DateTime(
+                                    selectedYear,
+                                    selectedMonth + 1,
+                                    0,
+                                  ).day,
+                                )
+                                .toInt(),
+                            hour,
+                            minute,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -229,7 +262,7 @@ Future<DateTime?> showBortDatePicker(
       },
     );
     return picked;
-  } finally {
-    timeCtrl.dispose();
+  } catch (_) {
+    return null;
   }
 }

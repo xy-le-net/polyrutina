@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/journal_types.dart';
 import '../core/app_scope.dart';
 import '../core/format.dart';
+import '../core/wheel_picker.dart';
 import '../pults/pulse.dart';
 import '../pults/pult_core.dart';
 
@@ -22,6 +23,9 @@ class _ShiftRowState extends State<ShiftRow> {
   bool _editing = false;
   TextEditingController? _ctrl;
   FocusNode? _focus;
+  int _editHours = 0;
+  int _editMinutes = 0;
+  int _editSeconds = 0;
 
   @override
   void dispose() {
@@ -34,6 +38,9 @@ class _ShiftRowState extends State<ShiftRow> {
     _ctrl?.dispose();
     _focus?.dispose();
     _ctrl = TextEditingController(text: fmtEditable(seconds));
+    _editHours = seconds ~/ 3600;
+    _editMinutes = (seconds % 3600) ~/ 60;
+    _editSeconds = seconds % 60;
     _focus = FocusNode();
     _focus!.addListener(() {
       if (!_focus!.hasFocus) _cancel();
@@ -53,11 +60,7 @@ class _ShiftRowState extends State<ShiftRow> {
   Future<void> _confirm() async {
     final bort = BortScope.of(context);
     final journal = AppScope.of(context).journal;
-    final sec = parseEditable(_ctrl?.text ?? '');
-    if (sec == null) {
-      _cancel();
-      return;
-    }
+    final sec = _editHours * 3600 + _editMinutes * 60 + _editSeconds;
     if (sec == bort.shiftSecondsNow(_fieldId)) {
       _cancel();
       return;
@@ -97,43 +100,62 @@ class _ShiftRowState extends State<ShiftRow> {
     if (_editing) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(8, 8, 12, 4),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            SizedBox(
-              width: side * 3.0,
-              child: TextField(
-                controller: _ctrl,
-                focusNode: _focus,
-                autofocus: true,
-                style: TextStyle(
-                  color: fg,
-                  fontSize: side * 0.4,
-                  decoration: TextDecoration.none,
+        child: StatefulBuilder(
+          builder: (context, setWheelState) {
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                SizedBox(
+                  width: side * 3.0,
+                  height: side * 2.0,
+                  child: WheelValuePicker(
+                    columns: [
+                      WheelColumn(
+                        label: '',
+                        separator: ':',
+                        value: _editHours,
+                        itemCount: 100,
+                        onChanged: (v) => setWheelState(() => _editHours = v),
+                        formatter: (v) => v.toString().padLeft(2, '0'),
+                      ),
+                      WheelColumn(
+                        label: '',
+                        separator: ':',
+                        value: _editMinutes,
+                        itemCount: 60,
+                        onChanged: (v) => setWheelState(() => _editMinutes = v),
+                        formatter: (v) => v.toString().padLeft(2, '0'),
+                      ),
+                      WheelColumn(
+                        label: '',
+                        value: _editSeconds,
+                        itemCount: 60,
+                        onChanged: (v) => setWheelState(() => _editSeconds = v),
+                        formatter: (v) => v.toString().padLeft(2, '0'),
+                      ),
+                    ],
+                    side: side,
+                    onCancel: _cancel,
+                    onOk: _confirm,
+                    cancelText: i18n.t('common.cancel'),
+                    okText: i18n.t('common.ok'),
+                  ),
                 ),
-                decoration: InputDecoration(
-                  isDense: true,
-                  hintText: i18n.t('hint.time'),
-                  hintStyle: TextStyle(color: dim),
-                  border: const OutlineInputBorder(),
-                  contentPadding: EdgeInsets.all(side * 0.1),
+                SizedBox(width: side * 0.1),
+                Pult(
+                  spec: PultSpec(
+                    id: 'shift_confirm',
+                    icon: Icons.check,
+                    onTap: _confirm,
+                  ),
+                  fg: fg,
+                  bg: bg,
+                  signal: signal,
+                  overrideSize: side * bort.kPultSmall,
                 ),
-                onSubmitted: (_) => _confirm(),
-              ),
-            ),
-            SizedBox(width: side * 0.1),
-            Pult(
-              spec: PultSpec(
-                id: 'shift_confirm',
-                icon: Icons.check,
-                onTap: _confirm,
-              ),
-              fg: fg,
-              bg: bg,
-              signal: signal,
-              overrideSize: side * bort.kPultSmall,
-            ),
-          ],
+              ],
+            );
+          },
         ),
       );
     }

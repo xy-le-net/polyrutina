@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:async';
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -10,6 +11,7 @@ class TimeSeries {
   // {fieldId: {year: {month: {day: seconds}}}}
   final Map<int, Map<int, Map<int, Map<int, int>>>> _data = {};
   File? _file;
+  Timer? _saveTimer;
 
   Future<void> init(String fileName) async {
     final dir = await getApplicationDocumentsDirectory();
@@ -74,14 +76,39 @@ class TimeSeries {
     await atomicWriteJson(target, out);
   }
 
-  void addDay(int fieldId, int year, int month, int day, int seconds) {
+  void addDay(
+    int fieldId,
+    int year,
+    int month,
+    int day,
+    int seconds, {
+    bool persist = true,
+  }) {
     if (seconds <= 0) return;
     _data
             .putIfAbsent(fieldId, () => {})
             .putIfAbsent(year, () => {})
             .putIfAbsent(month, () => {})[day] =
         seconds;
-    _save();
+    if (persist) _scheduleSave();
+  }
+
+  void _scheduleSave() {
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(milliseconds: 200), () {
+      unawaited(_save());
+    });
+  }
+
+  Future<void> saveNow() async {
+    _saveTimer?.cancel();
+    _saveTimer = null;
+    await _save();
+  }
+
+  void dispose() {
+    _saveTimer?.cancel();
+    _saveTimer = null;
   }
 
   MonthTotals? lastMonth(int fieldId) {
@@ -152,12 +179,12 @@ class TimeSeries {
       months.removeWhere((m, _) => m < keep.month);
       return months.isEmpty;
     });
-    _save();
+    _scheduleSave();
   }
 
   void reset() {
     _data.clear();
-    _save();
+    _scheduleSave();
   }
 }
 
