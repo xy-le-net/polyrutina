@@ -32,8 +32,7 @@ class DialogFrame extends StatelessWidget {
     FocusManager.instance.primaryFocus?.unfocus();
 
     return DefaultTextStyle.merge(
-      // Neutralise inherited decoration. Explicit decoration on a
-      // child (LinkText's underline, for example) still wins.
+      // Neutralise inherited decoration while allowing child styles.
       style: const TextStyle(decoration: TextDecoration.none),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,

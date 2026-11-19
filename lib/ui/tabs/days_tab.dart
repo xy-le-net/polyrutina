@@ -505,7 +505,6 @@ class _DaysTabState extends State<DaysTab> {
     final m = _marksOf(month, day, routines);
 
     final numberColor = m.anySignal ? bort.fgsignal : bort.mid;
-    final underlineColor = bort.bgsignal;
     final scheduledColor = m.scheduledSignal ? bort.fgsignal : bort.mid;
     final unfinishedColor = m.unfinishedSignal ? bort.fgsignal : bort.mid;
 
@@ -513,8 +512,6 @@ class _DaysTabState extends State<DaysTab> {
       color: numberColor,
       fontSize: side * 0.4,
       height: 1.0,
-      decoration: m.completed ? TextDecoration.underline : TextDecoration.none,
-      decorationColor: underlineColor,
     );
 
     final boxSide = side * 0.9;

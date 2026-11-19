@@ -12,6 +12,7 @@ import 'package:timezone/timezone.dart' as tz;
 class NotificationService {
   static final _plugin = FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
+  static Future<void>? _initFuture;
   static bool _permissionAsked = false;
   static bool _tzInitialized = false;
 
@@ -37,9 +38,15 @@ class NotificationService {
   // clear of the fixed ids above.
   static int _scheduledIdFor(int routineId) => 200000 + (routineId & 0xFFFFF);
 
-  static Future<void> init() async {
-    if (_initialized) return;
+  static Future<void> init() {
+    if (_initialized) return Future<void>.value();
+    // Share initialization across startup and scheduler calls.
+    return _initFuture ??= _initialize().whenComplete(() {
+      _initFuture = null;
+    });
+  }
 
+  static Future<void> _initialize() async {
     const androidSettings = AndroidInitializationSettings(
       '@mipmap/ic_launcher',
     );
@@ -91,15 +98,22 @@ class NotificationService {
   static Future<void> _ensurePermission() async {
     if (_permissionAsked) return;
     _permissionAsked = true;
-    if (defaultTargetPlatform != TargetPlatform.android) return;
     try {
-      final android = _plugin
-          .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin
-          >();
-      final enabled = await android?.areNotificationsEnabled();
-      if (enabled == true) return;
-      await android?.requestNotificationsPermission();
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final android = _plugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
+        final enabled = await android?.areNotificationsEnabled();
+        if (enabled == true) return;
+        await android?.requestNotificationsPermission();
+      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+        final ios = _plugin
+            .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin
+            >();
+        await ios?.requestPermissions(alert: true, badge: true, sound: true);
+      }
     } catch (e) {
       debugPrint('NotificationService: permission request failed: $e');
     }
@@ -256,6 +270,10 @@ class NotificationService {
     required String body,
   }) async {
     if (!_initialized) await init();
+    if (!_initialized) {
+      debugPrint('NotificationService.showOverdue skipped: not initialized');
+      return;
+    }
     await _ensurePermission();
 
     // Every field here is const, so the whole details tree can be
@@ -313,6 +331,12 @@ class NotificationService {
     required String body,
   }) async {
     if (!_initialized) await init();
+    if (!_initialized) {
+      debugPrint(
+        'NotificationService.scheduleOverdueNotice skipped: not initialized',
+      );
+      return;
+    }
     await _ensurePermission();
     await _ensureTimezone();
 
@@ -388,6 +412,12 @@ class NotificationService {
 
   static Future<void> cancelOverdueNotice(int routineId) async {
     if (!_initialized) await init();
+    if (!_initialized) {
+      debugPrint(
+        'NotificationService.cancelOverdueNotice skipped: not initialized',
+      );
+      return;
+    }
     try {
       await _plugin.cancel(_scheduledIdFor(routineId));
     } catch (e) {

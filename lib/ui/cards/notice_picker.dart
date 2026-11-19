@@ -15,7 +15,7 @@ Future<int?> showNoticePicker(
   final bort = BortScope.of(context);
   final side = PultScope.of(context).smallSide;
 
-  final safeInitial = initialSeconds
+  final safeInitial = (noticeSet ? initialSeconds : 0)
       .clamp(0, 999 * 86400 + 23 * 3600 + 59 * 60)
       .toInt();
   var days = safeInitial ~/ 86400;
@@ -70,12 +70,6 @@ Future<int?> showNoticePicker(
                       ),
                     ],
                     side: side,
-                    onCancel: () => Navigator.of(ctx).pop(),
-                    onOk: () => Navigator.of(
-                      ctx,
-                    ).pop(days * 86400 + hours * 3600 + minutes * 60),
-                    cancelText: i18n.t('common.cancel'),
-                    okText: i18n.t('common.ok'),
                   ),
                 ),
                 const SizedBox(height: 16),

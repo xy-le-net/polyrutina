@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../data/journal_types.dart';
 import '../core/app_scope.dart';
-import '../core/format.dart';
 import '../core/wheel_picker.dart';
 import '../pults/pulse.dart';
 import '../pults/pult_core.dart';
@@ -21,40 +20,20 @@ class _ShiftRowState extends State<ShiftRow> {
   static const int _fieldId = 0;
 
   bool _editing = false;
-  TextEditingController? _ctrl;
-  FocusNode? _focus;
   int _editHours = 0;
   int _editMinutes = 0;
   int _editSeconds = 0;
 
-  @override
-  void dispose() {
-    _ctrl?.dispose();
-    _focus?.dispose();
-    super.dispose();
-  }
-
   void _startEdit(int seconds) {
-    _ctrl?.dispose();
-    _focus?.dispose();
-    _ctrl = TextEditingController(text: fmtEditable(seconds));
     _editHours = seconds ~/ 3600;
     _editMinutes = (seconds % 3600) ~/ 60;
     _editSeconds = seconds % 60;
-    _focus = FocusNode();
-    _focus!.addListener(() {
-      if (!_focus!.hasFocus) _cancel();
-    });
     setState(() => _editing = true);
   }
 
   void _cancel() {
     if (!_editing) return;
     if (mounted) setState(() => _editing = false);
-    _ctrl?.dispose();
-    _focus?.dispose();
-    _ctrl = null;
-    _focus = null;
   }
 
   Future<void> _confirm() async {
@@ -73,10 +52,6 @@ class _ShiftRowState extends State<ShiftRow> {
     );
     bort.setShiftTime(_fieldId, sec);
     if (mounted) setState(() => _editing = false);
-    _ctrl?.dispose();
-    _focus?.dispose();
-    _ctrl = null;
-    _focus = null;
     widget.onChanged();
   }
 
@@ -106,7 +81,7 @@ class _ShiftRowState extends State<ShiftRow> {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 SizedBox(
-                  width: side * 3.0,
+                  width: side * 3.6,
                   height: side * 2.0,
                   child: WheelValuePicker(
                     columns: [
@@ -114,7 +89,7 @@ class _ShiftRowState extends State<ShiftRow> {
                         label: '',
                         separator: ':',
                         value: _editHours,
-                        itemCount: 100,
+                        itemCount: _editHours < 24000 ? 24000 : _editHours + 1,
                         onChanged: (v) => setWheelState(() => _editHours = v),
                         formatter: (v) => v.toString().padLeft(2, '0'),
                       ),
@@ -135,10 +110,6 @@ class _ShiftRowState extends State<ShiftRow> {
                       ),
                     ],
                     side: side,
-                    onCancel: _cancel,
-                    onOk: _confirm,
-                    cancelText: i18n.t('common.cancel'),
-                    okText: i18n.t('common.ok'),
                   ),
                 ),
                 SizedBox(width: side * 0.1),

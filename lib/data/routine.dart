@@ -163,19 +163,12 @@ class Routine {
   bool get isOverdue =>
       isOverdueAt(DateTime.now().millisecondsSinceEpoch ~/ 1000);
 
-  // The moment a notice should fire (unix seconds), or null when
-  // the notice is not applicable. Used by the scheduler.
+  // The reminder fires at the due moment, or earlier by the configured lead.
   int? noticeMoment() {
     final due = scheduledAt;
     if (due == null || due <= 0) return null;
     if (noticeSet) return due - noticeBeforeSec;
-    // No notice assigned: fall back to the technical noon of the
-    // due day, capped at the due moment itself when the deadline
-    // assigned due date, whether or not a lead time was set.
-    final d = DateTime.fromMillisecondsSinceEpoch(due * 1000);
-    final noon = DateTime(d.year, d.month, d.day, 12, 0);
-    final sec = noon.millisecondsSinceEpoch ~/ 1000;
-    return sec < due ? sec : due;
+    return due;
   }
 
   Map<String, dynamic> toJson() => {

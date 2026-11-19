@@ -5,6 +5,7 @@ import '../core/block.dart';
 import '../core/bort_field.dart';
 import '../core/format.dart';
 import '../core/help_label.dart';
+import '../core/link_text.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_tick.dart';
 import '../services/action_dialog.dart';
@@ -96,21 +97,14 @@ class RubkaControl extends StatelessWidget {
           Expanded(
             child: Align(
               alignment: Alignment.centerLeft,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
+              child: LinkText(
+                text: bort.bortTime <= 0
+                    ? '0${i18n.t('time.m')}'
+                    : fmtTime(bort.bortTime, i18n.t),
+                color: bort.bgsignal,
+                fontSize: side * 0.4,
+                fontFamily: 'monospace',
                 onTap: () => showTimeHistory(context, key: 'bort'),
-                child: Text(
-                  bort.bortTime <= 0
-                      ? '0${i18n.t('time.m')}'
-                      : fmtTime(bort.bortTime, i18n.t),
-                  style: TextStyle(
-                    color: bort.bgsignal,
-                    fontFamily: 'monospace',
-                    decoration: TextDecoration.underline,
-                    decorationColor: bort.bgsignal,
-                    decorationThickness: 1.0,
-                  ),
-                ),
               ),
             ),
           ),
@@ -136,19 +130,12 @@ class RubkaControl extends StatelessWidget {
             ' (',
             style: TextStyle(color: fgsignal, fontFamily: 'monospace'),
           ),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
+          LinkText(
+            text: shiftTimeStr,
+            color: bort.bgsignal,
+            fontSize: side * 0.4,
+            fontFamily: 'monospace',
             onTap: () => showTimeHistory(context, key: 'shift', fieldId: 0),
-            child: Text(
-              shiftTimeStr,
-              style: TextStyle(
-                color: bort.bgsignal,
-                fontFamily: 'monospace',
-                decoration: TextDecoration.underline,
-                decorationColor: bort.bgsignal,
-                decorationThickness: 1.0,
-              ),
-            ),
           ),
           Text(
             ')',

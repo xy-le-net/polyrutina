@@ -129,13 +129,19 @@ class RoutineLayer extends ChangeNotifier {
   void _refreshSchedule(Routine r) {
     try {
       _scheduler?.refresh(r);
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('Failed to refresh notification for routine ${r.id}: $e\n$st');
+    }
   }
 
   void _cancelSchedule(int routineId) {
     try {
       _scheduler?.cancel(routineId);
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint(
+        'Failed to cancel notification for routine $routineId: $e\n$st',
+      );
+    }
   }
 
   void _rebuildIndices() {
@@ -640,7 +646,10 @@ class RoutineLayer extends ChangeNotifier {
   Future<void> setSchedule(JournalLayer journal, int id, int? at) async {
     final r = findRoutine(id);
     if (r == null) return;
-    if (r.scheduledAt == at) return;
+    if (r.scheduledAt == at) {
+      _refreshSchedule(r);
+      return;
+    }
 
     await journal.transaction(() async {
       r.scheduledAt = at;
@@ -677,7 +686,10 @@ class RoutineLayer extends ChangeNotifier {
       await clearNotice(journal, id);
       return;
     }
-    if (r.noticeSet && r.noticeBeforeSec == seconds) return;
+    if (r.noticeSet && r.noticeBeforeSec == seconds) {
+      _refreshSchedule(r);
+      return;
+    }
     r.noticeBeforeSec = seconds;
     r.noticeSet = true;
     r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;

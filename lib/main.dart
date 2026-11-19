@@ -203,7 +203,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       // layer, then run the startup reconciliation.
       _scheduler = _OverdueSchedulerImpl(_i18n!);
       _routineLayer.scheduler = _scheduler;
-      unawaited(_reconcileOverdue());
+      unawaited(_scheduler!.reconcile(_routineLayer.routines));
 
       _notificationManager = NotificationManager(
         bort: _bort,
@@ -221,68 +221,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     }
 
     if (mounted) setState(() {});
-  }
-
-  // Cancel every scheduled notice (clean slate), then re-evaluate
-  // every unfinished routine with a date and a notice. See the file
-  // header for the three branches.
-  Future<void> _reconcileOverdue() async {
-    final i18n = _i18n;
-    if (i18n == null) return;
-
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-
-    for (final r in _routineLayer.routines) {
-      await NotificationService.cancelOverdueNotice(r.id);
-    }
-
-    for (final r in _routineLayer.routines) {
-      if (r.completed) continue;
-      final due = r.scheduledAt;
-      if (due == null || due <= 0) continue;
-
-      final moment = r.noticeMoment();
-      if (moment == null) continue;
-
-      if (moment > now) {
-        // Future: schedule the deferred notice.
-        await NotificationService.scheduleOverdueNotice(
-          routineId: r.id,
-          at: DateTime.fromMillisecondsSinceEpoch(moment * 1000),
-          title: _overdueTitle(i18n, r),
-          body: _overdueBody(i18n, r, overdue: false),
-        );
-      } else if (due > now) {
-        // Notice moment passed, due still ahead: audible push now.
-        await NotificationService.showOverdue(
-          routineId: r.id,
-          title: _overdueTitle(i18n, r),
-          body: _overdueBody(i18n, r, overdue: false),
-        );
-      } else {
-        // Both passed: audible overdue push now, and at every
-        // startup until the routine is completed.
-        await NotificationService.showOverdue(
-          routineId: r.id,
-          title: _overdueTitle(i18n, r),
-          body: _overdueBody(i18n, r, overdue: true),
-        );
-      }
-    }
-  }
-
-  String _overdueTitle(I18n i18n, Routine r) {
-    if (r.name.isEmpty) return i18n.t('routine.no_name');
-    return r.name;
-  }
-
-  String _overdueBody(I18n i18n, Routine r, {required bool overdue}) {
-    final due = r.scheduledAt;
-    final dueStr = due != null ? fmtDateFull(due, i18n.t) : '—';
-    final prefix = overdue
-        ? i18n.t('routine.overdue')
-        : i18n.t('routine.notice_title');
-    return '$prefix: $dueStr';
   }
 
   Future<void> _afterJournalReset() async {
@@ -782,20 +720,53 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 // the layer stays UI-free.
 class _OverdueSchedulerImpl implements OverdueScheduler {
   final I18n i18n;
+  Future<void> _tail = Future<void>.value();
+
   _OverdueSchedulerImpl(this.i18n);
 
   @override
   void refresh(Routine routine) {
-    unawaited(_doRefresh(routine));
+    unawaited(_enqueue(() => _doRefresh(routine)));
   }
 
   @override
   void cancel(int routineId) {
-    unawaited(NotificationService.cancelOverdueNotice(routineId));
+    unawaited(
+      _enqueue(() => NotificationService.cancelOverdueNotice(routineId)),
+    );
+  }
+
+  Future<void> reconcile(Iterable<Routine> routines) {
+    final snapshot = List<Routine>.of(routines);
+    return _enqueue(() async {
+      for (final routine in snapshot) {
+        await NotificationService.cancelOverdueNotice(routine.id);
+      }
+      for (final routine in snapshot) {
+        await _updateNotice(routine);
+      }
+    });
+  }
+
+  Future<void> _enqueue(Future<void> Function() action) {
+    // Ordered cancel-and-recreate operations prevent stale alarms after rapid edits.
+    final next = _tail.then((_) async {
+      try {
+        await action();
+      } catch (e, st) {
+        debugPrint('Overdue notification update failed: $e\n$st');
+      }
+    });
+    _tail = next;
+    return next;
   }
 
   Future<void> _doRefresh(Routine r) async {
     await NotificationService.cancelOverdueNotice(r.id);
+    await _updateNotice(r);
+  }
+
+  Future<void> _updateNotice(Routine r) async {
     if (r.completed) return;
     final due = r.scheduledAt;
     if (due == null || due <= 0) return;
