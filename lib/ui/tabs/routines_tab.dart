@@ -673,7 +673,9 @@ class _RoutinesTabState extends State<RoutinesTab> {
           PultSpec(
             id: 'switch_${f.id}',
             icon: Icons.layers,
-            label: f.name,
+            label: f.id == app.fieldLayer.rootId
+                ? i18n.t('field.root')
+                : f.name,
             selected: f.id == currentId,
             onTap: () => app.fieldLayer.setActiveField(f.id),
           ),
@@ -708,6 +710,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final done = <Routine>[];
 
     int sortPulse(Routine r) => r.lastPulseAt ?? r.lastActionAt;
+    int sortScheduleDistance(Routine r) => (r.scheduledAt! - now).abs();
 
     for (final r in routines) {
       if (r.completed) {
@@ -730,13 +733,30 @@ class _RoutinesTabState extends State<RoutinesTab> {
           final bt = b.runningBlock?.startedAt ?? 0;
           return bt.compareTo(at);
         }
+        final aSchedule = a.scheduledAt;
+        final bSchedule = b.scheduledAt;
+        if (aSchedule != null && bSchedule != null) {
+          // Put the closest due date first; overdue tasks are grouped separately.
+          final byDistance = sortScheduleDistance(
+            a,
+          ).compareTo(sortScheduleDistance(b));
+          if (byDistance != 0) return byDistance;
+        } else if (aSchedule != null) {
+          return -1;
+        } else if (bSchedule != null) {
+          return 1;
+        }
         return sortPulse(b).compareTo(sortPulse(a));
       });
     }
 
     sortActive(overdue);
     sortActive(active);
-    done.sort((a, b) => sortPulse(b).compareTo(sortPulse(a)));
+    done.sort((a, b) {
+      final aCompleted = a.completedAt ?? sortPulse(a);
+      final bCompleted = b.completedAt ?? sortPulse(b);
+      return bCompleted.compareTo(aCompleted);
+    });
 
     return (overdue: overdue, active: active, done: done);
   }
