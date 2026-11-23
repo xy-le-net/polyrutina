@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -7,13 +8,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
-import '../core/screen_header.dart';
+import '../core/control_row.dart';
 import '../pults/pult_core.dart';
 
 Future<void> showGeoPicker({
@@ -38,6 +40,13 @@ class _TileSource {
     required this.urlTemplate,
     this.subdomains = const [],
   });
+}
+
+class _AddressResult {
+  final String name;
+  final LatLng point;
+
+  const _AddressResult({required this.name, required this.point});
 }
 
 const List<_TileSource> _tileSources = [
@@ -78,8 +87,13 @@ class _GeoPickerScreen extends StatefulWidget {
 }
 
 class _GeoPickerScreenState extends State<_GeoPickerScreen> {
+  static DateTime? _lastAddressRequest;
+
   final _boundaryKey = GlobalKey();
+  final _addressController = TextEditingController();
   bool _busy = false;
+  bool _searchingAddress = false;
+  String? _addressMessage;
 
   LatLng _center = const LatLng(55.753994, 37.620060); // Moscow fallback
   LatLng? _picked;
@@ -105,6 +119,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
   @override
   void dispose() {
     _positionStream?.cancel();
+    _addressController.dispose();
     super.dispose();
   }
 
@@ -160,13 +175,132 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
     double smallerSideMeters,
     double screenPixels,
   ) {
+    if (smallerSideMeters <= 0 || screenPixels <= 0) return 19;
     // metersPerPixel = 156543.03392 * cos(lat * pi / 180) / 2^zoom
     // smallerSideMeters / screenPixels = metersPerPixel
     // 2^zoom = (screenPixels * 156543.03392 * cos(lat)) / smallerSideMeters
     final scale =
         (screenPixels * 156543.03392 * math.cos(lat * math.pi / 180)) /
         smallerSideMeters;
-    return math.log(scale) / math.ln2;
+    return (math.log(scale) / math.ln2).clamp(2.0, 19.0).toDouble();
+  }
+
+  Future<void> _searchAddress() async {
+    final query = _addressController.text.trim();
+    if (_searchingAddress || query.isEmpty) return;
+
+    final app = AppScope.of(context);
+    setState(() {
+      _searchingAddress = true;
+      _addressMessage = null;
+    });
+
+    try {
+      final previousRequest = _lastAddressRequest;
+      if (previousRequest != null) {
+        final elapsed = DateTime.now().difference(previousRequest);
+        if (elapsed < const Duration(seconds: 1)) {
+          await Future<void>.delayed(const Duration(seconds: 1) - elapsed);
+        }
+      }
+      _lastAddressRequest = DateTime.now();
+
+      final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
+        'format': 'jsonv2',
+        'limit': '5',
+        'q': query,
+        'accept-language': app.i18n.lang,
+      });
+      final response = await http
+          .get(
+            uri,
+            headers: {
+              'User-Agent':
+                  'polyrutina/0.1.1 (https://github.com/xy-le-net/polyrutina)',
+            },
+          )
+          .timeout(const Duration(seconds: 12));
+      if (response.statusCode != 200) {
+        throw HttpException(
+          'Address search returned HTTP ${response.statusCode}',
+        );
+      }
+
+      final data = jsonDecode(response.body);
+      if (data is! List) {
+        throw const FormatException('Invalid address search response');
+      }
+      final results = <_AddressResult>[];
+      for (final item in data) {
+        if (item is! Map<String, dynamic>) continue;
+        final lat = double.tryParse(item['lat']?.toString() ?? '');
+        final lon = double.tryParse(item['lon']?.toString() ?? '');
+        final name = item['display_name'];
+        if (lat == null ||
+            lon == null ||
+            lat < -90 ||
+            lat > 90 ||
+            lon < -180 ||
+            lon > 180 ||
+            name is! String) {
+          continue;
+        }
+        results.add(_AddressResult(name: name, point: LatLng(lat, lon)));
+      }
+
+      if (results.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _addressMessage = app.i18n.t('media.address_not_found');
+          });
+        }
+        return;
+      }
+
+      if (!mounted) return;
+      final result = await showDialog<_AddressResult>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(app.i18n.t('media.search_address')),
+          content: SizedBox(
+            width: 420,
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: results.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final item = results[index];
+                return ListTile(
+                  title: Text(item.name),
+                  onTap: () => Navigator.of(context).pop(item),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      if (result != null && mounted) {
+        _positionStream?.cancel();
+        final zoom = _mapController.camera.zoom.clamp(15.0, 19.0).toDouble();
+        setState(() {
+          _center = result.point;
+          _picked = result.point;
+          _accuracy = 0;
+          _userTouched = true;
+          _addressController.text = result.name;
+        });
+        _mapController.move(result.point, zoom);
+      }
+    } catch (error, stackTrace) {
+      debugPrint('Address search failed: $error\n$stackTrace');
+      if (mounted) {
+        setState(() {
+          _addressMessage = app.i18n.t('media.address_search_failed');
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _searchingAddress = false);
+    }
   }
 
   Future<ui.Image?> _captureImage() async {
@@ -265,9 +399,57 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            ScreenHeader(
-              title: i18n.t('media.geo'),
-              onExit: _busy ? null : _close,
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8, right: 6),
+              child: ControlRow(
+                rootSide: side,
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _addressController,
+                        textInputAction: TextInputAction.search,
+                        onSubmitted: (_) => _searchAddress(),
+                        decoration: InputDecoration(
+                          hintText: i18n.t('media.search_address'),
+                          prefixIcon: const Icon(Icons.search, size: 20),
+                          isDense: true,
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(
+                            vertical: side * 0.1,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Pult(
+                      spec: PultSpec(
+                        id: 'geo_address_search',
+                        icon: _searchingAddress
+                            ? Icons.hourglass_top
+                            : Icons.search,
+                        onTap: _searchingAddress ? null : _searchAddress,
+                      ),
+                      fg: bort.fg,
+                      bg: bort.bg,
+                      signal: bort.fgsignal,
+                      overrideSize: side * bort.kPultSmall,
+                    ),
+                    SizedBox(width: side * 0.15),
+                    Pult(
+                      spec: PultSpec(
+                        id: 'header_exit',
+                        icon: Icons.keyboard_arrow_down,
+                        onTap: _busy ? null : _close,
+                      ),
+                      fg: bort.fg,
+                      bg: bort.bg,
+                      signal: bort.fgsignal,
+                      overrideSize: side * bort.kPultSmall,
+                    ),
+                  ],
+                ),
+              ),
             ),
             Expanded(
               child: LayoutBuilder(
@@ -304,7 +486,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                               key: ValueKey(_tileSourceIndex),
                               urlTemplate: source.urlTemplate,
                               subdomains: source.subdomains,
-                              userAgentPackageName: 'com.polyrutina.app',
+                              userAgentPackageName: 'com.example.polyrutina',
                               errorTileCallback: (_, __, ___) {
                                 if (!mounted) return;
                                 if (_noNetwork) return;
@@ -344,6 +526,28 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                               color: bort.bg,
                               child: Text(
                                 i18n.t('media.no_network'),
+                                style: TextStyle(
+                                  color: bort.mid,
+                                  fontSize: side * 0.35,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (_addressMessage != null)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          top: side * 0.4,
+                          child: Center(
+                            child: Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: side * 0.3,
+                                vertical: side * 0.1,
+                              ),
+                              color: bort.bg,
+                              child: Text(
+                                _addressMessage!,
                                 style: TextStyle(
                                   color: bort.mid,
                                   fontSize: side * 0.35,

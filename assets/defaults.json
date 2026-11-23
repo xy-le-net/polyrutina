@@ -1,5 +1,5 @@
 {
-  "_notes": "Defaults for themes, interface, routines, permissions, and the fixed waiting-screen background.",
+  "_notes": "Defaults for themes, interface, routines, and permissions.",
 
   "themes": {
     "day": {
@@ -58,7 +58,5 @@
   "k_number_small": 0.3,
   "k_name": 0.5,
   "k_radius": 0.15,
-  "k_stroke": 0.0075,
-
-  "splash_bg": "#D9D3C7"
+  "k_stroke": 0.0075
 }

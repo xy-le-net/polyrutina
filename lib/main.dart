@@ -58,11 +58,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   // ready to show. Until then, the waiting screen is painted.
   bool _bootDone = false;
 
-  // Fixed waiting-screen background. Mirrors `splash_bg` in
-  // assets/defaults.json and `color` in the flutter_native_splash
-  // section of pubspec.yaml, so the hand-off from the native splash
-  // to the Dart waiting screen does not flash.
-  static const Color _splashBg = Color(0xFFD9D3C7);
+  // The native launch screen uses the default palette; once preferences
+  // load, the Dart waiting screen follows the active app palette.
+  Color get _splashBg => _bort.bg;
 
   int _tab = 0; // Routines
   int? _openedRoutineId;

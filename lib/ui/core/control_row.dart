@@ -43,13 +43,10 @@ class ControlRow extends StatelessWidget {
       // Positioned(left: _rootPad, top: _rootPad) for the root pult.
       // Callers must not add a top Padding.
       margin: EdgeInsets.only(left: rootPad, top: rootPad),
-      constraints: BoxConstraints(minHeight: rootSide * pultVisualScale),
+      constraints: BoxConstraints.tightFor(height: rootSide * pultVisualScale),
       child: Row(
-        // Center on the cross axis, so the child sits in the middle
-        // of the pult's vertical zone. The Row's height is the larger
-        // of the pult footprint and the child's intrinsic height,
-        // which makes this the single vertical-centering rule for
-        // every control row.
+        // Keep the content centered within the root pult's fixed
+        // vertical zone, regardless of its intrinsic height.
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           // Reserve space for the pult's visual footprint plus the gap.

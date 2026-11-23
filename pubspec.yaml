@@ -24,6 +24,7 @@ dependencies:
   file_picker: ^10.3.3
   record: ^6.0.0
   geolocator: ^13.0.1
+  http: ^1.6.0
 
   # System share sheet.
   share_plus: ^10.0.0
@@ -95,11 +96,8 @@ flutter_launcher_icons:
   image_path: "assets/icon.png"
   min_sdk_android: 21
 
-# Native splash configuration. One fixed background (matching the
-# Dart waiting screen; see splash_bg in assets/defaults.json) and
-# the transparent app icon. The background is fixed and does not
-# follow the theme, by design: a theme-dependent background would
-# flash between two colours during startup.
+# Native launch screen uses the default background until the saved
+# palette is loaded; the Dart waiting screen then follows that palette.
 flutter_native_splash:
   color: "#D9D3C7"
   image: assets/icon.png

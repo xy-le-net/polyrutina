@@ -1,5 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Runtime permissions consulted by permission_handler and
          requested by the in-app permissions block. Without these
          declarations the plugin fails silently on Android, which
