@@ -71,6 +71,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   // Periodic consumer of pending_action.json. Started on init.
   Timer? _pendingPollTimer;
+  bool _pendingActionInProgress = false;
 
   static const List<RootTabItem> _allTabs = [
     RootTabItem(icon: Icons.checklist, labelKey: 'tab.routines'),
@@ -276,14 +277,20 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   }
 
   Future<void> _handlePendingNotificationAction() async {
-    final data = await NotificationService.consumePendingAction();
-    if (data == null) return;
+    if (_pendingActionInProgress) return;
+    _pendingActionInProgress = true;
+    try {
+      final data = await NotificationService.consumePendingAction();
+      if (data == null) return;
 
-    final action = data['action'] ?? '';
-    final payload = data['payload'] ?? '';
-    await _applyShadeAction(action, payload);
+      final action = data['action'] ?? '';
+      final payload = data['payload'] ?? '';
+      await _applyShadeAction(action, payload);
 
-    if (mounted) setState(() {});
+      if (mounted) setState(() {});
+    } finally {
+      _pendingActionInProgress = false;
+    }
   }
 
   Future<void> _applyShadeAction(String action, String payload) async {

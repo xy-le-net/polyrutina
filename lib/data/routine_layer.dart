@@ -34,6 +34,7 @@ class RoutineLayer extends ChangeNotifier {
 
   final Map<String, int> _sourceKeyIndex = {};
   final Map<int, Set<int>> _nodeRoutinesIndex = {};
+  final Map<int, Routine> _routineIndex = {};
   final Set<int> _runningRoutineIds = {};
 
   TraceLayer? _traces;
@@ -147,9 +148,11 @@ class RoutineLayer extends ChangeNotifier {
   void _rebuildIndices() {
     _sourceKeyIndex.clear();
     _nodeRoutinesIndex.clear();
+    _routineIndex.clear();
     _runningRoutineIds.clear();
 
     for (final r in routines) {
+      _routineIndex[r.id] = r;
       if (r.sourceKey.isNotEmpty) {
         _sourceKeyIndex[r.sourceKey] = r.id;
       }
@@ -163,6 +166,7 @@ class RoutineLayer extends ChangeNotifier {
   }
 
   void _indexAdd(Routine r) {
+    _routineIndex[r.id] = r;
     if (r.sourceKey.isNotEmpty) {
       _sourceKeyIndex[r.sourceKey] = r.id;
     }
@@ -175,6 +179,7 @@ class RoutineLayer extends ChangeNotifier {
   }
 
   void _indexRemove(Routine r) {
+    _routineIndex.remove(r.id);
     if (r.sourceKey.isNotEmpty && _sourceKeyIndex[r.sourceKey] == r.id) {
       _sourceKeyIndex.remove(r.sourceKey);
     }
@@ -297,6 +302,7 @@ class RoutineLayer extends ChangeNotifier {
           lastActiveBlockKind = null;
           _sourceKeyIndex.clear();
           _nodeRoutinesIndex.clear();
+          _routineIndex.clear();
           _runningRoutineIds.clear();
           break;
         case 'snapshot':
@@ -306,7 +312,8 @@ class RoutineLayer extends ChangeNotifier {
               final r = Routine.fromJson(raw);
               final idx = routines.indexWhere((x) => x.id == r.id);
               if (idx >= 0) {
-                _indexRemove(routines[idx]);
+                final old = routines[idx];
+                _indexRemove(old);
                 routines[idx] = r;
                 _indexAdd(r);
               } else {
@@ -479,6 +486,7 @@ class RoutineLayer extends ChangeNotifier {
     lastActiveBlockKind = null;
     _sourceKeyIndex.clear();
     _nodeRoutinesIndex.clear();
+    _routineIndex.clear();
     _runningRoutineIds.clear();
     notifyListeners();
   }
@@ -948,8 +956,13 @@ class RoutineLayer extends ChangeNotifier {
   }
 
   Routine? findRoutine(int id) {
+    final indexed = _routineIndex[id];
+    if (indexed != null) return indexed;
     for (final r in routines) {
-      if (r.id == id) return r;
+      if (r.id == id) {
+        _routineIndex[id] = r;
+        return r;
+      }
     }
     return null;
   }
@@ -980,6 +993,7 @@ class RoutineLayer extends ChangeNotifier {
     lastActiveBlockKind = null;
     _sourceKeyIndex.clear();
     _nodeRoutinesIndex.clear();
+    _routineIndex.clear();
     _runningRoutineIds.clear();
     await _saveToFile();
     notifyListeners();

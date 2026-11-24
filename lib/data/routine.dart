@@ -23,7 +23,8 @@ class RoutineBlock {
 
   int secondsNowAt(int now) {
     if (startedAt == null) return accumulatorSeconds;
-    return accumulatorSeconds + (now - startedAt!);
+    final elapsed = now > startedAt! ? now - startedAt! : 0;
+    return accumulatorSeconds + elapsed;
   }
 
   int get secondsNow =>
@@ -38,15 +39,15 @@ class RoutineBlock {
   void pause({int? at}) {
     if (startedAt == null) return;
     final t = at ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    accumulatorSeconds += t - startedAt!;
+    accumulatorSeconds += t > startedAt! ? t - startedAt! : 0;
     startedAt = null;
   }
 
   // Manual time edit. Zero — erasure, the mark is cleared.
   void setEditedTime(int seconds) {
-    accumulatorSeconds = seconds;
+    accumulatorSeconds = seconds < 0 ? 0 : seconds;
     startedAt = null;
-    timeEdited = seconds > 0;
+    timeEdited = accumulatorSeconds > 0;
   }
 
   Map<String, dynamic> toJson() => {
@@ -207,6 +208,12 @@ class Routine {
         } catch (_) {
           // Skip a single malformed block; keep the rest.
         }
+      }
+    }
+    final existingKinds = blocks.map((b) => b.kind).toSet();
+    for (final kind in RoutineBlock.kinds) {
+      if (!existingKinds.contains(kind)) {
+        blocks.add(RoutineBlock(kind: kind));
       }
     }
 

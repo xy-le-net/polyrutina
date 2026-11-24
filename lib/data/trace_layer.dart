@@ -177,7 +177,7 @@ class TraceLayer extends ChangeNotifier {
   Future<void> init(JournalLayer journal) async {
     final dir = await getApplicationDocumentsDirectory();
     _file = File(p.join(dir.path, 'trace_layer.json'));
-    await _loadFromFile();
+    final needsRebuild = await _loadFromFile();
 
     journal.register(
       name: 'trace',
@@ -185,6 +185,10 @@ class TraceLayer extends ChangeNotifier {
       apply: _applyEntry,
       reset: _resetMemory,
     );
+    if (needsRebuild) {
+      journal.clearMark('trace');
+      await journal.pump();
+    }
 
     notifyListeners();
   }
@@ -220,15 +224,15 @@ class TraceLayer extends ChangeNotifier {
     }
   }
 
-  Future<void> _loadFromFile() async {
-    if (_file == null || !await _file!.exists()) return;
+  Future<bool> _loadFromFile() async {
+    if (_file == null || !await _file!.exists()) return true;
     try {
       final raw = await _file!.readAsString();
       final data = jsonDecode(raw) as Map<String, dynamic>;
 
       final schema = (data['schema'] as num?)?.toInt() ?? 0;
       if (schema < _schemaVersion) {
-        return; // Rely on journal reread
+        return true;
       }
 
       final list = data['traces'];
@@ -240,7 +244,10 @@ class TraceLayer extends ChangeNotifier {
         }
       }
       _rebuildIndices();
-    } catch (_) {}
+      return false;
+    } catch (_) {
+      return true;
+    }
   }
 
   void _scheduleSave() {
@@ -305,7 +312,7 @@ class TraceLayer extends ChangeNotifier {
               .toList();
         }
         existing.deleted = data['deleted'] as bool? ?? existing.deleted;
-        _updateIndexForTrace(existing);
+        _rebuildIndices();
         return;
       }
 
@@ -522,6 +529,7 @@ class TraceLayer extends ChangeNotifier {
     if (t == null) return;
     t.deleted = true;
     await _updateBody(journal, traceId, t);
+    _rebuildIndices();
     // Index will fallback and find the next available trace or none.
   }
 
