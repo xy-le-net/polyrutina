@@ -15,7 +15,10 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
+import '../core/bort_field.dart';
+import '../core/bort_metrics.dart';
 import '../core/control_row.dart';
+import '../core/dialog_frame.dart';
 import '../pults/pult_core.dart';
 
 Future<void> showGeoPicker({
@@ -311,34 +314,35 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
       }
 
       if (!mounted) return;
+      final metrics = BortMetrics.of(context, compact: true);
+      final dialogWidth = math
+          .min(
+            metrics.unit(14),
+            MediaQuery.sizeOf(context).width - metrics.unit(2.4),
+          )
+          .clamp(0.0, double.infinity)
+          .toDouble();
       final result = await showDialog<_AddressResult>(
         context: context,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            side: BorderSide(
-              color: app.bort.fgsignal,
-              width: PultScope.of(context).smallSide * app.bort.kStroke,
-            ),
-            borderRadius: BorderRadius.circular(
-              PultScope.of(context).smallSide * app.bort.kRadius * 1.15,
-            ),
-          ),
-          backgroundColor: app.bort.bg,
-          title: Text(app.i18n.t('media.search_address')),
-          content: SizedBox(
-            width: 420,
-            child: ListView.separated(
-              shrinkWrap: true,
-              itemCount: results.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final item = results[index];
-                return ListTile(
-                  title: Text(item.name),
-                  onTap: () => Navigator.of(context).pop(item),
-                );
-              },
-            ),
+        builder: (ctx) => DialogFrame(
+          onDismiss: () => Navigator.of(ctx).pop(),
+          maxWidth: dialogWidth,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              DialogTitle(text: app.i18n.t('media.search_address')),
+              SizedBox(height: metrics.unit(0.4)),
+              for (var index = 0; index < results.length; index++) ...[
+                if (index > 0)
+                  Divider(height: metrics.unit(0.5), color: app.bort.mid),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(results[index].name),
+                  onTap: () => Navigator.of(ctx).pop(results[index]),
+                ),
+              ],
+            ],
           ),
         ),
       );
@@ -478,15 +482,14 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                     Expanded(
                       child: TextField(
                         controller: _addressController,
+                        style: bortInputTextStyle(context, color: bort.fg),
                         textInputAction: TextInputAction.search,
                         onSubmitted: (_) => _searchAddress(),
-                        decoration: InputDecoration(
+                        decoration: bortInputDecoration(
+                          context,
+                          borderColor: bort.fg,
                           hintText: i18n.t('media.search_address'),
-                          isDense: true,
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(
-                            vertical: side * 0.1,
-                          ),
+                          borderless: true,
                         ),
                       ),
                     ),

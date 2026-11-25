@@ -4,6 +4,8 @@ import '../../data/journal_layer.dart';
 import '../../data/operational_layer.dart';
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
+import 'bort_field.dart';
+import 'bort_metrics.dart';
 import '../pults/pult_core.dart';
 import '../screens/checklist_screen.dart';
 import '../screens/media_viewer.dart';
@@ -321,11 +323,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
 
     final files = _files();
 
-    final textStyle = TextStyle(
-      color: widget.fg,
-      fontSize: widget.side * bort.kNumber * 1.2,
-      decoration: TextDecoration.none,
-    );
+    final textStyle = bortInputTextStyle(context, color: widget.fg);
 
     // View mode: text is present, the field is not focused, and the
     // user is not in the tap-to-edit window. The text is rendered as
@@ -366,8 +364,9 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     Widget fieldWidget;
     if (viewMode) {
       final maxViewH = MediaQuery.of(context).size.height / 3;
-      final viewPadding = widget.side * 0.15;
-      const borderWidth = 1.0;
+      final metrics = BortMetrics.of(context);
+      final viewPadding = metrics.fieldPadding;
+      final borderWidth = metrics.fieldBorderWidth;
       final viewTextStyle = textStyle.copyWith(
         fontSize: textStyle.fontSize! * 0.75,
       );
@@ -406,7 +405,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
               decoration: BoxDecoration(
                 color: widget.fieldBg,
                 border: Border.all(color: widget.dim, width: borderWidth),
-                borderRadius: BorderRadius.circular(widget.side * bort.kRadius),
+                borderRadius: BorderRadius.circular(metrics.radius),
               ),
               child: SingleChildScrollView(
                 child: Text(_ctrl.text, style: viewTextStyle),
@@ -422,25 +421,13 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
         maxLines: maxLines,
         minLines: minLines,
         style: textStyle,
-        decoration: InputDecoration(
-          isDense: true,
-          filled: true,
+        decoration: bortInputDecoration(
+          context,
+          borderColor: widget.dim,
+          focusedBorderColor: widget.fg,
           fillColor: widget.fieldBg,
           hintText: i18n.t('routine.block.note'),
           hintStyle: TextStyle(color: widget.dim, fontSize: textStyle.fontSize),
-          border: OutlineInputBorder(
-            borderSide: BorderSide(color: widget.dim),
-            borderRadius: BorderRadius.circular(widget.side * bort.kRadius),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderSide: BorderSide(color: widget.dim),
-            borderRadius: BorderRadius.circular(widget.side * bort.kRadius),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderSide: BorderSide(color: widget.fg),
-            borderRadius: BorderRadius.circular(widget.side * bort.kRadius),
-          ),
-          contentPadding: EdgeInsets.all(widget.side * 0.15),
         ),
         onChanged: (v) {
           bort.setDraft(_key, v);

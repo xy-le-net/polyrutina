@@ -1,6 +1,65 @@
 import 'package:flutter/material.dart';
 
-import 'app_scope.dart';
+import 'bort_metrics.dart';
+
+InputDecoration bortInputDecoration(
+  BuildContext context, {
+  required Color borderColor,
+  Color? focusedBorderColor,
+  Color? fillColor,
+  String? hintText,
+  bool borderless = false,
+  EdgeInsets? contentPadding,
+  TextStyle? hintStyle,
+}) {
+  final metrics = BortMetrics.of(context);
+  final radius = BorderRadius.circular(metrics.radius);
+  final width = metrics.fieldBorderWidth;
+  final border = OutlineInputBorder(
+    borderSide: BorderSide(color: borderColor, width: width),
+    borderRadius: radius,
+  );
+  final focusedBorder = OutlineInputBorder(
+    borderSide: BorderSide(
+      color: focusedBorderColor ?? borderColor,
+      width: width,
+    ),
+    borderRadius: radius,
+  );
+  final inputBorder = borderless ? InputBorder.none : border;
+
+  return InputDecoration(
+    isDense: true,
+    filled: fillColor != null,
+    fillColor: fillColor,
+    hintText: hintText,
+    hintStyle:
+        hintStyle ??
+        TextStyle(color: metrics.bort.mid, fontSize: metrics.fieldFontSize),
+    border: inputBorder,
+    enabledBorder: inputBorder,
+    focusedBorder: borderless ? InputBorder.none : focusedBorder,
+    contentPadding:
+        contentPadding ??
+        EdgeInsets.symmetric(
+          horizontal: borderless ? 0 : metrics.fieldPadding,
+          vertical: metrics.fieldPadding,
+        ),
+  );
+}
+
+TextStyle bortInputTextStyle(
+  BuildContext context, {
+  Color? color,
+  double? fontSize,
+}) {
+  final metrics = BortMetrics.of(context);
+  return TextStyle(
+    color: color ?? metrics.bort.fg,
+    fontSize: fontSize ?? metrics.fieldFontSize,
+    decoration: TextDecoration.none,
+  );
+}
 
 class BortField extends StatefulWidget {
   final String initial;
@@ -64,31 +123,25 @@ class _BortFieldState extends State<BortField> {
 
   @override
   Widget build(BuildContext context) {
-    // Cursor uses the first palette role (bgsignal), not the fifth.
-    // On the third role's background the first reads better, and
-    // the first is the one used elsewhere for selection — the cursor
-    // must match.
-    Color cursor = widget.fg;
-    try {
-      cursor = BortScope.of(context).bgsignal;
-    } catch (_) {}
+    final metrics = BortMetrics.of(context);
+    final bort = metrics.bort;
     return TextField(
       controller: _ctrl,
       focusNode: _focus,
       readOnly: widget.readOnly,
       autofocus: widget.autofocus,
-      cursorColor: cursor,
-      style: TextStyle(color: widget.fg, decoration: TextDecoration.none),
-      decoration: InputDecoration(
-        isDense: true,
-        border: widget.showBorder
-            ? const OutlineInputBorder()
-            : InputBorder.none,
-        contentPadding: EdgeInsets.symmetric(
-          horizontal: widget.showBorder ? 8 : 0,
-          vertical: 8,
-        ),
+      cursorColor: bort.bgsignal,
+      style: bortInputTextStyle(context, color: widget.fg),
+      decoration: bortInputDecoration(
+        context,
+        borderColor: widget.fg,
+        focusedBorderColor: bort.bgsignal,
         hintText: widget.hint,
+        borderless: !widget.showBorder,
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: widget.showBorder ? metrics.fieldPadding : 0,
+          vertical: metrics.fieldPadding,
+        ),
       ),
       onChanged: widget.onChanged,
       onSubmitted: (_) {

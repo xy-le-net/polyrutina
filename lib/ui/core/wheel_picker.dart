@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 
 import 'app_scope.dart';
+import 'bort_metrics.dart';
 
 class WheelValuePicker extends StatelessWidget {
   final List<WheelColumn> columns;
@@ -15,7 +16,7 @@ class WheelValuePicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bort = BortScope.of(context);
-    final columnHeight = side * 2.8;
+    final columnHeight = side * BortMetrics.wheelHeightFactor;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -112,7 +113,7 @@ class _WheelColumnState extends State<_WheelColumn> {
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          height: side * 0.5,
+          height: side * BortMetrics.wheelLabelHeightFactor,
           child: Center(
             child: Text(
               column.label,
@@ -125,10 +126,10 @@ class _WheelColumnState extends State<_WheelColumn> {
             ),
           ),
         ),
-        SizedBox(height: side * 0.1),
+        SizedBox(height: side * BortMetrics.wheelLabelGapFactor),
         SizedBox(
           width: side,
-          height: side * 2.2,
+          height: side * BortMetrics.wheelViewportHeightFactor,
           child: CupertinoPicker.builder(
             scrollController: _controller,
             itemExtent: side * 0.65,

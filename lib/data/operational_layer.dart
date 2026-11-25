@@ -62,7 +62,15 @@ class OperationalLayer extends ChangeNotifier {
 
   int nextMediaIndex() => _install.nextMediaIndex();
 
-  double scale = 1.4;
+  static const double minScale = 0.5;
+  static const double maxScale = 2.0;
+  double _scale = 1.4;
+  double get scale => _scale;
+  set scale(double value) {
+    if (!value.isFinite) return;
+    _scale = value.clamp(minScale, maxScale).toDouble();
+  }
+
   String lang = 'ru';
   String anchor = 'tl';
   bool labelsButtons = true;

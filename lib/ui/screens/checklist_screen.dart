@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
+import '../core/bort_field.dart';
+import '../core/bort_metrics.dart';
 import '../core/screen_header.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_tick.dart';
@@ -243,13 +245,13 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     final i18n = I18nScope.of(context);
     final side = PultScope.of(context).smallSide;
 
-    final itemSize = side * bort.kNumberSmall;
+    final metrics = BortMetrics.of(context);
+    final itemSize = metrics.smallFontSize;
     final pultSide = side * bort.kPultSmall;
-    final radiusW = side * bort.kRadius;
-    final inputStyle = TextStyle(
+    final inputStyle = bortInputTextStyle(
+      context,
       color: bort.fg,
       fontSize: itemSize,
-      decoration: TextDecoration.none,
     );
     final inputLineHeight = TextPainter(
       text: TextSpan(text: ' ', style: inputStyle),
@@ -338,27 +340,14 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                                 controller: _controllers[i],
                                 focusNode: _focusNodes[i],
                                 style: inputStyle,
-                                decoration: InputDecoration(
-                                  isDense: true,
+                                decoration: bortInputDecoration(
+                                  context,
+                                  borderColor: bort.mid,
+                                  focusedBorderColor: bort.fg,
                                   hintText: i18n.t('routine.block.note'),
-                                  hintStyle: TextStyle(color: bort.mid),
-                                  border: OutlineInputBorder(
-                                    borderSide: BorderSide(color: bort.mid),
-                                    borderRadius: BorderRadius.circular(
-                                      radiusW,
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderSide: BorderSide(color: bort.mid),
-                                    borderRadius: BorderRadius.circular(
-                                      radiusW,
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderSide: BorderSide(color: bort.fg),
-                                    borderRadius: BorderRadius.circular(
-                                      radiusW,
-                                    ),
+                                  hintStyle: TextStyle(
+                                    color: bort.mid,
+                                    fontSize: inputStyle.fontSize,
                                   ),
                                   contentPadding: EdgeInsets.all(side * 0.15),
                                 ),

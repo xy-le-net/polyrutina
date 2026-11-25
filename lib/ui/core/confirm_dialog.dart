@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../pults/pult_core.dart';
-import 'app_scope.dart';
+import 'bort_metrics.dart';
 import 'dialog_frame.dart';
-import 'link_text.dart';
 
 Future<bool> showConfirm(
   BuildContext context, {
@@ -12,16 +10,7 @@ Future<bool> showConfirm(
   required String confirmLabel,
   required String cancelLabel,
 }) async {
-  final bort = BortScope.of(context);
-  final side = PultScope.of(context).smallSide;
-
-  final pad = side * bort.kFramePad;
-  // 1.6× reduction for the action labels.
-  final actionSize = side * bort.kName / 1.6;
-  final actionPad = EdgeInsets.symmetric(
-    horizontal: side * 0.3,
-    vertical: side * 0.1,
-  );
+  final metrics = BortMetrics.of(context, compact: true);
 
   final result = await showDialog<bool>(
     context: context,
@@ -33,37 +22,26 @@ Future<bool> showConfirm(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              title,
-              style: TextStyle(color: bort.fg, fontSize: side * bort.kTitle),
-            ),
+            DialogTitle(text: title),
             if (subtitle != null) ...[
-              SizedBox(height: pad * 0.5),
+              SizedBox(height: metrics.unit(metrics.bort.kFramePad * 0.5)),
               Text(
                 subtitle,
                 style: TextStyle(
-                  color: bort.mid,
-                  fontSize: side * bort.kNumberSmall,
+                  color: metrics.bort.mid,
+                  fontSize: metrics.smallFontSize,
                 ),
               ),
             ],
-            SizedBox(height: pad * 0.8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                LinkText(
-                  text: cancelLabel,
-                  color: bort.mid,
-                  fontSize: actionSize,
-                  padding: actionPad,
+            SizedBox(height: metrics.unit(metrics.bort.kFramePad * 0.8)),
+            DialogActions(
+              actions: [
+                DialogAction(
+                  label: cancelLabel,
                   onTap: () => Navigator.of(ctx).pop(false),
                 ),
-                SizedBox(width: side * 0.4),
-                LinkText(
-                  text: confirmLabel,
-                  color: bort.fgsignal,
-                  fontSize: actionSize,
-                  padding: actionPad,
+                DialogAction(
+                  label: confirmLabel,
                   onTap: () => Navigator.of(ctx).pop(true),
                 ),
               ],

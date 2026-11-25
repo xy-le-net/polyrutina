@@ -7,6 +7,7 @@ import 'package:record/record.dart';
 
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
+import '../core/bort_metrics.dart';
 import '../core/dialog_frame.dart';
 import '../core/format.dart';
 import '../pults/pult_core.dart';
@@ -93,17 +94,15 @@ class _AudioDialogState extends State<_AudioDialog> {
     final app = AppScope.of(context);
     final i18n = app.i18n;
     final bort = app.bort;
-    final side = PultScope.of(context).smallSide;
+    final metrics = BortMetrics.of(context, compact: true);
+    final side = metrics.side;
     return DialogFrame(
       onDismiss: () => Navigator.of(context).pop(),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            i18n.t('media.audio'),
-            style: TextStyle(color: bort.fg, fontSize: side * 0.4),
-          ),
-          const SizedBox(height: 12),
+          DialogTitle(text: i18n.t('media.audio')),
+          SizedBox(height: metrics.unit(0.4)),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -119,7 +118,7 @@ class _AudioDialogState extends State<_AudioDialog> {
                 signal: bort.fgsignal,
                 overrideSize: side * 1.2,
               ),
-              const SizedBox(width: 16),
+              SizedBox(width: metrics.unit(0.5)),
               Pult(
                 spec: PultSpec(
                   id: 'audio_cancel',

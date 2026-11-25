@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../pults/pult_core.dart';
 import 'app_scope.dart';
+import 'bort_metrics.dart';
 import 'dialog_frame.dart';
-import 'link_text.dart';
 
 Future<void> showNotice(
   BuildContext context, {
@@ -11,11 +10,9 @@ Future<void> showNotice(
   String? subtitle,
 }) async {
   final app = AppScope.of(context);
-  final bort = app.bort;
   final i18n = app.i18n;
-  final side = PultScope.of(context).smallSide;
-
-  final pad = side * bort.kFramePad;
+  final metrics = BortMetrics.of(context, compact: true);
+  final bort = metrics.bort;
 
   await showDialog<void>(
     context: context,
@@ -27,33 +24,25 @@ Future<void> showNotice(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              title,
-              style: TextStyle(color: bort.fg, fontSize: side * bort.kTitle),
-            ),
+            DialogTitle(text: title),
             if (subtitle != null) ...[
-              SizedBox(height: pad * 0.5),
+              SizedBox(height: metrics.unit(metrics.bort.kFramePad * 0.5)),
               Text(
                 subtitle,
                 style: TextStyle(
                   color: bort.mid,
-                  fontSize: side * bort.kNumberSmall,
+                  fontSize: metrics.smallFontSize,
                 ),
               ),
             ],
-            SizedBox(height: pad * 0.8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: LinkText(
-                text: i18n.t('common.ok'),
-                color: bort.fgsignal,
-                fontSize: side * bort.kName,
-                padding: EdgeInsets.symmetric(
-                  horizontal: side * 0.2,
-                  vertical: side * 0.1,
+            SizedBox(height: metrics.unit(metrics.bort.kFramePad * 0.8)),
+            DialogActions(
+              actions: [
+                DialogAction(
+                  label: i18n.t('common.ok'),
+                  onTap: () => Navigator.of(ctx).pop(),
                 ),
-                onTap: () => Navigator.of(ctx).pop(),
-              ),
+              ],
             ),
           ],
         ),

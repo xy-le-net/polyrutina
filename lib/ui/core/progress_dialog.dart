@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../pults/pult_core.dart';
 import 'app_scope.dart';
+import 'bort_metrics.dart';
 import 'dialog_frame.dart';
 
 class ProgressToken extends ChangeNotifier {
@@ -38,11 +38,11 @@ class ProgressDialog extends StatelessWidget {
     final app = AppScope.of(context);
     final bort = app.bort;
     final i18n = app.i18n;
-    final side = PultScope.of(context).smallSide;
+    final metrics = BortMetrics.of(context, compact: true);
 
-    final pad = side * bort.kFramePad;
-    final strokeW = side * bort.kStroke;
-    final circleSize = side * 2.4;
+    final pad = metrics.framePadding;
+    final strokeW = metrics.stroke;
+    final circleSize = metrics.unit(2.4);
 
     return DialogFrame(
       // The frame does not dismiss on an outside tap.
@@ -50,10 +50,7 @@ class ProgressDialog extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            title,
-            style: TextStyle(color: bort.fg, fontSize: side * bort.kTitle),
-          ),
+          DialogTitle(text: title),
           SizedBox(height: pad),
           // Circular progress with percentages at the center.
           AnimatedBuilder(
@@ -80,7 +77,7 @@ class ProgressDialog extends StatelessWidget {
                       '$percent%',
                       style: TextStyle(
                         color: bort.fg,
-                        fontSize: side * bort.kName,
+                        fontSize: metrics.unit(bort.kName),
                         fontFamily: 'monospace',
                       ),
                     ),
@@ -96,7 +93,7 @@ class ProgressDialog extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               color: bort.mid,
-              fontSize: side * bort.kName * 0.8,
+              fontSize: metrics.unit(bort.kName * 0.8),
             ),
           ),
         ],

@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../core/app_scope.dart';
+import '../core/bort_metrics.dart';
 import '../core/dialog_frame.dart';
-import '../core/link_text.dart';
 import '../core/wheel_picker.dart';
-import '../pults/pult_core.dart';
 
 Future<int?> showNoticePicker(
   BuildContext context, {
@@ -12,8 +11,8 @@ Future<int?> showNoticePicker(
   bool noticeSet = false,
 }) async {
   final i18n = I18nScope.of(context);
-  final bort = BortScope.of(context);
-  final side = PultScope.of(context).smallSide;
+  final metrics = BortMetrics.of(context, compact: true);
+  final side = metrics.side;
 
   final safeInitial = (noticeSet ? initialSeconds : 0)
       .clamp(0, 999 * 86400 + 23 * 3600 + 59 * 60)
@@ -34,16 +33,10 @@ Future<int?> showNoticePicker(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  i18n.t('routine.notice_title'),
-                  style: TextStyle(
-                    color: bort.fg,
-                    fontSize: side * bort.kTitle,
-                  ),
-                ),
-                const SizedBox(height: 12),
+                DialogTitle(text: i18n.t('routine.notice_title')),
+                SizedBox(height: metrics.unit(0.4)),
                 SizedBox(
-                  height: side * 2.8,
+                  height: metrics.wheelPickerHeight,
                   child: WheelValuePicker(
                     columns: [
                       WheelColumn(
@@ -71,29 +64,15 @@ Future<int?> showNoticePicker(
                     side: side,
                   ),
                 ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    LinkText(
-                      text: i18n.t('common.cancel'),
-                      color: bort.bgsignal,
-                      fontSize: side * bort.kName / 1.6,
-                      padding: EdgeInsets.symmetric(
-                        horizontal: side * 0.3,
-                        vertical: side * 0.1,
-                      ),
+                SizedBox(height: metrics.unit(0.5)),
+                DialogActions(
+                  actions: [
+                    DialogAction(
+                      label: i18n.t('common.cancel'),
                       onTap: () => Navigator.of(ctx).pop(),
                     ),
-                    SizedBox(width: side * 0.3),
-                    LinkText(
-                      text: i18n.t('common.ok'),
-                      color: bort.bgsignal,
-                      fontSize: side * bort.kName / 1.6,
-                      padding: EdgeInsets.symmetric(
-                        horizontal: side * 0.3,
-                        vertical: side * 0.1,
-                      ),
+                    DialogAction(
+                      label: i18n.t('common.ok'),
                       onTap: () => Navigator.of(
                         ctx,
                       ).pop(days * 86400 + hours * 3600 + minutes * 60),

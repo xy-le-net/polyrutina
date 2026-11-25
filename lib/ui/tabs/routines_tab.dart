@@ -10,7 +10,7 @@ import '../core/bort_field.dart';
 import '../core/confirm_dialog.dart';
 import '../core/control_row.dart';
 import '../core/dialog_frame.dart';
-import '../core/link_text.dart';
+import '../core/bort_metrics.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_sheet.dart';
 import 'routine_plate.dart';
@@ -478,7 +478,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final app = AppScope.of(context);
     final i18n = app.i18n;
     final bort = app.bort;
-    final side = PultScope.of(context).smallSide;
+    final metrics = BortMetrics.of(context, compact: true);
     String currentText = currentName;
 
     showDialog<void>(
@@ -491,11 +491,8 @@ class _RoutinesTabState extends State<RoutinesTab> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                i18n.t('field.rename'),
-                style: TextStyle(color: bort.fg, fontSize: side * bort.kTitle),
-              ),
-              const SizedBox(height: 12),
+              DialogTitle(text: i18n.t('field.rename')),
+              SizedBox(height: metrics.unit(0.4)),
               BortField(
                 initial: currentName,
                 fg: bort.fg,
@@ -506,24 +503,12 @@ class _RoutinesTabState extends State<RoutinesTab> {
                   currentText = v;
                 },
               ),
-              const SizedBox(height: 16),
-              // Links: first palette role (bgsignal), single
-              // underline, one size. Same as the other dialogs.
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  LinkText(
-                    text: i18n.t('common.cancel'),
-                    color: bort.bgsignal,
-                    fontSize: side * bort.kName / 1.6,
-                    padding: EdgeInsets.symmetric(
-                      horizontal: side * 0.3,
-                      vertical: side * 0.1,
-                    ),
+              SizedBox(height: metrics.unit(0.5)),
+              DialogActions(
+                actions: [
+                  DialogAction(
+                    label: i18n.t('common.cancel'),
                     onTap: () async {
-                      // Cancelling an empty name still assigns the
-                      // automatic name — the spec says an empty
-                      // must not leave the field unnamed.
                       final wasEmpty =
                           currentText.trim().isEmpty &&
                           currentName.trim().isEmpty;
@@ -538,15 +523,8 @@ class _RoutinesTabState extends State<RoutinesTab> {
                       }
                     },
                   ),
-                  SizedBox(width: side * 0.3),
-                  LinkText(
-                    text: i18n.t('common.ok'),
-                    color: bort.bgsignal,
-                    fontSize: side * bort.kName / 1.6,
-                    padding: EdgeInsets.symmetric(
-                      horizontal: side * 0.3,
-                      vertical: side * 0.1,
-                    ),
+                  DialogAction(
+                    label: i18n.t('common.ok'),
                     onTap: () async {
                       final trimmed = currentText.trim();
                       final name = trimmed.isEmpty

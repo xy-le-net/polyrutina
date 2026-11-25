@@ -18,6 +18,7 @@ import 'data/ticker.dart';
 import 'data/trace_layer.dart';
 import 'ui/cards/routine_card.dart';
 import 'ui/core/app_layout.dart';
+import 'ui/core/bort_metrics.dart';
 import 'ui/core/app_scope.dart';
 import 'ui/core/control_row.dart';
 import 'ui/core/format.dart';
@@ -83,8 +84,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   bool _tabVisible(int i) => true;
 
-  static const double _pultBase = 32.0;
-  static const double _pultMax = 64.0;
   static const double _rootPad = 6.0;
 
   @override
@@ -442,8 +441,10 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   double _pultSide(BuildContext context) {
     final systemScale = MediaQuery.textScalerOf(context).scale(1.0);
-    final raw = _pultBase * systemScale * _bort.scale;
-    return raw > _pultMax ? _pultMax : raw;
+    return BortMetrics.calculateSide(
+      platformScale: systemScale,
+      appScale: _bort.scale,
+    );
   }
 
   SystemUiOverlayStyle _overlayStyle(Brightness brightness) {
@@ -588,10 +589,19 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
     final side = _pultSide(context);
     _pultState.baseSide = side;
-    _pultState.maxSide = _pultMax;
+    _pultState.maxSide = BortMetrics.maxSide;
 
     final rootSide = side * 2 / 3;
     final rootReserve = ControlRow.reserve(rootSide, rootPad: _rootPad);
+    final effectiveTextScale = BortMetrics.textScaleForSide(side);
+    final brightness = _effectiveBrightness(_bort.systemBrightness);
+    final textTheme = ThemeData(useMaterial3: true, brightness: brightness)
+        .textTheme
+        .apply(
+          fontSizeFactor: effectiveTextScale,
+          bodyColor: _bort.fg,
+          displayColor: _bort.fg,
+        );
 
     final appContext = AppContext(
       bort: _bort,
@@ -613,7 +623,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        brightness: _effectiveBrightness(_bort.systemBrightness),
+        brightness: brightness,
         colorScheme: ColorScheme.fromSeed(
           seedColor: _bort.fg,
           brightness: _effectiveBrightness(_bort.systemBrightness),
@@ -629,12 +639,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
             _effectiveBrightness(_bort.systemBrightness),
           ),
         ),
-        textTheme: TextTheme(
-          bodyMedium: TextStyle(color: _bort.fg),
-          bodyLarge: TextStyle(color: _bort.fg),
-          labelLarge: TextStyle(color: _bort.fg),
-          titleMedium: TextStyle(color: _bort.fg),
-        ),
+        textTheme: textTheme,
         inputDecorationTheme: InputDecorationTheme(
           border: OutlineInputBorder(borderSide: BorderSide(color: _bort.fg)),
           enabledBorder: OutlineInputBorder(
@@ -685,9 +690,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                           child: PultScope(
                             state: _pultState,
                             child: MediaQuery(
-                              data: MediaQuery.of(context).copyWith(
-                                textScaler: TextScaler.linear(_bort.scale),
-                              ),
+                              data: MediaQuery.of(
+                                context,
+                              ).copyWith(textScaler: TextScaler.noScaling),
                               child: AnnotatedRegion<SystemUiOverlayStyle>(
                                 value: _overlayStyle(
                                   _effectiveBrightness(systemBrightness),

@@ -5,7 +5,6 @@ import '../../data/operational_layer.dart';
 import '../core/app_scope.dart';
 import '../core/dialog_frame.dart';
 import '../core/format.dart';
-import '../core/link_text.dart';
 import '../pults/pult_core.dart';
 
 class _SeriesUi {
@@ -246,11 +245,13 @@ class _TimeHistoryDialogState extends State<_TimeHistoryDialog> {
                 ),
                 SizedBox(width: side * 0.3),
               ],
-              LinkText(
-                text: i18n.t('common.ok'),
-                color: bort.fgsignal,
-                fontSize: side * bort.kName,
-                onTap: () => Navigator.of(context).pop(),
+              DialogActions(
+                actions: [
+                  DialogAction(
+                    label: i18n.t('common.ok'),
+                    onTap: () => Navigator.of(context).pop(),
+                  ),
+                ],
               ),
             ],
           ),
