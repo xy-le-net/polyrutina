@@ -328,14 +328,10 @@ class _RubkaDataState extends State<RubkaData> {
       return;
     }
 
-    final used = <String>{};
-    for (final t in app.traceLayer.traces.values) {
-      if (t.deleted) continue;
-      for (final f in t.files) {
-        if (f.path.isNotEmpty) used.add(p.basename(f.path));
-        if (f.name.isNotEmpty) used.add(f.name);
-      }
-    }
+    final used = app.traceLayer.attachedMediaNames(
+      parentIds: app.routineLayer.routines.map((r) => r.id).toSet(),
+      fieldIds: app.fieldLayer.nodes.keys.toSet(),
+    );
 
     var removed = 0;
     var freed = 0;

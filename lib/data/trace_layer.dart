@@ -351,6 +351,25 @@ class TraceLayer extends ChangeNotifier {
     return out;
   }
 
+  Set<String> attachedMediaNames({
+    required Set<int> parentIds,
+    required Set<int> fieldIds,
+  }) {
+    final names = <String>{};
+    for (final t in traces.values) {
+      if (t.deleted) continue;
+      final attached =
+          t.parents.any(parentIds.contains) ||
+          t.fieldParents.any(fieldIds.contains);
+      if (!attached) continue;
+      for (final f in t.files) {
+        if (f.path.isNotEmpty) names.add(p.basename(f.path));
+        if (f.name.isNotEmpty) names.add(p.basename(f.name));
+      }
+    }
+    return names;
+  }
+
   Trace? findFirstBySlot(int objectId, String slot) {
     return findFirstByKindSlot(objectId, TraceKind.text, slot) ??
         findFirstByKindSlot(objectId, TraceKind.checklist, slot);

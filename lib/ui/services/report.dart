@@ -181,27 +181,28 @@ class ReportBuilder {
 
     final mediaFiles = <({String name, File file})>[];
     final seenNames = <String>{};
-    for (final r in routines) {
-      for (final t in app.traceLayer.traces.values) {
-        if (t.deleted) continue;
-        if (!t.parents.contains(r.id)) continue;
-        for (final f in t.files) {
-          if (f.path.isEmpty) continue;
-          final file = File(f.path);
-          if (!await file.exists()) continue;
-          var name = f.name.isEmpty ? p.basename(f.path) : f.name;
-          if (seenNames.contains(name)) {
-            var i = 1;
-            final base = p.basenameWithoutExtension(name);
-            final ext = p.extension(name);
-            while (seenNames.contains('${base}_$i$ext')) {
-              i++;
-            }
-            name = '${base}_$i$ext';
+    final routineIds = routines.map((r) => r.id).toSet();
+    for (final t in app.traceLayer.traces.values) {
+      if (t.deleted) continue;
+      // The full archive also carries media on live traces whose routine
+      // was removed; otherwise these files remain in media/ but are omitted.
+      if (objectKey != 'all' && !t.parents.any(routineIds.contains)) continue;
+      for (final f in t.files) {
+        if (f.path.isEmpty) continue;
+        final file = File(f.path);
+        if (!await file.exists()) continue;
+        var name = f.name.isEmpty ? p.basename(f.path) : f.name;
+        if (seenNames.contains(name)) {
+          var i = 1;
+          final base = p.basenameWithoutExtension(name);
+          final ext = p.extension(name);
+          while (seenNames.contains('${base}_$i$ext')) {
+            i++;
           }
-          seenNames.add(name);
-          mediaFiles.add((name: name, file: file));
+          name = '${base}_$i$ext';
         }
+        seenNames.add(name);
+        mediaFiles.add((name: name, file: file));
       }
     }
     if (token.cancelled) return null;

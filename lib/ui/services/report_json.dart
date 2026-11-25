@@ -1,3 +1,5 @@
+import 'package:path/path.dart' as p;
+
 import '../../data/routine.dart';
 import '../core/app_scope.dart';
 
@@ -56,7 +58,7 @@ class ReportJson {
             .map(
               (f) => {
                 'kind': f.kind,
-                'name': f.name.isEmpty ? f.path : f.name,
+                'name': f.name.isEmpty ? p.basename(f.path) : f.name,
                 if (f.lat != null) 'lat': f.lat,
                 if (f.lon != null) 'lon': f.lon,
                 if (f.acc != null) 'acc': f.acc,
