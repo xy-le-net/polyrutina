@@ -91,7 +91,7 @@ Future<DateTime?> showBortDatePicker(
               );
             }
 
-            final gridW = side * 6.3;
+            final gridW = side * 3.15;
             final gridH = gridW / 7 * rows;
 
             return DialogFrame(

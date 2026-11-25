@@ -340,13 +340,13 @@ class _DaysTabState extends State<DaysTab> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final wide = constraints.maxWidth > 640;
+        final wide = constraints.maxWidth > 480;
 
-        double maxGridWidth = 600.0;
+        double maxGridWidth = 300.0;
         if (wide) {
           final availableHeight = constraints.maxHeight - 40;
           final maxCellSize = availableHeight / 6;
-          maxGridWidth = (maxCellSize * 7).clamp(200.0, 600.0);
+          maxGridWidth = (maxCellSize * 7).clamp(100.0, 300.0);
         }
 
         if (!wide) {

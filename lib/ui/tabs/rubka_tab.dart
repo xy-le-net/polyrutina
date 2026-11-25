@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/app_scope.dart';
+import '../core/app_layout.dart';
 import '../core/block.dart';
 import '../core/control_row.dart';
 import '../pults/pult_core.dart';
@@ -73,7 +74,7 @@ class RubkaTab extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
-        final wide = width > 640;
+        final wide = width > rubkaMaxColumnWidth;
 
         if (!wide) {
           return ListView(
