@@ -489,46 +489,9 @@ class _RoutineCardState extends State<RoutineCard> {
                       constraints: const BoxConstraints(
                         maxWidth: appContentMaxWidth,
                       ),
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          if (constraints.maxWidth <= rubkaMaxColumnWidth) {
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: blocks,
-                            );
-                          }
-
-                          const gap = 48.0;
-                          final columnWidth = (constraints.maxWidth - gap) / 2;
-                          final left = <Widget>[];
-                          final right = <Widget>[];
-                          for (var i = 0; i < blocks.length; i++) {
-                            (i.isEven ? left : right).add(blocks[i]);
-                          }
-
-                          return Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SizedBox(
-                                width: columnWidth,
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: left,
-                                ),
-                              ),
-                              const SizedBox(width: gap),
-                              SizedBox(
-                                width: columnWidth,
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: right,
-                                ),
-                              ),
-                            ],
-                          );
-                        },
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: blocks,
                       ),
                     ),
                   ),

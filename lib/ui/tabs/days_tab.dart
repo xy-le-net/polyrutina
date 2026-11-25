@@ -340,40 +340,25 @@ class _DaysTabState extends State<DaysTab> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final wide = constraints.maxWidth > 480;
-
-        double maxGridWidth = 300.0;
-        if (wide) {
-          final availableHeight = constraints.maxHeight - 40;
-          final maxCellSize = availableHeight / 6;
-          maxGridWidth = (maxCellSize * 7).clamp(100.0, 300.0);
-        }
-
-        if (!wide) {
-          return SingleChildScrollView(
-            padding: EdgeInsets.all(side * 0.3),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                gridWidget,
-                SizedBox(height: side * 0.8),
-                Align(alignment: Alignment.centerLeft, child: legendWidget),
-              ],
-            ),
-          );
-        }
+        final pagePadding = side * 0.3;
+        final calendarWidth = (constraints.maxWidth - pagePadding * 2)
+            .clamp(0.0, 300.0)
+            .toDouble();
 
         return SingleChildScrollView(
-          padding: EdgeInsets.all(side * 0.6),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(width: maxGridWidth, child: gridWidget),
-              SizedBox(width: side * 1.0),
-              Expanded(
-                child: Align(alignment: Alignment.topLeft, child: legendWidget),
+          padding: EdgeInsets.all(pagePadding),
+          child: Center(
+            child: SizedBox(
+              width: calendarWidth,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  gridWidget,
+                  SizedBox(height: side * 0.8),
+                  Center(child: legendWidget),
+                ],
               ),
-            ],
+            ),
           ),
         );
       },
