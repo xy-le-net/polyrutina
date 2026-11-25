@@ -244,6 +244,17 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     final itemSize = side * bort.kNumberSmall;
     final pultSide = side * bort.kPultSmall;
     final radiusW = side * bort.kRadius;
+    final inputStyle = TextStyle(
+      color: bort.fg,
+      fontSize: itemSize,
+      decoration: TextDecoration.none,
+    );
+    final inputLineHeight = TextPainter(
+      text: TextSpan(text: ' ', style: inputStyle),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    final inputMinHeight = (inputLineHeight.height + side * 0.3 + 2) * 4 / 3;
 
     final counts = _counts();
     final unchecked = counts.total - counts.done;
@@ -313,40 +324,47 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                             onFocusChange: (hasFocus) {
                               if (!hasFocus) _onBlur(i);
                             },
-                            child: TextField(
-                              controller: _controllers[i],
-                              focusNode: _focusNodes[i],
-                              style: TextStyle(
-                                color: bort.fg,
-                                fontSize: itemSize,
-                                decoration: TextDecoration.none,
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                minHeight: inputMinHeight,
                               ),
-                              decoration: InputDecoration(
-                                isDense: true,
-                                hintText: i18n.t('routine.block.note'),
-                                hintStyle: TextStyle(color: bort.mid),
-                                border: OutlineInputBorder(
-                                  borderSide: BorderSide(color: bort.mid),
-                                  borderRadius: BorderRadius.circular(radiusW),
+                              child: TextField(
+                                controller: _controllers[i],
+                                focusNode: _focusNodes[i],
+                                style: inputStyle,
+                                decoration: InputDecoration(
+                                  isDense: true,
+                                  hintText: i18n.t('routine.block.note'),
+                                  hintStyle: TextStyle(color: bort.mid),
+                                  border: OutlineInputBorder(
+                                    borderSide: BorderSide(color: bort.mid),
+                                    borderRadius: BorderRadius.circular(
+                                      radiusW,
+                                    ),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderSide: BorderSide(color: bort.mid),
+                                    borderRadius: BorderRadius.circular(
+                                      radiusW,
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderSide: BorderSide(color: bort.fg),
+                                    borderRadius: BorderRadius.circular(
+                                      radiusW,
+                                    ),
+                                  ),
+                                  contentPadding: EdgeInsets.all(side * 0.15),
                                 ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(color: bort.mid),
-                                  borderRadius: BorderRadius.circular(radiusW),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(color: bort.fg),
-                                  borderRadius: BorderRadius.circular(radiusW),
-                                ),
-                                contentPadding: EdgeInsets.all(side * 0.15),
+                                onChanged: (v) {
+                                  _items[i] = (text: v, done: _items[i].done);
+                                  if (i == _items.length - 1 && v.isNotEmpty) {
+                                    _ensureTrailingEmpty();
+                                  }
+                                  setState(() {});
+                                },
+                                onSubmitted: (_) => _submitAndAdvance(i),
                               ),
-                              onChanged: (v) {
-                                _items[i] = (text: v, done: _items[i].done);
-                                if (i == _items.length - 1 && v.isNotEmpty) {
-                                  _ensureTrailingEmpty();
-                                }
-                                setState(() {});
-                              },
-                              onSubmitted: (_) => _submitAndAdvance(i),
                             ),
                           ),
                         ),

@@ -12,8 +12,10 @@
 // rendering and input handling
 class Win32Window {
  public:
-  static constexpr int kMaxRubkaColumnWidth = 640;
-  static constexpr int kMaxWindowWidth = kMaxRubkaColumnWidth * 2;
+  static constexpr int kMaxRubkaColumnWidth = 480;
+  static constexpr int kWindowHorizontalPadding = 32;
+  static constexpr int kMaxWindowWidth =
+      kMaxRubkaColumnWidth + kWindowHorizontalPadding;
 
   struct Point {
     int x;

@@ -158,18 +158,27 @@ class _RoutineCardState extends State<RoutineCard> {
     return _hasTrace(r.id, kind);
   }
 
-  bool _isExpanded(String kind) =>
-      _expanded.contains(kind) || _hasTrace(widget.routineId, kind);
+  bool _isExpanded(String kind) {
+    final bort = BortScope.of(context);
+    if (bort.collapsedBlocks.containsKey(widget.routineId)) {
+      return !bort.isBlockCollapsed(widget.routineId, kind);
+    }
+    return _expanded.contains(kind) || _hasTrace(widget.routineId, kind);
+  }
 
   void _toggleExpanded(String kind) {
-    if (_hasTrace(widget.routineId, kind)) return;
-    setState(() {
-      if (_expanded.contains(kind)) {
-        _expanded.remove(kind);
-      } else {
-        _expanded.add(kind);
-      }
-    });
+    if (kind == 'summary') return;
+    final expandedKinds = <String>{
+      for (final slot in ['note', ...RoutineBlock.kinds, 'summary'])
+        if (_isExpanded(slot)) slot,
+    };
+    BortScope.of(context).setBlockCollapsed(
+      widget.routineId,
+      kind,
+      _isExpanded(kind),
+      initiallyExpanded: expandedKinds,
+    );
+    setState(() {});
   }
 
   Future<void> _startEdit(Routine r, String kind) async {

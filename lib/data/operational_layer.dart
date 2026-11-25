@@ -525,32 +525,48 @@ class OperationalLayer extends ChangeNotifier {
   }
 
   void toggleBlockCollapsed(int routineId, String kind) {
+    setBlockCollapsed(routineId, kind, !isBlockCollapsed(routineId, kind));
+  }
+
+  void setBlockCollapsed(
+    int routineId,
+    String kind,
+    bool collapsed, {
+    Set<String>? initiallyExpanded,
+  }) {
     final current = collapsedBlocks[routineId];
-    if (current == null) {
-      final init = <String>{
-        for (final k in const [
-          'note',
-          'prep',
-          'transit',
-          'work',
-          'idle',
-          'closeout',
-          'summary',
-        ])
-          if (k != 'note' && k != 'work') k,
-      };
-      if (init.contains(kind)) {
-        init.remove(kind);
-      } else {
-        init.add(kind);
-      }
-      collapsedBlocks[routineId] = init;
+    final states =
+        current ??
+        (initiallyExpanded == null
+            ? <String>{
+                for (final k in const [
+                  'note',
+                  'prep',
+                  'transit',
+                  'work',
+                  'idle',
+                  'closeout',
+                  'summary',
+                ])
+                  if (k != 'note' && k != 'work') k,
+              }
+            : <String>{
+                for (final k in const [
+                  'note',
+                  'prep',
+                  'transit',
+                  'work',
+                  'idle',
+                  'closeout',
+                  'summary',
+                ])
+                  if (!initiallyExpanded.contains(k)) k,
+              });
+    collapsedBlocks[routineId] = states;
+    if (collapsed) {
+      states.add(kind);
     } else {
-      if (current.contains(kind)) {
-        current.remove(kind);
-      } else {
-        current.add(kind);
-      }
+      states.remove(kind);
     }
     _scheduleSave();
     notifyListeners();
