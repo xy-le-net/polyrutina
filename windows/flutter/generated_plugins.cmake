@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  camera_windows
   file_selector_windows
   flutter_timezone
   geolocator_windows
@@ -11,6 +12,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   sqlite3_flutter_libs
   url_launcher_windows
   share_plus
+  win_toast
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

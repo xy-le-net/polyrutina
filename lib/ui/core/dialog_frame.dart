@@ -24,8 +24,12 @@ class DialogFrame extends StatelessWidget {
 
     final pad = side * bort.kFramePad;
     final strokeW = side * bort.kStroke;
-    final radius = side * bort.kRadius;
+    final radius = side * bort.kRadius * 1.15;
     final hMargin = margin ?? side * 1.2;
+    final availableHeight =
+        MediaQuery.sizeOf(context).height -
+        MediaQuery.viewInsetsOf(context).bottom -
+        32;
 
     // Unfocus any active field before the frame paints to prevent
     // the IME composing underline from leaking into the dialog.
@@ -42,16 +46,21 @@ class DialogFrame extends StatelessWidget {
             onTap: () {},
             child: Container(
               margin: EdgeInsets.symmetric(horizontal: hMargin),
-              constraints: maxHeight == null
-                  ? null
-                  : BoxConstraints(maxHeight: maxHeight!),
+              constraints: BoxConstraints(
+                maxHeight:
+                    maxHeight ??
+                    (availableHeight * 0.9)
+                        .clamp(0.0, double.infinity)
+                        .toDouble(),
+              ),
               decoration: BoxDecoration(
                 color: bort.bg,
-                border: Border.all(color: bort.mid, width: strokeW),
+                border: Border.all(color: bort.fgsignal, width: strokeW),
                 borderRadius: BorderRadius.circular(radius),
               ),
+              clipBehavior: Clip.antiAlias,
               padding: EdgeInsets.all(pad),
-              child: child,
+              child: SingleChildScrollView(child: child),
             ),
           ),
         ),

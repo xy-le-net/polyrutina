@@ -82,11 +82,11 @@ class _ShiftRowState extends State<ShiftRow> {
               children: [
                 SizedBox(
                   width: side * 3.6,
-                  height: side * 2.0,
+                  height: side * 2.8,
                   child: WheelValuePicker(
                     columns: [
                       WheelColumn(
-                        label: '',
+                        label: i18n.t('notice.hours'),
                         separator: ':',
                         value: _editHours,
                         itemCount: _editHours < 24000 ? 24000 : _editHours + 1,
@@ -94,7 +94,7 @@ class _ShiftRowState extends State<ShiftRow> {
                         formatter: (v) => v.toString().padLeft(2, '0'),
                       ),
                       WheelColumn(
-                        label: '',
+                        label: i18n.t('notice.minutes'),
                         separator: ':',
                         value: _editMinutes,
                         itemCount: 60,
@@ -102,7 +102,7 @@ class _ShiftRowState extends State<ShiftRow> {
                         formatter: (v) => v.toString().padLeft(2, '0'),
                       ),
                       WheelColumn(
-                        label: '',
+                        label: i18n.t('notice.seconds'),
                         value: _editSeconds,
                         itemCount: 60,
                         onChanged: (v) => setWheelState(() => _editSeconds = v),

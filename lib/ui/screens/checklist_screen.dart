@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../data/trace_layer.dart';
@@ -254,7 +256,10 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
       textDirection: Directionality.of(context),
       textScaler: MediaQuery.textScalerOf(context),
     )..layout();
-    final inputMinHeight = (inputLineHeight.height + side * 0.3 + 2) * 4 / 3;
+    final inputMinHeight = math.max(
+      (inputLineHeight.height + side * 0.3 + 2) * 4 / 3,
+      pultSide * 1.25,
+    );
 
     final counts = _counts();
     final unchecked = counts.total - counts.done;
@@ -307,6 +312,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         PultTick(
                           id: 'chk_$i',

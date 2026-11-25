@@ -48,7 +48,6 @@ Future<int?> showNoticePicker(
                     columns: [
                       WheelColumn(
                         label: i18n.t('notice.days'),
-                        separator: ':',
                         value: days,
                         itemCount: 1000,
                         onChanged: (v) => setState(() => days = v),

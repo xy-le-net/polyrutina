@@ -12,6 +12,7 @@ import '../core/format.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_sheet.dart';
 import '../screens/geo_picker.dart';
+import '../screens/windows_camera_capture.dart';
 import 'audio_dialog.dart';
 
 Future<void> showMediaPicker({
@@ -37,13 +38,13 @@ Future<void> showMediaPicker({
         id: 'pick_${MediaKind.photo}',
         icon: Icons.photo_camera_outlined,
         label: i18n.t('media.photo'),
-        onTap: () => _addPhotoLoop(app, objectId, slot),
+        onTap: () => _addPhotoLoop(context, app, objectId, slot),
       ),
       PultSpec(
         id: 'pick_${MediaKind.video}',
         icon: Icons.videocam_outlined,
         label: i18n.t('media.video'),
-        onTap: () => _addVideoLoop(app, objectId, slot),
+        onTap: () => _addVideoLoop(context, app, objectId, slot),
       ),
       PultSpec(
         id: 'pick_${MediaKind.geo}',
@@ -59,7 +60,7 @@ Future<void> showMediaPicker({
         id: 'pick_${MediaKind.file}',
         icon: Icons.attach_file,
         label: i18n.t('media.file'),
-        onTap: () => _addFile(app, objectId, slot),
+        onTap: () => _addFile(context, app, objectId, slot),
       ),
     ],
     fg: bort.fg,
@@ -93,11 +94,15 @@ Future<void> _attach(
     // Atomic copy: write to .tmp, then rename onto the final name.
     await File(sourcePath).copy(tmp.path);
     await tmp.rename(target.path);
-  } catch (_) {
+  } catch (error, stackTrace) {
     try {
       if (await tmp.exists()) await tmp.delete();
-    } catch (_) {}
-    return;
+    } catch (cleanupError, cleanupStackTrace) {
+      debugPrint(
+        'Temporary media cleanup failed: $cleanupError\n$cleanupStackTrace',
+      );
+    }
+    Error.throwWithStackTrace(error, stackTrace);
   }
 
   await app.traceLayer.attachFile(
@@ -108,17 +113,28 @@ Future<void> _attach(
   );
 }
 
-Future<void> _addPhotoLoop(AppContext app, int objectId, String slot) async {
+Future<void> _addPhotoLoop(
+  BuildContext context,
+  AppContext app,
+  int objectId,
+  String slot,
+) async {
   while (true) {
-    final took = await _pickOncePhoto(app, objectId, slot);
+    final took = await _pickOncePhoto(context, app, objectId, slot);
     if (!took) return;
   }
 }
 
-Future<bool> _pickOncePhoto(AppContext app, int objectId, String slot) async {
+Future<bool> _pickOncePhoto(
+  BuildContext context,
+  AppContext app,
+  int objectId,
+  String slot,
+) async {
   try {
-    final picker = ImagePicker();
-    final x = await picker.pickImage(source: ImageSource.camera);
+    final x = Platform.isWindows
+        ? await captureWindowsCamera(context, video: false)
+        : await ImagePicker().pickImage(source: ImageSource.camera);
     if (x == null) return false;
     final ext = p.extension(x.path);
     await _attach(
@@ -130,22 +146,34 @@ Future<bool> _pickOncePhoto(AppContext app, int objectId, String slot) async {
       ext: ext.isEmpty ? '.jpg' : ext,
     );
     return true;
-  } catch (_) {
+  } catch (error, stackTrace) {
+    if (context.mounted) _showMediaError(context, error, stackTrace);
     return false;
   }
 }
 
-Future<void> _addVideoLoop(AppContext app, int objectId, String slot) async {
+Future<void> _addVideoLoop(
+  BuildContext context,
+  AppContext app,
+  int objectId,
+  String slot,
+) async {
   while (true) {
-    final took = await _pickOnceVideo(app, objectId, slot);
+    final took = await _pickOnceVideo(context, app, objectId, slot);
     if (!took) return;
   }
 }
 
-Future<bool> _pickOnceVideo(AppContext app, int objectId, String slot) async {
+Future<bool> _pickOnceVideo(
+  BuildContext context,
+  AppContext app,
+  int objectId,
+  String slot,
+) async {
   try {
-    final picker = ImagePicker();
-    final x = await picker.pickVideo(source: ImageSource.camera);
+    final x = Platform.isWindows
+        ? await captureWindowsCamera(context, video: true)
+        : await ImagePicker().pickVideo(source: ImageSource.camera);
     if (x == null) return false;
     final ext = p.extension(x.path);
     await _attach(
@@ -157,12 +185,32 @@ Future<bool> _pickOnceVideo(AppContext app, int objectId, String slot) async {
       ext: ext.isEmpty ? '.mp4' : ext,
     );
     return true;
-  } catch (_) {
+  } catch (error, stackTrace) {
+    if (context.mounted) _showMediaError(context, error, stackTrace);
     return false;
   }
 }
 
-Future<void> _addFile(AppContext app, int objectId, String slot) async {
+void _showMediaError(
+  BuildContext context,
+  Object error,
+  StackTrace stackTrace,
+) {
+  debugPrint('Media capture failed: $error\n$stackTrace');
+  if (!context.mounted) return;
+  ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+    SnackBar(
+      content: Text(AppScope.of(context).i18n.t('media.capture_failed')),
+    ),
+  );
+}
+
+Future<void> _addFile(
+  BuildContext context,
+  AppContext app,
+  int objectId,
+  String slot,
+) async {
   try {
     final r = await FilePicker.platform.pickFiles();
     if (r == null || r.files.isEmpty) return;
@@ -177,7 +225,9 @@ Future<void> _addFile(AppContext app, int objectId, String slot) async {
       sourcePath: f.path!,
       ext: ext,
     );
-  } catch (_) {}
+  } catch (error, stackTrace) {
+    if (context.mounted) _showMediaError(context, error, stackTrace);
+  }
 }
 
 // where the point was placed. Now — a custom map (geo_picker.dart),

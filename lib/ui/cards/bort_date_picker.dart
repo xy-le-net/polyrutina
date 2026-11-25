@@ -69,20 +69,21 @@ Future<DateTime?> showBortDatePicker(
                   },
                   child: Center(
                     child: Container(
-                      width: side * 0.9,
-                      height: side * 0.9,
+                      width: side * 0.44,
+                      height: side * 0.44,
                       alignment: Alignment.center,
                       decoration: isSelected
                           ? BoxDecoration(
                               color: bort.bgsignal,
-                              borderRadius: BorderRadius.circular(side * 0.1),
+                              borderRadius: BorderRadius.circular(side * 0.14),
                             )
                           : null,
                       child: Text(
                         '$dayNum',
                         style: TextStyle(
                           color: isSelected ? bort.fgsignal : bort.fg,
-                          fontSize: side * 0.4,
+                          fontSize: side * 0.32,
+                          height: 1,
                         ),
                       ),
                     ),
@@ -112,18 +113,6 @@ Future<DateTime?> showBortDatePicker(
                               viewing.month - 1,
                               1,
                             );
-                            selectedYear = viewing.year;
-                            selectedMonth = viewing.month;
-                            selectedDay = selectedDay
-                                .clamp(
-                                  1,
-                                  DateTime(
-                                    viewing.year,
-                                    viewing.month + 1,
-                                    0,
-                                  ).day,
-                                )
-                                .toInt();
                           }),
                         ),
                         fg: bort.fg,
@@ -149,18 +138,6 @@ Future<DateTime?> showBortDatePicker(
                               viewing.month + 1,
                               1,
                             );
-                            selectedYear = viewing.year;
-                            selectedMonth = viewing.month;
-                            selectedDay = selectedDay
-                                .clamp(
-                                  1,
-                                  DateTime(
-                                    viewing.year,
-                                    viewing.month + 1,
-                                    0,
-                                  ).day,
-                                )
-                                .toInt();
                           }),
                         ),
                         fg: bort.fg,
@@ -183,11 +160,11 @@ Future<DateTime?> showBortDatePicker(
                   ),
                   SizedBox(height: side * 0.5),
                   SizedBox(
-                    height: side * 2.0,
+                    height: side * 2.8,
                     child: WheelValuePicker(
                       columns: [
                         WheelColumn(
-                          label: '',
+                          label: i18n.t('notice.hours'),
                           separator: ':',
                           value: hour,
                           itemCount: 24,
@@ -195,7 +172,7 @@ Future<DateTime?> showBortDatePicker(
                           formatter: (v) => two(v),
                         ),
                         WheelColumn(
-                          label: '',
+                          label: i18n.t('notice.minutes'),
                           separator: ':',
                           value: minute,
                           itemCount: 60,

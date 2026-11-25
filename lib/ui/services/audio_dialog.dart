@@ -7,6 +7,7 @@ import 'package:record/record.dart';
 
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
+import '../core/dialog_frame.dart';
 import '../core/format.dart';
 import '../pults/pult_core.dart';
 
@@ -93,53 +94,48 @@ class _AudioDialogState extends State<_AudioDialog> {
     final i18n = app.i18n;
     final bort = app.bort;
     final side = PultScope.of(context).smallSide;
-    return Dialog(
-      backgroundColor: bort.bg,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              i18n.t('media.audio'),
-              style: TextStyle(color: bort.fg, fontSize: side * 0.4),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Pult(
-                  spec: PultSpec(
-                    id: 'audio_toggle',
-                    icon: _running ? Icons.stop : Icons.fiber_manual_record,
-                    selected: _running,
-                    onTap: _running
-                        ? () => _stop(attach: true)
-                        : () => _start(),
-                  ),
-                  fg: bort.fg,
-                  bg: bort.bg,
-                  signal: bort.fgsignal,
-                  overrideSize: side * 1.2,
+    return DialogFrame(
+      onDismiss: () => Navigator.of(context).pop(),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            i18n.t('media.audio'),
+            style: TextStyle(color: bort.fg, fontSize: side * 0.4),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Pult(
+                spec: PultSpec(
+                  id: 'audio_toggle',
+                  icon: _running ? Icons.stop : Icons.fiber_manual_record,
+                  selected: _running,
+                  onTap: _running ? () => _stop(attach: true) : () => _start(),
                 ),
-                const SizedBox(width: 16),
-                Pult(
-                  spec: PultSpec(
-                    id: 'audio_cancel',
-                    icon: Icons.close,
-                    onTap: () => _running
-                        ? _stop(attach: false)
-                        : Navigator.of(context).pop(),
-                  ),
-                  fg: bort.fg,
-                  bg: bort.bg,
-                  signal: bort.fgsignal,
-                  overrideSize: side,
+                fg: bort.fg,
+                bg: bort.bg,
+                signal: bort.fgsignal,
+                overrideSize: side * 1.2,
+              ),
+              const SizedBox(width: 16),
+              Pult(
+                spec: PultSpec(
+                  id: 'audio_cancel',
+                  icon: Icons.close,
+                  onTap: () => _running
+                      ? _stop(attach: false)
+                      : Navigator.of(context).pop(),
                 ),
-              ],
-            ),
-          ],
-        ),
+                fg: bort.fg,
+                bg: bort.bg,
+                signal: bort.fgsignal,
+                overrideSize: side,
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

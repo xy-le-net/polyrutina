@@ -113,6 +113,54 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "8.13.0"
+  camera:
+    dependency: "direct main"
+    description:
+      name: camera
+      sha256: d6ec2cbdbe2fa8f5e0d07d8c06368fe4effa985a4a5ddade9cc58a8cd849557d
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.11.2"
+  camera_android_camerax:
+    dependency: transitive
+    description:
+      name: camera_android_camerax
+      sha256: "8516fe308bc341a5067fb1a48edff0ddfa57c0d3cdcc9dbe7ceca3ba119e2577"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.6.30"
+  camera_avfoundation:
+    dependency: transitive
+    description:
+      name: camera_avfoundation
+      sha256: "11b4aee2f5e5e038982e152b4a342c749b414aa27857899d20f4323e94cb5f0b"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.9.23+2"
+  camera_platform_interface:
+    dependency: transitive
+    description:
+      name: camera_platform_interface
+      sha256: c22b8403d7925c6cc6a37fc0cf01f645c1400bdfb0e765f81373a3ac080d93e3
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.15.1"
+  camera_web:
+    dependency: transitive
+    description:
+      name: camera_web
+      sha256: "54183db5a296cf29478dd150d7685b761f9e8eeb4a11114bcbc2792adea7cb3b"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.3.6"
+  camera_windows:
+    dependency: "direct main"
+    description:
+      name: camera_windows
+      sha256: "1f6d1b90048267d69c629deae94ed11a5db76c32afe21b9b58d2a7f1f89cf94d"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.6"
   characters:
     dependency: transitive
     description:
@@ -1442,6 +1490,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.0"
+  win_toast:
+    dependency: "direct main"
+    description:
+      name: win_toast
+      sha256: "1e0dc6e1094bc882ed87133e80c12cbe805d72f6faa7ed98795c7ffe7f7ea900"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.4.0"
   wkt_parser:
     dependency: transitive
     description:

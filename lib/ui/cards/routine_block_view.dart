@@ -144,11 +144,11 @@ class RoutineBlockView extends StatelessWidget {
               children: [
                 SizedBox(
                   width: side * 3.6,
-                  height: side * 2.0,
+                  height: side * 2.8,
                   child: WheelValuePicker(
                     columns: [
                       WheelColumn(
-                        label: '',
+                        label: i18n.t('notice.hours'),
                         separator: ':',
                         value: hours,
                         itemCount: hours < 24000 ? 24000 : hours + 1,
@@ -156,7 +156,7 @@ class RoutineBlockView extends StatelessWidget {
                         formatter: (v) => v.toString().padLeft(2, '0'),
                       ),
                       WheelColumn(
-                        label: '',
+                        label: i18n.t('notice.minutes'),
                         separator: ':',
                         value: minutes,
                         itemCount: 60,
@@ -164,7 +164,7 @@ class RoutineBlockView extends StatelessWidget {
                         formatter: (v) => v.toString().padLeft(2, '0'),
                       ),
                       WheelColumn(
-                        label: '',
+                        label: i18n.t('notice.seconds'),
                         value: secs,
                         itemCount: 60,
                         onChanged: (v) => setWheelState(() => secs = v),

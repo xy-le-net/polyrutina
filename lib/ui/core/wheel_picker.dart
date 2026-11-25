@@ -15,23 +15,26 @@ class WheelValuePicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bort = BortScope.of(context);
+    final columnHeight = side * 2.8;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         for (var i = 0; i < columns.length; i++) ...[
           if (i > 0)
-            Padding(
-              padding: EdgeInsets.only(
-                left: side * 0.08,
-                right: side * 0.08,
-                top: side * 0.5,
-              ),
-              child: Text(
-                columns[i].separator,
-                style: TextStyle(
-                  color: bort.fg,
-                  fontSize: side * 0.45,
-                  decoration: TextDecoration.none,
+            SizedBox(
+              height: columnHeight,
+              child: Align(
+                alignment: const Alignment(0, 0.22),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: side * 0.08),
+                  child: Text(
+                    columns[i].separator,
+                    style: TextStyle(
+                      color: bort.fg,
+                      fontSize: side * 0.45,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -109,14 +112,14 @@ class _WheelColumnState extends State<_WheelColumn> {
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          height: side * 0.4,
+          height: side * 0.5,
           child: Center(
             child: Text(
               column.label,
               maxLines: 1,
               style: TextStyle(
                 color: bort.mid,
-                fontSize: side * 0.3,
+                fontSize: side * 0.28,
                 decoration: TextDecoration.none,
               ),
             ),

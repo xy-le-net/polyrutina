@@ -6,6 +6,7 @@
 
 #include "generated_plugin_registrant.h"
 
+#include <camera_windows/camera_windows.h>
 #include <file_selector_windows/file_selector_windows.h>
 #include <flutter_timezone/flutter_timezone_plugin_c_api.h>
 #include <geolocator_windows/geolocator_windows.h>
@@ -14,8 +15,11 @@
 #include <sqlite3_flutter_libs/sqlite3_flutter_libs_plugin.h>
 #include <url_launcher_windows/url_launcher_windows.h>
 #include <share_plus/share_plus_windows_plugin_c_api.h>
+#include <win_toast/win_toast_plugin.h>
 
 void RegisterPlugins(flutter::PluginRegistry* registry) {
+  CameraWindowsRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("CameraWindows"));
   FileSelectorWindowsRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("FileSelectorWindows"));
   FlutterTimezonePluginCApiRegisterWithRegistrar(
@@ -32,4 +36,6 @@ void RegisterPlugins(flutter::PluginRegistry* registry) {
       registry->GetRegistrarForPlugin("UrlLauncherWindows"));
   SharePlusWindowsPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("SharePlusWindowsPluginCApi"));
+  WinToastPluginRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("WinToastPlugin"));
 }

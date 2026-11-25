@@ -314,6 +314,16 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
       final result = await showDialog<_AddressResult>(
         context: context,
         builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            side: BorderSide(
+              color: app.bort.fgsignal,
+              width: PultScope.of(context).smallSide * app.bort.kStroke,
+            ),
+            borderRadius: BorderRadius.circular(
+              PultScope.of(context).smallSide * app.bort.kRadius * 1.15,
+            ),
+          ),
+          backgroundColor: app.bort.bg,
           title: Text(app.i18n.t('media.search_address')),
           content: SizedBox(
             width: 420,

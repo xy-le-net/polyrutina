@@ -659,57 +659,60 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           _overlayStyle(_effectiveBrightness(systemBrightness)),
         );
 
-        return CallbackShortcuts(
-          bindings: {
-            if (defaultTargetPlatform == TargetPlatform.windows ||
-                defaultTargetPlatform == TargetPlatform.linux ||
-                defaultTargetPlatform == TargetPlatform.macOS)
-              const SingleActivator(LogicalKeyboardKey.escape): _handleEscape,
-          },
-          child: AppScope(
-            appContext: appContext,
-            child: BortScope(
-              bort: _bort,
-              child: RoutineScope(
-                routineLayer: _routineLayer,
-                child: TraceScope(
-                  traceLayer: _traceLayer,
-                  child: FieldScope(
-                    fieldLayer: _fieldLayer,
-                    child: TickerScope(
-                      ticker: _ticker,
-                      child: I18nScope(
-                        i18n: _i18n!,
-                        child: PultScope(
-                          state: _pultState,
-                          child: MediaQuery(
-                            data: MediaQuery.of(context).copyWith(
-                              textScaler: TextScaler.linear(_bort.scale),
-                            ),
-                            child: AnnotatedRegion<SystemUiOverlayStyle>(
-                              value: _overlayStyle(
-                                _effectiveBrightness(systemBrightness),
+        return DefaultTextStyle.merge(
+          style: const TextStyle(fontWeight: FontWeight.normal),
+          child: CallbackShortcuts(
+            bindings: {
+              if (defaultTargetPlatform == TargetPlatform.windows ||
+                  defaultTargetPlatform == TargetPlatform.linux ||
+                  defaultTargetPlatform == TargetPlatform.macOS)
+                const SingleActivator(LogicalKeyboardKey.escape): _handleEscape,
+            },
+            child: AppScope(
+              appContext: appContext,
+              child: BortScope(
+                bort: _bort,
+                child: RoutineScope(
+                  routineLayer: _routineLayer,
+                  child: TraceScope(
+                    traceLayer: _traceLayer,
+                    child: FieldScope(
+                      fieldLayer: _fieldLayer,
+                      child: TickerScope(
+                        ticker: _ticker,
+                        child: I18nScope(
+                          i18n: _i18n!,
+                          child: PultScope(
+                            state: _pultState,
+                            child: MediaQuery(
+                              data: MediaQuery.of(context).copyWith(
+                                textScaler: TextScaler.linear(_bort.scale),
                               ),
-                              child: ColoredBox(
-                                color: _bort.bg,
-                                child: Listener(
-                                  behavior: HitTestBehavior.translucent,
-                                  onPointerDown: (_) => _bort.pulseBort(),
-                                  child: SafeArea(
-                                    child: Stack(
-                                      children: [
-                                        child ?? const SizedBox.shrink(),
-                                        Positioned(
-                                          left: _rootPad,
-                                          top: _rootPad,
-                                          child: RootPult(
-                                            side: rootSide,
-                                            fg: _bort.fg,
-                                            bg: _bort.bg,
-                                            onOpen: _openTabsSheet,
+                              child: AnnotatedRegion<SystemUiOverlayStyle>(
+                                value: _overlayStyle(
+                                  _effectiveBrightness(systemBrightness),
+                                ),
+                                child: ColoredBox(
+                                  color: _bort.bg,
+                                  child: Listener(
+                                    behavior: HitTestBehavior.translucent,
+                                    onPointerDown: (_) => _bort.pulseBort(),
+                                    child: SafeArea(
+                                      child: Stack(
+                                        children: [
+                                          child ?? const SizedBox.shrink(),
+                                          Positioned(
+                                            left: _rootPad,
+                                            top: _rootPad,
+                                            child: RootPult(
+                                              side: rootSide,
+                                              fg: _bort.fg,
+                                              bg: _bort.bg,
+                                              onOpen: _openTabsSheet,
+                                            ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),

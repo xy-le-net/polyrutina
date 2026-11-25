@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -8,6 +9,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
+import 'package:win_toast/win_toast.dart';
 
 class NotificationService {
   static final _plugin = FlutterLocalNotificationsPlugin();
@@ -15,6 +17,12 @@ class NotificationService {
   static Future<void>? _initFuture;
   static bool _permissionAsked = false;
   static bool _tzInitialized = false;
+  static bool _windowsToastReady = false;
+  static String? _windowsRoutineSignature;
+  static String? _windowsShiftSignature;
+  static final Map<int, Timer> _windowsScheduledNotices = {};
+
+  static bool get windowsNotificationsAvailable => _windowsToastReady;
 
   static final ValueNotifier<String?> payloadNotifier = ValueNotifier(null);
 
@@ -47,6 +55,28 @@ class NotificationService {
   }
 
   static Future<void> _initialize() async {
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      try {
+        _windowsToastReady = await WinToast.instance().initialize(
+          aumId: 'xy.le-net.polyrutina',
+          displayName: 'polyrutina',
+          iconPath: '',
+          clsid: '00000000-0000-0000-0000-000000000001',
+        );
+        if (!_windowsToastReady) {
+          debugPrint(
+            'NotificationService: Windows toast initialization failed',
+          );
+        }
+      } catch (e, st) {
+        debugPrint(
+          'NotificationService: Windows toast initialization failed: $e\n$st',
+        );
+      }
+      _initialized = true;
+      return;
+    }
+
     const androidSettings = AndroidInitializationSettings(
       '@mipmap/ic_launcher',
     );
@@ -148,6 +178,19 @@ class NotificationService {
     required String stopLabel,
   }) async {
     if (!_initialized) await init();
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      if (!_windowsToastReady) return;
+      final signature = '$routineId\n${_windowsSignature(title, body)}';
+      if (signature == _windowsRoutineSignature) return;
+      final shown = await _showWindowsToast(
+        tag: _windowsTag('r', _routineId),
+        title: title,
+        body: body,
+        payload: 'routine_$routineId',
+      );
+      if (shown) _windowsRoutineSignature = signature;
+      return;
+    }
     await _ensurePermission();
 
     final when = DateTime.now().millisecondsSinceEpoch - (elapsedSec * 1000);
@@ -210,6 +253,19 @@ class NotificationService {
     required String stopLabel,
   }) async {
     if (!_initialized) await init();
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      if (!_windowsToastReady) return;
+      final signature = '$fieldId\n${_windowsSignature(title, body)}';
+      if (signature == _windowsShiftSignature) return;
+      final shown = await _showWindowsToast(
+        tag: _windowsTag('s', _shiftId),
+        title: title,
+        body: body,
+        payload: 'shift_$fieldId',
+      );
+      if (shown) _windowsShiftSignature = signature;
+      return;
+    }
     await _ensurePermission();
 
     final when = DateTime.now().millisecondsSinceEpoch - (elapsedSec * 1000);
@@ -274,6 +330,16 @@ class NotificationService {
       debugPrint('NotificationService.showOverdue skipped: not initialized');
       return;
     }
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      await _showWindowsToast(
+        tag: _windowsTag('d', routineId),
+        title: title,
+        body: body,
+        payload: 'routine_$routineId',
+        sound: true,
+      );
+      return;
+    }
     await _ensurePermission();
 
     // Every field here is const, so the whole details tree can be
@@ -335,6 +401,11 @@ class NotificationService {
       debugPrint(
         'NotificationService.scheduleOverdueNotice skipped: not initialized',
       );
+      return;
+    }
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      _windowsScheduledNotices.remove(routineId)?.cancel();
+      _armWindowsNotice(routineId: routineId, at: at, title: title, body: body);
       return;
     }
     await _ensurePermission();
@@ -418,6 +489,13 @@ class NotificationService {
       );
       return;
     }
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      _windowsScheduledNotices.remove(routineId)?.cancel();
+      if (_windowsToastReady) {
+        await _dismissWindowsToast(_windowsTag('d', routineId));
+      }
+      return;
+    }
     try {
       await _plugin.cancel(_scheduledIdFor(routineId));
     } catch (e) {
@@ -427,17 +505,121 @@ class NotificationService {
 
   static Future<void> cancelRoutine() async {
     if (!_initialized) await init();
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      _windowsRoutineSignature = null;
+      if (_windowsToastReady) {
+        await _dismissWindowsToast(_windowsTag('r', _routineId));
+      }
+      return;
+    }
     await _plugin.cancel(_routineId);
   }
 
   static Future<void> cancelShift() async {
     if (!_initialized) await init();
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      _windowsShiftSignature = null;
+      if (_windowsToastReady) {
+        await _dismissWindowsToast(_windowsTag('s', _shiftId));
+      }
+      return;
+    }
     await _plugin.cancel(_shiftId);
   }
 
   static Future<void> cancelAll() async {
     if (!_initialized) await init();
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      for (final timer in _windowsScheduledNotices.values) {
+        timer.cancel();
+      }
+      _windowsScheduledNotices.clear();
+      _windowsRoutineSignature = null;
+      _windowsShiftSignature = null;
+      if (_windowsToastReady) {
+        try {
+          await WinToast.instance().clear();
+        } catch (e, st) {
+          debugPrint(
+            'NotificationService.clear Windows toasts failed: $e\n$st',
+          );
+        }
+      }
+      return;
+    }
     await _plugin.cancelAll();
+  }
+
+  static String _windowsSignature(String title, String body) {
+    final lines = body
+        .split('\n')
+        .map((line) => line.contains(': ') ? line.split(': ').first : line);
+    return '$title\n${lines.join('\n')}';
+  }
+
+  static String _windowsTag(String prefix, int id) =>
+      '$prefix${id & 0x7FFFFFFF}';
+
+  static Future<bool> _showWindowsToast({
+    required String tag,
+    required String title,
+    required String body,
+    required String payload,
+    bool sound = false,
+  }) async {
+    if (!_windowsToastReady) return false;
+    const escape = HtmlEscape();
+    final texts = [title, ...body.split('\n')]
+        .where((line) => line.isNotEmpty)
+        .map((line) => '<text>${escape.convert(line)}</text>')
+        .join();
+    final audio = sound
+        ? '<audio src="ms-winsoundevent:Notification.Default"/>'
+        : '<audio silent="true"/>';
+    final xml =
+        '<toast launch="$payload">$audio'
+        '<visual><binding template="ToastGeneric">$texts</binding></visual>'
+        '</toast>';
+    try {
+      await WinToast.instance().showCustomToast(
+        xml: xml,
+        tag: tag,
+        group: 'polyrutina',
+      );
+      return true;
+    } catch (e, st) {
+      debugPrint('NotificationService.show Windows toast failed: $e\n$st');
+      return false;
+    }
+  }
+
+  static Future<void> _dismissWindowsToast(String tag) async {
+    try {
+      await WinToast.instance().dismiss(tag: tag, group: 'polyrutina');
+    } catch (e, st) {
+      debugPrint('NotificationService.dismiss Windows toast failed: $e\n$st');
+    }
+  }
+
+  static void _armWindowsNotice({
+    required int routineId,
+    required DateTime at,
+    required String title,
+    required String body,
+  }) {
+    final remaining = at.difference(DateTime.now());
+    if (remaining <= Duration.zero) {
+      _windowsScheduledNotices.remove(routineId);
+      unawaited(showOverdue(routineId: routineId, title: title, body: body));
+      return;
+    }
+
+    final delay = remaining > const Duration(days: 1)
+        ? const Duration(days: 1)
+        : remaining;
+    _windowsScheduledNotices[routineId] = Timer(delay, () {
+      _armWindowsNotice(routineId: routineId, at: at, title: title, body: body);
+    });
   }
 
   static void _onNotificationResponse(NotificationResponse response) {
@@ -459,7 +641,12 @@ class NotificationService {
       await file.writeAsString(
         jsonEncode({'action': actionId, 'payload': payload}),
       );
-    } catch (_) {}
+    } catch (error, stackTrace) {
+      debugPrint(
+        'NotificationService background action write failed: '
+        '$error\n$stackTrace',
+      );
+    }
   }
 
   static Future<Map<String, String>?> consumePendingAction() async {
@@ -474,7 +661,11 @@ class NotificationService {
         'action': data['action'] as String? ?? '',
         'payload': data['payload'] as String? ?? '',
       };
-    } catch (_) {
+    } catch (error, stackTrace) {
+      debugPrint(
+        'NotificationService pending action read failed: '
+        '$error\n$stackTrace',
+      );
       return null;
     }
   }

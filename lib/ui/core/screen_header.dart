@@ -44,6 +44,7 @@ class ScreenHeader extends StatelessWidget {
     // elsewhere (kTitle for the primary line, kTitle * 0.7 for the
     // secondary).
     final titleSize = side * bort.kTitle * 0.7;
+    final primarySize = side * 0.4;
 
     final pultSide = side * bort.kPultSmall;
 
@@ -59,7 +60,11 @@ class ScreenHeader extends StatelessWidget {
               child: subtitle == null
                   ? Text(
                       title,
-                      style: TextStyle(color: bort.fg),
+                      style: TextStyle(
+                        color: bort.fg,
+                        fontSize: primarySize,
+                        height: 1,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     )
@@ -69,7 +74,11 @@ class ScreenHeader extends StatelessWidget {
                       children: [
                         Text(
                           title,
-                          style: TextStyle(color: bort.fg),
+                          style: TextStyle(
+                            color: bort.fg,
+                            fontSize: primarySize,
+                            height: 1,
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -78,6 +87,7 @@ class ScreenHeader extends StatelessWidget {
                           style: TextStyle(
                             color: bort.mid,
                             fontSize: titleSize,
+                            height: 1,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

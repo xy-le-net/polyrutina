@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/app_scope.dart';
 import '../core/block.dart';
@@ -8,7 +10,12 @@ import '../pults/pult_core.dart';
 class _PermEntry {
   final String key;
   final Permission permission;
-  const _PermEntry({required this.key, required this.permission});
+  final String windowsSettingsUri;
+  const _PermEntry({
+    required this.key,
+    required this.permission,
+    required this.windowsSettingsUri,
+  });
 }
 
 class RubkaPermissions extends StatefulWidget {
@@ -23,10 +30,26 @@ class RubkaPermissions extends StatefulWidget {
 class _RubkaPermissionsState extends State<RubkaPermissions>
     with WidgetsBindingObserver {
   static const List<_PermEntry> _entries = [
-    _PermEntry(key: 'perm.notifications', permission: Permission.notification),
-    _PermEntry(key: 'perm.location', permission: Permission.locationWhenInUse),
-    _PermEntry(key: 'perm.camera', permission: Permission.camera),
-    _PermEntry(key: 'perm.microphone', permission: Permission.microphone),
+    _PermEntry(
+      key: 'perm.notifications',
+      permission: Permission.notification,
+      windowsSettingsUri: 'ms-settings:notifications',
+    ),
+    _PermEntry(
+      key: 'perm.location',
+      permission: Permission.locationWhenInUse,
+      windowsSettingsUri: 'ms-settings:privacy-location',
+    ),
+    _PermEntry(
+      key: 'perm.camera',
+      permission: Permission.camera,
+      windowsSettingsUri: 'ms-settings:privacy-webcam',
+    ),
+    _PermEntry(
+      key: 'perm.microphone',
+      permission: Permission.microphone,
+      windowsSettingsUri: 'ms-settings:privacy-microphone',
+    ),
   ];
 
   final Map<Permission, PermissionStatus> _statuses = {};
@@ -51,10 +74,17 @@ class _RubkaPermissionsState extends State<RubkaPermissions>
   }
 
   Future<void> _refreshAll() async {
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
     for (final e in _entries) {
       try {
         _statuses[e.permission] = await e.permission.status;
-      } catch (_) {
+      } catch (error, stackTrace) {
+        debugPrint(
+          'Permission status check failed for ${e.key}: $error\n$stackTrace',
+        );
         _statuses[e.permission] = PermissionStatus.denied;
       }
     }
@@ -62,10 +92,41 @@ class _RubkaPermissionsState extends State<RubkaPermissions>
   }
 
   Future<void> _onTap(_PermEntry e) async {
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      try {
+        final opened = await launchUrl(
+          Uri.parse(e.windowsSettingsUri),
+          mode: LaunchMode.externalApplication,
+        );
+        if (!opened && mounted) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            SnackBar(
+              content: Text(I18nScope.of(context).t('perm.settings_failed')),
+            ),
+          );
+        }
+      } catch (error, stackTrace) {
+        debugPrint(
+          'Opening Windows settings failed for ${e.key}: $error\n$stackTrace',
+        );
+        if (mounted) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            SnackBar(
+              content: Text(I18nScope.of(context).t('perm.settings_failed')),
+            ),
+          );
+        }
+      }
+      return;
+    }
+
     PermissionStatus status;
     try {
       status = await e.permission.status;
-    } catch (_) {
+    } catch (error, stackTrace) {
+      debugPrint(
+        'Permission status check failed for ${e.key}: $error\n$stackTrace',
+      );
       status = PermissionStatus.denied;
     }
     // Both granted and permanently-denied lead to the system
@@ -75,13 +136,33 @@ class _RubkaPermissionsState extends State<RubkaPermissions>
         status == PermissionStatus.permanentlyDenied ||
         status == PermissionStatus.restricted) {
       try {
-        await openAppSettings();
-      } catch (_) {}
+        final opened = await openAppSettings();
+        if (!opened && mounted) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            SnackBar(
+              content: Text(I18nScope.of(context).t('perm.settings_failed')),
+            ),
+          );
+        }
+      } catch (error, stackTrace) {
+        debugPrint(
+          'Opening app settings failed for ${e.key}: $error\n$stackTrace',
+        );
+        if (mounted) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            SnackBar(
+              content: Text(I18nScope.of(context).t('perm.settings_failed')),
+            ),
+          );
+        }
+      }
       return;
     }
     try {
       await e.permission.request();
-    } catch (_) {}
+    } catch (error, stackTrace) {
+      debugPrint('Permission request failed for ${e.key}: $error\n$stackTrace');
+    }
     if (!mounted) return;
     await _refreshAll();
   }
@@ -104,11 +185,12 @@ class _RubkaPermissionsState extends State<RubkaPermissions>
     final bg = bort.bg;
     final fgsignal = bort.fgsignal;
     final side = PultScope.of(context).smallSide;
+    final isWindows = defaultTargetPlatform == TargetPlatform.windows;
 
     final rows = <Widget>[];
     for (final e in _entries) {
       final s = _statuses[e.permission] ?? PermissionStatus.denied;
-      final selected = s == PermissionStatus.granted;
+      final selected = !isWindows && s == PermissionStatus.granted;
       rows.add(
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
@@ -119,17 +201,20 @@ class _RubkaPermissionsState extends State<RubkaPermissions>
                 width: 140,
                 child: Text(i18n.t(e.key), style: TextStyle(color: fg)),
               ),
-              Pult(
-                spec: PultSpec(
-                  id: 'perm_${e.key}',
-                  icon: _iconFor(s),
-                  selected: selected,
-                  onTap: _loading ? null : () => _onTap(e),
+              Tooltip(
+                message: isWindows ? i18n.t('perm.open_settings') : '',
+                child: Pult(
+                  spec: PultSpec(
+                    id: 'perm_${e.key}',
+                    icon: isWindows ? Icons.settings_outlined : _iconFor(s),
+                    selected: selected,
+                    onTap: _loading ? null : () => _onTap(e),
+                  ),
+                  fg: fg,
+                  bg: bg,
+                  signal: fgsignal,
+                  overrideSize: side,
                 ),
-                fg: fg,
-                bg: bg,
-                signal: fgsignal,
-                overrideSize: side,
               ),
             ],
           ),

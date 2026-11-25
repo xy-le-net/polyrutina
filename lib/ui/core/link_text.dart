@@ -23,6 +23,7 @@ class LinkText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bort = BortScope.of(context);
+    final linkSize = fontSize * 4 / 3;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -31,18 +32,19 @@ class LinkText extends StatelessWidget {
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: bort.fgsignal,
-            borderRadius: BorderRadius.circular(fontSize * 0.15),
+            borderRadius: BorderRadius.circular(linkSize * 0.22),
           ),
           child: Padding(
             padding: EdgeInsets.symmetric(
-              horizontal: fontSize * 0.3,
-              vertical: fontSize * 0.15,
+              horizontal: linkSize * 0.3,
+              vertical: linkSize * 0.15,
             ),
             child: Text(
               text,
               style: TextStyle(
                 color: bort.bgsignal,
-                fontSize: fontSize,
+                fontSize: linkSize,
+                fontWeight: FontWeight.normal,
                 fontFamily: fontFamily,
                 height: 1.0,
                 decoration: TextDecoration.none,

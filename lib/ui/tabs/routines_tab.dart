@@ -1073,19 +1073,18 @@ class _RoutinesTabState extends State<RoutinesTab> {
     }
 
     for (final root in roots) {
-      final expanded = _expandedAllFields.contains(root.id);
-      out.add(
-        _doneDivider(
-          _indent(1),
-          title: root.id == fieldLayer.rootId
-              ? i18n.t('field.root')
-              : root.name.isEmpty
-              ? '—'
-              : root.name,
-          expanded: expanded,
-          onTap: () => _toggleAllField(root.id),
-        ),
-      );
+      final expanded =
+          root.id == fieldLayer.rootId || _expandedAllFields.contains(root.id);
+      if (root.id != fieldLayer.rootId) {
+        out.add(
+          _doneDivider(
+            _indent(1),
+            title: root.name.isEmpty ? '—' : root.name,
+            expanded: expanded,
+            onTap: () => _toggleAllField(root.id),
+          ),
+        );
+      }
       if (expanded) {
         _buildTree(root.id, 0, {}, out, includeOrphans: false);
       }

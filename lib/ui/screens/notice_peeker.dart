@@ -4,6 +4,7 @@ import '../core/app_scope.dart';
 import '../core/bort_field.dart';
 import '../core/dialog_frame.dart';
 import '../core/format.dart';
+import '../core/link_text.dart';
 import '../pults/pult_core.dart';
 
 Future<int?> showNoticePicker(
@@ -49,14 +50,18 @@ Future<int?> showNoticePicker(
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: Text(i18n.t('common.cancel')),
+                LinkText(
+                  text: i18n.t('common.cancel'),
+                  color: bort.bgsignal,
+                  fontSize: side * bort.kName / 1.6,
+                  onTap: () => Navigator.of(ctx).pop(),
                 ),
-                const SizedBox(width: 8),
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(currentText),
-                  child: Text(i18n.t('common.ok')),
+                SizedBox(width: side * 0.3),
+                LinkText(
+                  text: i18n.t('common.ok'),
+                  color: bort.bgsignal,
+                  fontSize: side * bort.kName / 1.6,
+                  onTap: () => Navigator.of(ctx).pop(currentText),
                 ),
               ],
             ),
