@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../data/i18n.dart';
@@ -570,6 +571,9 @@ class _DaysTabState extends State<DaysTab> {
     return GestureDetector(
       onTap: routines.isEmpty ? null : () => _openDay(routines),
       onLongPress: () => _createOnDay(month, day),
+      onSecondaryTap: defaultTargetPlatform == TargetPlatform.windows
+          ? () => _createOnDay(month, day)
+          : null,
       child: Center(
         child: SizedBox(
           width: boxSide,

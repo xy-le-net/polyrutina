@@ -16,6 +16,7 @@ import 'data/routine_layer.dart';
 import 'data/ticker.dart';
 import 'data/trace_layer.dart';
 import 'ui/cards/routine_card.dart';
+import 'ui/core/app_layout.dart';
 import 'ui/core/app_scope.dart';
 import 'ui/core/control_row.dart';
 import 'ui/core/format.dart';
@@ -714,7 +715,16 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           if (didPop) return;
           _handleBack();
         },
-        child: Scaffold(body: _tabBody()),
+        child: Scaffold(
+          body: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: appContentMaxWidth,
+              ),
+              child: _tabBody(),
+            ),
+          ),
+        ),
       ),
     );
   }

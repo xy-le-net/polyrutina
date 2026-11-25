@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../data/routine.dart';
@@ -234,6 +235,9 @@ class RoutinePlate extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       onLongPress: onLongPress,
+      onSecondaryTap: defaultTargetPlatform == TargetPlatform.windows
+          ? onLongPress
+          : null,
       child: Container(
         decoration: BoxDecoration(
           color: plateBg,

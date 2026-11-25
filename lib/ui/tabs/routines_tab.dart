@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../data/field_layer.dart';
@@ -1162,6 +1163,12 @@ class _RoutinesTabState extends State<RoutinesTab> {
                             onLongPress: activeFieldId == null
                                 ? null
                                 : () => _showNodeActions(activeFieldId),
+                            onSecondaryTap:
+                                activeFieldId == null ||
+                                    defaultTargetPlatform !=
+                                        TargetPlatform.windows
+                                ? null
+                                : () => _showNodeActions(activeFieldId),
                             child: Text(
                               fieldName,
                               style: TextStyle(
@@ -1236,6 +1243,9 @@ class _FieldPlate extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       onLongPress: onLongPress,
+      onSecondaryTap: defaultTargetPlatform == TargetPlatform.windows
+          ? onLongPress
+          : null,
       child: Container(
         decoration: BoxDecoration(
           color: mid,

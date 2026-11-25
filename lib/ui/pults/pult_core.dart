@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../core/app_scope.dart';
@@ -278,7 +279,9 @@ class Pult extends StatelessWidget {
       child: core,
     );
 
-    if (spec.longSubs != null) {
+    if (spec.longSubs != null ||
+        spec.subsBuilder != null ||
+        spec.onLongPress != null) {
       final dotD = (side / 5 < _minDot ? _minDot : side / 5) * 2;
       final dotColor = selected ? iconColor : signal;
       final dotOutline = selected ? signal : bg;
@@ -389,6 +392,9 @@ class Pult extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: () => _handleTap(context, state),
       onLongPress: () => _handleLongPress(context, state),
+      onSecondaryTap: defaultTargetPlatform == TargetPlatform.windows
+          ? () => _handleLongPress(context, state)
+          : null,
       child: content,
     );
   }
