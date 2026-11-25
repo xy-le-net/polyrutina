@@ -10,7 +10,6 @@ class RootPult extends StatelessWidget {
   final double side;
   final Color fg;
   final Color bg;
-  final Color signal;
   final VoidCallback onOpen;
 
   const RootPult({
@@ -18,7 +17,6 @@ class RootPult extends StatelessWidget {
     required this.side,
     required this.fg,
     required this.bg,
-    required this.signal,
     required this.onOpen,
   });
 
@@ -27,19 +25,18 @@ class RootPult extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapUp: (_) => onOpen(),
-      child: _core(Icons.explore, false, side),
+      child: _core(side),
     );
   }
 
-  Widget _core(IconData icon, bool selected, double s) {
-    final coreColor = selected ? signal : fg;
-    final iconColor = bg;
+  Widget _core(double s) {
+    final coreColor = fg;
     final borderW = s / 16;
     final rOuter = s * 0.18;
     final rInner = s * 0.14;
     final rCore = s * 0.10;
 
-    final iconSize = selected ? s * 0.80 : s * 0.60;
+    final iconSize = s * 0.60;
 
     Widget core = Container(
       width: s,
@@ -49,17 +46,22 @@ class RootPult extends StatelessWidget {
         borderRadius: BorderRadius.circular(rCore),
       ),
       child: Center(
-        child: Icon(icon, color: iconColor, size: iconSize),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(rCore),
+          child: Image.asset(
+            'assets/icon.png',
+            width: iconSize,
+            height: iconSize,
+            fit: BoxFit.cover,
+          ),
+        ),
       ),
     );
 
     core = Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(rInner),
-        border: Border.all(
-          color: selected ? iconColor : coreColor,
-          width: borderW,
-        ),
+        border: Border.all(color: coreColor, width: borderW),
       ),
       child: core,
     );

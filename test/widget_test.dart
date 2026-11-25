@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:polyrutina/data/operational_layer.dart';
@@ -83,8 +84,54 @@ void main() {
     );
     expect(dot, findsOneWidget);
   });
+
+  testWidgets('pult with tap submenu opens from a long press', (tester) async {
+    final bort = OperationalLayer();
+    final pultState = PultState();
+    addTearDown(bort.dispose);
+    addTearDown(pultState.dispose);
+
+    await tester.pumpWidget(_pultSubmenuApp(bort, pultState));
+    await tester.longPress(find.byType(Pult));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Pult), findsNWidgets(2));
+  });
+
+  testWidgets('pult with tap submenu opens from a right click', (tester) async {
+    final bort = OperationalLayer();
+    final pultState = PultState();
+    addTearDown(bort.dispose);
+    addTearDown(pultState.dispose);
+
+    await tester.pumpWidget(_pultSubmenuApp(bort, pultState));
+    await tester.tap(find.byType(Pult), buttons: kSecondaryMouseButton);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Pult), findsNWidgets(2));
+  });
 }
 
 List<PultSpec> _testSubmenu() => const [
   PultSpec(id: 'option', icon: Icons.check),
 ];
+
+Widget _pultSubmenuApp(OperationalLayer bort, PultState pultState) =>
+    MaterialApp(
+      builder: (context, child) => BortScope(
+        bort: bort,
+        child: PultScope(state: pultState, child: child!),
+      ),
+      home: const Scaffold(
+        body: Pult(
+          spec: PultSpec(
+            id: 'menu',
+            icon: Icons.more_horiz,
+            subsBuilder: _testSubmenu,
+          ),
+          fg: Colors.black,
+          bg: Colors.white,
+          signal: Colors.red,
+        ),
+      ),
+    );

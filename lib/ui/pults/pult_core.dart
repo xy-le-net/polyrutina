@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../core/app_scope.dart';
@@ -185,11 +184,12 @@ class Pult extends StatelessWidget {
     if (state.confirmingId != null) {
       state.setConfirming(null);
     }
-    if (spec.longSubs != null) {
+    final subs = spec.longSubs ?? spec.subsBuilder;
+    if (subs != null) {
       showPultSheet(
         context: context,
-        subs: spec.longSubs!(),
-        subsBuilder: spec.longSubs,
+        subs: subs(),
+        subsBuilder: subs,
         fg: fg,
         bg: bg,
         signal: signal,
@@ -392,9 +392,7 @@ class Pult extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: () => _handleTap(context, state),
       onLongPress: () => _handleLongPress(context, state),
-      onSecondaryTap: defaultTargetPlatform == TargetPlatform.windows
-          ? () => _handleLongPress(context, state)
-          : null,
+      onSecondaryTap: () => _handleLongPress(context, state),
       child: content,
     );
   }

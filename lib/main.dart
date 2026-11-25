@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -487,6 +488,15 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     }
   }
 
+  void _handleEscape() {
+    final navigator = _navigatorKey.currentState;
+    if (navigator != null && navigator.canPop()) {
+      navigator.pop();
+      return;
+    }
+    _handleBack();
+  }
+
   // Painted until _bootDone is set. Shows the app icon on the fixed
   // splash background, and a slogan below when the dictionary is
   // already loaded. The slogan is picked from `slogans` (one entry
@@ -649,51 +659,58 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
           _overlayStyle(_effectiveBrightness(systemBrightness)),
         );
 
-        return AppScope(
-          appContext: appContext,
-          child: BortScope(
-            bort: _bort,
-            child: RoutineScope(
-              routineLayer: _routineLayer,
-              child: TraceScope(
-                traceLayer: _traceLayer,
-                child: FieldScope(
-                  fieldLayer: _fieldLayer,
-                  child: TickerScope(
-                    ticker: _ticker,
-                    child: I18nScope(
-                      i18n: _i18n!,
-                      child: PultScope(
-                        state: _pultState,
-                        child: MediaQuery(
-                          data: MediaQuery.of(context).copyWith(
-                            textScaler: TextScaler.linear(_bort.scale),
-                          ),
-                          child: AnnotatedRegion<SystemUiOverlayStyle>(
-                            value: _overlayStyle(
-                              _effectiveBrightness(systemBrightness),
+        return CallbackShortcuts(
+          bindings: {
+            if (defaultTargetPlatform == TargetPlatform.windows ||
+                defaultTargetPlatform == TargetPlatform.linux ||
+                defaultTargetPlatform == TargetPlatform.macOS)
+              const SingleActivator(LogicalKeyboardKey.escape): _handleEscape,
+          },
+          child: AppScope(
+            appContext: appContext,
+            child: BortScope(
+              bort: _bort,
+              child: RoutineScope(
+                routineLayer: _routineLayer,
+                child: TraceScope(
+                  traceLayer: _traceLayer,
+                  child: FieldScope(
+                    fieldLayer: _fieldLayer,
+                    child: TickerScope(
+                      ticker: _ticker,
+                      child: I18nScope(
+                        i18n: _i18n!,
+                        child: PultScope(
+                          state: _pultState,
+                          child: MediaQuery(
+                            data: MediaQuery.of(context).copyWith(
+                              textScaler: TextScaler.linear(_bort.scale),
                             ),
-                            child: ColoredBox(
-                              color: _bort.bg,
-                              child: Listener(
-                                behavior: HitTestBehavior.translucent,
-                                onPointerDown: (_) => _bort.pulseBort(),
-                                child: SafeArea(
-                                  child: Stack(
-                                    children: [
-                                      child ?? const SizedBox.shrink(),
-                                      Positioned(
-                                        left: _rootPad,
-                                        top: _rootPad,
-                                        child: RootPult(
-                                          side: rootSide,
-                                          fg: _bort.fg,
-                                          bg: _bort.bg,
-                                          signal: _bort.fgsignal,
-                                          onOpen: _openTabsSheet,
+                            child: AnnotatedRegion<SystemUiOverlayStyle>(
+                              value: _overlayStyle(
+                                _effectiveBrightness(systemBrightness),
+                              ),
+                              child: ColoredBox(
+                                color: _bort.bg,
+                                child: Listener(
+                                  behavior: HitTestBehavior.translucent,
+                                  onPointerDown: (_) => _bort.pulseBort(),
+                                  child: SafeArea(
+                                    child: Stack(
+                                      children: [
+                                        child ?? const SizedBox.shrink(),
+                                        Positioned(
+                                          left: _rootPad,
+                                          top: _rootPad,
+                                          child: RootPult(
+                                            side: rootSide,
+                                            fg: _bort.fg,
+                                            bg: _bort.bg,
+                                            onOpen: _openTabsSheet,
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
@@ -718,9 +735,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
         child: Scaffold(
           body: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: appContentMaxWidth,
-              ),
+              constraints: const BoxConstraints(maxWidth: appContentMaxWidth),
               child: _tabBody(),
             ),
           ),

@@ -49,6 +49,33 @@ class _AddressResult {
   const _AddressResult({required this.name, required this.point});
 }
 
+List<PultSpec> _tileSourceSpecs(
+  int selectedIndex,
+  ValueChanged<int> onSelect, {
+  required String prefix,
+}) => [
+  for (var i = 0; i < _tileSources.length; i++)
+    PultSpec(
+      id: '${prefix}_tile_$i',
+      icon: Icons.map,
+      label: _tileSources[i].label,
+      selected: i == selectedIndex,
+      onTap: () => onSelect(i),
+    ),
+];
+
+double _calculateMapZoom(
+  double lat,
+  double smallerSideMeters,
+  double screenPixels,
+) {
+  if (smallerSideMeters <= 0 || screenPixels <= 0) return 19;
+  final scale =
+      (screenPixels * 156543.03392 * math.cos(lat * math.pi / 180)) /
+      smallerSideMeters;
+  return (math.log(scale) / math.ln2).clamp(2.0, 19.0).toDouble();
+}
+
 const List<_TileSource> _tileSources = [
   _TileSource(
     label: 'OSM',
@@ -170,19 +197,45 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
         });
   }
 
-  double _calculateZoom(
-    double lat,
-    double smallerSideMeters,
-    double screenPixels,
-  ) {
-    if (smallerSideMeters <= 0 || screenPixels <= 0) return 19;
-    // metersPerPixel = 156543.03392 * cos(lat * pi / 180) / 2^zoom
-    // smallerSideMeters / screenPixels = metersPerPixel
-    // 2^zoom = (screenPixels * 156543.03392 * cos(lat)) / smallerSideMeters
-    final scale =
-        (screenPixels * 156543.03392 * math.cos(lat * math.pi / 180)) /
-        smallerSideMeters;
-    return (math.log(scale) / math.ln2).clamp(2.0, 19.0).toDouble();
+  Future<void> _locateCurrentPosition() async {
+    if (_locating) return;
+    setState(() => _locating = true);
+    try {
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        throw StateError('Location permission was denied');
+      }
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      ).timeout(const Duration(seconds: 15));
+      if (!mounted) return;
+      final point = LatLng(position.latitude, position.longitude);
+      _positionStream?.cancel();
+      setState(() {
+        _center = point;
+        _picked = point;
+        _accuracy = position.accuracy;
+        _userTouched = true;
+      });
+      _mapController.move(point, _mapController.camera.zoom);
+    } catch (error, stackTrace) {
+      debugPrint('Current location lookup failed: $error\n$stackTrace');
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(
+            content: Text(AppScope.of(context).i18n.t('media.location_failed')),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
   }
 
   Future<void> _searchAddress() async {
@@ -375,14 +428,19 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
     });
   }
 
-  void _autoFallbackIfNeeded() {
-    if (_userSwitched) return;
+  void _onTileError(int sourceIndex) {
+    if (!mounted || sourceIndex != _tileSourceIndex) return;
+    if (_userSwitched) {
+      if (!_noNetwork) setState(() => _noNetwork = true);
+      return;
+    }
     for (var i = 0; i < _tileSources.length; i++) {
       if (!_triedSources.contains(i)) {
         _switchTileSource(i);
         return;
       }
     }
+    if (!_noNetwork) setState(() => _noNetwork = true);
   }
 
   @override
@@ -392,7 +450,8 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
     final i18n = app.i18n;
     final side = PultScope.of(context).smallSide;
 
-    final source = _tileSources[_tileSourceIndex];
+    final sourceIndex = _tileSourceIndex;
+    final source = _tileSources[sourceIndex];
 
     return Scaffold(
       backgroundColor: bort.bg,
@@ -413,7 +472,6 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                         onSubmitted: (_) => _searchAddress(),
                         decoration: InputDecoration(
                           hintText: i18n.t('media.search_address'),
-                          prefixIcon: const Icon(Icons.search, size: 20),
                           isDense: true,
                           border: InputBorder.none,
                           contentPadding: EdgeInsets.symmetric(
@@ -422,20 +480,6 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                         ),
                       ),
                     ),
-                    Pult(
-                      spec: PultSpec(
-                        id: 'geo_address_search',
-                        icon: _searchingAddress
-                            ? Icons.hourglass_top
-                            : Icons.search,
-                        onTap: _searchingAddress ? null : _searchAddress,
-                      ),
-                      fg: bort.fg,
-                      bg: bort.bg,
-                      signal: bort.fgsignal,
-                      overrideSize: side * bort.kPultSmall,
-                    ),
-                    SizedBox(width: side * 0.15),
                     Pult(
                       spec: PultSpec(
                         id: 'header_exit',
@@ -467,7 +511,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                           mapController: _mapController,
                           options: MapOptions(
                             initialCenter: _center,
-                            initialZoom: _calculateZoom(
+                            initialZoom: _calculateMapZoom(
                               _center.latitude,
                               bort.mapScale.toDouble(),
                               smallerSidePx,
@@ -487,12 +531,8 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                               urlTemplate: source.urlTemplate,
                               subdomains: source.subdomains,
                               userAgentPackageName: 'com.example.polyrutina',
-                              errorTileCallback: (_, __, ___) {
-                                if (!mounted) return;
-                                if (_noNetwork) return;
-                                setState(() => _noNetwork = true);
-                                _autoFallbackIfNeeded();
-                              },
+                              errorTileCallback: (_, __, ___) =>
+                                  _onTileError(sourceIndex),
                             ),
                             if (_picked != null)
                               MarkerLayer(
@@ -582,17 +622,25 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                               spec: PultSpec(
                                 id: 'geo_layers',
                                 icon: Icons.layers,
-                                subsBuilder: () => [
-                                  for (var i = 0; i < _tileSources.length; i++)
-                                    PultSpec(
-                                      id: 'tile_$i',
-                                      icon: Icons.map,
-                                      label: _tileSources[i].label,
-                                      selected: i == _tileSourceIndex,
-                                      onTap: () =>
-                                          _switchTileSource(i, byUser: true),
-                                    ),
-                                ],
+                                subsBuilder: () => _tileSourceSpecs(
+                                  _tileSourceIndex,
+                                  (i) => _switchTileSource(i, byUser: true),
+                                  prefix: 'geo',
+                                ),
+                              ),
+                              fg: bort.fg,
+                              bg: bort.bg,
+                              signal: bort.fgsignal,
+                              overrideSize: side * 1.2,
+                            ),
+                            SizedBox(width: side * 0.5),
+                            Pult(
+                              spec: PultSpec(
+                                id: 'geo_locate',
+                                icon: _locating
+                                    ? Icons.hourglass_top
+                                    : Icons.gps_fixed,
+                                onTap: _locateCurrentPosition,
                               ),
                               fg: bort.fg,
                               bg: bort.bg,
@@ -625,6 +673,232 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class GeoMapPreview extends StatefulWidget {
+  final double latitude;
+  final double longitude;
+  final String? fallbackImagePath;
+
+  const GeoMapPreview({
+    super.key,
+    required this.latitude,
+    required this.longitude,
+    this.fallbackImagePath,
+  });
+
+  @override
+  State<GeoMapPreview> createState() => _GeoMapPreviewState();
+}
+
+class _GeoMapPreviewState extends State<GeoMapPreview> {
+  final _mapController = MapController();
+  final Set<int> _triedSources = {0};
+  int _tileSourceIndex = 0;
+  bool _noNetwork = false;
+  bool _locating = false;
+  bool _userSwitched = false;
+
+  @override
+  void didUpdateWidget(covariant GeoMapPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.latitude == widget.latitude &&
+        oldWidget.longitude == widget.longitude) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _mapController.move(
+          LatLng(widget.latitude, widget.longitude),
+          _mapController.camera.zoom,
+        );
+      }
+    });
+  }
+
+  void _switchTileSource(int index, {bool byUser = false}) {
+    if (index == _tileSourceIndex) return;
+    if (byUser) _userSwitched = true;
+    _triedSources.add(index);
+    setState(() {
+      _tileSourceIndex = index;
+      _noNetwork = false;
+    });
+  }
+
+  void _onTileError(int sourceIndex) {
+    if (!mounted || sourceIndex != _tileSourceIndex) return;
+    if (_noNetwork) return;
+    if (!_userSwitched) {
+      for (var i = 0; i < _tileSources.length; i++) {
+        if (!_triedSources.contains(i)) {
+          _switchTileSource(i);
+          return;
+        }
+      }
+    }
+    setState(() => _noNetwork = true);
+  }
+
+  Future<void> _locateCurrentPosition() async {
+    if (_locating) return;
+    setState(() => _locating = true);
+    try {
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        throw StateError('Location permission was denied');
+      }
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      ).timeout(const Duration(seconds: 15));
+      if (!mounted) return;
+      _mapController.move(
+        LatLng(position.latitude, position.longitude),
+        _mapController.camera.zoom,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Current location lookup failed: $error\n$stackTrace');
+      if (mounted) {
+        final i18n = AppScope.of(context).i18n;
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(content: Text(i18n.t('media.location_failed'))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final bort = app.bort;
+    final i18n = app.i18n;
+    final side = PultScope.of(context).smallSide;
+    final point = LatLng(widget.latitude, widget.longitude);
+    final sourceIndex = _tileSourceIndex;
+    final source = _tileSources[sourceIndex];
+    final fallbackPath = widget.fallbackImagePath;
+    final hasFallback =
+        _noNetwork &&
+        fallbackPath != null &&
+        fallbackPath.isNotEmpty &&
+        File(fallbackPath).existsSync();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final smallerSidePx = math.min(
+          constraints.maxWidth,
+          constraints.maxHeight,
+        );
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: point,
+                  initialZoom: _calculateMapZoom(
+                    point.latitude,
+                    bort.mapScale.toDouble(),
+                    smallerSidePx,
+                  ),
+                ),
+                children: [
+                  TileLayer(
+                    key: ValueKey(sourceIndex),
+                    urlTemplate: source.urlTemplate,
+                    subdomains: source.subdomains,
+                    userAgentPackageName: 'com.example.polyrutina',
+                    errorTileCallback: (_, __, ___) =>
+                        _onTileError(sourceIndex),
+                  ),
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: point,
+                        width: 40,
+                        height: 40,
+                        child: Icon(
+                          Icons.place,
+                          color: bort.fgsignal,
+                          size: 40,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            if (hasFallback)
+              Positioned.fill(
+                child: Image.file(File(fallbackPath), fit: BoxFit.cover),
+              ),
+            if (_noNetwork)
+              Positioned(
+                left: 0,
+                right: 0,
+                top: side * 0.4,
+                child: Center(
+                  child: Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: side * 0.3,
+                      vertical: side * 0.1,
+                    ),
+                    color: bort.bg,
+                    child: Text(
+                      i18n.t('media.no_network'),
+                      style: TextStyle(color: bort.mid, fontSize: side * 0.35),
+                    ),
+                  ),
+                ),
+              ),
+            Positioned(
+              top: side * 0.25,
+              right: side * 0.25,
+              child: Column(
+                children: [
+                  Pult(
+                    spec: PultSpec(
+                      id: 'geo_preview_layers',
+                      icon: Icons.layers,
+                      subsBuilder: () => _tileSourceSpecs(
+                        _tileSourceIndex,
+                        (i) => _switchTileSource(i, byUser: true),
+                        prefix: 'geo_preview',
+                      ),
+                    ),
+                    fg: bort.fg,
+                    bg: bort.bg,
+                    signal: bort.fgsignal,
+                    overrideSize: side,
+                  ),
+                  SizedBox(height: side * 0.25),
+                  Pult(
+                    spec: PultSpec(
+                      id: 'geo_preview_locate',
+                      icon: _locating ? Icons.hourglass_top : Icons.gps_fixed,
+                      onTap: _locateCurrentPosition,
+                    ),
+                    fg: bort.fg,
+                    bg: bort.bg,
+                    signal: bort.fgsignal,
+                    overrideSize: side,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

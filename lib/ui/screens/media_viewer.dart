@@ -16,6 +16,7 @@ import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
 import '../core/screen_header.dart';
 import '../pults/pult_core.dart';
+import 'geo_picker.dart';
 
 class MediaViewer extends StatefulWidget {
   final int traceId;
@@ -572,13 +573,25 @@ class _MediaViewerState extends State<MediaViewer> {
       final lat = f.lat?.toStringAsFixed(6) ?? '?';
       final lon = f.lon?.toStringAsFixed(6) ?? '?';
       final acc = f.acc?.toStringAsFixed(1) ?? '?';
-      final file = File(f.path);
+      final latitude = f.lat;
+      final longitude = f.lon;
+      if (latitude == null || longitude == null) {
+        return Center(
+          child: Text(
+            '$lat, $lon',
+            style: TextStyle(color: bort.mid, fontSize: side * 0.3),
+          ),
+        );
+      }
 
       return Stack(
         fit: StackFit.expand,
         children: [
-          if (file.existsSync())
-            Positioned.fill(child: Image.file(file, fit: BoxFit.cover)),
+          GeoMapPreview(
+            latitude: latitude,
+            longitude: longitude,
+            fallbackImagePath: f.path,
+          ),
           Positioned(
             left: 0,
             right: 0,

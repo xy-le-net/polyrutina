@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/routine.dart';
 import '../../data/ticker.dart';
 import '../core/app_scope.dart';
+import '../core/app_layout.dart';
 import '../core/bort_field.dart';
 import '../core/control_row.dart';
 import '../core/format.dart';
@@ -483,9 +484,53 @@ class _RoutineCardState extends State<RoutineCard> {
                 child: SingleChildScrollView(
                   controller: _scrollController,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: blocks,
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxWidth: appContentMaxWidth,
+                      ),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          if (constraints.maxWidth <= rubkaMaxColumnWidth) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: blocks,
+                            );
+                          }
+
+                          const gap = 48.0;
+                          final columnWidth = (constraints.maxWidth - gap) / 2;
+                          final left = <Widget>[];
+                          final right = <Widget>[];
+                          for (var i = 0; i < blocks.length; i++) {
+                            (i.isEven ? left : right).add(blocks[i]);
+                          }
+
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: columnWidth,
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: left,
+                                ),
+                              ),
+                              const SizedBox(width: gap),
+                              SizedBox(
+                                width: columnWidth,
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: right,
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
                   ),
                 ),
               ),

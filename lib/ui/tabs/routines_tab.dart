@@ -5,6 +5,7 @@ import '../../data/field_layer.dart';
 import '../../data/routine.dart';
 import '../../data/ticker.dart';
 import '../core/app_scope.dart';
+import '../core/app_layout.dart';
 import '../core/bort_field.dart';
 import '../core/confirm_dialog.dart';
 import '../core/control_row.dart';
@@ -1135,6 +1136,12 @@ class _RoutinesTabState extends State<RoutinesTab> {
             children: items,
           );
         }
+        body = Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: rubkaMaxColumnWidth),
+            child: body,
+          ),
+        );
 
         final activeNode = activeFieldId != null
             ? fieldLayer.nodes[activeFieldId]
