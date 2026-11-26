@@ -23,7 +23,7 @@ class LinkText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bort = BortScope.of(context);
-    final linkSize = fontSize * 4 / 3;
+    final linkSize = fontSize;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,

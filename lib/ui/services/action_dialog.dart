@@ -3,6 +3,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../data/operational_layer.dart';
 import '../core/app_scope.dart';
+import '../core/bort_metrics.dart';
 import '../core/dialog_frame.dart';
 import '../core/format.dart';
 import '../pults/pult_core.dart';
@@ -176,7 +177,10 @@ class _TimeHistoryDialogState extends State<_TimeHistoryDialog> {
                     _monthTitle(),
                     style: TextStyle(
                       color: bort.fg,
-                      fontSize: side * bort.kName,
+                      fontSize: BortMetrics.fontSizeForSide(
+                        side,
+                        BortTextRole.base,
+                      ),
                     ),
                   ),
                 ),
@@ -197,7 +201,10 @@ class _TimeHistoryDialogState extends State<_TimeHistoryDialog> {
           SizedBox(height: side * bort.kFramePad * 0.5),
           Text(
             '${i18n.t(ui.labelKey)}: ${fmtTime(total, i18n.t)}',
-            style: TextStyle(color: bort.fgsignal, fontSize: side * bort.kName),
+            style: TextStyle(
+              color: bort.fgsignal,
+              fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.base),
+            ),
           ),
           SizedBox(height: side * bort.kFramePad * 0.5),
           Flexible(
@@ -219,7 +226,10 @@ class _TimeHistoryDialogState extends State<_TimeHistoryDialog> {
                             '$d: ${fmtTime(days[d]!, i18n.t)}',
                             style: TextStyle(
                               color: bort.fg,
-                              fontSize: side * bort.kNumberSmall,
+                              fontSize: BortMetrics.fontSizeForSide(
+                                side,
+                                BortTextRole.caption,
+                              ),
                               fontFamily: 'monospace',
                             ),
                           ),

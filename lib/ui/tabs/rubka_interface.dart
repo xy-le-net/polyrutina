@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/operational_layer.dart';
 import '../core/app_scope.dart';
 import '../core/bort_field.dart';
+import '../core/bort_metrics.dart';
 import '../core/help_label.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_tick.dart';
@@ -50,7 +51,10 @@ class RubkaInterface extends StatelessWidget {
       child: HelpLabel(
         helpKey: 'bort.default_slots',
         text: text,
-        style: TextStyle(color: dim, fontSize: side * 0.35),
+        style: TextStyle(
+          color: dim,
+          fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.caption),
+        ),
       ),
     );
   }

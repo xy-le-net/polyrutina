@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/app_scope.dart';
+import '../core/bort_metrics.dart';
 import 'pult_sheet.dart';
 
 class PultSpec {
@@ -223,13 +224,6 @@ class Pult extends StatelessWidget {
     final baseIconSize = selected ? side * 0.80 : side * 0.60;
 
     final hasCenter = spec.centerText != null;
-    final centerLen = spec.centerText?.length ?? 0;
-
-    final numBaseSize = selected ? side * 0.60 : side * 0.45;
-    final centerSize = centerLen <= 1
-        ? numBaseSize
-        : numBaseSize * (1.6 / centerLen);
-
     final effectiveIcon = (confirming && spec.confirmIcon != null)
         ? spec.confirmIcon!
         : spec.icon;
@@ -245,14 +239,20 @@ class Pult extends StatelessWidget {
         child: hasCenter
             ? Padding(
                 padding: EdgeInsets.only(bottom: side * 0.04),
-                child: Text(
-                  spec.centerText!,
-                  style: TextStyle(
-                    color: iconColor,
-                    fontFamily: 'monospace',
-                    fontSize: centerSize,
-                    height: 1.0,
-                    decoration: TextDecoration.none,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    spec.centerText!,
+                    style: TextStyle(
+                      color: iconColor,
+                      fontFamily: 'monospace',
+                      fontSize: BortMetrics.fontSizeForSide(
+                        side,
+                        BortTextRole.base,
+                      ),
+                      height: 1.0,
+                      decoration: TextDecoration.none,
+                    ),
                   ),
                 ),
               )
@@ -322,7 +322,7 @@ class Pult extends StatelessWidget {
       content = scaledCore;
     } else {
       final labelStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
-        fontSize: side * 0.4,
+        fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.base),
         fontWeight: FontWeight.normal,
       );
 
@@ -370,7 +370,10 @@ class Pult extends StatelessWidget {
                   ) ??
                   TextStyle(
                     color: iconColor,
-                    fontSize: side * 0.4,
+                    fontSize: BortMetrics.fontSizeForSide(
+                      side,
+                      BortTextRole.base,
+                    ),
                     fontWeight: FontWeight.normal,
                     decoration: TextDecoration.none,
                   ),

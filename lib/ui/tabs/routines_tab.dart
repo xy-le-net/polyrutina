@@ -139,6 +139,31 @@ class _RoutinesTabState extends State<RoutinesTab> {
     });
   }
 
+  void _expandAllBranches() {
+    final fieldLayer = FieldScope.of(context);
+    setState(() {
+      _expanded.addAll(
+        fieldLayer.nodes.values
+            .where((node) => !node.isRoot)
+            .map((node) => node.id),
+      );
+      _expandedAllFields.addAll(
+        fieldLayer.nodes.values
+            .where((node) => node.isRoot)
+            .map((node) => node.id),
+      );
+      _orphansExpanded = true;
+    });
+  }
+
+  void _collapseAllBranches() {
+    setState(() {
+      _expanded.clear();
+      _expandedAllFields.clear();
+      _orphansExpanded = false;
+    });
+  }
+
   double _indent(int depth) => depth <= 1 ? 4.0 : 4.0 + (depth - 1) * 20.0;
 
   void _collectNodeSubs(
@@ -485,6 +510,14 @@ class _RoutinesTabState extends State<RoutinesTab> {
       context: context,
       barrierColor: Colors.transparent,
       builder: (ctx) {
+        Future<void> confirm() async {
+          final trimmed = currentText.trim();
+          final name = trimmed.isEmpty ? _autoName(id) : currentText;
+          Navigator.of(ctx).pop();
+          await app.fieldLayer.renameNode(app.journal, id, name);
+          if (mounted) setState(() => _expanded.add(id));
+        }
+
         return DialogFrame(
           onDismiss: () => Navigator.of(ctx).pop(),
           child: Column(
@@ -502,6 +535,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
                 onCommit: (v) async {
                   currentText = v;
                 },
+                onSubmitted: confirm,
               ),
               SizedBox(height: metrics.unit(0.5)),
               DialogActions(
@@ -523,18 +557,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
                       }
                     },
                   ),
-                  DialogAction(
-                    label: i18n.t('common.ok'),
-                    onTap: () async {
-                      final trimmed = currentText.trim();
-                      final name = trimmed.isEmpty
-                          ? _autoName(id)
-                          : currentText;
-                      Navigator.of(ctx).pop();
-                      await app.fieldLayer.renameNode(app.journal, id, name);
-                      if (mounted) setState(() => _expanded.add(id));
-                    },
-                  ),
+                  DialogAction(label: i18n.t('common.ok'), onTap: confirm),
                 ],
               ),
             ],
@@ -783,7 +806,10 @@ class _RoutinesTabState extends State<RoutinesTab> {
                     label,
                     style: TextStyle(
                       color: bort.mid,
-                      fontSize: side * bort.kNumberSmall,
+                      fontSize: BortMetrics.fontSizeForSide(
+                        side,
+                        BortTextRole.caption,
+                      ),
                     ),
                   ),
                   SizedBox(width: side * 0.1),
@@ -1157,7 +1183,10 @@ class _RoutinesTabState extends State<RoutinesTab> {
                               fieldName,
                               style: TextStyle(
                                 color: signal,
-                                fontSize: side * bort.kName * 0.8,
+                                fontSize: BortMetrics.fontSizeForSide(
+                                  side,
+                                  BortTextRole.base,
+                                ),
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -1168,6 +1197,30 @@ class _RoutinesTabState extends State<RoutinesTab> {
                           onChanged: () {
                             if (mounted) setState(() {});
                           },
+                        ),
+                        SizedBox(width: side * 0.1),
+                        Pult(
+                          spec: PultSpec(
+                            id: 'expand_all_branches',
+                            icon: Icons.unfold_more,
+                            onTap: _expandAllBranches,
+                          ),
+                          fg: fg,
+                          bg: bg,
+                          signal: signal,
+                          overrideSize: side * bort.kPultSmall,
+                        ),
+                        SizedBox(width: side * 0.1),
+                        Pult(
+                          spec: PultSpec(
+                            id: 'collapse_all_branches',
+                            icon: Icons.unfold_less,
+                            onTap: _collapseAllBranches,
+                          ),
+                          fg: fg,
+                          bg: bg,
+                          signal: signal,
+                          overrideSize: side * bort.kPultSmall,
                         ),
                       ],
                     ),
@@ -1232,30 +1285,33 @@ class _FieldPlate extends StatelessWidget {
           : null,
       child: Container(
         decoration: BoxDecoration(
-          color: mid,
-          border: Border.all(color: signal, width: strokeW),
+          color: bort.bg,
+          border: Border.all(color: mid, width: strokeW),
           borderRadius: BorderRadius.circular(radius),
         ),
         padding: EdgeInsets.all(pad),
         child: Row(
           children: [
-            if (hasChildren)
-              Icon(
-                expanded ? Icons.expand_more : Icons.chevron_right,
-                color: signal,
-                size: side * 0.5,
-              )
-            else
-              SizedBox(width: side * 0.5),
-            const SizedBox(width: 6),
-            Icon(Icons.account_tree_outlined, color: signal, size: side * 0.5),
+            Container(
+              color: mid,
+              child: hasChildren
+                  ? Icon(
+                      expanded ? Icons.expand_more : Icons.chevron_right,
+                      color: signal,
+                      size: side * 0.5,
+                    )
+                  : SizedBox(width: side * 0.5, height: side * 0.5),
+            ),
             const SizedBox(width: 6),
             Expanded(
               child: Text(
                 title,
                 style: TextStyle(
-                  color: signal,
-                  fontSize: side * bort.kName * 0.75,
+                  color: bort.fg,
+                  fontSize: BortMetrics.fontSizeForSide(
+                    side,
+                    BortTextRole.base,
+                  ),
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

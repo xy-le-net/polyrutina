@@ -342,8 +342,8 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                                 style: inputStyle,
                                 decoration: bortInputDecoration(
                                   context,
-                                  borderColor: bort.mid,
-                                  focusedBorderColor: bort.fg,
+                                  borderColor: bort.fg,
+                                  focusedBorderColor: bort.bgsignal,
                                   hintText: i18n.t('routine.block.note'),
                                   hintStyle: TextStyle(
                                     color: bort.mid,

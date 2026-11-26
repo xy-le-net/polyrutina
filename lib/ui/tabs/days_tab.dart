@@ -5,6 +5,7 @@ import '../../data/i18n.dart';
 import '../../data/operational_layer.dart';
 import '../../data/routine.dart';
 import '../core/app_scope.dart';
+import '../core/bort_metrics.dart';
 import '../core/control_row.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_sheet.dart';
@@ -218,7 +219,10 @@ class _DaysTabState extends State<DaysTab> {
                           '${vm.month.toString().padLeft(2, '0')}',
                           style: TextStyle(
                             color: bort.fg,
-                            fontSize: side * 0.5,
+                            fontSize: BortMetrics.fontSizeForSide(
+                              side,
+                              BortTextRole.header,
+                            ),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -228,7 +232,10 @@ class _DaysTabState extends State<DaysTab> {
                           '(${i18n.t('month.${vm.month}')})',
                           style: TextStyle(
                             color: bort.mid,
-                            fontSize: side * 0.25,
+                            fontSize: BortMetrics.fontSizeForSide(
+                              side,
+                              BortTextRole.caption,
+                            ),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -376,7 +383,7 @@ class _DaysTabState extends State<DaysTab> {
     final color = bort.mid;
     final itemSize = side * 0.9;
     final markStroke = side * 0.04;
-    final fontSize = side * 0.4;
+    final fontSize = BortMetrics.fontSizeForSide(side, BortTextRole.base);
     final gap = side * 0.3;
 
     Widget item(Widget mark, int count, String label, List<Routine> routines) {
@@ -498,7 +505,7 @@ class _DaysTabState extends State<DaysTab> {
 
     final TextStyle style = TextStyle(
       color: numberColor,
-      fontSize: side * 0.4,
+      fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.base),
       height: 1.0,
       decoration: m.completed ? TextDecoration.underline : TextDecoration.none,
       decorationColor: bort.mid,

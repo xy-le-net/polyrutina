@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'bort_metrics.dart';
 import '../pults/pult_core.dart';
 import 'app_scope.dart';
 import 'control_row.dart';
@@ -40,11 +41,8 @@ class ScreenHeader extends StatelessWidget {
     final bort = BortScope.of(context);
     final side = PultScope.of(context).smallSide;
 
-    // Title size: the same role used by the sheet bodies' headings
-    // elsewhere (kTitle for the primary line, kTitle * 0.7 for the
-    // secondary).
-    final titleSize = side * bort.kTitle * 0.7;
-    final primarySize = side * 0.4;
+    final titleSize = BortMetrics.fontSizeForSide(side, BortTextRole.caption);
+    final primarySize = BortMetrics.fontSizeForSide(side, BortTextRole.header);
 
     final pultSide = side * bort.kPultSmall;
 

@@ -14,6 +14,7 @@ import '../../data/i18n.dart';
 import '../../data/operational_layer.dart';
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
+import '../core/bort_metrics.dart';
 import '../core/screen_header.dart';
 import '../pults/pult_core.dart';
 import 'geo_picker.dart';
@@ -495,7 +496,10 @@ class _MediaViewerState extends State<MediaViewer> {
                   _fmtDur(pos),
                   style: TextStyle(
                     color: bort.mid,
-                    fontSize: side * 0.3,
+                    fontSize: BortMetrics.fontSizeForSide(
+                      side,
+                      BortTextRole.caption,
+                    ),
                     fontFamily: 'monospace',
                   ),
                 ),
@@ -503,7 +507,10 @@ class _MediaViewerState extends State<MediaViewer> {
                   _fmtDur(dur),
                   style: TextStyle(
                     color: bort.mid,
-                    fontSize: side * 0.3,
+                    fontSize: BortMetrics.fontSizeForSide(
+                      side,
+                      BortTextRole.caption,
+                    ),
                     fontFamily: 'monospace',
                   ),
                 ),
@@ -579,7 +586,10 @@ class _MediaViewerState extends State<MediaViewer> {
         return Center(
           child: Text(
             '$lat, $lon',
-            style: TextStyle(color: bort.mid, fontSize: side * 0.3),
+            style: TextStyle(
+              color: bort.mid,
+              fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.caption),
+            ),
           ),
         );
       }
@@ -621,7 +631,10 @@ class _MediaViewerState extends State<MediaViewer> {
                         '$lat, $lon (±$acc ${i18n.t('time.m')})',
                         style: TextStyle(
                           color: bort.fg,
-                          fontSize: side * 0.25,
+                          fontSize: BortMetrics.fontSizeForSide(
+                            side,
+                            BortTextRole.caption,
+                          ),
                           fontFamily: 'monospace',
                         ),
                       ),
@@ -634,7 +647,10 @@ class _MediaViewerState extends State<MediaViewer> {
                         i18n.t('media.copied'),
                         style: TextStyle(
                           color: bort.fgsignal,
-                          fontSize: side * 0.25,
+                          fontSize: BortMetrics.fontSizeForSide(
+                            side,
+                            BortTextRole.caption,
+                          ),
                         ),
                       ),
                     ),
@@ -662,7 +678,10 @@ class _MediaViewerState extends State<MediaViewer> {
             Text(
               displayName,
               textAlign: TextAlign.center,
-              style: TextStyle(color: bort.fg, fontSize: side * 0.4),
+              style: TextStyle(
+                color: bort.fg,
+                fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.base),
+              ),
             ),
           ],
         ),
@@ -681,7 +700,13 @@ class _MediaViewerState extends State<MediaViewer> {
             const SizedBox(height: 12),
             Text(
               f.name,
-              style: TextStyle(color: bort.mid, fontSize: side * 0.3),
+              style: TextStyle(
+                color: bort.mid,
+                fontSize: BortMetrics.fontSizeForSide(
+                  side,
+                  BortTextRole.caption,
+                ),
+              ),
             ),
           ],
         ),
@@ -705,7 +730,10 @@ class _MediaViewerState extends State<MediaViewer> {
                     _fmtDur(v.duration),
                     style: TextStyle(
                       color: bort.fg,
-                      fontSize: side * 1.2,
+                      fontSize: BortMetrics.fontSizeForSide(
+                        side,
+                        BortTextRole.header,
+                      ),
                       fontFamily: 'monospace',
                     ),
                   ),
@@ -729,7 +757,10 @@ class _MediaViewerState extends State<MediaViewer> {
               _fmtDur(dur),
               style: TextStyle(
                 color: bort.fg,
-                fontSize: side * 1.2,
+                fontSize: BortMetrics.fontSizeForSide(
+                  side,
+                  BortTextRole.header,
+                ),
                 fontFamily: 'monospace',
               ),
             )
@@ -737,7 +768,10 @@ class _MediaViewerState extends State<MediaViewer> {
             Text(
               f.name,
               textAlign: TextAlign.center,
-              style: TextStyle(color: bort.fg, fontSize: side * 0.4),
+              style: TextStyle(
+                color: bort.fg,
+                fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.base),
+              ),
             ),
         ],
       ),

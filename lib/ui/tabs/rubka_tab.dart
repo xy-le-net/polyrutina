@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/app_scope.dart';
 import '../core/block.dart';
+import '../core/bort_metrics.dart';
 import '../core/control_row.dart';
 import '../pults/pult_core.dart';
 import 'rubka_appearance.dart';
@@ -23,7 +24,7 @@ class RubkaTab extends StatelessWidget {
     final fgsignal = bort.fgsignal;
     final side = PultScope.of(context).smallSide;
 
-    final titleSize = side * bort.kTitle;
+    final titleSize = BortMetrics.fontSizeForSide(side, BortTextRole.header);
     final pad = side * bort.kFramePad;
     final gap = side * bort.kBlockGap;
     final strokeW = side * bort.kStroke;

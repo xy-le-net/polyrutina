@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/theme_store.dart';
 import '../core/app_scope.dart';
 import '../core/block.dart';
+import '../core/bort_metrics.dart';
 import '../core/bort_field.dart';
 import '../core/help_label.dart';
 import '../pults/pult_core.dart';
@@ -33,7 +34,7 @@ class RubkaAppearance extends StatelessWidget {
     final fgsignal = bort.fgsignal;
     final side = PultScope.of(context).smallSide;
 
-    final titleSize = side * bort.kTitle;
+    final titleSize = BortMetrics.fontSizeForSide(side, BortTextRole.header);
     final pad = side * bort.kFramePad;
     final gap = side * bort.kBlockGap;
     final strokeW = side * bort.kStroke;
@@ -76,7 +77,10 @@ class RubkaAppearance extends StatelessWidget {
       child: HelpLabel(
         helpKey: 'theme.custom',
         text: text,
-        style: TextStyle(color: mid, fontSize: side * 0.35),
+        style: TextStyle(
+          color: mid,
+          fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.caption),
+        ),
       ),
     );
   }

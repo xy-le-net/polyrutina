@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/app_scope.dart';
 import '../core/block.dart';
+import '../core/bort_metrics.dart';
 import '../pults/pult_core.dart';
 
 class _PermEntry {
@@ -231,7 +232,7 @@ class _RubkaPermissionsState extends State<RubkaPermissions>
       dim: mid,
       fg: fg,
       signal: fgsignal,
-      titleSize: side * bort.kTitle,
+      titleSize: BortMetrics.fontSizeForSide(side, BortTextRole.header),
       pad: side * bort.kFramePad,
       gap: side * bort.kBlockGap,
       strokeW: side * bort.kStroke,

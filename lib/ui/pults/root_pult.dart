@@ -36,8 +36,6 @@ class RootPult extends StatelessWidget {
     final rInner = s * 0.14;
     final rCore = s * 0.10;
 
-    final iconSize = s * 0.60;
-
     Widget core = Container(
       width: s,
       height: s,
@@ -50,8 +48,8 @@ class RootPult extends StatelessWidget {
           borderRadius: BorderRadius.circular(rCore),
           child: Image.asset(
             'assets/icon.png',
-            width: iconSize,
-            height: iconSize,
+            width: s,
+            height: s,
             fit: BoxFit.cover,
           ),
         ),

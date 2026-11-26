@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/routine.dart';
 import '../core/app_scope.dart';
 import '../core/block.dart';
+import '../core/bort_metrics.dart';
 import '../core/format.dart';
 import '../core/routine_flags.dart';
 import '../core/timer_text.dart';
@@ -121,79 +122,32 @@ class RoutineBlockView extends StatelessWidget {
 
     // Padding is taken straight from the (now halved) coefficients:
     // quarter-sized values, drifting away from the unified scale.
-    final titleSize = side * bort.kTitle * 0.8;
+    final titleSize = BortMetrics.fontSizeForSide(side, BortTextRole.header);
     final pad = side * bort.kFramePad;
     final gap = side * bort.kBlockGap;
 
     final strokeW = side * bort.kStroke;
     final radiusW = side * bort.kRadius;
-    final numberSize = side * bort.kNumber;
+    final numberSize = BortMetrics.fontSizeForSide(side, BortTextRole.base);
     final pultSide = side * bort.kPultSmall;
 
     Widget? cornerTop;
 
     if (showPulse) {
       if (editingKind == kind) {
-        var hours = seconds ~/ 3600;
-        var minutes = (seconds % 3600) ~/ 60;
-        var secs = seconds % 60;
-        cornerTop = StatefulBuilder(
-          builder: (context, setWheelState) {
-            return Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: side * 3.6,
-                  height: side * 2.8,
-                  child: WheelValuePicker(
-                    columns: [
-                      WheelColumn(
-                        label: i18n.t('notice.hours'),
-                        separator: ':',
-                        value: hours,
-                        itemCount: hours < 24000 ? 24000 : hours + 1,
-                        onChanged: (v) => setWheelState(() => hours = v),
-                        formatter: (v) => v.toString().padLeft(2, '0'),
-                      ),
-                      WheelColumn(
-                        label: i18n.t('notice.minutes'),
-                        separator: ':',
-                        value: minutes,
-                        itemCount: 60,
-                        onChanged: (v) => setWheelState(() => minutes = v),
-                        formatter: (v) => v.toString().padLeft(2, '0'),
-                      ),
-                      WheelColumn(
-                        label: i18n.t('notice.seconds'),
-                        value: secs,
-                        itemCount: 60,
-                        onChanged: (v) => setWheelState(() => secs = v),
-                        formatter: (v) => v.toString().padLeft(2, '0'),
-                      ),
-                    ],
-                    side: side,
-                  ),
-                ),
-                SizedBox(width: side * 0.1),
-                Pult(
-                  spec: PultSpec(
-                    id: 'confirm_$kind',
-                    icon: Icons.check,
-                    onTap: () {
-                      editCtrl?.text =
-                          '$hours:${minutes.toString().padLeft(2, '0')}:'
-                          '${secs.toString().padLeft(2, '0')}';
-                      onConfirmEdit?.call();
-                    },
-                  ),
-                  fg: fg,
-                  bg: bg,
-                  signal: signal,
-                  overrideSize: pultSide,
-                ),
-              ],
-            );
-          },
+        cornerTop = _RoutineTimeEditor(
+          key: ValueKey(kind),
+          initialSeconds: seconds,
+          side: side,
+          pultSide: pultSide,
+          fg: fg,
+          bg: bg,
+          signal: signal,
+          hoursLabel: i18n.t('notice.hours'),
+          minutesLabel: i18n.t('notice.minutes'),
+          secondsLabel: i18n.t('notice.seconds'),
+          controller: editCtrl,
+          onConfirm: onConfirmEdit,
         );
       } else {
         Widget pulse = Pulse(
@@ -299,7 +253,10 @@ class RoutineBlockView extends StatelessWidget {
                 '${fmtTime(sec, i18n.t)}.',
                 style: TextStyle(
                   color: dim,
-                  fontSize: side * bort.kNumberSmall,
+                  fontSize: BortMetrics.fontSizeForSide(
+                    side,
+                    BortTextRole.caption,
+                  ),
                 ),
               ),
             ),
@@ -500,10 +457,115 @@ class RoutineBlockView extends StatelessWidget {
       gap: gap,
       strokeW: strokeW,
       radiusW: radiusW,
-      active: running,
+      active: running || routine.flags != 0 || routine.isOverdue,
       parity: parity,
       reserveBottom: showSummaryPults ? pultSide + side * 0.15 : 0,
       child: body,
+    );
+  }
+}
+
+class _RoutineTimeEditor extends StatefulWidget {
+  final int initialSeconds;
+  final double side;
+  final double pultSide;
+  final Color fg;
+  final Color bg;
+  final Color signal;
+  final String hoursLabel;
+  final String minutesLabel;
+  final String secondsLabel;
+  final TextEditingController? controller;
+  final VoidCallback? onConfirm;
+
+  const _RoutineTimeEditor({
+    super.key,
+    required this.initialSeconds,
+    required this.side,
+    required this.pultSide,
+    required this.fg,
+    required this.bg,
+    required this.signal,
+    required this.hoursLabel,
+    required this.minutesLabel,
+    required this.secondsLabel,
+    required this.controller,
+    required this.onConfirm,
+  });
+
+  @override
+  State<_RoutineTimeEditor> createState() => _RoutineTimeEditorState();
+}
+
+class _RoutineTimeEditorState extends State<_RoutineTimeEditor> {
+  late int _hours;
+  late int _minutes;
+  late int _seconds;
+
+  @override
+  void initState() {
+    super.initState();
+    _hours = widget.initialSeconds ~/ 3600;
+    _minutes = (widget.initialSeconds % 3600) ~/ 60;
+    _seconds = widget.initialSeconds % 60;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final side = widget.side;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: side * 3.6,
+          height: side * 2.8,
+          child: WheelValuePicker(
+            columns: [
+              WheelColumn(
+                label: widget.hoursLabel,
+                separator: ':',
+                value: _hours,
+                itemCount: _hours < 24000 ? 24000 : _hours + 1,
+                onChanged: (value) => setState(() => _hours = value),
+                formatter: (value) => value.toString().padLeft(2, '0'),
+              ),
+              WheelColumn(
+                label: widget.minutesLabel,
+                separator: ':',
+                value: _minutes,
+                itemCount: 60,
+                onChanged: (value) => setState(() => _minutes = value),
+                formatter: (value) => value.toString().padLeft(2, '0'),
+              ),
+              WheelColumn(
+                label: widget.secondsLabel,
+                value: _seconds,
+                itemCount: 60,
+                onChanged: (value) => setState(() => _seconds = value),
+                formatter: (value) => value.toString().padLeft(2, '0'),
+              ),
+            ],
+            side: side,
+          ),
+        ),
+        SizedBox(width: side * 0.1),
+        Pult(
+          spec: PultSpec(
+            id: 'confirm_time_edit',
+            icon: Icons.check,
+            onTap: () {
+              widget.controller?.text =
+                  '$_hours:${_minutes.toString().padLeft(2, '0')}:'
+                  '${_seconds.toString().padLeft(2, '0')}';
+              widget.onConfirm?.call();
+            },
+          ),
+          fg: widget.fg,
+          bg: widget.bg,
+          signal: widget.signal,
+          overrideSize: widget.pultSide,
+        ),
+      ],
     );
   }
 }

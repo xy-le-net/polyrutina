@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/app_scope.dart';
 import '../core/block.dart';
+import '../core/bort_metrics.dart';
 import '../core/bort_field.dart';
 import '../core/format.dart';
 import '../core/help_label.dart';
@@ -27,7 +28,7 @@ class RubkaControl extends StatelessWidget {
     final fgsignal = bort.fgsignal;
     final side = PultScope.of(context).smallSide;
 
-    final titleSize = side * bort.kTitle;
+    final titleSize = BortMetrics.fontSizeForSide(side, BortTextRole.header);
     final pad = side * bort.kFramePad;
     final gap = side * bort.kBlockGap;
     final strokeW = side * bort.kStroke;
@@ -67,7 +68,10 @@ class RubkaControl extends StatelessWidget {
         child: HelpLabel(
           helpKey: helpKey,
           text: text,
-          style: TextStyle(color: mid, fontSize: side * 0.35),
+          style: TextStyle(
+            color: mid,
+            fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.caption),
+          ),
         ),
       );
     }
@@ -102,7 +106,7 @@ class RubkaControl extends StatelessWidget {
                     ? '0${i18n.t('time.m')}'
                     : fmtTime(bort.bortTime, i18n.t),
                 color: bort.bgsignal,
-                fontSize: side * 0.4,
+                fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.base),
                 fontFamily: 'monospace',
                 onTap: () => showTimeHistory(context, key: 'bort'),
               ),
@@ -133,7 +137,7 @@ class RubkaControl extends StatelessWidget {
           LinkText(
             text: shiftTimeStr,
             color: bort.bgsignal,
-            fontSize: side * 0.4,
+            fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.base),
             fontFamily: 'monospace',
             onTap: () => showTimeHistory(context, key: 'shift', fieldId: 0),
           ),

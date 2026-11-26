@@ -68,6 +68,7 @@ class BortField extends StatefulWidget {
   final String? hint;
   final void Function(String value)? onChanged;
   final Future<void> Function(String value) onCommit;
+  final Future<void> Function()? onSubmitted;
   final bool showBorder;
   final bool autofocus;
 
@@ -77,6 +78,7 @@ class BortField extends StatefulWidget {
     required this.fg,
     required this.readOnly,
     required this.onCommit,
+    this.onSubmitted,
     this.hint,
     this.onChanged,
     this.showBorder = true,
@@ -90,11 +92,14 @@ class BortField extends StatefulWidget {
 class _BortFieldState extends State<BortField> {
   late final TextEditingController _ctrl;
   final _focus = FocusNode();
+  late String _lastCommitted;
+  Future<void>? _commitFuture;
 
   @override
   void initState() {
     super.initState();
     _ctrl = TextEditingController(text: widget.initial);
+    _lastCommitted = widget.initial;
     _focus.addListener(() {
       if (!_focus.hasFocus) _commit();
     });
@@ -105,13 +110,32 @@ class _BortFieldState extends State<BortField> {
     super.didUpdateWidget(old);
     if (old.initial != widget.initial && !_focus.hasFocus) {
       _ctrl.text = widget.initial;
+      _lastCommitted = widget.initial;
     }
   }
 
   Future<void> _commit() async {
     final v = _ctrl.text.trim();
-    if (v == widget.initial) return;
-    await widget.onCommit(v);
+    if (v == _lastCommitted) return;
+    final inFlight = _commitFuture;
+    if (inFlight != null) {
+      await inFlight;
+      if (_ctrl.text.trim() != _lastCommitted) await _commit();
+      return;
+    }
+
+    final future = _commitValue(v);
+    _commitFuture = future;
+    await future;
+  }
+
+  Future<void> _commitValue(String value) async {
+    try {
+      await widget.onCommit(value);
+      _lastCommitted = value;
+    } finally {
+      _commitFuture = null;
+    }
   }
 
   @override
@@ -144,9 +168,10 @@ class _BortFieldState extends State<BortField> {
         ),
       ),
       onChanged: widget.onChanged,
-      onSubmitted: (_) {
-        _commit();
-        _focus.unfocus();
+      onSubmitted: (_) async {
+        await _commit();
+        await widget.onSubmitted?.call();
+        if (mounted) _focus.unfocus();
       },
     );
   }

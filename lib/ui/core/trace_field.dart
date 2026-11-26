@@ -344,7 +344,10 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     if (_focused) {
       final viewInsets = MediaQuery.of(context).viewInsets.bottom;
       final textScale = MediaQuery.textScalerOf(context).scale(1.0);
-      final lineH = (widget.side * bort.kNumber * 1.2) * 1.4 * textScale;
+      final lineH =
+          BortMetrics.fontSizeForSide(widget.side, BortTextRole.edit) *
+          1.4 *
+          textScale;
       final availableH = MediaQuery.of(context).size.height - viewInsets;
       final reserved = widget.side * 4;
       final budget = (availableH - reserved) * 0.55;
@@ -368,7 +371,10 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
       final viewPadding = metrics.fieldPadding;
       final borderWidth = metrics.fieldBorderWidth;
       final viewTextStyle = textStyle.copyWith(
-        fontSize: textStyle.fontSize! * 0.75,
+        fontSize: BortMetrics.fontSizeForSide(
+          widget.side,
+          BortTextRole.caption,
+        ),
       );
       fieldWidget = LayoutBuilder(
         builder: (context, constraints) {
@@ -423,8 +429,8 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
         style: textStyle,
         decoration: bortInputDecoration(
           context,
-          borderColor: widget.dim,
-          focusedBorderColor: widget.fg,
+          borderColor: widget.fg,
+          focusedBorderColor: bort.bgsignal,
           fillColor: widget.fieldBg,
           hintText: i18n.t('routine.block.note'),
           hintStyle: TextStyle(color: widget.dim, fontSize: textStyle.fontSize),

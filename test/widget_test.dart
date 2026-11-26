@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,8 +6,10 @@ import 'package:polyrutina/data/i18n.dart';
 import 'package:polyrutina/data/operational_layer.dart';
 import 'package:polyrutina/ui/cards/bort_date_picker.dart';
 import 'package:polyrutina/ui/core/app_scope.dart';
+import 'package:polyrutina/ui/core/bort_field.dart';
 import 'package:polyrutina/ui/core/bort_metrics.dart';
 import 'package:polyrutina/ui/core/control_row.dart';
+import 'package:polyrutina/ui/core/wheel_picker.dart';
 import 'package:polyrutina/ui/pults/pult_core.dart';
 
 void main() {
@@ -31,6 +34,122 @@ void main() {
     expect(bort.scale, OperationalLayer.minScale);
     bort.scale = double.nan;
     expect(bort.scale, OperationalLayer.minScale);
+  });
+
+  test('text roles share the Rubka base size', () {
+    const side = 40.0;
+    final base = BortMetrics.fontSizeForSide(side, BortTextRole.base);
+    expect(BortMetrics.fontSizeForSide(side, BortTextRole.header) / base, 1.4);
+    expect(BortMetrics.fontSizeForSide(side, BortTextRole.caption) / base, 0.7);
+    expect(BortMetrics.fontSizeForSide(side, BortTextRole.edit) / base, 1.2);
+
+    final theme = BortMetrics.normalizeTextTheme(ThemeData().textTheme, 18);
+    final sizes = [
+      theme.displayLarge,
+      theme.displayMedium,
+      theme.displaySmall,
+      theme.headlineLarge,
+      theme.headlineMedium,
+      theme.headlineSmall,
+      theme.titleLarge,
+      theme.titleMedium,
+      theme.titleSmall,
+      theme.bodyLarge,
+      theme.bodyMedium,
+      theme.bodySmall,
+      theme.labelLarge,
+      theme.labelMedium,
+      theme.labelSmall,
+    ];
+    expect(sizes.every((style) => style?.fontSize == 18), isTrue);
+  });
+
+  testWidgets('wheel scroll moves one item and remains draggable', (
+    tester,
+  ) async {
+    final bort = OperationalLayer();
+    final pultState = PultState()..baseSide = 32;
+    addTearDown(bort.dispose);
+    addTearDown(pultState.dispose);
+
+    var value = 4;
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => BortScope(
+          bort: bort,
+          child: PultScope(state: pultState, child: child!),
+        ),
+        home: Scaffold(
+          body: Center(
+            child: WheelValuePicker(
+              side: 32,
+              columns: [
+                WheelColumn(
+                  label: 'minutes',
+                  value: value,
+                  itemCount: 60,
+                  onChanged: (next) => value = next,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final picker = find.byType(CupertinoPicker);
+    final position = tester.getCenter(picker);
+    await tester.sendEventToBinding(
+      PointerScrollEvent(
+        position: position,
+        scrollDelta: const Offset(0, 120),
+        kind: PointerDeviceKind.mouse,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(value, 5);
+
+    await tester.drag(picker, const Offset(0, -50));
+    await tester.pumpAndSettle();
+    expect(value, greaterThan(5));
+  });
+
+  testWidgets('BortField Enter commits and triggers its submit action', (
+    tester,
+  ) async {
+    final bort = OperationalLayer();
+    final pultState = PultState();
+    addTearDown(bort.dispose);
+    addTearDown(pultState.dispose);
+
+    final committed = <String>[];
+    var submitted = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => BortScope(
+          bort: bort,
+          child: PultScope(state: pultState, child: child!),
+        ),
+        home: Scaffold(
+          body: BortField(
+            initial: 'before',
+            fg: Colors.black,
+            readOnly: false,
+            onCommit: (value) async => committed.add(value),
+            onSubmitted: () async {
+              submitted++;
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'after');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(committed, ['after']);
+    expect(submitted, 1);
   });
 
   testWidgets('transparent app icon asset renders', (tester) async {

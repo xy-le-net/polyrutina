@@ -77,7 +77,7 @@ class ProgressDialog extends StatelessWidget {
                       '$percent%',
                       style: TextStyle(
                         color: bort.fg,
-                        fontSize: metrics.unit(bort.kName),
+                        fontSize: metrics.numberFontSize,
                         fontFamily: 'monospace',
                       ),
                     ),
@@ -91,10 +91,7 @@ class ProgressDialog extends StatelessWidget {
           Text(
             i18n.t('common.wait'),
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: bort.mid,
-              fontSize: metrics.unit(bort.kName * 0.8),
-            ),
+            style: TextStyle(color: bort.mid, fontSize: metrics.smallFontSize),
           ),
         ],
       ),

@@ -581,7 +581,10 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                                 i18n.t('media.no_network'),
                                 style: TextStyle(
                                   color: bort.mid,
-                                  fontSize: side * 0.35,
+                                  fontSize: BortMetrics.fontSizeForSide(
+                                    side,
+                                    BortTextRole.caption,
+                                  ),
                                 ),
                               ),
                             ),
@@ -603,7 +606,10 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                                 _addressMessage!,
                                 style: TextStyle(
                                   color: bort.mid,
-                                  fontSize: side * 0.35,
+                                  fontSize: BortMetrics.fontSizeForSide(
+                                    side,
+                                    BortTextRole.caption,
+                                  ),
                                 ),
                               ),
                             ),
@@ -619,7 +625,10 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                               '…',
                               style: TextStyle(
                                 color: bort.mid,
-                                fontSize: side * 0.5,
+                                fontSize: BortMetrics.fontSizeForSide(
+                                  side,
+                                  BortTextRole.header,
+                                ),
                               ),
                             ),
                           ),
@@ -869,7 +878,13 @@ class _GeoMapPreviewState extends State<GeoMapPreview> {
                     color: bort.bg,
                     child: Text(
                       i18n.t('media.no_network'),
-                      style: TextStyle(color: bort.mid, fontSize: side * 0.35),
+                      style: TextStyle(
+                        color: bort.mid,
+                        fontSize: BortMetrics.fontSizeForSide(
+                          side,
+                          BortTextRole.caption,
+                        ),
+                      ),
                     ),
                   ),
                 ),

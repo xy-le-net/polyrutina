@@ -4,13 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../../data/routine.dart';
+import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
 import '../core/confirm_dialog.dart';
+import '../core/bort_metrics.dart';
+import '../core/dialog_frame.dart';
 import '../core/format.dart';
 import '../core/help_label.dart';
+import '../core/link_text.dart';
 import '../core/notice_dialog.dart';
 import '../core/progress_dialog.dart';
 import '../pults/pult_core.dart';
+import '../screens/media_viewer.dart';
 import '../services/import_service.dart';
 import '../services/journal_compactor.dart';
 import '../services/report.dart';
@@ -47,6 +53,132 @@ class _RubkaDataState extends State<RubkaData> {
     final gb = mb / 1024;
     final v = gb.round();
     return '${v < 1 ? 1 : v} ${t('size.gb')}';
+  }
+
+  Future<void> _showMediaList() async {
+    final app = AppScope.of(context);
+    final i18n = I18nScope.of(context);
+    final entries = <_MediaListEntry>[];
+    final seenPaths = <String>{};
+
+    try {
+      for (final trace in app.traceLayer.traces.values) {
+        if (trace.deleted) continue;
+
+        Routine? routine;
+        for (final parentId in trace.parents) {
+          routine = app.routineLayer.findRoutine(parentId);
+          if (routine != null) break;
+        }
+        final owner = routine == null
+            ? i18n.t('media.orphan')
+            : routine.name.isEmpty
+            ? i18n.t('routine.no_name')
+            : routine.name;
+
+        for (var index = 0; index < trace.files.length; index++) {
+          final file = trace.files[index];
+          if (file.path.isEmpty || !seenPaths.add(file.path)) continue;
+          final diskFile = File(file.path);
+          final bytes = await diskFile.exists()
+              ? await diskFile.length()
+              : null;
+          entries.add(
+            _MediaListEntry(
+              trace: trace,
+              file: file,
+              fileIndex: index,
+              bytes: bytes,
+              owner: owner,
+              ownerId: routine?.id,
+              isOrphan: routine == null,
+            ),
+          );
+        }
+      }
+    } on FileSystemException catch (error) {
+      if (mounted) await showNotice(context, title: error.message);
+      return;
+    }
+
+    entries.sort((a, b) => a.file.name.compareTo(b.file.name));
+    if (!mounted) return;
+    final selected = await showDialog<_MediaListEntry>(
+      context: context,
+      barrierColor: Colors.transparent,
+      builder: (ctx) {
+        final metrics = BortMetrics.of(ctx, compact: true);
+        return DialogFrame(
+          onDismiss: () => Navigator.of(ctx).pop(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DialogTitle(text: i18n.t('bort.media')),
+              SizedBox(height: metrics.unit(0.4)),
+              if (entries.isEmpty)
+                Text(
+                  i18n.t('media.none'),
+                  style: TextStyle(
+                    color: metrics.bort.mid,
+                    fontSize: metrics.smallFontSize,
+                  ),
+                )
+              else
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(ctx).height * 0.6,
+                  ),
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final entry in entries)
+                        Padding(
+                          padding: EdgeInsets.symmetric(
+                            vertical: metrics.unit(0.1),
+                          ),
+                          child: LinkText(
+                            text:
+                                '${entry.bytes == null ? '—' : _fmtSize(entry.bytes!, i18n.t)}: '
+                                '${entry.file.name.isEmpty ? p.basename(entry.file.path) : entry.file.name} '
+                                '(${entry.owner})',
+                            fontSize: metrics.numberFontSize,
+                            onTap: () => Navigator.of(ctx).pop(entry),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              SizedBox(height: metrics.unit(0.4)),
+              DialogActions(
+                actions: [
+                  DialogAction(
+                    label: i18n.t('common.cancel'),
+                    onTap: () => Navigator.of(ctx).pop(),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (selected == null || !mounted) return;
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => MediaViewer(
+          traceId: selected.trace.id,
+          objectId: selected.ownerId ?? 0,
+          slot: selected.trace.slot,
+          files: selected.trace.files,
+          startIndex: selected.fileIndex,
+          blockTitle: selected.trace.slot,
+          routineTitle: selected.isOrphan ? '' : selected.owner,
+        ),
+      ),
+    );
+    await _refreshSize();
+    if (mounted) setState(() {});
   }
 
   Future<void> _refreshSize() async {
@@ -447,6 +579,7 @@ class _RubkaDataState extends State<RubkaData> {
         label: i18n.t('bort.media'),
         value: _fmtSize(_mediaBytes, i18n.t),
         fg: fg,
+        onTap: _showMediaList,
       ),
       _pultRow(
         helpKey: 'bort.shake',
@@ -536,6 +669,7 @@ class _RubkaDataState extends State<RubkaData> {
     required String label,
     required String value,
     required Color fg,
+    VoidCallback? onTap,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -548,10 +682,20 @@ class _RubkaDataState extends State<RubkaData> {
             style: TextStyle(color: fg),
           ),
           Expanded(
-            child: Text(
-              value,
-              style: TextStyle(color: fg, fontFamily: 'monospace'),
-            ),
+            child: onTap == null
+                ? Text(
+                    value,
+                    style: TextStyle(color: fg, fontFamily: 'monospace'),
+                  )
+                : LinkText(
+                    text: value,
+                    fontSize: BortMetrics.of(
+                      context,
+                      compact: true,
+                    ).numberFontSize,
+                    fontFamily: 'monospace',
+                    onTap: onTap,
+                  ),
           ),
         ],
       ),
@@ -579,4 +723,24 @@ class _RubkaDataState extends State<RubkaData> {
       ),
     );
   }
+}
+
+class _MediaListEntry {
+  final Trace trace;
+  final TraceFile file;
+  final int fileIndex;
+  final int? bytes;
+  final String owner;
+  final int? ownerId;
+  final bool isOrphan;
+
+  const _MediaListEntry({
+    required this.trace,
+    required this.file,
+    required this.fileIndex,
+    required this.bytes,
+    required this.owner,
+    required this.ownerId,
+    required this.isOrphan,
+  });
 }

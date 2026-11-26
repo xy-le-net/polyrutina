@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/cupertino.dart';
 
 import 'app_scope.dart';
@@ -32,7 +33,10 @@ class WheelValuePicker extends StatelessWidget {
                     columns[i].separator,
                     style: TextStyle(
                       color: bort.fg,
-                      fontSize: side * 0.45,
+                      fontSize: BortMetrics.fontSizeForSide(
+                        side,
+                        BortTextRole.base,
+                      ),
                       decoration: TextDecoration.none,
                     ),
                   ),
@@ -77,6 +81,8 @@ class _WheelColumn extends StatefulWidget {
 class _WheelColumnState extends State<_WheelColumn> {
   late final FixedExtentScrollController _controller;
   late int _selectedValue;
+  int? _pendingWheelValue;
+  bool _wheelUpdateScheduled = false;
 
   @override
   void initState() {
@@ -104,6 +110,29 @@ class _WheelColumnState extends State<_WheelColumn> {
     super.dispose();
   }
 
+  void _handlePointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent) return;
+    final delta = event.scrollDelta.dy;
+    if (delta == 0) return;
+    final current = _pendingWheelValue ?? _selectedValue;
+    final next = (current + (delta > 0 ? 1 : -1))
+        .clamp(0, widget.column.itemCount - 1)
+        .toInt();
+    if (next == current) return;
+    _pendingWheelValue = next;
+    if (_wheelUpdateScheduled) return;
+    _wheelUpdateScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _wheelUpdateScheduled = false;
+      final value = _pendingWheelValue;
+      _pendingWheelValue = null;
+      if (!mounted || value == null) return;
+      setState(() => _selectedValue = value);
+      if (_controller.hasClients) _controller.jumpToItem(value);
+      widget.column.onChanged(value);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final bort = BortScope.of(context);
@@ -120,7 +149,10 @@ class _WheelColumnState extends State<_WheelColumn> {
               maxLines: 1,
               style: TextStyle(
                 color: bort.mid,
-                fontSize: side * 0.28,
+                fontSize: BortMetrics.fontSizeForSide(
+                  side,
+                  BortTextRole.caption,
+                ),
                 decoration: TextDecoration.none,
               ),
             ),
@@ -130,33 +162,39 @@ class _WheelColumnState extends State<_WheelColumn> {
         SizedBox(
           width: side,
           height: side * BortMetrics.wheelViewportHeightFactor,
-          child: CupertinoPicker.builder(
-            scrollController: _controller,
-            itemExtent: side * 0.65,
-            useMagnifier: true,
-            magnification: 1.1,
-            diameterRatio: 1.5,
-            squeeze: 1.05,
-            selectionOverlay: const SizedBox.shrink(),
-            onSelectedItemChanged: (value) {
-              setState(() => _selectedValue = value);
-              column.onChanged(value);
-            },
-            childCount: column.itemCount,
-            itemBuilder: (context, i) => Container(
-              alignment: Alignment.center,
-              decoration: i == _selectedValue
-                  ? BoxDecoration(
-                      color: bort.fgsignal,
-                      borderRadius: BorderRadius.circular(side * 0.08),
-                    )
-                  : null,
-              child: Text(
-                column.formatter?.call(i) ?? i.toString(),
-                style: TextStyle(
-                  color: i == _selectedValue ? bort.bgsignal : bort.fg,
-                  fontSize: side * 0.42,
-                  decoration: TextDecoration.none,
+          child: Listener(
+            onPointerSignal: _handlePointerSignal,
+            child: CupertinoPicker.builder(
+              scrollController: _controller,
+              itemExtent: side * 0.65,
+              useMagnifier: true,
+              magnification: 1.1,
+              diameterRatio: 1.5,
+              squeeze: 1.05,
+              selectionOverlay: const SizedBox.shrink(),
+              onSelectedItemChanged: (value) {
+                setState(() => _selectedValue = value);
+                column.onChanged(value);
+              },
+              childCount: column.itemCount,
+              itemBuilder: (context, i) => Container(
+                alignment: Alignment.center,
+                decoration: i == _selectedValue
+                    ? BoxDecoration(
+                        color: bort.fgsignal,
+                        borderRadius: BorderRadius.circular(side * 0.08),
+                      )
+                    : null,
+                child: Text(
+                  column.formatter?.call(i) ?? i.toString(),
+                  style: TextStyle(
+                    color: i == _selectedValue ? bort.bgsignal : bort.fg,
+                    fontSize: BortMetrics.fontSizeForSide(
+                      side,
+                      BortTextRole.base,
+                    ),
+                    decoration: TextDecoration.none,
+                  ),
                 ),
               ),
             ),

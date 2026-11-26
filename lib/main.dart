@@ -537,7 +537,14 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                   Text(
                     _splashSlogan!,
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: fg, fontSize: 14, height: 1.4),
+                    style: TextStyle(
+                      color: fg,
+                      fontSize: BortMetrics.fontSizeForSide(
+                        BortMetrics.baseSide * _bort.scale,
+                        BortTextRole.base,
+                      ),
+                      height: 1.4,
+                    ),
                   ),
                 ],
               ],
@@ -558,7 +565,13 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
             padding: const EdgeInsets.all(16),
             child: SelectableText(
               'init failed:\n$_initError',
-              style: const TextStyle(color: Colors.red, fontSize: 12),
+              style: TextStyle(
+                color: Colors.red,
+                fontSize: BortMetrics.fontSizeForSide(
+                  BortMetrics.baseSide * _bort.scale,
+                  BortTextRole.caption,
+                ),
+              ),
             ),
           ),
         ),
@@ -593,15 +606,11 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
     final rootSide = side * 2 / 3;
     final rootReserve = ControlRow.reserve(rootSide, rootPad: _rootPad);
-    final effectiveTextScale = BortMetrics.textScaleForSide(side);
     final brightness = _effectiveBrightness(_bort.systemBrightness);
-    final textTheme = ThemeData(useMaterial3: true, brightness: brightness)
-        .textTheme
-        .apply(
-          fontSizeFactor: effectiveTextScale,
-          bodyColor: _bort.fg,
-          displayColor: _bort.fg,
-        );
+    final textTheme = BortMetrics.normalizeTextTheme(
+      ThemeData(useMaterial3: true, brightness: brightness).textTheme,
+      BortMetrics.fontSizeForSide(side, BortTextRole.base),
+    ).apply(bodyColor: _bort.fg, displayColor: _bort.fg);
 
     final appContext = AppContext(
       bort: _bort,

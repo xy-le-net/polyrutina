@@ -40,7 +40,7 @@ class DialogActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final metrics = BortMetrics.of(context, compact: true);
     return Wrap(
-      alignment: WrapAlignment.end,
+      alignment: WrapAlignment.center,
       spacing: metrics.actionGap,
       runSpacing: metrics.unit(0.2),
       children: [

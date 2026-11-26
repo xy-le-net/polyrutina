@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/routine.dart';
 import '../core/app_scope.dart';
+import '../core/bort_metrics.dart';
 import '../core/format.dart';
 import '../core/frame.dart';
 import '../core/routine_flags.dart';
@@ -42,6 +43,7 @@ class RoutinePlate extends StatelessWidget {
     // is already signal-doubled and its palette is inverted, so the
     // doubled-signal rule is subsumed.
     final overdue = !running && routine.isOverdue;
+    final attention = running || overdue || routine.flags != 0;
 
     final Color plateBg;
     final Color textMain;
@@ -60,9 +62,9 @@ class RoutinePlate extends StatelessWidget {
       accent = bort.fgsignal;
     }
 
-    final nameSize = side * bort.kName * 0.8;
-    final dateSize = side * bort.kTitle * 0.7 * 0.8;
-    final numberSize = side * bort.kNumberSmall * 0.8;
+    final nameSize = BortMetrics.fontSizeForSide(side, BortTextRole.base);
+    final dateSize = BortMetrics.fontSizeForSide(side, BortTextRole.caption);
+    final numberSize = BortMetrics.fontSizeForSide(side, BortTextRole.caption);
     final pultSide = side * bort.kPultSmall;
     final strokeW = side * bort.kStroke;
     final radiusW = side * bort.kRadius;
@@ -70,7 +72,7 @@ class RoutinePlate extends StatelessWidget {
 
     final frame = borderFor(
       parity: parity,
-      active: running || overdue,
+      active: attention,
       strokeW: strokeW,
       fg: textMain,
       mid: textSoft,
@@ -153,7 +155,7 @@ class RoutinePlate extends StatelessWidget {
             padding: EdgeInsets.only(top: dateSize * 0.3),
             child: Text(
               i18n.t('routine.overdue'),
-              style: TextStyle(color: accent, fontSize: dateSize * 0.9),
+              style: TextStyle(color: accent, fontSize: dateSize),
             ),
           )
         : null;
