@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 class ThemeStore {
   Map<String, Map<String, Color>> _themes = {};

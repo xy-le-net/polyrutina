@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -361,10 +361,7 @@ class _RubkaDataState extends State<RubkaData> {
           ProgressDialog(token: token, title: i18n.t('bort.import')),
     );
 
-    final result = await importFromPicker(
-      app: app,
-      onProgress: (v) => token.report(v),
-    );
+    final result = await importFromPicker(app: app, onProgress: token.report);
 
     await app.afterJournalReset();
     await app.refresh();

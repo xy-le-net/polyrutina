@@ -10,8 +10,16 @@ analyzer:
     - windows/**
     - macos/**
     - linux/**
-  errors:
-    deprecated_member_use: ignore
-
+    # Исключаем сгенерированные файлы Drift
+    - "**/*.g.dart"
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
 linter:
   rules:
+    - always_declare_return_types
+    - avoid_print
+    - prefer_const_constructors
+    - prefer_const_declarations
+    - unnecessary_lambdas

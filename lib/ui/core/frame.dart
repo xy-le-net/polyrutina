@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Frame geometry for one item: color and stroke width. The parity
 /// is 0 for even positions, 1 for odd, and is ignored when the item

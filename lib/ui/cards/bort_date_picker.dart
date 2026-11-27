@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../data/bort_time.dart';
 import '../core/app_scope.dart';
@@ -181,7 +181,7 @@ Future<DateTime?> showBortDatePicker(
                           value: hour,
                           itemCount: 24,
                           onChanged: (v) => setState(() => hour = v),
-                          formatter: (v) => two(v),
+                          formatter: two,
                         ),
                         WheelColumn(
                           label: i18n.t('notice.minutes'),
@@ -189,7 +189,7 @@ Future<DateTime?> showBortDatePicker(
                           value: minute,
                           itemCount: 60,
                           onChanged: (v) => setState(() => minute = v),
-                          formatter: (v) => two(v),
+                          formatter: two,
                         ),
                       ],
                       side: side,

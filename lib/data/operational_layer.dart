@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import 'bort_file.dart';
@@ -117,7 +117,7 @@ class OperationalLayer extends ChangeNotifier {
 
   // The single shift. The argument is kept for source compatibility
   FieldShiftState shiftFor(int fieldId) =>
-      shifts.putIfAbsent(0, () => FieldShiftState());
+      shifts.putIfAbsent(0, FieldShiftState.new);
 
   bool onShift(int fieldId) => shiftFor(0).onShift;
   int totalShiftSeconds(int fieldId) => shiftFor(0).totalShiftSeconds;

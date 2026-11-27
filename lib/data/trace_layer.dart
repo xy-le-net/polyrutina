@@ -252,9 +252,7 @@ class TraceLayer extends ChangeNotifier {
 
   void _scheduleSave() {
     _saveTimer?.cancel();
-    _saveTimer = Timer(const Duration(milliseconds: 200), () {
-      _saveToFile();
-    });
+    _saveTimer = Timer(const Duration(milliseconds: 200), _saveToFile);
   }
 
   Future<void> _saveToFile() async {
@@ -412,10 +410,10 @@ class TraceLayer extends ChangeNotifier {
       'kind': TraceKind.text,
       'slot': slot,
       'text': text,
-      'items': [],
+      'items': <dynamic>[],
       'parents': parents,
-      'children': [],
-      'files': [],
+      'children': <dynamic>[],
+      'files': <dynamic>[],
       'field_parents': fieldParents,
     });
     final id = await journal.log(type: JournalType.trace, body: body);
@@ -447,8 +445,8 @@ class TraceLayer extends ChangeNotifier {
       'text': '',
       'items': items.map((s) => {'text': s, 'done': false}).toList(),
       'parents': parents,
-      'children': [],
-      'files': [],
+      'children': <dynamic>[],
+      'files': <dynamic>[],
       'field_parents': fieldParents,
     });
     final id = await journal.log(type: JournalType.trace, body: body);

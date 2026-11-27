@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
@@ -111,7 +111,7 @@ class _AudioDialogState extends State<_AudioDialog> {
                   id: 'audio_toggle',
                   icon: _running ? Icons.stop : Icons.fiber_manual_record,
                   selected: _running,
-                  onTap: _running ? () => _stop(attach: true) : () => _start(),
+                  onTap: _running ? () => _stop(attach: true) : _start,
                 ),
                 fg: bort.fg,
                 bg: bort.bg,

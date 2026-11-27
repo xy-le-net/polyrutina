@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:camera/camera.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../core/app_scope.dart';
 import '../core/screen_header.dart';

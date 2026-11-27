@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:open_filex/open_filex.dart';
@@ -529,8 +529,7 @@ class _MediaViewerState extends State<MediaViewer> {
       }
       return ValueListenableBuilder<VideoPlayerValue>(
         valueListenable: ctrl,
-        builder: (_, v, __) =>
-            slider(v.position, v.duration, (d) => ctrl.seekTo(d)),
+        builder: (_, v, __) => slider(v.position, v.duration, ctrl.seekTo),
       );
     }
 
@@ -543,7 +542,7 @@ class _MediaViewerState extends State<MediaViewer> {
       initialData: player.position,
       builder: (_, snap) {
         final pos = snap.data ?? Duration.zero;
-        return slider(pos, dur, (d) => player.seek(d));
+        return slider(pos, dur, player.seek);
       },
     );
   }

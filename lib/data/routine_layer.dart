@@ -269,9 +269,7 @@ class RoutineLayer extends ChangeNotifier {
 
   void _scheduleSave() {
     _saveTimer?.cancel();
-    _saveTimer = Timer(const Duration(milliseconds: 200), () {
-      _saveToFile();
-    });
+    _saveTimer = Timer(const Duration(milliseconds: 200), _saveToFile);
   }
 
   Future<void> _saveToFile() async {

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../data/journal_layer.dart';
 import '../../data/operational_layer.dart';
@@ -221,7 +221,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     _focus.unfocus();
     Navigator.of(context)
         .push(
-          MaterialPageRoute(
+          MaterialPageRoute<void>(
             builder: (_) => ChecklistScreen(
               objectId: widget.objectId,
               slot: widget.slot,
@@ -289,7 +289,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     if (t == null) return;
     Navigator.of(context)
         .push(
-          MaterialPageRoute(
+          MaterialPageRoute<void>(
             builder: (_) => MediaViewer(
               traceId: t.id,
               objectId: widget.objectId,

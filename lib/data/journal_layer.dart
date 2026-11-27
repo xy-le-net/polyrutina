@@ -245,9 +245,7 @@ class JournalLayer extends ChangeNotifier {
 
   void _scheduleSave() {
     _saveTimer?.cancel();
-    _saveTimer = Timer(const Duration(milliseconds: 200), () {
-      _saveStateNow();
-    });
+    _saveTimer = Timer(const Duration(milliseconds: 200), _saveStateNow);
   }
 
   Future<void> saveNow() async {

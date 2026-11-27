@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import 'data/database.dart';
@@ -402,7 +402,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   Future<void> _openRoutine(int id, {bool autofocusName = false}) async {
     setState(() => _openedRoutineId = id);
     await _navigatorKey.currentState?.push(
-      MaterialPageRoute(
+      MaterialPageRoute<void>(
         builder: (_) =>
             RoutineCard(routineId: id, autofocusName: autofocusName),
       ),
