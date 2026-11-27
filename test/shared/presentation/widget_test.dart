@@ -252,7 +252,7 @@ void main() {
       of: find.byType(ControlRow),
       matching: find.byType(Row),
     );
-    expect(tester.getSize(controlRow).height, 40);
+    expect(tester.getSize(controlRow).height, 48);
     expect(tester.takeException(), isNull);
   });
 

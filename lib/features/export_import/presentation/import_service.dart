@@ -62,7 +62,10 @@ Future<ImportResult> importFromPicker({
     onProgress?.call(i / picked.files.length);
     try {
       total = total.merge(await _importZip(app, f.path!));
-    } catch (_) {}
+    } catch (error, stackTrace) {
+      debugPrint('archive import skipped for ${f.path}: $error\n$stackTrace');
+      total = total.merge(const ImportResult(skipped: 1));
+    }
   }
   onProgress?.call(1.0);
   return total;
@@ -70,12 +73,18 @@ Future<ImportResult> importFromPicker({
 
 Future<ImportResult> _importZip(AppContext app, String path) async {
   final inputStream = InputFileStream(path);
-  final archive = ZipDecoder().decodeBuffer(inputStream);
+  late final Archive archive;
+  try {
+    archive = ZipDecoder().decodeBuffer(inputStream);
+  } catch (_) {
+    await inputStream.close();
+    rethrow;
+  }
+  await inputStream.close();
 
   final dataFile = archive.findFile('data.json');
   if (dataFile == null) {
-    await inputStream.close();
-    return const ImportResult();
+    return const ImportResult(skipped: 1);
   }
 
   final dataStr = utf8.decode(dataFile.content as List<int>);
@@ -97,8 +106,7 @@ Future<ImportResult> _importZip(AppContext app, String path) async {
     months = ReportJson.parseSeries(Map<String, dynamic>.from(decoded));
   }
   if (list.isEmpty && months.isEmpty) {
-    await inputStream.close();
-    return const ImportResult();
+    return const ImportResult(skipped: 1);
   }
 
   // Phase 1: parse and skip already-present routines.
@@ -156,13 +164,11 @@ Future<ImportResult> _importZip(AppContext app, String path) async {
       extracted[baseName] = target.path;
       mediaBytes += await target.length();
     }
-  } catch (_) {
+  } catch (error, stackTrace) {
+    debugPrint('archive media extraction failed: $error\n$stackTrace');
     await _rollback(written);
-    await inputStream.close();
-    return ImportResult(skipped: skipped);
+    return ImportResult(skipped: skipped + 1);
   }
-
-  await inputStream.close();
 
   // Phase 3: apply in a single transaction; roll back media on
   // failure so that no orphan file survives.
@@ -172,12 +178,28 @@ Future<ImportResult> _importZip(AppContext app, String path) async {
       final fieldIdMap = <int, int>{};
 
       // 3a. Restore field tree topology, if present.
-      if (fieldList != null) {
+      if (fieldList != null && toImport.isNotEmpty) {
         final fields = fieldList;
+        int? defaultRootOldId;
+        for (final f in fields) {
+          if (f is! Map || f['is_root'] != true) continue;
+          final oldId = (f['id'] as num?)?.toInt();
+          if (oldId == null) continue;
+          if (f['default_root'] == true) {
+            defaultRootOldId = oldId;
+            break;
+          }
+          defaultRootOldId ??= oldId;
+        }
+
         for (final f in fields) {
           if (f is! Map) continue;
           final oldId = (f['id'] as num?)?.toInt();
           if (oldId == null) continue;
+          if (oldId == defaultRootOldId && app.fieldLayer.rootId != null) {
+            fieldIdMap[oldId] = app.fieldLayer.rootId!;
+            continue;
+          }
           final name = f['name'] as String? ?? '';
           final isRoot = f['is_root'] as bool? ?? false;
 
@@ -243,9 +265,10 @@ Future<ImportResult> _importZip(AppContext app, String path) async {
       }
     });
     imported = toImport.length;
-  } catch (_) {
+  } catch (error, stackTrace) {
+    debugPrint('archive journal import failed: $error\n$stackTrace');
     await _rollback(written);
-    return ImportResult(skipped: skipped);
+    return ImportResult(skipped: skipped + 1);
   }
 
   return ImportResult(
@@ -261,7 +284,9 @@ Future<void> _rollback(List<String> written) async {
     try {
       final f = File(w);
       if (await f.exists()) await f.delete();
-    } catch (_) {}
+    } catch (error, stackTrace) {
+      debugPrint('failed to roll back imported media $w: $error\n$stackTrace');
+    }
   }
 }
 

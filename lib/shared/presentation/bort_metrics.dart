@@ -96,6 +96,5 @@ class BortMetrics {
   double get actionGap => unit(0.3);
   EdgeInsets get actionPadding =>
       EdgeInsets.symmetric(horizontal: unit(0.3), vertical: unit(0.1));
-  double get fieldBorderWidth =>
-      (stroke * 4).clamp(1.0, double.infinity).toDouble();
+  double get fieldBorderWidth => stroke.clamp(1.0, double.infinity).toDouble();
 }

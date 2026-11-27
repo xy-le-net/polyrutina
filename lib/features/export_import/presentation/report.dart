@@ -171,24 +171,15 @@ class ReportBuilder {
     if (token.cancelled) return null;
 
     report(0.05);
-    final jsonObj = <String, dynamic>{
-      'schema': ReportJson.schemaVersion,
-      'fields': ReportJson.buildFields(app),
-      'series': ReportJson.buildSeries(app),
-      'routines': [for (final r in routines) ReportJson.buildRoutine(app, r)],
-    };
-    if (token.cancelled) return null;
-
     final mediaFiles = <({String name, File file})>[];
     final seenNames = <String>{};
+    final seenPaths = <String>{};
     final routineIds = routines.map((r) => r.id).toSet();
     for (final t in app.traceLayer.traces.values) {
       if (t.deleted) continue;
-      // The full archive also carries media on live traces whose routine
-      // was removed; otherwise these files remain in media/ but are omitted.
-      if (objectKey != 'all' && !t.parents.any(routineIds.contains)) continue;
+      if (!t.parents.any(routineIds.contains)) continue;
       for (final f in t.files) {
-        if (f.path.isEmpty) continue;
+        if (f.path.isEmpty || !seenPaths.add(f.path)) continue;
         final file = File(f.path);
         if (!await file.exists()) continue;
         var name = f.name.isEmpty ? p.basename(f.path) : f.name;
@@ -208,9 +199,21 @@ class ReportBuilder {
     if (token.cancelled) return null;
 
     final mediaList = <Map<String, String>>[];
+    final mediaNamesByPath = <String, String>{};
     for (final m in mediaFiles) {
       mediaList.add({'name': m.name, 'path': m.file.path});
+      mediaNamesByPath[m.file.path] = m.name;
     }
+
+    final jsonObj = <String, dynamic>{
+      'schema': ReportJson.schemaVersion,
+      'fields': ReportJson.buildFields(app),
+      'series': ReportJson.buildSeries(app),
+      'routines': [
+        for (final r in routines)
+          ReportJson.buildRoutine(app, r, mediaNamesByPath: mediaNamesByPath),
+      ],
+    };
 
     report(0.2);
     final dir = await getApplicationDocumentsDirectory();

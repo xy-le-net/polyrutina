@@ -93,9 +93,19 @@ class NotificationManager {
   // the push is refreshed immediately.
   void _updateRoutine(int now, {bool force = false}) {
     final currentId = routineLayer.currentRoutineId;
-    final currentRoutine = currentId != null
+    var currentRoutine = currentId != null
         ? routineLayer.findRoutine(currentId)
         : null;
+    if (currentRoutine?.runningBlock == null) {
+      currentRoutine = null;
+      for (final routine in routineLayer.routines) {
+        if (routine.runningBlock == null) continue;
+        if (currentRoutine == null ||
+            routine.lastActionAt > currentRoutine.lastActionAt) {
+          currentRoutine = routine;
+        }
+      }
+    }
     final runningBlock = currentRoutine?.runningBlock;
 
     if (currentRoutine == null || runningBlock == null) {
@@ -136,7 +146,7 @@ class NotificationManager {
         '${i18n.t('notif.total')}: ${fmtTime(totalSec, i18n.t)}';
 
     if (force ||
-        _lastRoutineId != currentId ||
+        _lastRoutineId != currentRoutine.id ||
         _lastBlockKind != runningBlock.kind ||
         body != _lastRoutineBody) {
       NotificationService.showRoutine(
@@ -149,7 +159,7 @@ class NotificationManager {
       _lastRoutineBody = body;
       _lastBlockKind = runningBlock.kind;
     }
-    _lastRoutineId = currentId;
+    _lastRoutineId = currentRoutine.id;
   }
 
   String _stopLabel() => bort.lang == 'ru' ? 'Остановить' : 'Stop';

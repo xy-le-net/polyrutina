@@ -103,7 +103,7 @@ class _RubkaDataState extends State<RubkaData> {
 
     entries.sort((a, b) => a.file.name.compareTo(b.file.name));
     if (!mounted) return;
-    final selected = await showDialog<_MediaListEntry>(
+    await showDialog<void>(
       context: context,
       barrierColor: Colors.transparent,
       builder: (ctx) {
@@ -141,7 +141,25 @@ class _RubkaDataState extends State<RubkaData> {
                                     '${entry.file.name.isEmpty ? p.basename(entry.file.path) : entry.file.name} '
                                     '(${entry.owner})',
                                 fontSize: metrics.numberFontSize,
-                                onTap: () => Navigator.of(ctx).pop(entry),
+                                onTap: () async {
+                                  await Navigator.of(ctx).push<void>(
+                                    MaterialPageRoute(
+                                      builder: (_) => MediaViewer(
+                                        traceId: entry.trace.id,
+                                        objectId: entry.ownerId ?? 0,
+                                        slot: entry.trace.slot,
+                                        files: entry.trace.files,
+                                        startIndex: entry.fileIndex,
+                                        blockTitle: entry.trace.slot,
+                                        routineTitle: entry.isOrphan
+                                            ? i18n.t('media.orphan')
+                                            : entry.owner,
+                                        singleFile: true,
+                                        parentRoutineId: entry.ownerId,
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
                             ),
                         ],
@@ -161,22 +179,7 @@ class _RubkaDataState extends State<RubkaData> {
         );
       },
     );
-    if (selected == null || !mounted) return;
-
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => MediaViewer(
-          traceId: selected.trace.id,
-          objectId: selected.ownerId ?? 0,
-          slot: selected.trace.slot,
-          files: selected.trace.files,
-          startIndex: selected.fileIndex,
-          blockTitle: selected.trace.slot,
-          routineTitle: selected.isOrphan ? '' : selected.owner,
-          singleFile: true,
-        ),
-      ),
-    );
+    if (!mounted) return;
     await _refreshSize();
     if (mounted) setState(() {});
   }
@@ -419,6 +422,7 @@ class _RubkaDataState extends State<RubkaData> {
     );
 
     // Report each stage and always close the progress dialog.
+    var succeeded = false;
     try {
       token.report(0.05);
       await bort.resetCache();
@@ -430,6 +434,7 @@ class _RubkaDataState extends State<RubkaData> {
       token.report(0.80);
       await _refreshSize();
       token.report(1.0);
+      succeeded = true;
     } catch (e, st) {
       debugPrint('reset failed: $e\n$st');
     } finally {
@@ -437,6 +442,14 @@ class _RubkaDataState extends State<RubkaData> {
         if (nav.canPop()) nav.pop();
         setState(() {});
       }
+    }
+    if (mounted) {
+      await showNotice(
+        context,
+        title: succeeded
+            ? i18n.t('bort.reset_done')
+            : i18n.t('bort.reset_failed'),
+      );
     }
   }
 
@@ -457,30 +470,70 @@ class _RubkaDataState extends State<RubkaData> {
       fieldIds: app.fieldLayer.nodes.keys.toSet(),
     );
 
+    final files = <File>[];
+    final directories = <Directory>[];
+    try {
+      await for (final entity in mediaDir.list(recursive: true)) {
+        if (entity is File) files.add(entity);
+        if (entity is Directory) directories.add(entity);
+      }
+    } catch (error, stackTrace) {
+      debugPrint('media cleanup scan failed: $error\n$stackTrace');
+      if (mounted) {
+        await showNotice(
+          context,
+          title: i18n.t('bort.shake_failed'),
+          subtitle: '$error',
+        );
+      }
+      return;
+    }
+
     var removed = 0;
     var freed = 0;
-    await for (final e in mediaDir.list()) {
-      if (e is! File) continue;
-      final name = p.basename(e.path);
-      if (used.contains(name)) continue;
+    var failed = 0;
+    for (final file in files) {
+      if (used.contains(p.basename(file.path))) continue;
       try {
-        freed += await e.length();
-        await e.delete();
+        freed += await file.length();
+        await file.delete();
         removed++;
-      } catch (_) {}
+      } catch (error, stackTrace) {
+        failed++;
+        debugPrint(
+          'media cleanup failed for ${file.path}: $error\n$stackTrace',
+        );
+      }
+    }
+    directories.sort((a, b) => b.path.length.compareTo(a.path.length));
+    for (final directory in directories) {
+      try {
+        if (await directory.list().isEmpty) await directory.delete();
+      } catch (error, stackTrace) {
+        failed++;
+        debugPrint(
+          'media directory cleanup failed for ${directory.path}: '
+          '$error\n$stackTrace',
+        );
+      }
     }
     await _refreshSize();
     if (!mounted) return;
     setState(() {});
 
-    if (removed == 0) {
+    if (removed == 0 && failed == 0) {
       await showNotice(context, title: i18n.t('bort.shake_none'));
     } else {
       await showNotice(
         context,
-        title: '${i18n.t('bort.shake_done_prefix')} $removed',
-        subtitle:
+        title: removed > 0
+            ? '${i18n.t('bort.shake_done_prefix')} $removed'
+            : i18n.t('bort.shake_failed'),
+        subtitle: [
+          if (removed > 0)
             '${i18n.t('bort.shake_freed_prefix')} ${_fmtSize(freed, i18n.t)}',
+          if (failed > 0) '${i18n.t('bort.shake_failed')}: $failed',
+        ].join(' · '),
       );
     }
   }

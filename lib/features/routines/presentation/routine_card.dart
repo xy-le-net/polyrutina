@@ -3,7 +3,6 @@ import 'package:material_ui/material_ui.dart';
 import 'package:polyrutina/shared/models/routine.dart';
 import 'package:polyrutina/core/application/ticker.dart';
 import 'package:polyrutina/shared/presentation/app_scope.dart';
-import 'package:polyrutina/shared/presentation/app_layout.dart';
 import 'package:polyrutina/shared/presentation/widgets/bort_field.dart';
 import 'package:polyrutina/shared/presentation/control_row.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
@@ -456,7 +455,9 @@ class _RoutineCardState extends State<RoutineCard> {
                   readOnly: false,
                   showBorder: false,
                   autofocus: widget.autofocusName,
-                  hint: i18n.t('routine.no_name'),
+                  hint: r.fieldParents.isEmpty
+                      ? i18n.t('media.orphan')
+                      : i18n.t('routine.no_name'),
                   idleTextRole: BortTextRole.caption,
                   onCommit: (v) => routineLayer.renameRoutine(
                     AppScope.of(context).journal,
@@ -474,14 +475,9 @@ class _RoutineCardState extends State<RoutineCard> {
                   controller: _scrollController,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(
-                        maxWidth: appContentMaxWidth,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: blocks,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: blocks,
                     ),
                   ),
                 ),

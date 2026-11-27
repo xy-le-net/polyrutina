@@ -41,6 +41,24 @@ class PolyRutinaApp extends StatefulWidget {
   State<PolyRutinaApp> createState() => _PolyRutinaAppState();
 }
 
+class _AlwaysScrollbarBehavior extends MaterialScrollBehavior {
+  const _AlwaysScrollbarBehavior();
+
+  @override
+  Widget buildScrollbar(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    return Scrollbar(
+      controller: details.controller,
+      thumbVisibility: true,
+      interactive: true,
+      child: child,
+    );
+  }
+}
+
 class _PolyRutinaAppState extends State<PolyRutinaApp>
     with WidgetsBindingObserver {
   late final AppDb _db;
@@ -587,8 +605,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _pultState.baseSide = side;
     _pultState.maxSide = BortMetrics.maxSide;
 
-    final rootSide = side * 2 / 3;
-    final rootReserve = ControlRow.reserve(rootSide, rootPad: _rootPad);
+    final rootControlSide = side * 2 / 3;
+    final rootSide = rootControlSide * ControlRow.enlargementScale;
+    final rootReserve = ControlRow.reserve(rootControlSide, rootPad: _rootPad);
     final brightness = _effectiveBrightness(_bort.systemBrightness);
     final textTheme = BortMetrics.normalizeTextTheme(
       ThemeData(useMaterial3: true, brightness: brightness).textTheme,
@@ -622,6 +641,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       navigatorKey: _navigatorKey,
       title: _i18n!.t('app.title'),
       debugShowCheckedModeBanner: false,
+      scrollBehavior: const _AlwaysScrollbarBehavior(),
       theme: ThemeData(
         useMaterial3: true,
         brightness: brightness,
@@ -753,7 +773,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
         child: Scaffold(
           body: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: appContentMaxWidth),
+              constraints: BoxConstraints(maxWidth: appScreenMaxWidth(side)),
               child: _tabBody(),
             ),
           ),

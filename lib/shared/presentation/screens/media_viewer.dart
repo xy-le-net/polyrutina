@@ -13,11 +13,13 @@ import 'package:video_player/video_player.dart';
 import 'package:polyrutina/core/localization/i18n.dart';
 import 'package:polyrutina/core/application/operational_layer.dart';
 import 'package:polyrutina/core/data/trace_layer.dart';
+import 'package:polyrutina/shared/application/downloads.dart';
 import 'package:polyrutina/shared/presentation/app_scope.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/widgets/screen_header.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 import 'package:polyrutina/shared/presentation/screens/geo_picker.dart';
+import 'package:polyrutina/shared/presentation/widgets/notice_dialog.dart';
 
 class MediaViewer extends StatefulWidget {
   final int traceId;
@@ -28,6 +30,7 @@ class MediaViewer extends StatefulWidget {
   final String blockTitle;
   final String routineTitle;
   final bool singleFile;
+  final int? parentRoutineId;
 
   const MediaViewer({
     super.key,
@@ -39,6 +42,7 @@ class MediaViewer extends StatefulWidget {
     this.blockTitle = '',
     this.routineTitle = '',
     this.singleFile = false,
+    this.parentRoutineId,
   });
 
   @override
@@ -206,6 +210,35 @@ class _MediaViewerState extends State<MediaViewer> {
       final x = XFile(f.path);
       await Share.shareXFiles([x], text: f.name);
     } catch (_) {}
+  }
+
+  Future<void> _save(TraceFile f) async {
+    try {
+      final saved = await saveFileToDownloads(File(f.path));
+      if (mounted) {
+        await showNotice(
+          context,
+          title: I18nScope.of(context).t('media.saved'),
+          subtitle: saved.name,
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        await showNotice(
+          context,
+          title: I18nScope.of(context).t('media.save_failed'),
+          subtitle: '$error',
+        );
+      }
+    }
+  }
+
+  Future<void> _openParent() async {
+    final id = widget.parentRoutineId;
+    if (id == null) return;
+    final app = AppScope.of(context);
+    Navigator.of(context).pop();
+    await app.openRoutine(id);
   }
 
   Future<void> _openExternal(TraceFile f) async {
@@ -391,6 +424,19 @@ class _MediaViewerState extends State<MediaViewer> {
     Widget row(bool playing) => Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
+        if (widget.parentRoutineId != null)
+          Pult(
+            spec: PultSpec(
+              id: 'media_parent',
+              icon: Icons.subdirectory_arrow_left,
+              onTap: _openParent,
+            ),
+            fg: bort.fg,
+            bg: bort.bg,
+            signal: bort.fgsignal,
+            overrideSize: side,
+          ),
+        if (widget.parentRoutineId != null) SizedBox(width: side * 0.3),
         if (_hasPrev)
           Pult(
             spec: PultSpec(
@@ -441,6 +487,13 @@ class _MediaViewerState extends State<MediaViewer> {
       label: i18n.t('media.share'),
       onTap: () => _share(f),
     ),
+    if (f.kind != MediaKind.geo && f.path.isNotEmpty)
+      PultSpec(
+        id: 'media_save',
+        icon: Icons.save_alt,
+        label: i18n.t('media.save'),
+        onTap: () => _save(f),
+      ),
     PultSpec(
       id: 'media_del',
       icon: Icons.delete_outline,

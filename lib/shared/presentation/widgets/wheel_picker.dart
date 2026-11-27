@@ -70,7 +70,7 @@ class WheelValuePicker extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               SizedBox(
-                width: side * 3.6,
+                width: side * 4.2,
                 height: side * BortMetrics.wheelHeightFactor,
                 child: WheelValuePicker(
                   columns: [

@@ -1,7 +1,7 @@
 name: polyrutina
 description: Location-bound field journal and routines.
 publish_to: 'none'
-version: 0.1.1+3
+version: 0.1.2+1
 
 environment:
   sdk: '>=3.11.0 <4.0.0'

@@ -173,8 +173,8 @@ class _BortFieldState extends State<BortField> {
       style: bortInputTextStyle(context, color: widget.fg, fontSize: fontSize),
       decoration: bortInputDecoration(
         context,
-        borderColor: widget.fg,
-        focusedBorderColor: bort.bgsignal,
+        borderColor: bort.mid,
+        focusedBorderColor: bort.mid,
         hintText: widget.hint,
         fontSize: fontSize,
         borderless: !widget.showBorder,

@@ -3,8 +3,10 @@ import 'package:share_plus/share_plus.dart';
 
 import 'package:polyrutina/core/application/operational_layer.dart';
 import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/shared/application/downloads.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/widgets/dialog_frame.dart';
+import 'package:polyrutina/shared/presentation/widgets/notice_dialog.dart';
 import 'package:polyrutina/shared/application/format.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 
@@ -109,7 +111,7 @@ class _TimeHistoryDialogState extends State<_TimeHistoryDialog> {
 
   String _monthTitle() => '$_year.${_month.toString().padLeft(2, '0')}';
 
-  Future<void> _share(AppContext app, _SeriesUi ui, Map<int, int> days) async {
+  String _reportText(AppContext app, _SeriesUi ui, Map<int, int> days) {
     final i18n = app.i18n;
     final buf = StringBuffer();
     buf.writeln(_monthTitle());
@@ -124,9 +126,33 @@ class _TimeHistoryDialogState extends State<_TimeHistoryDialog> {
     }
     buf.writeln();
     buf.writeln('${i18n.t(ui.labelKey)}: ${fmtTime(total, i18n.t)}');
+    return buf.toString();
+  }
+
+  Future<void> _share(AppContext app, _SeriesUi ui, Map<int, int> days) async {
     try {
-      await Share.share(buf.toString(), subject: _monthTitle());
+      await Share.share(_reportText(app, ui, days), subject: _monthTitle());
     } catch (_) {}
+  }
+
+  Future<void> _save(AppContext app, _SeriesUi ui, Map<int, int> days) async {
+    try {
+      await saveTextToDownloads(
+        'polyrutina_${widget.seriesKey}_${_monthTitle()}.txt',
+        _reportText(app, ui, days),
+      );
+      if (mounted) {
+        await showNotice(context, title: app.i18n.t('media.saved'));
+      }
+    } catch (error) {
+      if (mounted) {
+        await showNotice(
+          context,
+          title: app.i18n.t('media.save_failed'),
+          subtitle: '$error',
+        );
+      }
+    }
   }
 
   @override
@@ -242,6 +268,18 @@ class _TimeHistoryDialogState extends State<_TimeHistoryDialog> {
                     id: '${widget.seriesKey}_share',
                     icon: Icons.ios_share,
                     onTap: keys.isEmpty ? null : () => _share(app, ui, days),
+                  ),
+                  fg: keys.isEmpty ? bort.mid : bort.fg,
+                  bg: bort.bg,
+                  signal: bort.fgsignal,
+                  overrideSize: side * bort.kPultSmall,
+                ),
+                SizedBox(width: side * 0.3),
+                Pult(
+                  spec: PultSpec(
+                    id: '${widget.seriesKey}_save',
+                    icon: Icons.save_alt,
+                    onTap: keys.isEmpty ? null : () => _save(app, ui, days),
                   ),
                   fg: keys.isEmpty ? bort.mid : bort.fg,
                   bg: bort.bg,

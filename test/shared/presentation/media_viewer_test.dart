@@ -8,7 +8,7 @@ import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 import 'package:polyrutina/shared/presentation/screens/media_viewer.dart';
 
 void main() {
-  testWidgets('media list opens a single file without navigation controls', (
+  testWidgets('single-file viewer shows its parent control only', (
     tester,
   ) async {
     final bort = OperationalLayer();
@@ -39,6 +39,7 @@ void main() {
           blockTitle: 'note',
           routineTitle: 'routine',
           singleFile: true,
+          parentRoutineId: 1,
         ),
       ),
     );
@@ -46,7 +47,7 @@ void main() {
 
     expect(find.text('selected.txt'), findsOneWidget);
     expect(find.text('1/3'), findsNothing);
-    expect(find.byType(Pult), findsOneWidget);
+    expect(find.byType(Pult), findsNWidgets(2));
     expect(tester.takeException(), isNull);
   });
 }

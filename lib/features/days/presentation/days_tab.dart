@@ -502,7 +502,7 @@ class _DaysTabState extends State<DaysTab> {
 
     final TextStyle style = TextStyle(
       color: numberColor,
-      fontSize: BortMetrics.of(context).textSize(BortTextRole.base),
+      fontSize: BortMetrics.of(context).textSize(BortTextRole.caption),
       height: 1.0,
       decoration: m.completed ? TextDecoration.underline : TextDecoration.none,
       decorationColor: bort.mid,

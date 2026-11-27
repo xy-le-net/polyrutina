@@ -53,13 +53,13 @@ class RoutinePlate extends StatelessWidget {
       textMain = c.fg;
       textSoft = c.mid;
       accent = c.fgsignal;
-      scheduleColor = routine.flags == 0 ? c.fg : c.fgsignal;
+      scheduleColor = overdue || routine.flags != 0 ? c.fgsignal : c.fg;
     } else {
       plateBg = bort.bg;
       textMain = bort.fg;
       textSoft = bort.mid;
       accent = bort.fgsignal;
-      scheduleColor = routine.flags == 0 ? bort.fg : bort.fgsignal;
+      scheduleColor = overdue || routine.flags != 0 ? bort.fgsignal : bort.fg;
     }
 
     final nameSize = metrics.textSize(BortTextRole.base);

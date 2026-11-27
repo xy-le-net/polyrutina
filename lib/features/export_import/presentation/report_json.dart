@@ -14,6 +14,7 @@ class ReportJson {
         'name': n.name,
         'parents': n.parents,
         'is_root': n.isRoot,
+        'default_root': n.id == app.fieldLayer.rootId,
       });
     }
     return out;
@@ -43,7 +44,11 @@ class ReportJson {
     return out;
   }
 
-  static Map<String, dynamic> buildRoutine(AppContext app, Routine r) {
+  static Map<String, dynamic> buildRoutine(
+    AppContext app,
+    Routine r, {
+    Map<String, String> mediaNamesByPath = const {},
+  }) {
     final bort = app.bort;
     final traces = <Map<String, dynamic>>[];
     for (final t in app.traceLayer.traces.values) {
@@ -58,7 +63,9 @@ class ReportJson {
             .map(
               (f) => {
                 'kind': f.kind,
-                'name': f.name.isEmpty ? p.basename(f.path) : f.name,
+                'name':
+                    mediaNamesByPath[f.path] ??
+                    (f.name.isEmpty ? p.basename(f.path) : f.name),
                 if (f.lat != null) 'lat': f.lat,
                 if (f.lon != null) 'lon': f.lon,
                 if (f.acc != null) 'acc': f.acc,

@@ -4,7 +4,6 @@ import 'package:polyrutina/core/data/field_layer.dart';
 import 'package:polyrutina/shared/models/routine.dart';
 import 'package:polyrutina/core/application/ticker.dart';
 import 'package:polyrutina/shared/presentation/app_scope.dart';
-import 'package:polyrutina/shared/presentation/app_layout.dart';
 import 'package:polyrutina/shared/presentation/widgets/bort_field.dart';
 import 'package:polyrutina/shared/presentation/widgets/confirm_dialog.dart';
 import 'package:polyrutina/shared/presentation/control_row.dart';
@@ -719,7 +718,11 @@ class _RoutinesTabState extends State<RoutinesTab> {
   }
 
   ({List<Routine> overdue, List<Routine> active, List<Routine> done})
-  _splitRoutines(List<Routine> routines, int now) {
+  _splitRoutines(
+    List<Routine> routines,
+    int now, {
+    Set<int> excludedIds = const {},
+  }) {
     final overdue = <Routine>[];
     final active = <Routine>[];
     final done = <Routine>[];
@@ -728,6 +731,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     int sortScheduleDistance(Routine r) => (r.scheduledAt! - now).abs();
 
     for (final r in routines) {
+      if (excludedIds.contains(r.id)) continue;
       if (r.completed) {
         done.add(r);
       } else if (r.isOverdueAt(now)) {
@@ -819,9 +823,9 @@ class _RoutinesTabState extends State<RoutinesTab> {
                     label,
                     style: TextStyle(
                       color: fieldLabel ? bort.fgsignal : bort.mid,
-                      fontSize: BortMetrics.of(context).textSize(
-                        fieldLabel ? BortTextRole.base : BortTextRole.caption,
-                      ),
+                      fontSize: BortMetrics.of(
+                        context,
+                      ).textSize(BortTextRole.caption),
                     ),
                   ),
                   SizedBox(width: side * 0.1),
@@ -848,6 +852,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     Set<int> visited,
     List<Widget> out, {
     bool includeOrphans = true,
+    Set<int> excludedRoutineIds = const {},
   }) {
     final fieldLayer = FieldScope.of(context);
     final node = fieldLayer.nodes[nodeId];
@@ -896,7 +901,11 @@ class _RoutinesTabState extends State<RoutinesTab> {
     if (!isExpanded) return;
 
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final split = _splitRoutines(nodeRoutines, now);
+    final split = _splitRoutines(
+      nodeRoutines,
+      now,
+      excludedIds: excludedRoutineIds,
+    );
 
     final double plateIndent = _indent(depth + 1);
 
@@ -996,12 +1005,17 @@ class _RoutinesTabState extends State<RoutinesTab> {
         nextVisited,
         out,
         includeOrphans: includeOrphans,
+        excludedRoutineIds: excludedRoutineIds,
       );
     }
   }
 
   // Keep unattached routines separate from attached root entries.
-  void _buildAllFields(List<Widget> out, FieldLayer fieldLayer) {
+  void _buildAllFields(
+    List<Widget> out,
+    FieldLayer fieldLayer, {
+    Set<int> excludedRoutineIds = const {},
+  }) {
     final roots = fieldLayer.nodes.values.where((node) => node.isRoot).toList()
       ..sort((a, b) => a.id.compareTo(b.id));
     final rootIds = roots.map((node) => node.id).toSet();
@@ -1029,7 +1043,11 @@ class _RoutinesTabState extends State<RoutinesTab> {
       );
       if (_orphansExpanded) {
         final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-        final split = _splitRoutines(orphans, now);
+        final split = _splitRoutines(
+          orphans,
+          now,
+          excludedIds: excludedRoutineIds,
+        );
         for (final routine in split.overdue) {
           out.add(
             Padding(
@@ -1091,7 +1109,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     for (final root in roots) {
       final expanded =
           root.id == fieldLayer.rootId || _expandedAllFields.contains(root.id);
-      if (root.id != fieldLayer.rootId) {
+      if (root.id != fieldLayer.rootId && root.name != i18n.t('field.root')) {
         out.add(
           _doneDivider(
             _indent(1),
@@ -1103,7 +1121,14 @@ class _RoutinesTabState extends State<RoutinesTab> {
         );
       }
       if (expanded) {
-        _buildTree(root.id, 0, {}, out, includeOrphans: false);
+        _buildTree(
+          root.id,
+          0,
+          {},
+          out,
+          includeOrphans: false,
+          excludedRoutineIds: excludedRoutineIds,
+        );
       }
     }
   }
@@ -1120,6 +1145,28 @@ class _RoutinesTabState extends State<RoutinesTab> {
     );
   }
 
+  List<Routine> _runningRoutinesForCurrentField(FieldLayer fieldLayer) {
+    final activeId = fieldLayer.activeFieldId;
+    if (activeId == null) return const [];
+
+    final fieldIds = <int>{};
+    final pending = <int>[activeId];
+    while (pending.isNotEmpty) {
+      final id = pending.removeLast();
+      if (!fieldIds.add(id)) continue;
+      pending.addAll(fieldLayer.nodes[id]?.children ?? const <int>[]);
+    }
+
+    final isAllFields = activeId == fieldLayer.rootId;
+    final running = RoutineScope.of(context).routines.where((routine) {
+      if (routine.runningBlock == null) return false;
+      if (routine.fieldParents.isEmpty) return isAllFields;
+      return routine.fieldParents.any(fieldIds.contains);
+    }).toList();
+    running.sort((a, b) => b.lastActionAt.compareTo(a.lastActionAt));
+    return running;
+  }
+
   @override
   Widget build(BuildContext context) {
     final bort = BortScope.of(context);
@@ -1133,10 +1180,34 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final items = <Widget>[];
     final fieldLayer = FieldScope.of(context);
     final activeFieldId = fieldLayer.activeFieldId;
+    final runningRoutines = _runningRoutinesForCurrentField(fieldLayer);
+    final runningIds = runningRoutines.map((routine) => routine.id).toSet();
+    if (runningRoutines.isNotEmpty) {
+      items.add(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+          child: Text(
+            '${i18n.t('routine.in_work')} (${runningRoutines.length})',
+            style: TextStyle(
+              color: dim,
+              fontSize: BortMetrics.of(context).textSize(BortTextRole.caption),
+            ),
+          ),
+        ),
+      );
+      for (final routine in runningRoutines) {
+        items.add(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+            child: _routinePlate(routine),
+          ),
+        );
+      }
+    }
     if (activeFieldId != null && activeFieldId == fieldLayer.rootId) {
-      _buildAllFields(items, fieldLayer);
+      _buildAllFields(items, fieldLayer, excludedRoutineIds: runningIds);
     } else if (activeFieldId != null) {
-      _buildTree(activeFieldId, 0, {}, items);
+      _buildTree(activeFieldId, 0, {}, items, excludedRoutineIds: runningIds);
     }
 
     return LayoutBuilder(
@@ -1152,12 +1223,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
             children: items,
           );
         }
-        body = Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: rubkaMaxColumnWidth),
-            child: body,
-          ),
-        );
+        body = Center(child: body);
 
         final activeNode = activeFieldId != null
             ? fieldLayer.nodes[activeFieldId]
@@ -1327,7 +1393,9 @@ class _FieldPlate extends StatelessWidget {
                 title,
                 style: TextStyle(
                   color: bort.fg,
-                  fontSize: BortMetrics.of(context).textSize(BortTextRole.base),
+                  fontSize: BortMetrics.of(
+                    context,
+                  ).textSize(BortTextRole.caption),
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
