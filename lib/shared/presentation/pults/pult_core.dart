@@ -1,0 +1,402 @@
+import 'package:material_ui/material_ui.dart';
+
+import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/shared/presentation/bort_metrics.dart';
+import 'package:polyrutina/shared/presentation/pults/pult_sheet.dart';
+
+class PultSpec {
+  final String id;
+  final IconData icon;
+  final IconData? confirmIcon;
+  final String? label;
+  final Color? labelBg;
+  final String? centerText;
+  final bool selected;
+  final List<PultSpec> Function()? subsBuilder;
+  final List<PultSpec> Function()? longSubs;
+  final bool confirm;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final bool stayOpen;
+  final bool compactLabel;
+  final Listenable? rebuildOn;
+  // Left offset for tree-shaped sheets; zero for flat lists.
+  final double indent;
+
+  const PultSpec({
+    required this.id,
+    required this.icon,
+    this.confirmIcon,
+    this.label,
+    this.labelBg,
+    this.centerText,
+    this.selected = false,
+    this.subsBuilder,
+    this.longSubs,
+    this.confirm = false,
+    this.onTap,
+    this.onLongPress,
+    this.stayOpen = false,
+    this.compactLabel = false,
+    this.rebuildOn,
+    this.indent = 0,
+  });
+}
+
+class PultState extends ChangeNotifier {
+  double baseSide = 32;
+  double maxSide = 64;
+
+  String? _confirmingId;
+  String? get confirmingId => _confirmingId;
+
+  void setConfirming(String? id) {
+    if (_confirmingId == id) return;
+    _confirmingId = id;
+    notifyListeners();
+  }
+
+  double get side => baseSide > maxSide ? maxSide : baseSide;
+  double get smallSide => side * 2 / 3;
+}
+
+class PultScope extends InheritedNotifier<PultState> {
+  const PultScope({super.key, required PultState state, required super.child})
+    : super(notifier: state);
+
+  static PultState of(BuildContext context) {
+    final s = context.dependOnInheritedWidgetOfExactType<PultScope>();
+    assert(s != null, 'PultScope is not found');
+    return s!.notifier!;
+  }
+}
+
+class PultSheetScope extends InheritedWidget {
+  final VoidCallback closeSheet;
+
+  const PultSheetScope({
+    super.key,
+    required this.closeSheet,
+    required super.child,
+  });
+
+  static PultSheetScope? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<PultSheetScope>();
+
+  @override
+  bool updateShouldNotify(PultSheetScope old) => closeSheet != old.closeSheet;
+}
+
+class Pult extends StatelessWidget {
+  final PultSpec spec;
+  final double? overrideSize;
+  final Color fg;
+  final Color bg;
+  final Color signal;
+
+  const Pult({
+    super.key,
+    required this.spec,
+    required this.fg,
+    required this.bg,
+    required this.signal,
+    this.overrideSize,
+  });
+
+  static const double _minDot = 6.0;
+
+  // Static cache for label widths to avoid TextPainter on every frame.
+  // Key format: "label|size|compact".
+  static final Map<String, double> _labelWidthCache = {};
+
+  void _pulseBort(BuildContext context) {
+    try {
+      AppScope.of(context).pulseBort();
+    } catch (_) {}
+  }
+
+  void _execute(BuildContext context, PultState state) {
+    state.setConfirming(null);
+    final scope = PultSheetScope.maybeOf(context);
+    if (scope != null && !spec.stayOpen) {
+      scope.closeSheet();
+    }
+    try {
+      spec.onTap?.call();
+    } catch (_) {
+      // Ignore callback errors to prevent tree crash.
+    }
+  }
+
+  void _handleTap(BuildContext context, PultState state) {
+    _pulseBort(context);
+
+    if (state.confirmingId == spec.id) {
+      _execute(context, state);
+      return;
+    }
+
+    if (state.confirmingId != null) {
+      state.setConfirming(null);
+    }
+
+    // Unification: a pult with sub-options opens them on tap when
+    // there is no separate tap action. Pults that carry a meaningful
+    // onTap (start/pause, for instance) keep that action and expose
+    // their options on long press.
+    if (spec.subsBuilder != null) {
+      showPultSheet(
+        context: context,
+        subs: spec.subsBuilder!(),
+        subsBuilder: spec.subsBuilder,
+        fg: fg,
+        bg: bg,
+        signal: signal,
+        side: state.smallSide,
+        rebuildOn: spec.rebuildOn,
+      );
+      return;
+    }
+    if (spec.onTap == null && spec.longSubs != null) {
+      showPultSheet(
+        context: context,
+        subs: spec.longSubs!(),
+        subsBuilder: spec.longSubs,
+        fg: fg,
+        bg: bg,
+        signal: signal,
+        side: state.smallSide,
+        rebuildOn: spec.rebuildOn,
+      );
+      return;
+    }
+
+    if (spec.confirm && spec.onTap != null) {
+      state.setConfirming(spec.id);
+      return;
+    }
+
+    _execute(context, state);
+  }
+
+  void _handleLongPress(BuildContext context, PultState state) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    _pulseBort(context);
+    if (state.confirmingId != null) {
+      state.setConfirming(null);
+    }
+    final subs = spec.longSubs ?? spec.subsBuilder;
+    if (subs != null) {
+      showPultSheet(
+        context: context,
+        subs: subs(),
+        subsBuilder: subs,
+        fg: fg,
+        bg: bg,
+        signal: signal,
+        side: state.smallSide,
+        rebuildOn: spec.rebuildOn,
+      );
+      return;
+    }
+    try {
+      spec.onLongPress?.call();
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = PultScope.of(context);
+    final side = overrideSize ?? state.side;
+    final confirming = state.confirmingId == spec.id;
+    final bort = BortScope.of(context);
+
+    final selected = spec.selected;
+    // Apply signal palette when selected OR confirming.
+    final coreColor = (selected || confirming) ? signal : fg;
+    final iconColor = bg;
+
+    final borderW = side / 16;
+    final rOuter = side * 0.18;
+    final rInner = side * 0.14;
+    final rCore = side * 0.10;
+
+    final baseIconSize = selected ? side * 0.80 : side * 0.60;
+
+    final hasCenter = spec.centerText != null;
+    final effectiveIcon = (confirming && spec.confirmIcon != null)
+        ? spec.confirmIcon!
+        : spec.icon;
+
+    Widget core = Container(
+      width: side,
+      height: side,
+      decoration: BoxDecoration(
+        color: coreColor,
+        borderRadius: BorderRadius.circular(rCore),
+      ),
+      child: Center(
+        child: hasCenter
+            ? Padding(
+                padding: EdgeInsets.only(bottom: side * 0.04),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    spec.centerText!,
+                    style: TextStyle(
+                      color: iconColor,
+                      fontFamily: 'monospace',
+                      fontSize: BortMetrics.fontSizeForSide(
+                        side,
+                        BortTextRole.base,
+                      ),
+                      height: 1.0,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ),
+              )
+            : Icon(effectiveIcon, color: iconColor, size: baseIconSize),
+      ),
+    );
+
+    core = Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(rInner),
+        border: Border.all(
+          color: selected ? iconColor : coreColor,
+          width: borderW,
+        ),
+      ),
+      child: core,
+    );
+
+    core = Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(rOuter),
+        border: Border.all(color: coreColor, width: borderW),
+      ),
+      child: core,
+    );
+
+    if (spec.longSubs != null ||
+        spec.subsBuilder != null ||
+        spec.onLongPress != null) {
+      final dotD = (side / 5 < _minDot ? _minDot : side / 5) * 2;
+      final dotColor = selected ? iconColor : signal;
+      final dotOutline = selected ? signal : bg;
+      core = Stack(
+        clipBehavior: Clip.none,
+        children: [
+          core,
+          Positioned(
+            right: -dotD / 4,
+            bottom: -dotD / 4,
+            child: Container(
+              width: dotD,
+              height: dotD,
+              decoration: BoxDecoration(
+                color: dotColor,
+                shape: BoxShape.circle,
+                border: Border.all(color: dotOutline, width: side / 20),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Apply scale ONLY to the core, preserving label size and layout.
+    Widget scaledCore = AnimatedScale(
+      scale: confirming ? 1.25 : 1.0,
+      duration: const Duration(milliseconds: 150),
+      child: core,
+    );
+
+    Widget content;
+    final screenW = MediaQuery.of(context).size.width;
+    final maxLabelW = screenW - side - 32;
+    final hasLabel = spec.label != null && bort.labelsButtons;
+
+    if (!hasLabel || maxLabelW < side * 1.5) {
+      content = scaledCore;
+    } else {
+      final labelStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
+        fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.base),
+        fontWeight: FontWeight.normal,
+      );
+
+      final cacheKey =
+          '${spec.label}_${side.toStringAsFixed(2)}_${spec.compactLabel}';
+      double? textW = _labelWidthCache[cacheKey];
+
+      if (textW == null) {
+        final painter = TextPainter(
+          text: TextSpan(text: spec.label!, style: labelStyle),
+          textDirection: TextDirection.ltr,
+          maxLines: 1,
+        )..layout();
+        textW = painter.width * 1.2;
+        _labelWidthCache[cacheKey] = textW;
+      }
+
+      final desired = textW + 12;
+      final labelWidth = spec.compactLabel
+          ? desired.clamp(side * 0.8, maxLabelW)
+          : desired.clamp(side * 1.5, maxLabelW);
+
+      final labelWidget = Container(
+        height: side * 0.75,
+        width: labelWidth,
+        decoration: BoxDecoration(
+          color: spec.labelBg ?? coreColor,
+          borderRadius: const BorderRadius.horizontal(
+            right: Radius.circular(6),
+          ),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        child: MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.noScaling),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              spec.label!,
+              style:
+                  labelStyle?.copyWith(
+                    color: iconColor,
+                    decoration: TextDecoration.none,
+                  ) ??
+                  TextStyle(
+                    color: iconColor,
+                    fontSize: BortMetrics.fontSizeForSide(
+                      side,
+                      BortTextRole.base,
+                    ),
+                    fontWeight: FontWeight.normal,
+                    decoration: TextDecoration.none,
+                  ),
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
+          ),
+        ),
+      );
+
+      content = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [scaledCore, labelWidget],
+      );
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _handleTap(context, state),
+      onLongPress: () => _handleLongPress(context, state),
+      onSecondaryTap: () => _handleLongPress(context, state),
+      child: content,
+    );
+  }
+}

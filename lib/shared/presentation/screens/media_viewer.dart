@@ -1,0 +1,779 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:material_ui/material_ui.dart';
+import 'package:flutter/services.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path/path.dart' as p;
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
+
+import 'package:polyrutina/core/localization/i18n.dart';
+import 'package:polyrutina/core/application/operational_layer.dart';
+import 'package:polyrutina/core/data/trace_layer.dart';
+import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/shared/presentation/bort_metrics.dart';
+import 'package:polyrutina/shared/presentation/widgets/screen_header.dart';
+import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
+import 'package:polyrutina/shared/presentation/screens/geo_picker.dart';
+
+class MediaViewer extends StatefulWidget {
+  final int traceId;
+  final int objectId;
+  final String slot;
+  final List<TraceFile> files;
+  final int startIndex;
+  final String blockTitle;
+  final String routineTitle;
+
+  const MediaViewer({
+    super.key,
+    required this.traceId,
+    required this.objectId,
+    required this.slot,
+    required this.files,
+    required this.startIndex,
+    this.blockTitle = '',
+    this.routineTitle = '',
+  });
+
+  @override
+  State<MediaViewer> createState() => _MediaViewerState();
+}
+
+class _MediaViewerState extends State<MediaViewer> {
+  // Extensions recognised for embedding when the TraceFile kind is
+  // «file». Kept in one place so that a future kind (e.g. PDF) lands
+  // here rather than in scattered checks.
+  static const Set<String> _photoExt = {
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.gif',
+    '.webp',
+    '.bmp',
+    '.heic',
+    '.heif',
+  };
+  static const Set<String> _videoExt = {
+    '.mp4',
+    '.mov',
+    '.m4v',
+    '.mkv',
+    '.avi',
+    '.webm',
+  };
+  static const Set<String> _audioExt = {
+    '.mp3',
+    '.m4a',
+    '.aac',
+    '.wav',
+    '.ogg',
+    '.flac',
+    '.opus',
+    '.oga',
+  };
+
+  // Local list — only the actual files. On deletion it shortens:
+  // the removed frame disappears, the rest stay.
+  late List<TraceFile> _files;
+  late int _pos;
+
+  // Players. Live until frame change or screen exit.
+  VideoPlayerController? _video;
+  AudioPlayer? _audio;
+  StreamSubscription<PlayerState>? _audioStateSub;
+  bool _audioPlaying = false;
+
+  // «copied» indicator. Shown while _copied is true, cleared by
+  // _copiedTimer. No animation: the label appears in full and
+  // disappears in full; the timer merely schedules the erasure.
+  bool _copied = false;
+  Timer? _copiedTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _files = List<TraceFile>.from(widget.files);
+    _pos = widget.startIndex.clamp(0, _files.length - 1);
+    _syncPlayers();
+  }
+
+  @override
+  void dispose() {
+    _copiedTimer?.cancel();
+    _audioStateSub?.cancel();
+    _video?.dispose();
+    _audio?.dispose();
+    super.dispose();
+  }
+
+  // For a TraceFile whose kind is «file», the extension decides
+  // whether the content is embedded as photo, video, or audio.
+  // Everything else (including unknown extensions) keeps the «file»
+  // kind and shows the plain-name screen.
+  String _effectiveKind(TraceFile f) {
+    if (f.kind != MediaKind.file) return f.kind;
+    final ext = p.extension(f.path.isEmpty ? f.name : f.path).toLowerCase();
+    if (_photoExt.contains(ext)) return MediaKind.photo;
+    if (_videoExt.contains(ext)) return MediaKind.video;
+    if (_audioExt.contains(ext)) return MediaKind.audio;
+    return MediaKind.file;
+  }
+
+  void _syncPlayers() {
+    _audioStateSub?.cancel();
+    _audioStateSub = null;
+    _video?.dispose();
+    _video = null;
+    _audio?.dispose();
+    _audio = null;
+    _audioPlaying = false;
+
+    final f = _current;
+    if (f == null) return;
+    final ek = _effectiveKind(f);
+
+    if (ek == MediaKind.video) {
+      final ctrl = VideoPlayerController.file(File(f.path));
+      _video = ctrl;
+      ctrl
+          .initialize()
+          .then((_) {
+            if (!mounted || _video != ctrl) {
+              ctrl.dispose();
+              return;
+            }
+            ctrl.setLooping(true);
+            setState(() {});
+          })
+          .catchError((_) {});
+    } else if (ek == MediaKind.audio) {
+      final player = AudioPlayer();
+      _audio = player;
+      player.setFilePath(f.path).catchError((_) => null);
+      _audioStateSub = player.playerStateStream.listen((s) {
+        if (!mounted || _audio != player) return;
+        final playing =
+            s.playing && s.processingState != ProcessingState.completed;
+        if (_audioPlaying != playing) setState(() => _audioPlaying = playing);
+      });
+    }
+  }
+
+  TraceFile? get _current {
+    if (_files.isEmpty) return null;
+    if (_pos < 0 || _pos >= _files.length) return null;
+    return _files[_pos];
+  }
+
+  bool get _hasPrev => _pos > 0;
+  bool get _hasNext => _pos >= 0 && _pos < _files.length - 1;
+
+  void _prev() {
+    if (!_hasPrev) return;
+    setState(() {
+      _pos--;
+      _syncPlayers();
+    });
+  }
+
+  void _next() {
+    if (!_hasNext) return;
+    setState(() {
+      _pos++;
+      _syncPlayers();
+    });
+  }
+
+  IconData _icon(String kind) {
+    switch (kind) {
+      case MediaKind.audio:
+        return Icons.mic_none;
+      case MediaKind.photo:
+        return Icons.photo_camera_outlined;
+      case MediaKind.video:
+        return Icons.videocam_outlined;
+      case MediaKind.geo:
+        return Icons.place_outlined;
+      case MediaKind.file:
+      default:
+        return Icons.attach_file;
+    }
+  }
+
+  Future<void> _share(TraceFile f) async {
+    try {
+      final x = XFile(f.path);
+      await Share.shareXFiles([x], text: f.name);
+    } catch (_) {}
+  }
+
+  Future<void> _openExternal(TraceFile f) async {
+    try {
+      if (f.kind == MediaKind.geo) {
+        final lat = f.lat;
+        final lon = f.lon;
+        if (lat == null || lon == null) return;
+        final geo = Uri.parse('geo:$lat,$lon?q=$lat,$lon');
+        if (await canLaunchUrl(geo)) {
+          await launchUrl(geo, mode: LaunchMode.externalApplication);
+          return;
+        }
+        final web = Uri.parse(
+          'https://www.openstreetmap.org/?mlat=$lat&mlon=$lon#map=16/$lat/$lon',
+        );
+        await launchUrl(web, mode: LaunchMode.externalApplication);
+        return;
+      }
+      if (f.path.isEmpty) return;
+      await OpenFilex.open(f.path);
+    } catch (_) {}
+  }
+
+  // Tapping the «lat, lon» line copies it. Feedback is a brief
+  // label over the coordinates; no SnackBar (its slide-in is an
+  // animation).
+  Future<void> _copyCoords(String lat, String lon) async {
+    await Clipboard.setData(ClipboardData(text: '$lat, $lon'));
+    if (!mounted) return;
+    _copiedTimer?.cancel();
+    setState(() => _copied = true);
+    _copiedTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _copied = false);
+    });
+  }
+
+  Future<void> _remove(TraceFile f) async {
+    final traceLayer = TraceScope.of(context);
+    final journal = AppScope.of(context).journal;
+    final idx = _files.indexOf(f);
+    if (idx < 0) return;
+
+    final originalIdx = widget.files.indexOf(f);
+    if (originalIdx < 0) return;
+    await traceLayer.removeFile(journal, widget.traceId, originalIdx);
+    if (!mounted) return;
+
+    setState(() {
+      _files.removeAt(idx);
+      if (_files.isEmpty) return;
+      if (_pos > idx) {
+        _pos--;
+      } else if (_pos == idx && _pos >= _files.length) {
+        _pos = _files.length - 1;
+      }
+      _syncPlayers();
+    });
+
+    if (_files.isEmpty) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  void _close() {
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _toggleAudio() async {
+    final player = _audio;
+    if (player == null) return;
+    if (player.playing) {
+      await player.pause();
+    } else {
+      await player.play();
+    }
+  }
+
+  Future<void> _toggleVideo() async {
+    final ctrl = _video;
+    if (ctrl == null || !ctrl.value.isInitialized) return;
+    if (ctrl.value.isPlaying) {
+      await ctrl.pause();
+    } else {
+      await ctrl.play();
+    }
+    if (mounted) setState(() {});
+  }
+
+  String _fmtDur(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    final s = d.inSeconds.remainder(60);
+    String two(int n) => n.toString().padLeft(2, '0');
+    return h > 0 ? '$h:${two(m)}:${two(s)}' : '${two(m)}:${two(s)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bort = BortScope.of(context);
+    final side = PultScope.of(context).smallSide;
+
+    final f = _current;
+    final ek = f == null ? null : _effectiveKind(f);
+
+    // Second title line: routine title, and the frame order when
+    // there is somewhere to page.
+    final subtitle = _files.length > 2
+        ? '${widget.routineTitle.isEmpty ? '—' : widget.routineTitle}'
+              ' · ${_pos + 1}/${_files.length}'
+        : (widget.routineTitle.isEmpty ? '—' : widget.routineTitle);
+
+    return Scaffold(
+      backgroundColor: bort.bg,
+      body: SafeArea(
+        child: Column(
+          children: [
+            ScreenHeader(
+              title: widget.blockTitle.isEmpty ? '—' : widget.blockTitle,
+              subtitle: subtitle,
+              onExit: _close,
+            ),
+            Expanded(
+              child: Stack(
+                children: [
+                  Positioned.fill(child: _body(f, bort, side)),
+                  if (ek == MediaKind.audio || ek == MediaKind.video)
+                    Positioned(
+                      left: side * 0.5,
+                      right: side * 0.5,
+                      bottom: side * 1.6,
+                      child: _sliderFor(f!, bort, side),
+                    ),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 12,
+                    child: _bottomRow(f, bort, side),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _bottomRow(TraceFile? f, OperationalLayer bort, double side) {
+    final i18n = I18nScope.of(context);
+    final ek = f == null ? null : _effectiveKind(f);
+
+    Widget centerPult(bool playing) {
+      if (f == null) {
+        return SizedBox(width: side);
+      }
+      late final PultSpec spec;
+      if (ek == MediaKind.audio || ek == MediaKind.video) {
+        spec = PultSpec(
+          id: 'media_center',
+          icon: playing ? Icons.pause : Icons.play_arrow,
+          selected: playing,
+          onTap: ek == MediaKind.audio ? _toggleAudio : _toggleVideo,
+          longSubs: () => _subsFor(f, i18n),
+        );
+      } else if (ek == MediaKind.photo) {
+        spec = PultSpec(
+          id: 'media_center',
+          icon: Icons.share,
+          onTap: () => _share(f),
+          longSubs: () => _subsFor(f, i18n),
+        );
+      } else {
+        // geo, unknown file
+        spec = PultSpec(
+          id: 'media_center',
+          icon: Icons.open_in_new,
+          onTap: () => _openExternal(f),
+          longSubs: () => _subsFor(f, i18n),
+        );
+      }
+      return Pult(
+        spec: spec,
+        fg: bort.fg,
+        bg: bort.bg,
+        signal: bort.fgsignal,
+        overrideSize: side,
+      );
+    }
+
+    Widget row(bool playing) => Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        if (_hasPrev)
+          Pult(
+            spec: PultSpec(
+              id: 'media_prev',
+              icon: Icons.chevron_left,
+              onTap: _prev,
+            ),
+            fg: bort.fg,
+            bg: bort.bg,
+            signal: bort.fgsignal,
+            overrideSize: side,
+          )
+        else
+          SizedBox(width: side),
+        SizedBox(width: side * 0.3),
+        centerPult(playing),
+        SizedBox(width: side * 0.3),
+        if (_hasNext)
+          Pult(
+            spec: PultSpec(
+              id: 'media_next',
+              icon: Icons.chevron_right,
+              onTap: _next,
+            ),
+            fg: bort.fg,
+            bg: bort.bg,
+            signal: bort.fgsignal,
+            overrideSize: side,
+          )
+        else
+          SizedBox(width: side),
+      ],
+    );
+
+    if (ek == MediaKind.video && _video != null) {
+      return ValueListenableBuilder<VideoPlayerValue>(
+        valueListenable: _video!,
+        builder: (_, v, __) => row(v.isPlaying),
+      );
+    }
+    return row(_audioPlaying);
+  }
+
+  List<PultSpec> _subsFor(TraceFile f, I18n i18n) => [
+    PultSpec(
+      id: 'media_share',
+      icon: Icons.share,
+      label: i18n.t('media.share'),
+      onTap: () => _share(f),
+    ),
+    PultSpec(
+      id: 'media_del',
+      icon: Icons.delete_outline,
+      label: i18n.t('bort.delete'),
+      confirm: true,
+      onTap: () => _remove(f),
+    ),
+  ];
+
+  // No overlay on the thumb: the overlay color would be a soft
+  // translucent halo, which the project rules out. Active track and
+  // thumb share the signal color; the inactive track is mid.
+  Widget _sliderFor(TraceFile f, OperationalLayer bort, double side) {
+    Widget slider(Duration pos, Duration dur, void Function(Duration) onSeek) {
+      final maxMs = dur.inMilliseconds > 0
+          ? dur.inMilliseconds.toDouble()
+          : 1.0;
+      final v = pos.inMilliseconds.clamp(0, maxMs.toInt()).toDouble();
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: bort.fgsignal,
+              inactiveTrackColor: bort.mid,
+              thumbColor: bort.fgsignal,
+              overlayColor: Colors.transparent,
+              trackHeight: 2,
+            ),
+            child: Slider(
+              value: v,
+              max: maxMs,
+              onChanged: (x) => onSeek(Duration(milliseconds: x.round())),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: side * 0.4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _fmtDur(pos),
+                  style: TextStyle(
+                    color: bort.mid,
+                    fontSize: BortMetrics.fontSizeForSide(
+                      side,
+                      BortTextRole.caption,
+                    ),
+                    fontFamily: 'monospace',
+                  ),
+                ),
+                Text(
+                  _fmtDur(dur),
+                  style: TextStyle(
+                    color: bort.mid,
+                    fontSize: BortMetrics.fontSizeForSide(
+                      side,
+                      BortTextRole.caption,
+                    ),
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    final ek = _effectiveKind(f);
+    if (ek == MediaKind.video) {
+      final ctrl = _video;
+      if (ctrl == null || !ctrl.value.isInitialized) {
+        return const SizedBox.shrink();
+      }
+      return ValueListenableBuilder<VideoPlayerValue>(
+        valueListenable: ctrl,
+        builder: (_, v, __) => slider(v.position, v.duration, ctrl.seekTo),
+      );
+    }
+
+    // audio
+    final player = _audio;
+    final dur = player?.duration;
+    if (player == null || dur == null) return const SizedBox.shrink();
+    return StreamBuilder<Duration>(
+      stream: player.positionStream,
+      initialData: player.position,
+      builder: (_, snap) {
+        final pos = snap.data ?? Duration.zero;
+        return slider(pos, dur, player.seek);
+      },
+    );
+  }
+
+  Widget _body(TraceFile? f, OperationalLayer bort, double side) {
+    final i18n = I18nScope.of(context);
+    if (f == null) {
+      return Center(
+        child: Text(
+          i18n.t('media.attached'),
+          style: TextStyle(color: bort.mid),
+        ),
+      );
+    }
+    final ek = _effectiveKind(f);
+
+    if (ek == MediaKind.photo) {
+      final file = File(f.path);
+      if (file.existsSync()) {
+        return InteractiveViewer(
+          minScale: 1,
+          maxScale: 5,
+          child: Center(child: Image.file(file)),
+        );
+      }
+    }
+    if (ek == MediaKind.video) {
+      return _videoBody(f, bort, side);
+    }
+    if (ek == MediaKind.audio) {
+      return _audioBody(f, bort, side);
+    }
+    if (f.kind == MediaKind.geo) {
+      final lat = f.lat?.toStringAsFixed(6) ?? '?';
+      final lon = f.lon?.toStringAsFixed(6) ?? '?';
+      final acc = f.acc?.toStringAsFixed(1) ?? '?';
+      final latitude = f.lat;
+      final longitude = f.lon;
+      if (latitude == null || longitude == null) {
+        return Center(
+          child: Text(
+            '$lat, $lon',
+            style: TextStyle(
+              color: bort.mid,
+              fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.caption),
+            ),
+          ),
+        );
+      }
+
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          GeoMapPreview(
+            latitude: latitude,
+            longitude: longitude,
+            fallbackImagePath: f.path,
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: side * 1.6,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Solid background: no translucency. The label
+                  // is drawn on bort.bg, not on a blend.
+                  GestureDetector(
+                    onTap: () => _copyCoords(lat, lon),
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: side * 0.2,
+                        vertical: side * 0.1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: bort.bg,
+                        border: Border.all(color: bort.mid),
+                        borderRadius: BorderRadius.circular(
+                          side * bort.kRadius,
+                        ),
+                      ),
+                      child: Text(
+                        '$lat, $lon (±$acc ${i18n.t('time.m')})',
+                        style: TextStyle(
+                          color: bort.fg,
+                          fontSize: BortMetrics.fontSizeForSide(
+                            side,
+                            BortTextRole.caption,
+                          ),
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (_copied)
+                    Padding(
+                      padding: EdgeInsets.only(top: side * 0.15),
+                      child: Text(
+                        i18n.t('media.copied'),
+                        style: TextStyle(
+                          color: bort.fgsignal,
+                          fontSize: BortMetrics.fontSizeForSide(
+                            side,
+                            BortTextRole.caption,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Unknown file: show only the short name (no internal path);
+    // open externally via the bottom center pult.
+    final displayName = f.name.isNotEmpty
+        ? f.name
+        : (f.path.isEmpty ? '—' : p.basename(f.path));
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(_icon(f.kind), color: bort.mid, size: side * 1.5),
+            const SizedBox(height: 12),
+            Text(
+              displayName,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: bort.fg,
+                fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.base),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _videoBody(TraceFile f, OperationalLayer bort, double side) {
+    final ctrl = _video;
+    if (ctrl == null || !ctrl.value.isInitialized) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.videocam_outlined, color: bort.mid, size: side * 1.5),
+            const SizedBox(height: 12),
+            Text(
+              f.name,
+              style: TextStyle(
+                color: bort.mid,
+                fontSize: BortMetrics.fontSizeForSide(
+                  side,
+                  BortTextRole.caption,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return ValueListenableBuilder<VideoPlayerValue>(
+      valueListenable: ctrl,
+      builder: (_, v, __) => Stack(
+        children: [
+          Center(
+            child: AspectRatio(
+              aspectRatio: v.aspectRatio == 0 ? 16 / 9 : v.aspectRatio,
+              child: VideoPlayer(ctrl),
+            ),
+          ),
+          if (!v.isPlaying)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Center(
+                  child: Text(
+                    _fmtDur(v.duration),
+                    style: TextStyle(
+                      color: bort.fg,
+                      fontSize: BortMetrics.fontSizeForSide(
+                        side,
+                        BortTextRole.header,
+                      ),
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _audioBody(TraceFile f, OperationalLayer bort, double side) {
+    final player = _audio;
+    final dur = player?.duration;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (dur != null)
+            Text(
+              _fmtDur(dur),
+              style: TextStyle(
+                color: bort.fg,
+                fontSize: BortMetrics.fontSizeForSide(
+                  side,
+                  BortTextRole.header,
+                ),
+                fontFamily: 'monospace',
+              ),
+            )
+          else
+            Text(
+              f.name,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: bort.fg,
+                fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.base),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}

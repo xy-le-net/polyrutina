@@ -6,30 +6,31 @@ import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
-import 'data/database.dart';
-import 'data/field_layer.dart';
-import 'data/i18n.dart';
-import 'data/journal_layer.dart';
-import 'data/journal_types.dart';
-import 'data/operational_layer.dart';
-import 'data/routine.dart';
-import 'data/routine_layer.dart';
-import 'data/ticker.dart';
-import 'data/trace_layer.dart';
-import 'ui/cards/routine_card.dart';
-import 'ui/core/app_layout.dart';
-import 'ui/core/bort_metrics.dart';
-import 'ui/core/app_scope.dart';
-import 'ui/core/control_row.dart';
-import 'ui/core/format.dart';
-import 'ui/pults/pult_core.dart';
-import 'ui/pults/pult_sheet.dart';
-import 'ui/pults/root_pult.dart';
-import 'ui/services/notification_manager.dart';
-import 'ui/services/notification_service.dart';
-import 'ui/tabs/days_tab.dart';
-import 'ui/tabs/routines_tab.dart';
-import 'ui/tabs/rubka_tab.dart';
+import 'package:polyrutina/core/data/database.dart';
+import 'package:polyrutina/core/data/field_layer.dart';
+import 'package:polyrutina/core/localization/i18n.dart';
+import 'package:polyrutina/core/data/journal_layer.dart';
+import 'package:polyrutina/core/domain/journal_types.dart';
+import 'package:polyrutina/core/application/operational_layer.dart';
+import 'package:polyrutina/shared/models/routine.dart';
+import 'package:polyrutina/features/routines/application/routine_layer.dart';
+import 'package:polyrutina/core/application/ticker.dart';
+import 'package:polyrutina/core/data/trace_layer.dart';
+import 'package:polyrutina/features/routines/presentation/routine_card.dart';
+import 'package:polyrutina/shared/presentation/app_layout.dart';
+import 'package:polyrutina/shared/presentation/bort_metrics.dart';
+import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/shared/presentation/control_row.dart';
+import 'package:polyrutina/shared/application/format.dart';
+import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
+import 'package:polyrutina/shared/presentation/pults/pult_sheet.dart';
+import 'package:polyrutina/shared/presentation/pults/root_pult.dart';
+import 'package:polyrutina/shared/application/notification_manager.dart';
+import 'package:polyrutina/core/application/notification_service.dart';
+import 'package:polyrutina/features/days/presentation/days_tab.dart';
+import 'package:polyrutina/features/routines/presentation/routines_tab.dart';
+import 'package:polyrutina/features/export_import/presentation/rubka_tab.dart';
+import 'package:polyrutina/features/export_import/presentation/report.dart';
 
 void main() => runApp(const PolyRutinaApp());
 
@@ -612,7 +613,8 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       BortMetrics.fontSizeForSide(side, BortTextRole.base),
     ).apply(bodyColor: _bort.fg, displayColor: _bort.fg);
 
-    final appContext = AppContext(
+    late final AppContext appContext;
+    appContext = AppContext(
       bort: _bort,
       routineLayer: _routineLayer,
       traceLayer: _traceLayer,
@@ -623,6 +625,14 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       refresh: _refreshAll,
       reloadI18n: _reloadI18n,
       openRoutine: _openRoutine,
+      exportRoutine: (routineId, context) async {
+        await ReportBuilder.buildSingle(
+          appContext,
+          _i18n!,
+          routineId,
+          uiContext: context,
+        );
+      },
       afterJournalReset: _afterJournalReset,
     );
 

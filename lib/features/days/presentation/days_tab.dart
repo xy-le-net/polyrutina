@@ -1,0 +1,628 @@
+import 'package:flutter/foundation.dart';
+import 'package:material_ui/material_ui.dart';
+
+import 'package:polyrutina/core/localization/i18n.dart';
+import 'package:polyrutina/core/application/operational_layer.dart';
+import 'package:polyrutina/shared/models/routine.dart';
+import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/shared/presentation/bort_metrics.dart';
+import 'package:polyrutina/shared/presentation/control_row.dart';
+import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
+import 'package:polyrutina/shared/presentation/pults/pult_sheet.dart';
+
+class DaysTab extends StatefulWidget {
+  const DaysTab({super.key});
+
+  @override
+  State<DaysTab> createState() => _DaysTabState();
+}
+
+class _DaysTabState extends State<DaysTab> {
+  // A generous anchor so that both directions are effectively
+  // unbounded. About 8300 years in either direction.
+  static const int _centerPage = 100000;
+
+  late final PageController _controller;
+  late final DateTime _baseMonth;
+
+  int _currentPage = _centerPage;
+  bool _animating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final n = DateTime.now();
+    _baseMonth = DateTime(n.year, n.month, 1);
+    _controller = PageController(initialPage: _centerPage)
+      ..addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onScroll);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  DateTime _monthOf(int pageIndex) {
+    final delta = pageIndex - _centerPage;
+    return DateTime(_baseMonth.year, _baseMonth.month + delta, 1);
+  }
+
+  DateTime get _visibleMonth => _monthOf(_currentPage);
+
+  void _onScroll() {
+    final p = _controller.page;
+    if (p == null) return;
+    final rounded = p.round();
+    if (rounded != _currentPage) {
+      setState(() => _currentPage = rounded);
+    }
+  }
+
+  Future<void> _shift(int delta) async {
+    if (_animating) return;
+    _animating = true;
+    try {
+      await _controller.animateToPage(
+        _currentPage + delta,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    } finally {
+      _animating = false;
+    }
+  }
+
+  int? _dayOf(DateTime month, Routine r) {
+    if (r.completed && r.completedAt != null) {
+      return _sameMonthOf(month, r.completedAt!);
+    }
+    if (r.scheduledAt != null) return _sameMonthOf(month, r.scheduledAt!);
+    if (r.lastPulseAt != null) return _sameMonthOf(month, r.lastPulseAt!);
+    return _sameMonthOf(month, r.createdAt);
+  }
+
+  int? _sameMonthOf(DateTime month, int unixSec) {
+    final d = DateTime.fromMillisecondsSinceEpoch(unixSec * 1000);
+    if (d.year != month.year || d.month != month.month) return null;
+    return d.day;
+  }
+
+  _Mark _markOfRoutine(DateTime month, Routine r, int day) {
+    if (r.completed &&
+        r.completedAt != null &&
+        _sameMonthOf(month, r.completedAt!) == day) {
+      return _Mark.completed;
+    }
+    if (r.scheduledAt != null && _sameMonthOf(month, r.scheduledAt!) == day) {
+      return _Mark.scheduled;
+    }
+    if (!r.completed) {
+      return _Mark.unfinished;
+    }
+    return _Mark.none;
+  }
+
+  ({
+    bool completed,
+    bool completedSignal,
+    bool unfinished,
+    bool unfinishedSignal,
+    bool scheduled,
+    bool scheduledSignal,
+    bool anySignal,
+  })
+  _marksOf(DateTime month, int day, List<Routine> routines) {
+    var completed = false;
+    var completedSignal = false;
+    var unfinished = false;
+    var unfinishedSignal = false;
+    var scheduled = false;
+    var scheduledSignal = false;
+    var anySignal = false;
+    for (final r in routines) {
+      final mark = _markOfRoutine(month, r, day);
+      final sig = r.flags != 0;
+      if (sig) anySignal = true;
+      switch (mark) {
+        case _Mark.completed:
+          completed = true;
+          if (sig) completedSignal = true;
+          break;
+        case _Mark.unfinished:
+          unfinished = true;
+          if (sig) unfinishedSignal = true;
+          break;
+        case _Mark.scheduled:
+          scheduled = true;
+          if (sig) scheduledSignal = true;
+          break;
+        case _Mark.none:
+          break;
+      }
+    }
+    return (
+      completed: completed,
+      completedSignal: completedSignal,
+      unfinished: unfinished,
+      unfinishedSignal: unfinishedSignal,
+      scheduled: scheduled,
+      scheduledSignal: scheduledSignal,
+      anySignal: anySignal,
+    );
+  }
+
+  void _showLegendSheet(List<Routine> routines) {
+    if (routines.isEmpty) return;
+    final bort = BortScope.of(context);
+    final openRoutine = AppScope.of(context).openRoutine;
+
+    showPultSheet(
+      context: context,
+      subs: [
+        for (final r in routines)
+          PultSpec(
+            id: 'r_${r.id}',
+            icon: _statusIcon(r),
+            label: r.name.isEmpty ? '—' : r.name,
+            selected: r.flags != 0,
+            onTap: () => openRoutine(r.id),
+          ),
+      ],
+      fg: bort.fg,
+      bg: bort.bg,
+      signal: bort.fgsignal,
+      side: PultScope.of(context).smallSide,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bort = BortScope.of(context);
+    final i18n = I18nScope.of(context);
+    final side = PultScope.of(context).smallSide;
+
+    final vm = _visibleMonth;
+
+    return Column(
+      children: [
+        // Fixed control row: prev · month title · next.
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8, right: 12),
+          child: ControlRow(
+            rootSide: side,
+            alignment: Alignment.center,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                Pult(
+                  spec: PultSpec(
+                    id: 'prev_month',
+                    icon: Icons.chevron_left,
+                    onTap: () => _shift(-1),
+                  ),
+                  fg: bort.fg,
+                  bg: bort.bg,
+                  signal: bort.fgsignal,
+                  overrideSize: side,
+                ),
+                Flexible(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: side * 0.15),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${vm.year}.'
+                          '${vm.month.toString().padLeft(2, '0')}',
+                          style: TextStyle(
+                            color: bort.fg,
+                            fontSize: BortMetrics.fontSizeForSide(
+                              side,
+                              BortTextRole.header,
+                            ),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                        ),
+                        Text(
+                          '(${i18n.t('month.${vm.month}')})',
+                          style: TextStyle(
+                            color: bort.mid,
+                            fontSize: BortMetrics.fontSizeForSide(
+                              side,
+                              BortTextRole.caption,
+                            ),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Pult(
+                  spec: PultSpec(
+                    id: 'next_month',
+                    icon: Icons.chevron_right,
+                    onTap: () => _shift(1),
+                  ),
+                  fg: bort.fg,
+                  bg: bort.bg,
+                  signal: bort.fgsignal,
+                  overrideSize: side,
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Paged body: grid + legend per month.
+        Expanded(
+          child: PageView.builder(
+            controller: _controller,
+            itemCount: null,
+            itemBuilder: (context, index) {
+              return _buildMonthPage(index, bort, i18n, side);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMonthPage(
+    int pageIndex,
+    OperationalLayer bort,
+    I18n i18n,
+    double side,
+  ) {
+    final month = _monthOf(pageIndex);
+
+    final cells = <int, List<Routine>>{};
+    final scheduledRoutines = <Routine>[];
+    final unfinishedRoutines = <Routine>[];
+    final completedRoutines = <Routine>[];
+
+    for (final r in RoutineScope.of(context).routines) {
+      final day = _dayOf(month, r);
+      if (day == null) continue;
+      cells.putIfAbsent(day, () => []).add(r);
+      switch (_markOfRoutine(month, r, day)) {
+        case _Mark.scheduled:
+          scheduledRoutines.add(r);
+          break;
+        case _Mark.unfinished:
+          unfinishedRoutines.add(r);
+          break;
+        case _Mark.completed:
+          completedRoutines.add(r);
+          break;
+        case _Mark.none:
+          break;
+      }
+    }
+
+    final now = DateTime.now();
+    final int? todayDay = (now.year == month.year && now.month == month.month)
+        ? now.day
+        : null;
+
+    final firstWeekday = month.weekday;
+    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
+    final totalCells = (((firstWeekday - 1) + daysInMonth + 6) ~/ 7) * 7;
+
+    final grid = <Widget>[];
+    for (var i = 0; i < totalCells; i++) {
+      final dayNum = i - (firstWeekday - 1) + 1;
+      if (dayNum < 1 || dayNum > daysInMonth) {
+        grid.add(const SizedBox.shrink());
+        continue;
+      }
+      final list = cells[dayNum] ?? const <Routine>[];
+      grid.add(
+        _cell(month, dayNum, list, side, bort, isToday: dayNum == todayDay),
+      );
+    }
+
+    final gridWidget = GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 7,
+      childAspectRatio: 1,
+      children: grid,
+    );
+
+    final legendWidget = _legend(
+      side,
+      bort,
+      i18n,
+      scheduled: scheduledRoutines,
+      unfinished: unfinishedRoutines,
+      completed: completedRoutines,
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final pagePadding = side * 0.3;
+        final calendarWidth = (constraints.maxWidth - pagePadding * 2)
+            .clamp(0.0, 300.0)
+            .toDouble();
+
+        return SingleChildScrollView(
+          padding: EdgeInsets.all(pagePadding),
+          child: Center(
+            child: SizedBox(
+              width: calendarWidth,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  gridWidget,
+                  SizedBox(height: side * 0.8),
+                  Center(child: legendWidget),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _legend(
+    double side,
+    OperationalLayer bort,
+    I18n i18n, {
+    required List<Routine> scheduled,
+    required List<Routine> unfinished,
+    required List<Routine> completed,
+  }) {
+    final color = bort.mid;
+    final itemSize = side * 0.9;
+    final markStroke = side * 0.04;
+    final fontSize = BortMetrics.fontSizeForSide(side, BortTextRole.base);
+    final gap = side * 0.3;
+
+    Widget item(Widget mark, int count, String label, List<Routine> routines) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _showLegendSheet(routines),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: itemSize,
+              height: itemSize,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  mark,
+                  Text(
+                    '$count',
+                    style: TextStyle(
+                      color: color,
+                      fontSize: fontSize,
+                      height: 1.0,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: side * 0.1),
+            Text(
+              label,
+              style: TextStyle(color: color, fontSize: fontSize),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final items = <Widget>[];
+    if (scheduled.isNotEmpty) {
+      items.add(
+        item(
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border.all(color: color, width: markStroke),
+                borderRadius: BorderRadius.circular(side * 0.05),
+              ),
+            ),
+          ),
+          scheduled.length,
+          i18n.t('days.legend.scheduled'),
+          scheduled,
+        ),
+      );
+    }
+    if (unfinished.isNotEmpty) {
+      items.add(
+        item(
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: color, width: markStroke),
+              ),
+            ),
+          ),
+          unfinished.length,
+          i18n.t('days.legend.unfinished'),
+          unfinished,
+        ),
+      );
+    }
+    if (completed.isNotEmpty) {
+      items.add(
+        item(
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Container(
+              margin: EdgeInsets.only(bottom: itemSize * 0.1),
+              height: markStroke,
+              width: itemSize * 0.6,
+              color: color,
+            ),
+          ),
+          completed.length,
+          i18n.t('days.legend.completed'),
+          completed,
+        ),
+      );
+    }
+
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final item in items)
+          Padding(
+            padding: EdgeInsets.only(bottom: gap),
+            child: item,
+          ),
+      ],
+    );
+  }
+
+  Widget _cell(
+    DateTime month,
+    int day,
+    List<Routine> routines,
+    double side,
+    OperationalLayer bort, {
+    required bool isToday,
+  }) {
+    final m = _marksOf(month, day, routines);
+
+    final numberColor = m.anySignal ? bort.fgsignal : bort.mid;
+    final scheduledColor = m.scheduledSignal ? bort.fgsignal : bort.mid;
+    final unfinishedColor = m.unfinishedSignal ? bort.fgsignal : bort.mid;
+
+    final TextStyle style = TextStyle(
+      color: numberColor,
+      fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.base),
+      height: 1.0,
+      decoration: m.completed ? TextDecoration.underline : TextDecoration.none,
+      decorationColor: bort.mid,
+    );
+
+    final boxSide = side * 0.9;
+    final circleSide = boxSide;
+    final markStroke = side * 0.04;
+
+    final layers = <Widget>[];
+
+    if (isToday) {
+      layers.add(
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: bort.bgsignal,
+              borderRadius: BorderRadius.circular(side * 0.12),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (m.scheduled) {
+      layers.add(
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border.all(color: scheduledColor, width: markStroke),
+              borderRadius: BorderRadius.circular(side * 0.05),
+            ),
+          ),
+        ),
+      );
+    }
+    if (m.unfinished) {
+      layers.add(
+        Center(
+          child: SizedBox(
+            width: circleSide,
+            height: circleSide,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: unfinishedColor, width: markStroke),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    layers.add(Text('$day', style: style));
+
+    return GestureDetector(
+      onTap: routines.isEmpty ? null : () => _openDay(routines),
+      onLongPress: () => _createOnDay(month, day),
+      onSecondaryTap: defaultTargetPlatform == TargetPlatform.windows
+          ? () => _createOnDay(month, day)
+          : null,
+      child: Center(
+        child: SizedBox(
+          width: boxSide,
+          height: boxSide,
+          child: Stack(alignment: Alignment.center, children: layers),
+        ),
+      ),
+    );
+  }
+
+  void _openDay(List<Routine> routines) {
+    final bort = BortScope.of(context);
+    final openRoutine = AppScope.of(context).openRoutine;
+    showPultSheet(
+      context: context,
+      subs: [
+        for (final r in routines)
+          PultSpec(
+            id: 'r_${r.id}',
+            icon: _statusIcon(r),
+            label: r.name.isEmpty ? '—' : r.name,
+            selected: r.flags != 0,
+            onTap: () => openRoutine(r.id),
+          ),
+      ],
+      fg: bort.fg,
+      bg: bort.bg,
+      signal: bort.fgsignal,
+      side: PultScope.of(context).smallSide,
+    );
+  }
+
+  Future<void> _createOnDay(DateTime month, int day) async {
+    final app = AppScope.of(context);
+    final routineLayer = RoutineScope.of(context);
+    final r = await routineLayer.createRoutine(app.journal);
+    final dt = DateTime(month.year, month.month, day);
+
+    final parts = app.bort.midnight.split(':');
+    final hh = int.tryParse(parts.isNotEmpty ? parts[0] : '0') ?? 0;
+    final mm = int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0;
+    final withMidnight = DateTime(dt.year, dt.month, dt.day, hh, mm);
+
+    await routineLayer.setSchedule(
+      app.journal,
+      r.id,
+      withMidnight.millisecondsSinceEpoch ~/ 1000,
+    );
+    if (!mounted) return;
+    await app.openRoutine(r.id, autofocusName: true);
+  }
+
+  IconData _statusIcon(Routine r) {
+    if (r.completed) return Icons.check;
+    if (r.scheduledAt != null) return Icons.crop_square;
+    return Icons.circle_outlined;
+  }
+}
+
+enum _Mark { none, scheduled, unfinished, completed }
