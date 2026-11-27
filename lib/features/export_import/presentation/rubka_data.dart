@@ -110,44 +110,43 @@ class _RubkaDataState extends State<RubkaData> {
         final metrics = BortMetrics.of(ctx, compact: true);
         return DialogFrame(
           onDismiss: () => Navigator.of(ctx).pop(),
+          maxHeight: MediaQuery.sizeOf(ctx).height * 0.96,
+          scrollable: false,
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: MainAxisSize.max,
             children: [
               DialogTitle(text: i18n.t('bort.media')),
               SizedBox(height: metrics.unit(0.4)),
-              if (entries.isEmpty)
-                Text(
-                  i18n.t('media.none'),
-                  style: TextStyle(
-                    color: metrics.bort.mid,
-                    fontSize: metrics.smallFontSize,
-                  ),
-                )
-              else
-                ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.sizeOf(ctx).height * 0.6,
-                  ),
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: [
-                      for (final entry in entries)
-                        Padding(
-                          padding: EdgeInsets.symmetric(
-                            vertical: metrics.unit(0.1),
-                          ),
-                          child: LinkText(
-                            text:
-                                '${entry.bytes == null ? '—' : _fmtSize(entry.bytes!, i18n.t)}: '
-                                '${entry.file.name.isEmpty ? p.basename(entry.file.path) : entry.file.name} '
-                                '(${entry.owner})',
-                            fontSize: metrics.numberFontSize,
-                            onTap: () => Navigator.of(ctx).pop(entry),
+              FixedListViewport(
+                child: entries.isEmpty
+                    ? Center(
+                        child: Text(
+                          i18n.t('media.none'),
+                          style: TextStyle(
+                            color: metrics.bort.mid,
+                            fontSize: metrics.smallFontSize,
                           ),
                         ),
-                    ],
-                  ),
-                ),
+                      )
+                    : ListView(
+                        children: [
+                          for (final entry in entries)
+                            Padding(
+                              padding: EdgeInsets.symmetric(
+                                vertical: metrics.unit(0.1),
+                              ),
+                              child: LinkText(
+                                text:
+                                    '${entry.bytes == null ? '—' : _fmtSize(entry.bytes!, i18n.t)}: '
+                                    '${entry.file.name.isEmpty ? p.basename(entry.file.path) : entry.file.name} '
+                                    '(${entry.owner})',
+                                fontSize: metrics.numberFontSize,
+                                onTap: () => Navigator.of(ctx).pop(entry),
+                              ),
+                            ),
+                        ],
+                      ),
+              ),
               SizedBox(height: metrics.unit(0.4)),
               DialogActions(
                 actions: [
@@ -174,6 +173,7 @@ class _RubkaDataState extends State<RubkaData> {
           startIndex: selected.fileIndex,
           blockTitle: selected.trace.slot,
           routineTitle: selected.isOrphan ? '' : selected.owner,
+          singleFile: true,
         ),
       ),
     );
@@ -408,10 +408,7 @@ class _RubkaDataState extends State<RubkaData> {
     );
     if (!ok || !mounted) return;
 
-    // The navigator is captured before any await; if the tree is
-    // rebuilt mid-flow (I18n reload fires through _onBortChanged),
-    // `context` stays valid, but caching the navigator is safer and
-    // makes the pop unconditional on the finally branch.
+    // Retain the navigator while localization reloads rebuild the tree.
     final nav = Navigator.of(context, rootNavigator: true);
     final token = ProgressToken();
     showDialog<void>(
@@ -421,9 +418,7 @@ class _RubkaDataState extends State<RubkaData> {
       builder: (_) => ProgressDialog(token: token, title: i18n.t('bort.reset')),
     );
 
-    // Progress is reported at each stage so the ring is not stuck at
-    // 0% while the work proceeds. Failures are logged but never
-    // prevent the dialog from closing: leaving it on screen was the
+    // Report each stage and always close the progress dialog.
     try {
       token.report(0.05);
       await bort.resetCache();

@@ -6,11 +6,12 @@ import 'package:polyrutina/shared/presentation/app_scope.dart';
 import 'package:polyrutina/shared/presentation/app_layout.dart';
 import 'package:polyrutina/shared/presentation/widgets/bort_field.dart';
 import 'package:polyrutina/shared/presentation/control_row.dart';
-import 'package:polyrutina/shared/application/format.dart';
+import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_sheet.dart';
 import 'package:polyrutina/shared/presentation/pickers/bort_date_picker.dart';
 import 'package:polyrutina/shared/presentation/pickers/notice_picker.dart';
+import 'package:polyrutina/shared/presentation/widgets/wheel_picker.dart';
 import 'package:polyrutina/features/routines/presentation/routine_block_view.dart';
 
 class RoutineCard extends StatefulWidget {
@@ -32,10 +33,6 @@ class _RoutineCardState extends State<RoutineCard> {
   final Map<String, GlobalKey> _blockKeys = {};
   final _scrollController = ScrollController();
   bool _autoScrolled = false;
-
-  String? _editingKind;
-  TextEditingController? _editCtrl;
-  FocusNode? _editFocus;
 
   int _lastMinute = 0;
   int _lastSecond = 0;
@@ -79,8 +76,7 @@ class _RoutineCardState extends State<RoutineCard> {
           if (running != null) {
             _expanded.add(running.kind);
           } else {
-            // No block running right now: open the last active one,
-            // so a revisited routine shows where work had stopped.
+            // Reopen the last active block when none is running.
             final last = layer.lastActiveBlockKind;
             if (last != null) _expanded.add(last);
           }
@@ -118,8 +114,6 @@ class _RoutineCardState extends State<RoutineCard> {
   void dispose() {
     _ticker?.removeListener(_onTick);
     _scrollController.dispose();
-    _editCtrl?.dispose();
-    _editFocus?.dispose();
     super.dispose();
   }
 
@@ -189,52 +183,14 @@ class _RoutineCardState extends State<RoutineCard> {
     if (b.isRunning) {
       await routineLayer.pauseBlock(journal, r.id, kind);
     }
-
+    if (!mounted) return;
     final seconds = r.blockOf(kind)?.accumulatorSeconds ?? 0;
-    _editCtrl?.dispose();
-    _editFocus?.dispose();
-    _editCtrl = TextEditingController(text: fmtEditable(seconds));
-    _editFocus = FocusNode();
-    _editFocus!.addListener(() {
-      if (!_editFocus!.hasFocus) _cancelEdit();
-    });
-    setState(() => _editingKind = kind);
-  }
-
-  void _cancelEdit() {
-    if (_editingKind == null) return;
-    if (mounted) {
-      setState(() => _editingKind = null);
-    }
-    _editCtrl?.dispose();
-    _editFocus?.dispose();
-    _editCtrl = null;
-    _editFocus = null;
-  }
-
-  Future<void> _confirmEdit(Routine r, String kind) async {
-    final routineLayer = RoutineScope.of(context);
-    final journal = AppScope.of(context).journal;
-    final text = _editCtrl?.text ?? '';
-    final sec = parseEditable(text);
-    final cur = r.blockOf(kind)?.accumulatorSeconds ?? 0;
-
-    if (sec == null) {
-      _cancelEdit();
-      return;
-    }
-    if (sec == cur) {
-      _cancelEdit();
-      return;
-    }
-    await routineLayer.setBlockTime(journal, r.id, kind, sec);
-    if (mounted) {
-      setState(() => _editingKind = null);
-    }
-    _editCtrl?.dispose();
-    _editFocus?.dispose();
-    _editCtrl = null;
-    _editFocus = null;
+    final edited = await WheelValuePicker.showDurationWheelPicker(
+      context,
+      initialSeconds: seconds,
+    );
+    if (edited == null || !mounted || edited == seconds) return;
+    await routineLayer.setBlockTime(journal, r.id, kind, edited);
   }
 
   Future<void> _toggleCompleted(Routine r) async {
@@ -266,9 +222,7 @@ class _RoutineCardState extends State<RoutineCard> {
     final routineLayer = RoutineScope.of(context);
     final journal = AppScope.of(context).journal;
 
-    // A moment, not a date. When the routine has none, hand the
-    // picker a date-only value so its time field seeds from the
-    // the picker returns the full moment, and it is stored as is.
+    // Preserve the full scheduled moment; new dates start at midnight.
     final now = DateTime.now();
     final initial = r.scheduledAt != null
         ? DateTime.fromMillisecondsSinceEpoch(r.scheduledAt! * 1000)
@@ -285,7 +239,7 @@ class _RoutineCardState extends State<RoutineCard> {
   }
 
   Future<void> _pickNotice(Routine r) async {
-    // Guard: notice pult is meaningful only with a date.
+    // Notices require a scheduled date.
     if (r.scheduledAt == null) return;
     final routineLayer = RoutineScope.of(context);
     final journal = AppScope.of(context).journal;
@@ -309,11 +263,19 @@ class _RoutineCardState extends State<RoutineCard> {
     final app = AppScope.of(context);
     final i18n = app.i18n;
     final bort = app.bort;
-    final currentFieldId = FieldScope.of(context).activeFieldId;
     final attached = r.fieldParents.isNotEmpty;
+    final fieldLayer = app.fieldLayer;
+    final selectedFields = <int>{};
+    void addPath(int id) {
+      if (!selectedFields.add(id)) return;
+      for (final parentId in fieldLayer.nodes[id]?.parents ?? const <int>[]) {
+        addPath(parentId);
+      }
+    }
 
-    final nodes = app.fieldLayer.nodes.values.where((n) => n.isRoot).toList();
-    if (nodes.isEmpty) return;
+    for (final parentId in r.fieldParents) {
+      addPath(parentId);
+    }
 
     final subs = <PultSpec>[
       if (attached)
@@ -329,27 +291,53 @@ class _RoutineCardState extends State<RoutineCard> {
             });
           },
         ),
-      for (final n in nodes)
+    ];
+
+    void addNodes(int nodeId, int depth) {
+      final node = fieldLayer.nodes[nodeId];
+      if (node == null) return;
+      subs.add(
         PultSpec(
-          id: 'move_${r.id}_${n.id}',
-          icon: Icons.layers,
-          label: n.name,
-          selected: currentFieldId == n.id,
+          id: 'move_${r.id}_${node.id}',
+          icon: node.isRoot ? Icons.layers : Icons.subdirectory_arrow_right,
+          label: node.name.isEmpty
+              ? (node.isRoot ? i18n.t('field.root') : '—')
+              : node.name,
+          selected: selectedFields.contains(node.id),
+          indent: depth * 20,
           onTap: () async {
-            if (currentFieldId != null && currentFieldId != n.id) {
-              await app.routineLayer.detachFromField(
-                app.journal,
-                r.id,
-                currentFieldId,
-              );
+            await app.journal.transaction(() async {
+              for (final parentId in List<int>.from(r.fieldParents)) {
+                await app.routineLayer.detachFromField(
+                  app.journal,
+                  r.id,
+                  parentId,
+                );
+              }
+              await app.routineLayer.attachToField(app.journal, r.id, node.id);
+            });
+            var root = node;
+            final visited = <int>{};
+            while (!root.isRoot && root.parents.isNotEmpty) {
+              if (!visited.add(root.id)) break;
+              final parent = fieldLayer.nodes[root.parents.first];
+              if (parent == null) break;
+              root = parent;
             }
-            if (currentFieldId != n.id) {
-              await app.routineLayer.attachToField(app.journal, r.id, n.id);
-              app.fieldLayer.setActiveField(n.id);
-            }
+            if (root.isRoot) fieldLayer.setActiveField(root.id);
           },
         ),
-    ];
+      );
+      for (final childId in node.children) {
+        addNodes(childId, depth + 1);
+      }
+    }
+
+    final roots = fieldLayer.nodes.values.where((node) => node.isRoot).toList()
+      ..sort((a, b) => a.id.compareTo(b.id));
+    for (final root in roots) {
+      addNodes(root.id, 0);
+    }
 
     await showPultSheet(
       context: context,
@@ -414,15 +402,9 @@ class _RoutineCardState extends State<RoutineCard> {
         timeEdited: kind == 'summary' ? anyEdited : (b?.timeEdited ?? false),
         collapsed: kind == 'summary' ? false : !_isExpanded(kind),
         showAllSlots: _showAllSlots,
-        editingKind: _editingKind,
-        editCtrl: _editCtrl,
-        editFocus: _editFocus,
         onToggleCollapsed: () => _toggleExpanded(kind),
         onStartEdit: (!isNote && kind != 'summary')
             ? () => _startEdit(r, kind)
-            : null,
-        onConfirmEdit: (!isNote && kind != 'summary')
-            ? () => _confirmEdit(r, kind)
             : null,
         onToggleCompleted: (kind == 'summary')
             ? () => _toggleCompleted(r)
@@ -435,8 +417,7 @@ class _RoutineCardState extends State<RoutineCard> {
         scheduledActive: r.scheduledAt != null,
         onPickDate: kind == 'note' ? () => _pickSchedule(r) : null,
         onClearDate: kind == 'note' ? () => _clearSchedule(r) : null,
-        // Notice pult is enabled only with a date; RoutineBlockView
-        // hides the pult when onPickNotice is null.
+        // Show notice controls only for scheduled routines.
         onPickNotice: (kind == 'note' && r.scheduledAt != null)
             ? () => _pickNotice(r)
             : null,
@@ -476,6 +457,7 @@ class _RoutineCardState extends State<RoutineCard> {
                   showBorder: false,
                   autofocus: widget.autofocusName,
                   hint: i18n.t('routine.no_name'),
+                  idleTextRole: BortTextRole.caption,
                   onCommit: (v) => routineLayer.renameRoutine(
                     AppScope.of(context).journal,
                     r.id,

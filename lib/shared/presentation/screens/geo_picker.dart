@@ -161,7 +161,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
   void _startTracking() {
     setState(() => _locating = true);
 
-    // Request permission then listen to stream
+    // Request permission before subscribing to location updates.
     Geolocator.checkPermission()
         .then((perm) async {
           if (perm == LocationPermission.denied) {
@@ -435,8 +435,6 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
     if (mounted) Navigator.of(context).pop();
   }
 
-  void _close() => Navigator.of(context).pop();
-
   void _switchTileSource(int index, {bool byUser = false}) {
     if (index == _tileSourceIndex) return;
     if (byUser) _userSwitched = true;
@@ -508,17 +506,6 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                         ),
                       ),
                     ),
-                    Pult(
-                      spec: PultSpec(
-                        id: 'header_exit',
-                        icon: Icons.keyboard_arrow_down,
-                        onTap: _busy ? null : _close,
-                      ),
-                      fg: bort.fg,
-                      bg: bort.bg,
-                      signal: bort.fgsignal,
-                      overrideSize: side * bort.kPultSmall,
-                    ),
                   ],
                 ),
               ),
@@ -545,7 +532,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                               smallerSidePx,
                             ),
                             onTap: (_, p) {
-                              // Stop tracking on first tap
+                              // Keep the user's manual selection.
                               _positionStream?.cancel();
                               setState(() {
                                 _userTouched = true;

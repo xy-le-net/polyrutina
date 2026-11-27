@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'package:polyrutina/shared/models/routine.dart';
@@ -40,10 +39,6 @@ class RoutinePlate extends StatelessWidget {
     final side = pult.smallSide;
     final running = routine.runningBlock != null;
 
-    // Overdue is a visual state of its own: signal frame with doubled
-    // stroke, normal palette. Running wins if both apply — its frame
-    // is already signal-doubled and its palette is inverted, so the
-    // doubled-signal rule is subsumed.
     final overdue = !running && routine.isOverdue;
     final attention = running || overdue || routine.flags != 0;
 
@@ -51,17 +46,20 @@ class RoutinePlate extends StatelessWidget {
     final Color textMain;
     final Color textSoft;
     final Color accent;
+    final Color scheduleColor;
     if (running) {
       final c = bort.runningColors();
       plateBg = c.bg;
       textMain = c.fg;
       textSoft = c.mid;
       accent = c.fgsignal;
+      scheduleColor = routine.flags == 0 ? c.fg : c.fgsignal;
     } else {
       plateBg = bort.bg;
       textMain = bort.fg;
       textSoft = bort.mid;
       accent = bort.fgsignal;
+      scheduleColor = routine.flags == 0 ? bort.fg : bort.fgsignal;
     }
 
     final nameSize = metrics.textSize(BortTextRole.base);
@@ -150,8 +148,6 @@ class RoutinePlate extends StatelessWidget {
             ),
           );
 
-    // right after the date line. The doubled frame already says the
-    // routine demands attention; the word says why.
     final Widget? overdueLabel = overdue
         ? Padding(
             padding: EdgeInsets.only(top: dateSize * 0.3),
@@ -196,12 +192,18 @@ class RoutinePlate extends StatelessWidget {
                         vertical: dateSize * 0.1,
                       ),
                       decoration: BoxDecoration(
-                        border: Border.all(color: accent, width: strokeW * 2),
+                        border: Border.all(
+                          color: scheduleColor,
+                          width: strokeW * 2,
+                        ),
                         borderRadius: BorderRadius.circular(radiusW * 0.3),
                       ),
                       child: Text(
                         fmtDate(routine.scheduledAt!, i18n.t),
-                        style: TextStyle(color: accent, fontSize: dateSize),
+                        style: TextStyle(
+                          color: scheduleColor,
+                          fontSize: dateSize,
+                        ),
                       ),
                     )
                   else
@@ -239,9 +241,6 @@ class RoutinePlate extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       onLongPress: onLongPress,
-      onSecondaryTap: defaultTargetPlatform == TargetPlatform.windows
-          ? onLongPress
-          : null,
       child: Container(
         decoration: BoxDecoration(
           color: plateBg,

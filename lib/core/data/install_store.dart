@@ -41,9 +41,7 @@ class InstallStore {
     await _save();
   }
 
-  // Monotone: every call returns a new value greater than the
-  // cause the same index to be reused after a restart. The actual
-  // write is queued to prevent race conditions.
+  // Persist the increment in order to avoid reusing media indices after restart.
   int nextMediaIndex() {
     mediaCounter++;
     _queueSave();

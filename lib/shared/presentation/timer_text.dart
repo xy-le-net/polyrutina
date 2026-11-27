@@ -56,6 +56,7 @@ class TimerText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (seconds <= 0) return const SizedBox.shrink();
     final primary = fg;
     final secondary = dim;
     final unitSize = numberSize;

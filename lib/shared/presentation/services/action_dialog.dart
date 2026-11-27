@@ -153,9 +153,10 @@ class _TimeHistoryDialogState extends State<_TimeHistoryDialog> {
 
     return DialogFrame(
       onDismiss: () => Navigator.of(context).pop(),
-      maxHeight: side * 12,
+      maxHeight: MediaQuery.sizeOf(context).height * 0.96,
+      scrollable: false,
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: MainAxisSize.max,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -177,9 +178,9 @@ class _TimeHistoryDialogState extends State<_TimeHistoryDialog> {
                     _monthTitle(),
                     style: TextStyle(
                       color: bort.fg,
-                      fontSize: BortMetrics.of(context).textSize(
-                        BortTextRole.base,
-                      ),
+                      fontSize: BortMetrics.of(
+                        context,
+                      ).textSize(BortTextRole.base),
                     ),
                   ),
                 ),
@@ -206,16 +207,12 @@ class _TimeHistoryDialogState extends State<_TimeHistoryDialog> {
             ),
           ),
           SizedBox(height: side * bort.kFramePad * 0.5),
-          Flexible(
+          FixedListViewport(
             child: keys.isEmpty
-                ? Padding(
-                    padding: EdgeInsets.symmetric(
-                      vertical: side * bort.kFramePad,
-                    ),
+                ? Center(
                     child: Text('—', style: TextStyle(color: bort.mid)),
                   )
                 : ListView(
-                    shrinkWrap: true,
                     children: [
                       for (final d in keys)
                         Padding(
@@ -225,9 +222,9 @@ class _TimeHistoryDialogState extends State<_TimeHistoryDialog> {
                             '$d: ${fmtTime(days[d]!, i18n.t)}',
                             style: TextStyle(
                               color: bort.fg,
-                              fontSize: BortMetrics.of(context).textSize(
-                                BortTextRole.caption,
-                              ),
+                              fontSize: BortMetrics.of(
+                                context,
+                              ).textSize(BortTextRole.caption),
                               fontFamily: 'monospace',
                             ),
                           ),

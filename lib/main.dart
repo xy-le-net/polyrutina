@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
@@ -58,22 +59,20 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   I18n? _i18n;
   String? _splashSlogan;
   String? _initError;
-  // True only after _init has completed successfully and the app is
-  // ready to show. Until then, the waiting screen is painted.
+  // The main UI appears after successful initialization.
   bool _bootDone = false;
 
-  // The native launch screen uses the default palette; once preferences
-  // load, the Dart waiting screen follows the active app palette.
+  // Keep the waiting screen in the loaded palette.
   Color get _splashBg => _bort.bg;
 
-  int _tab = 0; // Routines
+  int _tab = 0;
   int? _openedRoutineId;
   bool _sheetOpen = false;
 
   VoidCallback? _onTickerTick;
   String _bortSignature = '';
 
-  // Periodic consumer of pending_action.json. Started on init.
+  // Poll pending notification actions.
   Timer? _pendingPollTimer;
   bool _pendingActionInProgress = false;
 
@@ -96,8 +95,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       _onNotificationTap();
     });
 
-    // Periodic safety net for shade actions. A prompt pass also
-    // happens on resume (see didChangeAppLifecycleState).
     _pendingPollTimer = Timer.periodic(
       const Duration(seconds: 2),
       (_) => _handlePendingNotificationAction(),
@@ -136,10 +133,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     final s = _computeBortSignature();
     if (s == _bortSignature) return;
     _bortSignature = s;
-    // Deferred to the next frame: calling _reloadI18n synchronously
-    // here triggers a NotificationManager rebuild in the middle of
-    // bort.resetCache(), which (if a routine is running) may raise a
-    // system permission dialog on top of the progress dialog.
+    // Defer localization reload until cache-reset dialogs finish.
     if (_i18n != null && _i18n!.lang != _bort.lang) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _reloadI18n();
@@ -153,12 +147,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       const Duration(seconds: 3),
     );
     try {
-      // Preload the dictionary: peek the language from defaults.json
-      // and load the dictionary first, so the waiting screen can
-      // show a slogan before the layers are ready. If the persisted
-      // bort language differs, _onBortChanged will trigger a reload
-      // once bort.init() has read the file; that path is already
-      // in place.
+      // Load the default-language slogan before initializing app layers.
       try {
         final raw = await rootBundle.loadString('assets/defaults.json');
         final data = jsonDecode(raw) as Map<String, dynamic>;
@@ -167,9 +156,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
         _splashSlogan = _chooseSplashSlogan(_i18n!);
         if (mounted) setState(() {});
       } catch (_) {
-        // The dictionary is loaded again below after bort.init; a
-        // failure here only means the waiting screen shows without
-        // a slogan.
+        // Initialization retries the dictionary load after preferences load.
       }
 
       final systemBrightness =
@@ -200,8 +187,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       _tab = 0;
       _bortSignature = _computeBortSignature();
 
-      // Attach the overdue scheduler before anything else uses the
-      // layer, then run the startup reconciliation.
+      // Configure and reconcile scheduled notifications.
       _scheduler = _OverdueSchedulerImpl(_i18n!);
       _routineLayer.scheduler = _scheduler;
       unawaited(_scheduler!.reconcile(_routineLayer.routines));
@@ -394,8 +380,9 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   Future<void> _switchTab(int i) async {
     _bort.pulseBort();
-    if (_openedRoutineId != null) {
-      _navigatorKey.currentState?.popUntil((r) => r.isFirst);
+    final navigator = _navigatorKey.currentState;
+    if (navigator != null && navigator.canPop()) {
+      navigator.popUntil((r) => r.isFirst);
     }
     if (_tab != i) setState(() => _tab = i);
   }
@@ -499,11 +486,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     _handleBack();
   }
 
-  // Painted until _bootDone is set. Shows the app icon on the fixed
-  // splash background, and a slogan below when the dictionary is
-  // already loaded. The slogan is picked from `slogans` (one entry
-  // per language, lines separated by «\n»); one is chosen randomly
-  // when the dictionary is loaded.
+  // Show the app icon and an optional localized slogan during startup.
   String? _chooseSplashSlogan(I18n i18n) {
     final parts = i18n
         .t('slogans')
@@ -588,8 +571,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     }
 
     if (_i18n == null) {
-      // Should not happen: _bootDone implies a loaded dictionary.
-      // Fall back to the waiting screen rather than to a blank.
+      // Keep the startup screen visible if localization is unavailable.
       return _waitingScreen();
     }
 
@@ -720,7 +702,16 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
                                   color: _bort.bg,
                                   child: Listener(
                                     behavior: HitTestBehavior.translucent,
-                                    onPointerDown: (_) => _bort.pulseBort(),
+                                    onPointerDown: (event) {
+                                      _bort.pulseBort();
+                                      if (event.kind ==
+                                              PointerDeviceKind.mouse &&
+                                          (event.buttons &
+                                                  kSecondaryMouseButton) !=
+                                              0) {
+                                        _handleEscape();
+                                      }
+                                    },
                                     child: SafeArea(
                                       child: Stack(
                                         children: [
@@ -772,9 +763,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   }
 }
 
-// The layer knows only the contract (refresh / cancel); the adapter
-// owns the formatting and the platform calls. Kept in main.dart so
-// the layer stays UI-free.
+// Adapt routine scheduling to the platform notification service.
 class _OverdueSchedulerImpl implements OverdueScheduler {
   final I18n i18n;
   Future<void> _tail = Future<void>.value();
@@ -806,7 +795,7 @@ class _OverdueSchedulerImpl implements OverdueScheduler {
   }
 
   Future<void> _enqueue(Future<void> Function() action) {
-    // Ordered cancel-and-recreate operations prevent stale alarms after rapid edits.
+    // Replace notifications in order to avoid stale alarms.
     final next = _tail.then((_) async {
       try {
         await action();
@@ -843,11 +832,7 @@ class _OverdueSchedulerImpl implements OverdueScheduler {
       return;
     }
 
-    // The moment already passed. Fire an audible push now, so that
-    // setting a notice whose lead time is longer than the time left
-    // before the due date does not silently do nothing. Startup
-    // will fire again for the same routine (by design — see the
-    // file header).
+    // Notify immediately when the requested lead time has already passed.
     await NotificationService.showOverdue(
       routineId: r.id,
       title: _title(r),

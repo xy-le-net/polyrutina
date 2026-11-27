@@ -19,8 +19,7 @@ class TraceField extends StatefulWidget {
   final Color dim;
   final Color bg;
   final Color signal;
-  // Input field background. Differs from block bg: the block might be
-  // dimmed (bgdim), while the input field is normal (bg).
+  // Keep the input field readable when its block is dimmed.
   final Color fieldBg;
   final double side;
   final String blockTitle;
@@ -45,29 +44,22 @@ class TraceField extends StatefulWidget {
 }
 
 class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
-  // Expansion limit: twenty-four lines.
   static const int _maxExpandedLines = 24;
-  // Editing an existing text, unfocused: three lines.
   static const int _collapsedLines = 3;
-  // Empty, unfocused: two lines.
   static const int _emptyLines = 2;
 
   late final TextEditingController _ctrl;
   final _focus = FocusNode();
-  // Captured on the field area itself; used by _ensureVisible.
   final _fieldKey = GlobalKey();
 
   bool _initialized = false;
   bool _focused = false;
-  // True between a tap on the view text and the moment the focus
-  // either lands or is lost; while true, the field stays in the
-  // input state.
+  // Keeps the field editable while focus is being acquired.
   bool _editing = false;
   String _lastSent = '';
 
   int _traceId = -1;
 
-  // Captured in didChangeDependencies; stable for the widget's life.
   TraceLayer? _traceLayer;
   OperationalLayer? _bort;
   JournalLayer? _journal;
@@ -95,10 +87,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     if (!f) _autoSend();
   }
 
-  // Scrolls the field into view when the field is expanded. Called
-  // after focus gain, after a metrics change (keyboard appearing),
-  // and after the expansion frame — a post-frame callback ensures
-  // the new field height is already laid out.
+  // Scroll after layout so the expanded field is visible.
   void _ensureVisible() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_focused) return;
@@ -111,8 +100,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Capture once: the layers outlive the widget, so the dispose
-    // path can still write.
+    // Retain layers so pending edits can be saved during dispose.
     _traceLayer = TraceScope.of(context);
     _bort = BortScope.of(context);
     _journal = AppScope.of(context).journal;
@@ -160,9 +148,6 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     }
   }
 
-  // The keyboard appearing/disappearing, screen rotation, system bar
-  // changes — any of these change the available viewport and may push
-  // the expanded field below the fold. Re-scroll once layout settles.
   @override
   void didChangeMetrics() {
     if (_focused) _ensureVisible();
@@ -171,14 +156,12 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
   Future<void> _autoSend() async {
     if (!_initialized) return;
 
-    // but the layers themselves remain valid.
     final traceLayer = _traceLayer;
     final bort = _bort;
     final journal = _journal;
     if (traceLayer == null || bort == null || journal == null) return;
 
-    // Capture the text BEFORE any await: safe even when called from
-    // dispose, where the controller may be torn down mid-flight.
+    // Capture before awaiting; dispose may release the controller.
     final text = _ctrl.text;
     if (text == _lastSent) return;
 
@@ -210,9 +193,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
   bool _canSend() => _ctrl.text != _lastSent;
 
   Future<void> _send() async {
-    // Unfocus is enough: the focus listener runs _autoSend. Calling
-    // _autoSend here as well would race with that listener and could
-    // log the same text twice.
+    // Unfocusing triggers _autoSend through the focus listener.
     _focus.unfocus();
     if (mounted) setState(() {});
   }
@@ -235,8 +216,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
         });
   }
 
-  // Returns the number of checked and total filled items.
-  // Empty items are not counted in either number.
+  // Count non-empty checklist items and their checked subset.
   ({int done, int total}) _checklistCounts() {
     final traceLayer = _traceLayer;
     if (traceLayer == null) return (done: 0, total: 0);
@@ -313,9 +293,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     final canSend = _canSend();
     final pultSide = widget.side * bort.kPultSmall;
 
-    // The checklist pult shows the number of unchecked items. When
-    // all are checked (and there is at least one item) — the pult is
-    // signal-colored, the task is closed.
+    // A selected checklist pult means every non-empty item is checked.
     final counts = _checklistCounts();
     final int unchecked = counts.total - counts.done;
     final String? chkCenter = unchecked > 0 ? '$unchecked' : null;
@@ -333,20 +311,11 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
       fontSize: textSize,
     );
 
-    // View mode: text is present, the field is not focused, and the
-    // user is not in the tap-to-edit window. The text is rendered as
-    // plain text, less than a third of one screen tall; a tap turns
-    // it into the input field.
+    // Show non-empty unfocused text as a tappable preview.
     final hasText = _ctrl.text.trim().isNotEmpty;
     final viewMode = !_focused && !_editing && hasText;
 
-    // Expansion: in focus — up to the limit or up to the keyboard;
-    // otherwise — three lines when editing an existing text, two
-    // when the field is empty. The line height accounts for the
-    // current text scaler. The budget subtracts a reserve for the
-    // block header and pults and is a fraction (0.55) of the
-    // remaining height, so the expanded field does not overshoot
-    // the viewport at large scales.
+    // Bound the editor height by the available viewport and text scale.
     final int maxLines;
     final int? minLines;
     if (_focused) {
@@ -449,9 +418,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              // KeyedSubtree ensures _fieldKey.currentContext points at
-              // the field area's own render object, so ensureVisible
-              // scrolls to its bounds — not to the surrounding Row.
+              // Ensure visibility is measured against the field itself.
               child: KeyedSubtree(key: _fieldKey, child: fieldWidget),
             ),
             SizedBox(width: widget.side * 0.15),

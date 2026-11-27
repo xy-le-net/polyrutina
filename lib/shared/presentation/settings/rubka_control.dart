@@ -106,7 +106,6 @@ class RubkaControl extends StatelessWidget {
                 text: bort.bortTime <= 0
                     ? '0${i18n.t('time.m')}'
                     : fmtTime(bort.bortTime, i18n.t),
-                color: bort.bgsignal,
                 fontSize: metrics.textSize(BortTextRole.base),
                 fontFamily: 'monospace',
                 onTap: () => showTimeHistory(context, key: 'bort'),
@@ -137,7 +136,6 @@ class RubkaControl extends StatelessWidget {
           ),
           LinkText(
             text: shiftTimeStr,
-            color: bort.bgsignal,
             fontSize: metrics.textSize(BortTextRole.base),
             fontFamily: 'monospace',
             onTap: () => showTimeHistory(context, key: 'shift', fieldId: 0),

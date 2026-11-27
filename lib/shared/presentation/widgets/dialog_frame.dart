@@ -40,7 +40,7 @@ class DialogActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final metrics = BortMetrics.of(context, compact: true);
     return Wrap(
-      alignment: WrapAlignment.center,
+      alignment: WrapAlignment.end,
       spacing: metrics.actionGap,
       runSpacing: metrics.unit(0.2),
       children: [
@@ -62,6 +62,7 @@ class DialogFrame extends StatelessWidget {
   final double? margin;
   final double? maxHeight;
   final double? maxWidth;
+  final bool scrollable;
 
   const DialogFrame({
     super.key,
@@ -70,6 +71,7 @@ class DialogFrame extends StatelessWidget {
     this.margin,
     this.maxHeight,
     this.maxWidth,
+    this.scrollable = true,
   });
 
   @override
@@ -86,8 +88,7 @@ class DialogFrame extends StatelessWidget {
         MediaQuery.viewInsetsOf(context).bottom -
         metrics.unit(1);
 
-    // Unfocus any active field before the frame paints to prevent
-    // the IME composing underline from leaking into the dialog.
+    // Clear composition underlines before showing the dialog.
     FocusManager.instance.primaryFocus?.unfocus();
 
     return MediaQuery(
@@ -117,11 +118,29 @@ class DialogFrame extends StatelessWidget {
                 ),
                 clipBehavior: Clip.antiAlias,
                 padding: EdgeInsets.all(pad),
-                child: SingleChildScrollView(child: child),
+                child: scrollable ? SingleChildScrollView(child: child) : child,
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class FixedListViewport extends StatelessWidget {
+  final Widget child;
+
+  const FixedListViewport({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.75,
+        ),
+        child: child,
       ),
     );
   }

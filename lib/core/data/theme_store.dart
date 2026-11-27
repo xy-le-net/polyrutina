@@ -198,11 +198,7 @@ class ThemeStore {
     'fgsignal': Color(0xFFFBF5E9),
   };
 
-  // Default custom palette, in its night form (dark background,
-  // light text). This is the original custom palette: under the
-  // new convention it already IS night, and the day view is its
-  // inverted these defaults by mistake, which showed the light
-  // form in night mode.
+  // Custom palettes are stored in night form and inverted for day mode.
   static const Map<String, Color> _customColors = {
     'bg': Color(0xFF3F4D5A),
     'bgsignal': Color(0xFF071232),

@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'package:polyrutina/core/localization/i18n.dart';
@@ -219,9 +218,9 @@ class _DaysTabState extends State<DaysTab> {
                           '${vm.month.toString().padLeft(2, '0')}',
                           style: TextStyle(
                             color: bort.fg,
-                            fontSize: BortMetrics.of(context).textSize(
-                              BortTextRole.header,
-                            ),
+                            fontSize: BortMetrics.of(
+                              context,
+                            ).textSize(BortTextRole.header),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -231,9 +230,9 @@ class _DaysTabState extends State<DaysTab> {
                           '(${i18n.t('month.${vm.month}')})',
                           style: TextStyle(
                             color: bort.mid,
-                            fontSize: BortMetrics.of(context).textSize(
-                              BortTextRole.caption,
-                            ),
+                            fontSize: BortMetrics.of(
+                              context,
+                            ).textSize(BortTextRole.caption),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -561,9 +560,6 @@ class _DaysTabState extends State<DaysTab> {
     return GestureDetector(
       onTap: routines.isEmpty ? null : () => _openDay(routines),
       onLongPress: () => _createOnDay(month, day),
-      onSecondaryTap: defaultTargetPlatform == TargetPlatform.windows
-          ? () => _createOnDay(month, day)
-          : null,
       child: Center(
         child: SizedBox(
           width: boxSide,

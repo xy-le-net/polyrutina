@@ -20,7 +20,6 @@ class PultSpec {
   final bool stayOpen;
   final bool compactLabel;
   final Listenable? rebuildOn;
-  // Left offset for tree-shaped sheets; zero for flat lists.
   final double indent;
 
   const PultSpec({
@@ -105,8 +104,6 @@ class Pult extends StatelessWidget {
 
   static const double _minDot = 6.0;
 
-  // Static cache for label widths to avoid TextPainter on every frame.
-  // Key format: "label|size|compact".
   static final Map<String, double> _labelWidthCache = {};
 
   void _pulseBort(BuildContext context) {
@@ -140,10 +137,6 @@ class Pult extends StatelessWidget {
       state.setConfirming(null);
     }
 
-    // Unification: a pult with sub-options opens them on tap when
-    // there is no separate tap action. Pults that carry a meaningful
-    // onTap (start/pause, for instance) keep that action and expose
-    // their options on long press.
     if (spec.subsBuilder != null) {
       showPultSheet(
         context: context,
@@ -213,7 +206,6 @@ class Pult extends StatelessWidget {
     final metrics = BortMetrics.of(context);
 
     final selected = spec.selected;
-    // Apply signal palette when selected OR confirming.
     final coreColor = (selected || confirming) ? signal : fg;
     final iconColor = bg;
 
@@ -334,7 +326,7 @@ class Pult extends StatelessWidget {
           textDirection: TextDirection.ltr,
           maxLines: 1,
         )..layout();
-        textW = painter.width * 1.2;
+        textW = painter.width;
         _labelWidthCache[cacheKey] = textW;
       }
 
@@ -390,7 +382,6 @@ class Pult extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: () => _handleTap(context, state),
       onLongPress: () => _handleLongPress(context, state),
-      onSecondaryTap: () => _handleLongPress(context, state),
       child: content,
     );
   }

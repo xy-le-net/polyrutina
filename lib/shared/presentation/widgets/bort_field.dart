@@ -75,6 +75,7 @@ class BortField extends StatefulWidget {
   final Future<void> Function()? onSubmitted;
   final bool showBorder;
   final bool autofocus;
+  final BortTextRole? idleTextRole;
 
   const BortField({
     super.key,
@@ -87,6 +88,7 @@ class BortField extends StatefulWidget {
     this.onChanged,
     this.showBorder = true,
     this.autofocus = false,
+    this.idleTextRole,
   });
 
   @override
@@ -159,7 +161,7 @@ class _BortFieldState extends State<BortField> {
     final bort = metrics.bort;
     final fontSize = metrics.textSize(
       widget.readOnly || !_focus.hasFocus
-          ? BortTextRole.base
+          ? widget.idleTextRole ?? BortTextRole.base
           : BortTextRole.edit,
     );
     return TextField(

@@ -40,8 +40,7 @@ class AppContext {
     required this.afterJournalReset,
   });
 
-  // The field argument is kept for source compatibility; the shift
-  // is global, so its identity is ignored here.
+  // Keep fieldId for API compatibility; shift state is global.
   Future<void> toggleBlockWithShift(
     int fieldId,
     int routineId,
@@ -54,10 +53,7 @@ class AppContext {
 
     final going = !b.isRunning;
 
-    // Auto-start the shift when the block is started, the shift
-    // exists (toggle on), the shift is linked to routines, and it
-    // is not already running. If it is already running, it is
-    // deliberately left as is (per the spec: no restart).
+    // Start the linked shift with the block, but do not restart an active shift.
     if (bort.shiftEnabled && going && bort.mutexShift && !bort.onShift(0)) {
       await journal.log(
         type: JournalType.actor,
@@ -75,11 +71,7 @@ class AppContext {
     );
   }
 
-  // The field argument is kept for source compatibility; the shift
-  // is unified, so the identity is ignored. When shiftEnabled is
-  // false, this is a no-op: no shift, no state change, no journal
-  // entry — the toggle switch in the rubka owns that transition
-  // (see operational_layer).
+  // Keep fieldId for API compatibility; the rubka toggle owns disabled state.
   Future<void> toggleShift(int fieldId) async {
     if (!bort.shiftEnabled) return;
     final going = !bort.onShift(0);
@@ -98,9 +90,7 @@ class AppContext {
 
     bort.stopShift(0);
 
-    // Pause every running block across every field when the shift
-    // is linked to routines. No descent check: the shift is global,
-    // so its scope covers all fields equally.
+    // Pause all running blocks when the shift is linked to routines.
     if (bort.mutexShift) {
       for (final r in routineLayer.routines) {
         for (final b in r.blocks) {
@@ -187,8 +177,7 @@ class TraceScope extends InheritedNotifier<TraceLayer> {
   }
 }
 
-// Subscribers: FieldTab, RoutineCard (on field attach/detach),
-// and anything tracking the active field.
+// Notifies field views when the active field changes.
 class FieldScope extends InheritedNotifier<FieldLayer> {
   const FieldScope({
     super.key,

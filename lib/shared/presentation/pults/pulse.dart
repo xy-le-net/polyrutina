@@ -14,6 +14,7 @@ class Pulse extends StatelessWidget {
   final Color fg;
   final Color signal;
   final double side;
+  final double? numberSize;
   final bool colonVisible;
   final double? pultSize;
   final Translate t;
@@ -29,6 +30,7 @@ class Pulse extends StatelessWidget {
     required this.fg,
     required this.signal,
     required this.side,
+    this.numberSize,
     required this.t,
     this.colonVisible = true,
     this.pultSize,
@@ -37,7 +39,7 @@ class Pulse extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final numberSize = side * 0.4;
+    final timerSize = numberSize ?? side * 0.4;
     final pultSide = pultSize ?? side * 0.6667;
 
     return Row(
@@ -49,7 +51,7 @@ class Pulse extends StatelessWidget {
           running: running,
           fg: fg,
           dim: dim,
-          numberSize: numberSize,
+          numberSize: timerSize,
           colonVisible: colonVisible,
           t: t,
           ticker: ticker,

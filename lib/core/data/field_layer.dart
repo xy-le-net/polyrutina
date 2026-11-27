@@ -94,8 +94,7 @@ class FieldLayer extends ChangeNotifier {
           try {
             final n = FieldNode.fromJson(Map<String, dynamic>.from(e));
             nodes[n.id] = n;
-            // The buffer root is the FIRST root seen, not the last.
-            // root, so the fallback used by migrateFieldParents
+            // Preserve the first root as the default.
             if (n.isRoot && rootId == null) rootId = n.id;
           } catch (_) {
             // Skip a single malformed node; keep the rest.
@@ -354,8 +353,7 @@ class FieldLayer extends ChangeNotifier {
   }) async {
     final node = nodes[id];
     if (node == null) return;
-    // The zero field (the default root) cannot be deleted; any other
-    // node, including user-created roots, can.
+    // The default root is protected; other roots can be deleted.
     if (node.isRoot && node.id == rootId) return;
 
     await journal.transaction(() async {
@@ -365,7 +363,7 @@ class FieldLayer extends ChangeNotifier {
           await deleteNode(journal, cId, burn: true);
         }
       } else {
-        // Shake children to the zero field (the default root).
+        // Reattach children to the default root before removing this node.
         final target = rootId;
         if (target != null && target != id) {
           for (final cId in node.children) {

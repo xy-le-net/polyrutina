@@ -270,9 +270,6 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Unified header: root pult space on the left, block
-            // title and routine subtitle on the remaining width,
-            // exit pult on the right with a long-press subpult.
             ScreenHeader(
               title: widget.blockTitle,
               subtitle: widget.routineTitle,
@@ -361,6 +358,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                                   ),
                                   contentPadding: EdgeInsets.all(side * 0.15),
                                 ),
+                                textAlignVertical: TextAlignVertical.center,
                                 onChanged: (v) {
                                   _items[i] = (text: v, done: _items[i].done);
                                   if (i == _items.length - 1 && v.isNotEmpty) {

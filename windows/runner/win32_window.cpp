@@ -189,7 +189,7 @@ Win32Window::MessageHandler(HWND hwnd,
       const int caption = GetSystemMetricsForDpi(SM_CYCAPTION, effective_dpi);
 
       min_max_info->ptMinTrackSize.x =
-          static_cast<LONG>(21 * 14 * 0.6 * scale) + frame_x * 2;
+          static_cast<LONG>(21 * 14 * 0.3 * scale) + frame_x * 2;
       min_max_info->ptMinTrackSize.y =
           static_cast<LONG>(14 * 14 * 1.4 * scale) + frame_y * 2 + caption;
       min_max_info->ptMaxTrackSize.x =

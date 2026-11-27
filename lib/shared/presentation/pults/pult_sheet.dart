@@ -3,10 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:polyrutina/shared/presentation/control_row.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 
-// The currently open pult-sheet route, if any. Used by showPultSheet
-// to remove a stale sheet without touching routes below it (for
-// example, a routine card pushed after selecting a routine from the
-// day subpult).
+// Track the sheet route so it can be removed without popping later routes.
 Route<void>? _currentSheetRoute;
 
 Future<void> showPultSheet({
@@ -23,8 +20,7 @@ Future<void> showPultSheet({
   final state = PultScope.of(context);
   final navigator = Navigator.of(context);
 
-  // Remove a stale sheet if one is still active. Only that route is
-  // removed — nothing below it.
+  // Remove only the previous sheet, preserving routes beneath it.
   final stale = _currentSheetRoute;
   if (stale != null) {
     if (stale.isActive) {
@@ -35,9 +31,7 @@ Future<void> showPultSheet({
     if (!context.mounted) return;
   }
 
-  // Synchronous closer captured by the sheet body and by the scope.
-  // The route reference is filled in below (late) and is stable for
-  // the lifetime of this sheet.
+  // The sheet body and scope share this route-specific closer.
   late final RawDialogRoute<void> route;
 
   void closeNow() {
@@ -50,7 +44,7 @@ Future<void> showPultSheet({
     barrierDismissible: true,
     barrierLabel: '',
     barrierColor: Colors.transparent,
-    // No transition: the sheet is present in full at once.
+    // Display the sheet without an entrance transition.
     transitionDuration: Duration.zero,
     transitionBuilder: (ctx, anim, _, __) {
       final body = _SheetBody(
@@ -65,7 +59,7 @@ Future<void> showPultSheet({
       return Align(
         alignment: Alignment.centerLeft,
         child: Padding(
-          // Keep the submenu below the fixed top-left root pult.
+          // Keep the submenu clear of the fixed root pult.
           padding: EdgeInsets.only(top: ControlRow.reserve(state.smallSide)),
           child: rebuildOn == null || subsBuilder == null
               ? body

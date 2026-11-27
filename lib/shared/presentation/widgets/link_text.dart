@@ -12,8 +12,6 @@ class LinkText extends StatelessWidget {
   const LinkText({
     super.key,
     required this.text,
-    // Keep accepting existing call-site colors; palette roles own link colors.
-    Color? color,
     required this.fontSize,
     required this.onTap,
     this.padding = EdgeInsets.zero,

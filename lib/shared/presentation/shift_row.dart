@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import 'package:polyrutina/core/domain/journal_types.dart';
 import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/widgets/wheel_picker.dart';
 import 'package:polyrutina/shared/presentation/pults/pulse.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
@@ -16,42 +17,23 @@ class ShiftRow extends StatefulWidget {
 }
 
 class _ShiftRowState extends State<ShiftRow> {
-  // The zero-field key. The unified shift is stored under it.
+  // Shift time is stored under field zero.
   static const int _fieldId = 0;
 
-  bool _editing = false;
-  int _editHours = 0;
-  int _editMinutes = 0;
-  int _editSeconds = 0;
-
-  void _startEdit(int seconds) {
-    _editHours = seconds ~/ 3600;
-    _editMinutes = (seconds % 3600) ~/ 60;
-    _editSeconds = seconds % 60;
-    setState(() => _editing = true);
-  }
-
-  void _cancel() {
-    if (!_editing) return;
-    if (mounted) setState(() => _editing = false);
-  }
-
-  Future<void> _confirm() async {
+  Future<void> _editShift(int seconds) async {
+    final edited = await WheelValuePicker.showDurationWheelPicker(
+      context,
+      initialSeconds: seconds,
+    );
+    if (edited == null || !mounted) return;
     final bort = BortScope.of(context);
     final journal = AppScope.of(context).journal;
-    final sec = _editHours * 3600 + _editMinutes * 60 + _editSeconds;
-    if (sec == bort.shiftSecondsNow(_fieldId)) {
-      _cancel();
-      return;
-    }
+    if (edited == seconds) return;
     await journal.log(
       type: JournalType.actor,
-      body:
-          '{"action":"shift_edit","field_id":$_fieldId,'
-          '"seconds":$sec}',
+      body: '{"action":"shift_edit","field_id":$_fieldId,"seconds":$edited}',
     );
-    bort.setShiftTime(_fieldId, sec);
-    if (mounted) setState(() => _editing = false);
+    bort.setShiftTime(_fieldId, edited);
     widget.onChanged();
   }
 
@@ -67,68 +49,9 @@ class _ShiftRowState extends State<ShiftRow> {
     final bg = bort.bg;
     final signal = bort.fgsignal;
 
-    // When the shift toggle is off, no shift exists: no row at all.
+    // Hide the row when shift tracking is disabled.
     if (!bort.shiftEnabled) {
       return const SizedBox.shrink();
-    }
-
-    if (_editing) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(8, 8, 12, 4),
-        child: StatefulBuilder(
-          builder: (context, setWheelState) {
-            return Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                SizedBox(
-                  width: side * 3.6,
-                  height: side * 2.8,
-                  child: WheelValuePicker(
-                    columns: [
-                      WheelColumn(
-                        label: i18n.t('notice.hours'),
-                        separator: ':',
-                        value: _editHours,
-                        itemCount: _editHours < 24000 ? 24000 : _editHours + 1,
-                        onChanged: (v) => setWheelState(() => _editHours = v),
-                        formatter: (v) => v.toString().padLeft(2, '0'),
-                      ),
-                      WheelColumn(
-                        label: i18n.t('notice.minutes'),
-                        separator: ':',
-                        value: _editMinutes,
-                        itemCount: 60,
-                        onChanged: (v) => setWheelState(() => _editMinutes = v),
-                        formatter: (v) => v.toString().padLeft(2, '0'),
-                      ),
-                      WheelColumn(
-                        label: i18n.t('notice.seconds'),
-                        value: _editSeconds,
-                        itemCount: 60,
-                        onChanged: (v) => setWheelState(() => _editSeconds = v),
-                        formatter: (v) => v.toString().padLeft(2, '0'),
-                      ),
-                    ],
-                    side: side,
-                  ),
-                ),
-                SizedBox(width: side * 0.1),
-                Pult(
-                  spec: PultSpec(
-                    id: 'shift_confirm',
-                    icon: Icons.check,
-                    onTap: _confirm,
-                  ),
-                  fg: fg,
-                  bg: bg,
-                  signal: signal,
-                  overrideSize: side * bort.kPultSmall,
-                ),
-              ],
-            );
-          },
-        ),
-      );
     }
 
     final bool ticking =
@@ -144,7 +67,7 @@ class _ShiftRowState extends State<ShiftRow> {
           await app.toggleShift(_fieldId);
           widget.onChanged();
         },
-        onLongPress: () => _startEdit(bort.shiftSecondsNow(_fieldId)),
+        onLongPress: () => _editShift(bort.shiftSecondsNow(_fieldId)),
       ),
       seconds: bort.shiftSecondsNow(_fieldId),
       running: ticking,
@@ -153,8 +76,12 @@ class _ShiftRowState extends State<ShiftRow> {
       bg: bg,
       signal: signal,
       side: side,
+      numberSize: BortMetrics.of(
+        context,
+        compact: true,
+      ).textSize(BortTextRole.base),
       colonVisible: ticker.colonVisible,
-      pultSize: side * bort.kPultSmall,
+      pultSize: side * 0.95,
       t: i18n.t,
       ticker: ticker,
     );
@@ -171,7 +98,7 @@ class _ShiftRowState extends State<ShiftRow> {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 8, 12, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Align(alignment: Alignment.centerRight, child: pulse),
     );
   }

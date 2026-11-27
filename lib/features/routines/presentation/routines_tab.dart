@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'package:polyrutina/core/data/field_layer.dart';
@@ -27,7 +26,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
   AppTicker? _ticker;
 
   final Set<int> _expanded = {};
-  // Per-node visibility of the completed section. Absent = collapsed.
+  // Nodes absent from this set keep completed routines collapsed.
   final Set<int> _expandedDone = {};
   final Set<int> _expandedAllFields = {};
   final Set<int> _knownAllRoots = {};
@@ -162,6 +161,37 @@ class _RoutinesTabState extends State<RoutinesTab> {
       _expandedAllFields.clear();
       _orphansExpanded = false;
     });
+  }
+
+  void _expandAllDone() {
+    final fieldLayer = FieldScope.of(context);
+    setState(() {
+      _expandedDone.addAll(fieldLayer.nodes.keys);
+      _orphansDoneExpanded = true;
+    });
+  }
+
+  void _collapseAllDone() {
+    setState(() {
+      _expandedDone.clear();
+      _orphansDoneExpanded = false;
+    });
+  }
+
+  Set<int> _routineFieldPathIds(Routine routine) {
+    final nodes = FieldScope.of(context).nodes;
+    final selected = <int>{};
+    void addPath(int id) {
+      if (!selected.add(id)) return;
+      for (final parentId in nodes[id]?.parents ?? const <int>[]) {
+        addPath(parentId);
+      }
+    }
+
+    for (final parentId in routine.fieldParents) {
+      addPath(parentId);
+    }
+    return selected;
   }
 
   double _indent(int depth) => depth <= 1 ? 4.0 : 4.0 + (depth - 1) * 20.0;
@@ -322,6 +352,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
         rootId != null &&
         r.fieldParents.length == 1 &&
         r.fieldParents.first == rootId;
+    final selectedFields = _routineFieldPathIds(r);
 
     final subs = <PultSpec>[
       if (r.fieldParents.isNotEmpty && !onlyInRoot)
@@ -345,7 +376,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
     _collectAllRootsSubs(
       subs,
-      selectedIds: r.fieldParents.toSet(),
+      selectedIds: selectedFields,
       onTap: (n) async {
         await app.journal.transaction(() async {
           for (final pId in List<int>.from(r.fieldParents)) {
@@ -447,8 +478,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     );
   }
 
-  // Re-attach routines and traces bound directly to this node to
-  // re-attached to the root by FieldLayer.deleteNode itself.
+  // Reattach direct routine and trace links to the default root.
   Future<void> _shakeNode(int id) async {
     final app = AppScope.of(context);
     final root = app.fieldLayer.rootId;
@@ -480,26 +510,24 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
   Future<void> _createChildNode(int parentId) async {
     final app = AppScope.of(context);
-    final i18n = app.i18n;
     final node = await app.fieldLayer.createNode(
       app.journal,
       name: '',
       parentId: parentId,
     );
+    await app.fieldLayer.renameNode(app.journal, node.id, _autoName(node.id));
     if (!mounted) return;
     setState(() => _expanded.add(parentId));
-    _renameNodeDialog(node.id, '', defaultName: i18n.t('field.new_node'));
+    _renameNodeDialog(node.id, '');
   }
 
-  // id. The id is sparse by construction (it is the journal entry
-  // id), but it is stable and never reused; that is preferable to a
-  // dense ordinal that would shift after a neighbour is deleted.
+  // Journal IDs remain stable when neighboring fields are deleted.
   String _autoName(int id) {
     final lang = AppScope.of(context).bort.lang;
     return lang == 'en' ? 'field #$id' : 'поле №$id';
   }
 
-  void _renameNodeDialog(int id, String currentName, {String? defaultName}) {
+  void _renameNodeDialog(int id, String currentName) {
     final app = AppScope.of(context);
     final i18n = app.i18n;
     final bort = app.bort;
@@ -542,20 +570,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
                 actions: [
                   DialogAction(
                     label: i18n.t('common.cancel'),
-                    onTap: () async {
-                      final wasEmpty =
-                          currentText.trim().isEmpty &&
-                          currentName.trim().isEmpty;
-                      Navigator.of(ctx).pop();
-                      if (wasEmpty) {
-                        await app.fieldLayer.renameNode(
-                          app.journal,
-                          id,
-                          _autoName(id),
-                        );
-                        if (mounted) setState(() => _expanded.add(id));
-                      }
-                    },
+                    onTap: () => Navigator.of(ctx).pop(),
                   ),
                   DialogAction(label: i18n.t('common.ok'), onTap: confirm),
                 ],
@@ -688,13 +703,10 @@ class _RoutinesTabState extends State<RoutinesTab> {
           label: i18n.t('field.new_field'),
           onTap: () async {
             final f = await app.fieldLayer.createField(app.journal, '');
+            await app.fieldLayer.renameNode(app.journal, f.id, _autoName(f.id));
             app.fieldLayer.setActiveField(f.id);
             if (mounted) {
-              _renameNodeDialog(
-                f.id,
-                '',
-                defaultName: i18n.t('field.new_field'),
-              );
+              _renameNodeDialog(f.id, '');
             }
           },
         ),
@@ -739,7 +751,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
         final aSchedule = a.scheduledAt;
         final bSchedule = b.scheduledAt;
         if (aSchedule != null && bSchedule != null) {
-          // Put the closest due date first; overdue tasks are grouped separately.
+          // Sort scheduled routines by distance from their due date.
           final byDistance = sortScheduleDistance(
             a,
           ).compareTo(sortScheduleDistance(b));
@@ -780,6 +792,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     int count = 0,
     bool expanded = false,
     VoidCallback? onTap,
+    bool fieldLabel = false,
   }) {
     final bort = BortScope.of(context);
     final i18n = I18nScope.of(context);
@@ -805,9 +818,9 @@ class _RoutinesTabState extends State<RoutinesTab> {
                   Text(
                     label,
                     style: TextStyle(
-                      color: bort.mid,
+                      color: fieldLabel ? bort.fgsignal : bort.mid,
                       fontSize: BortMetrics.of(context).textSize(
-                        BortTextRole.caption,
+                        fieldLabel ? BortTextRole.base : BortTextRole.caption,
                       ),
                     ),
                   ),
@@ -843,7 +856,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final nextVisited = Set<int>.from(visited)..add(nodeId);
     final isExpanded = _expanded.contains(nodeId) || node.isRoot;
 
-    // Empty parent lists belong in the default "all" root only.
+    // Show unattached routines only under the default root.
     final nodeRoutines = <Routine>[];
     for (final r in RoutineScope.of(context).routines) {
       if (r.fieldParents.contains(nodeId)) {
@@ -987,7 +1000,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     }
   }
 
-  // Keep unattached routines separate so the default root tree cannot duplicate them.
+  // Keep unattached routines separate from attached root entries.
   void _buildAllFields(List<Widget> out, FieldLayer fieldLayer) {
     final roots = fieldLayer.nodes.values.where((node) => node.isRoot).toList()
       ..sort((a, b) => a.id.compareTo(b.id));
@@ -1085,6 +1098,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
             title: root.name.isEmpty ? '—' : root.name,
             expanded: expanded,
             onTap: () => _toggleAllField(root.id),
+            fieldLabel: true,
           ),
         );
       }
@@ -1172,19 +1186,13 @@ class _RoutinesTabState extends State<RoutinesTab> {
                             onLongPress: activeFieldId == null
                                 ? null
                                 : () => _showNodeActions(activeFieldId),
-                            onSecondaryTap:
-                                activeFieldId == null ||
-                                    defaultTargetPlatform !=
-                                        TargetPlatform.windows
-                                ? null
-                                : () => _showNodeActions(activeFieldId),
                             child: Text(
                               fieldName,
                               style: TextStyle(
                                 color: signal,
                                 fontSize: BortMetrics.of(
                                   context,
-                                ).textSize(BortTextRole.base),
+                                ).textSize(BortTextRole.caption),
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -1202,6 +1210,14 @@ class _RoutinesTabState extends State<RoutinesTab> {
                             id: 'expand_all_branches',
                             icon: Icons.unfold_more,
                             onTap: _expandAllBranches,
+                            longSubs: () => [
+                              PultSpec(
+                                id: 'expand_all_done',
+                                icon: Icons.done_all,
+                                label: i18n.t('routine.expand_done'),
+                                onTap: _expandAllDone,
+                              ),
+                            ],
                           ),
                           fg: fg,
                           bg: bg,
@@ -1214,6 +1230,14 @@ class _RoutinesTabState extends State<RoutinesTab> {
                             id: 'collapse_all_branches',
                             icon: Icons.unfold_less,
                             onTap: _collapseAllBranches,
+                            longSubs: () => [
+                              PultSpec(
+                                id: 'collapse_all_done',
+                                icon: Icons.check_box_outline_blank,
+                                label: i18n.t('routine.collapse_done'),
+                                onTap: _collapseAllDone,
+                              ),
+                            ],
                           ),
                           fg: fg,
                           bg: bg,
@@ -1278,9 +1302,6 @@ class _FieldPlate extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       onLongPress: onLongPress,
-      onSecondaryTap: defaultTargetPlatform == TargetPlatform.windows
-          ? onLongPress
-          : null,
       child: Container(
         decoration: BoxDecoration(
           color: bort.bg,
@@ -1306,9 +1327,7 @@ class _FieldPlate extends StatelessWidget {
                 title,
                 style: TextStyle(
                   color: bort.fg,
-                  fontSize: BortMetrics.of(
-                    context,
-                  ).textSize(BortTextRole.base),
+                  fontSize: BortMetrics.of(context).textSize(BortTextRole.base),
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

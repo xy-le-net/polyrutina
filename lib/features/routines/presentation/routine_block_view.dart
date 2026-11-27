@@ -8,7 +8,6 @@ import 'package:polyrutina/shared/application/format.dart';
 import 'package:polyrutina/shared/presentation/routine_flags.dart';
 import 'package:polyrutina/shared/presentation/timer_text.dart';
 import 'package:polyrutina/shared/presentation/trace_field.dart';
-import 'package:polyrutina/shared/presentation/widgets/wheel_picker.dart';
 import 'package:polyrutina/shared/presentation/pults/pulse.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_tick.dart';
@@ -24,22 +23,15 @@ class RoutineBlockView extends StatelessWidget {
   final bool timeEdited;
   final bool collapsed;
   final bool showAllSlots;
-  final String? editingKind;
-  final TextEditingController? editCtrl;
-  final FocusNode? editFocus;
-
   final int parity;
   final bool scheduledActive;
   final VoidCallback? onPickDate;
   final VoidCallback? onClearDate;
-  // Notice interval: picker only when a date is assigned; clearing
-  // only when a notice is set.
   final VoidCallback? onPickNotice;
   final VoidCallback? onClearNotice;
 
   final VoidCallback onToggleCollapsed;
   final VoidCallback? onStartEdit;
-  final VoidCallback? onConfirmEdit;
   final VoidCallback? onToggleCompleted;
   final VoidCallback? onExport;
   final VoidCallback? onMove;
@@ -58,12 +50,8 @@ class RoutineBlockView extends StatelessWidget {
     required this.timeEdited,
     required this.collapsed,
     required this.showAllSlots,
-    required this.editingKind,
-    required this.editCtrl,
-    required this.editFocus,
     required this.onToggleCollapsed,
     this.onStartEdit,
-    this.onConfirmEdit,
     this.onToggleCompleted,
     this.onExport,
     this.onMove,
@@ -121,8 +109,6 @@ class RoutineBlockView extends StatelessWidget {
       signal = bort.fgsignal;
     }
 
-    // Padding is taken straight from the (now halved) coefficients:
-    // quarter-sized values, drifting away from the unified scale.
     final titleSize = metrics.textSize(BortTextRole.header);
     final pad = side * bort.kFramePad;
     final gap = side * bort.kBlockGap;
@@ -135,60 +121,43 @@ class RoutineBlockView extends StatelessWidget {
     Widget? cornerTop;
 
     if (showPulse) {
-      if (editingKind == kind) {
-        cornerTop = _RoutineTimeEditor(
-          key: ValueKey(kind),
-          initialSeconds: seconds,
-          side: side,
-          pultSide: pultSide,
-          fg: fg,
-          bg: bg,
-          signal: signal,
-          hoursLabel: i18n.t('notice.hours'),
-          minutesLabel: i18n.t('notice.minutes'),
-          secondsLabel: i18n.t('notice.seconds'),
-          controller: editCtrl,
-          onConfirm: onConfirmEdit,
-        );
-      } else {
-        Widget pulse = Pulse(
-          spec: PultSpec(
-            id: 'block_$kind',
-            icon: _blockIcon(kind),
-            selected: running,
-            onTap: () {
-              if (fieldId != null) {
-                AppScope.of(
-                  context,
-                ).toggleBlockWithShift(fieldId, routine.id, kind);
-              }
-            },
-            onLongPress: onStartEdit,
-          ),
-          seconds: seconds,
-          running: running,
-          fg: fg,
-          dim: dim,
-          bg: bg,
-          signal: signal,
-          side: side,
-          colonVisible: colonVisible,
-          pultSize: pultSide,
-          t: i18n.t,
-          ticker: TickerScope.of(context),
-        );
-        if (timeEdited) {
-          pulse = Container(
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: dim, width: strokeW * 2),
-              ),
+      Widget pulse = Pulse(
+        spec: PultSpec(
+          id: 'block_$kind',
+          icon: _blockIcon(kind),
+          selected: running,
+          onTap: () {
+            if (fieldId != null) {
+              AppScope.of(
+                context,
+              ).toggleBlockWithShift(fieldId, routine.id, kind);
+            }
+          },
+          onLongPress: onStartEdit,
+        ),
+        seconds: seconds,
+        running: running,
+        fg: fg,
+        dim: dim,
+        bg: bg,
+        signal: signal,
+        side: side,
+        colonVisible: colonVisible,
+        pultSize: pultSide,
+        t: i18n.t,
+        ticker: TickerScope.of(context),
+      );
+      if (timeEdited) {
+        pulse = Container(
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(color: dim, width: strokeW * 2),
             ),
-            child: pulse,
-          );
-        }
-        cornerTop = pulse;
+          ),
+          child: pulse,
+        );
       }
+      cornerTop = pulse;
     } else if (showCompletion) {
       cornerTop = Row(
         mainAxisSize: MainAxisSize.min,
@@ -317,8 +286,6 @@ class RoutineBlockView extends StatelessWidget {
               signal: signal,
               overrideSize: pultSide,
             );
-      // Notice pult is shown only with a date; long press clears
-      // the notice when one is set.
       final noticePult = onPickNotice == null
           ? null
           : Pult(
@@ -459,111 +426,6 @@ class RoutineBlockView extends StatelessWidget {
       parity: parity,
       reserveBottom: showSummaryPults ? pultSide + side * 0.15 : 0,
       child: body,
-    );
-  }
-}
-
-class _RoutineTimeEditor extends StatefulWidget {
-  final int initialSeconds;
-  final double side;
-  final double pultSide;
-  final Color fg;
-  final Color bg;
-  final Color signal;
-  final String hoursLabel;
-  final String minutesLabel;
-  final String secondsLabel;
-  final TextEditingController? controller;
-  final VoidCallback? onConfirm;
-
-  const _RoutineTimeEditor({
-    super.key,
-    required this.initialSeconds,
-    required this.side,
-    required this.pultSide,
-    required this.fg,
-    required this.bg,
-    required this.signal,
-    required this.hoursLabel,
-    required this.minutesLabel,
-    required this.secondsLabel,
-    required this.controller,
-    required this.onConfirm,
-  });
-
-  @override
-  State<_RoutineTimeEditor> createState() => _RoutineTimeEditorState();
-}
-
-class _RoutineTimeEditorState extends State<_RoutineTimeEditor> {
-  late int _hours;
-  late int _minutes;
-  late int _seconds;
-
-  @override
-  void initState() {
-    super.initState();
-    _hours = widget.initialSeconds ~/ 3600;
-    _minutes = (widget.initialSeconds % 3600) ~/ 60;
-    _seconds = widget.initialSeconds % 60;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final side = widget.side;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          width: side * 3.6,
-          height: side * 2.8,
-          child: WheelValuePicker(
-            columns: [
-              WheelColumn(
-                label: widget.hoursLabel,
-                separator: ':',
-                value: _hours,
-                itemCount: _hours < 24000 ? 24000 : _hours + 1,
-                onChanged: (value) => setState(() => _hours = value),
-                formatter: (value) => value.toString().padLeft(2, '0'),
-              ),
-              WheelColumn(
-                label: widget.minutesLabel,
-                separator: ':',
-                value: _minutes,
-                itemCount: 60,
-                onChanged: (value) => setState(() => _minutes = value),
-                formatter: (value) => value.toString().padLeft(2, '0'),
-              ),
-              WheelColumn(
-                label: widget.secondsLabel,
-                value: _seconds,
-                itemCount: 60,
-                onChanged: (value) => setState(() => _seconds = value),
-                formatter: (value) => value.toString().padLeft(2, '0'),
-              ),
-            ],
-            side: side,
-          ),
-        ),
-        SizedBox(width: side * 0.1),
-        Pult(
-          spec: PultSpec(
-            id: 'confirm_time_edit',
-            icon: Icons.check,
-            onTap: () {
-              widget.controller?.text =
-                  '$_hours:${_minutes.toString().padLeft(2, '0')}:'
-                  '${_seconds.toString().padLeft(2, '0')}';
-              widget.onConfirm?.call();
-            },
-          ),
-          fg: widget.fg,
-          bg: widget.bg,
-          signal: widget.signal,
-          overrideSize: widget.pultSide,
-        ),
-      ],
     );
   }
 }

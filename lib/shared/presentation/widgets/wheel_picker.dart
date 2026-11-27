@@ -1,8 +1,11 @@
 import 'package:flutter/gestures.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
 
 import 'package:polyrutina/shared/presentation/app_scope.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
+import 'package:polyrutina/shared/presentation/widgets/dialog_frame.dart';
+import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 
 class WheelValuePicker extends StatelessWidget {
   final List<WheelColumn> columns;
@@ -44,6 +47,79 @@ class WheelValuePicker extends StatelessWidget {
           _WheelColumn(column: columns[i], side: side),
         ],
       ],
+    );
+  }
+
+  static Future<int?> showDurationWheelPicker(
+    BuildContext context, {
+    required int initialSeconds,
+  }) {
+    final side = PultScope.of(context).smallSide;
+    final i18n = I18nScope.of(context);
+    var hours = initialSeconds ~/ 3600;
+    var minutes = (initialSeconds % 3600) ~/ 60;
+    var seconds = initialSeconds % 60;
+
+    return showDialog<int>(
+      context: context,
+      barrierColor: Colors.transparent,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setState) => DialogFrame(
+          onDismiss: () => Navigator.of(dialogContext).pop(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: side * 3.6,
+                height: side * BortMetrics.wheelHeightFactor,
+                child: WheelValuePicker(
+                  columns: [
+                    WheelColumn(
+                      label: i18n.t('notice.hours'),
+                      separator: ':',
+                      value: hours,
+                      itemCount: hours < 24000 ? 24000 : hours + 1,
+                      onChanged: (value) => setState(() => hours = value),
+                      formatter: (value) => value.toString().padLeft(2, '0'),
+                    ),
+                    WheelColumn(
+                      label: i18n.t('notice.minutes'),
+                      separator: ':',
+                      value: minutes,
+                      itemCount: 60,
+                      onChanged: (value) => setState(() => minutes = value),
+                      formatter: (value) => value.toString().padLeft(2, '0'),
+                    ),
+                    WheelColumn(
+                      label: i18n.t('notice.seconds'),
+                      value: seconds,
+                      itemCount: 60,
+                      onChanged: (value) => setState(() => seconds = value),
+                      formatter: (value) => value.toString().padLeft(2, '0'),
+                    ),
+                  ],
+                  side: side,
+                ),
+              ),
+              SizedBox(height: side * 0.3),
+              DialogActions(
+                actions: [
+                  DialogAction(
+                    label: i18n.t('common.cancel'),
+                    onTap: () => Navigator.of(dialogContext).pop(),
+                  ),
+                  DialogAction(
+                    label: i18n.t('common.ok'),
+                    onTap: () => Navigator.of(
+                      dialogContext,
+                    ).pop(hours * 3600 + minutes * 60 + seconds),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -187,9 +263,9 @@ class _WheelColumnState extends State<_WheelColumn> {
                   column.formatter?.call(i) ?? i.toString(),
                   style: TextStyle(
                     color: i == _selectedValue ? bort.bgsignal : bort.fg,
-                    fontSize: BortMetrics.of(context).textSize(
-                      BortTextRole.base,
-                    ),
+                    fontSize: BortMetrics.of(
+                      context,
+                    ).textSize(BortTextRole.base),
                     decoration: TextDecoration.none,
                   ),
                 ),

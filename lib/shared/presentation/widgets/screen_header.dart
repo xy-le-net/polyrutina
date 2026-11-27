@@ -6,24 +6,11 @@ import 'package:polyrutina/shared/presentation/app_scope.dart';
 import 'package:polyrutina/shared/presentation/control_row.dart';
 
 class ScreenHeader extends StatelessWidget {
-  // Title — the main label (block name, month, etc.).
   final String title;
-
-  // Subtitle — optional second line (routine name, position, etc.).
   final String? subtitle;
-
-  // When non-null, an exit pult is drawn on the right.
   final VoidCallback? onExit;
-
-  // Optional center text on the exit pult (e.g. the unchecked count).
   final String? exitCenterText;
-
-  // When true, the exit pult is highlighted (signal-colored core).
   final bool exitSelected;
-
-  // Optional long-press subpult for the exit pult (the checklist
-  // uses this for «mark all / unmark all / clear all»). Null means
-  // the exit pult has no long-press action.
   final List<PultSpec> Function()? exitLongSubs;
 
   const ScreenHeader({
@@ -94,7 +81,8 @@ class ScreenHeader extends StatelessWidget {
                       ],
                     ),
             ),
-            if (onExit != null)
+            if (onExit != null &&
+                (exitLongSubs != null || exitCenterText != null))
               Pult(
                 spec: PultSpec(
                   id: 'header_exit',

@@ -9,6 +9,7 @@ import 'package:polyrutina/shared/presentation/app_scope.dart';
 import 'package:polyrutina/shared/presentation/widgets/bort_field.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/control_row.dart';
+import 'package:polyrutina/shared/presentation/timer_text.dart';
 import 'package:polyrutina/shared/presentation/widgets/wheel_picker.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 
@@ -200,6 +201,24 @@ void main() {
     expect(tester.widget<TextField>(field).style?.fontSize, 12.8);
   });
 
+  testWidgets('zero-duration ticker has no visible value', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TimerText(
+          seconds: 0,
+          running: true,
+          fg: Colors.black,
+          dim: Colors.grey,
+          numberSize: 12,
+          t: (key) => key,
+        ),
+      ),
+    );
+
+    expect(find.text('0'), findsNothing);
+    expect(find.text('s'), findsNothing);
+  });
+
   testWidgets('transparent app icon asset renders', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
@@ -351,7 +370,9 @@ void main() {
     expect(find.byType(Pult), findsNWidgets(2));
   });
 
-  testWidgets('pult with tap submenu opens from a right click', (tester) async {
+  testWidgets('right click does not trigger a pult long-press action', (
+    tester,
+  ) async {
     final bort = OperationalLayer();
     final pultState = PultState();
     addTearDown(bort.dispose);
@@ -361,7 +382,7 @@ void main() {
     await tester.tap(find.byType(Pult), buttons: kSecondaryMouseButton);
     await tester.pumpAndSettle();
 
-    expect(find.byType(Pult), findsNWidgets(2));
+    expect(find.byType(Pult), findsOneWidget);
   });
 }
 

@@ -26,14 +26,13 @@ class NotificationService {
 
   static final ValueNotifier<String?> payloadNotifier = ValueNotifier(null);
 
-  // Ongoing: silent. Bumped from v3 to force the new sound policy.
+  // Keep ongoing-work notifications silent; v4 applies the current channel policy.
   static const String _ongoingChannelId = 'polyrutina_ongoing_v4';
   static const String _ongoingChannelName = 'Ongoing Work';
   static const String _ongoingChannelDesc =
       'Running routines and shifts, silent';
 
-  // Overdue: audible; used both for the immediate startup push and
-  // for deferred notices scheduled via zonedSchedule.
+  // Audible channel for immediate and scheduled overdue notices.
   static const String _overdueChannelId = 'polyrutina_overdue_v1';
   static const String _overdueChannelName = 'Overdue';
   static const String _overdueChannelDesc = 'Routines past their due date';
@@ -41,14 +40,12 @@ class NotificationService {
   static const int _routineId = 1001;
   static const int _shiftId = 1002;
 
-  // Deferred notices carry a payload-derived id so several routines
-  // can be scheduled at once without colliding. The range is kept
-  // clear of the fixed ids above.
+  // Reserve a separate ID range for per-routine scheduled notices.
   static int _scheduledIdFor(int routineId) => 200000 + (routineId & 0xFFFFF);
 
   static Future<void> init() {
     if (_initialized) return Future<void>.value();
-    // Share initialization across startup and scheduler calls.
+    // Reuse the in-flight initialization.
     return _initFuture ??= _initialize().whenComplete(() {
       _initFuture = null;
     });
@@ -81,8 +78,7 @@ class NotificationService {
       '@mipmap/ic_launcher',
     );
     const iosSettings = DarwinInitializationSettings(
-      // Permission is requested on demand; here only the notification
-      // presentation options are declared for iOS.
+      // Request iOS permissions only when notifications are needed.
       requestAlertPermission: false,
       requestBadgePermission: false,
       requestSoundPermission: false,
@@ -105,7 +101,7 @@ class NotificationService {
       return;
     }
 
-    // Check if the app was launched via a notification tap.
+    // Preserve the payload when launched from a notification.
     try {
       final launchDetails = await _plugin.getNotificationAppLaunchDetails();
       if (launchDetails != null && launchDetails.didNotificationLaunchApp) {
@@ -121,10 +117,7 @@ class NotificationService {
     _initialized = true;
   }
 
-  // Request the notification permission once per session, if not
-  // already granted. The Android 13+ dialog is shown on the first
-  // call; permanent denial means subsequent calls are silently
-  // no-op (Android handles this).
+  // Request permission at most once per session.
   static Future<void> _ensurePermission() async {
     if (_permissionAsked) return;
     _permissionAsked = true;
@@ -149,9 +142,7 @@ class NotificationService {
     }
   }
 
-  // Loads the timezone database once and sets the local location to
-  // the device's zone. Called lazily from scheduleOverdueNotice; the
-  // immediate paths (show/cancel ongoing) never touch the zone.
+  // Load the device timezone only when scheduling a deferred notice.
   static Future<void> _ensureTimezone() async {
     if (_tzInitialized) return;
     tzdata.initializeTimeZones();
@@ -159,11 +150,7 @@ class NotificationService {
       final name = await FlutterTimezone.getLocalTimezone();
       tz.setLocalLocation(tz.getLocation(name));
     } catch (e) {
-      // Fall back to UTC if the device identifier cannot be read.
-      // The deferred notice will still fire, only on the UTC clock,
-      // which is correct when the user's zone is UTC and harmless
-      // otherwise: the actual trigger moment is what matters, not
-      // the label.
+      // Keep scheduling if the device timezone cannot be resolved.
       tz.setLocalLocation(tz.UTC);
       debugPrint('NotificationService: timezone fallback to UTC: $e');
     }

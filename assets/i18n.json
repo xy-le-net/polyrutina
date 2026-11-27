@@ -45,6 +45,8 @@
     "routine.in_work": "в работе",
     "routine.waiting": "ожидает",
     "routine.completed": "завершено",
+    "routine.expand_done": "развернуть выполненные",
+    "routine.collapse_done": "свернуть выполненные",
     "routine.mark_completed": "завершено",
     "routine.overdue": "срочно",
 
@@ -72,11 +74,11 @@
     "lang.ru": "РУ",
     "lang.en": "EN",
 
-    "bort.bg": "фон",
-    "bort.bgdim": "мягкий фон",
-    "bort.dim": "мягкий текст",
+    "bort.bg": "тьма",
+    "bort.bgdim": "бумага",
+    "bort.dim": "дым",
     "bort.fg": "текст",
-    "bort.signal": "сигнальный текст",
+    "bort.signal": "огонь",
     "bort.scale": "масштаб",
     "bort.lang": "язык",
     "bort.labels_buttons": "подписи",
@@ -300,6 +302,8 @@
     "routine.in_work": "in work",
     "routine.waiting": "waiting",
     "routine.completed": "completed",
+    "routine.expand_done": "expand completed",
+    "routine.collapse_done": "collapse completed",
     "routine.mark_completed": "completed",
     "routine.overdue": "urgent",
 

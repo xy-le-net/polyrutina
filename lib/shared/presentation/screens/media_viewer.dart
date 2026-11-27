@@ -27,6 +27,7 @@ class MediaViewer extends StatefulWidget {
   final int startIndex;
   final String blockTitle;
   final String routineTitle;
+  final bool singleFile;
 
   const MediaViewer({
     super.key,
@@ -37,6 +38,7 @@ class MediaViewer extends StatefulWidget {
     required this.startIndex,
     this.blockTitle = '',
     this.routineTitle = '',
+    this.singleFile = false,
   });
 
   @override
@@ -44,9 +46,6 @@ class MediaViewer extends StatefulWidget {
 }
 
 class _MediaViewerState extends State<MediaViewer> {
-  // Extensions recognised for embedding when the TraceFile kind is
-  // «file». Kept in one place so that a future kind (e.g. PDF) lands
-  // here rather than in scattered checks.
   static const Set<String> _photoExt = {
     '.jpg',
     '.jpeg',
@@ -76,28 +75,30 @@ class _MediaViewerState extends State<MediaViewer> {
     '.oga',
   };
 
-  // Local list — only the actual files. On deletion it shortens:
-  // the removed frame disappears, the rest stay.
   late List<TraceFile> _files;
   late int _pos;
 
-  // Players. Live until frame change or screen exit.
   VideoPlayerController? _video;
   AudioPlayer? _audio;
   StreamSubscription<PlayerState>? _audioStateSub;
   bool _audioPlaying = false;
 
-  // «copied» indicator. Shown while _copied is true, cleared by
-  // _copiedTimer. No animation: the label appears in full and
-  // disappears in full; the timer merely schedules the erasure.
   bool _copied = false;
   Timer? _copiedTimer;
 
   @override
   void initState() {
     super.initState();
-    _files = List<TraceFile>.from(widget.files);
-    _pos = widget.startIndex.clamp(0, _files.length - 1);
+    if (widget.singleFile && widget.files.isNotEmpty) {
+      _files = [widget.files[widget.startIndex]];
+    } else {
+      _files = List<TraceFile>.from(widget.files);
+    }
+    _pos = _files.isEmpty
+        ? 0
+        : widget.singleFile
+        ? 0
+        : widget.startIndex.clamp(0, _files.length - 1);
     _syncPlayers();
   }
 
@@ -110,10 +111,6 @@ class _MediaViewerState extends State<MediaViewer> {
     super.dispose();
   }
 
-  // For a TraceFile whose kind is «file», the extension decides
-  // whether the content is embedded as photo, video, or audio.
-  // Everything else (including unknown extensions) keeps the «file»
-  // kind and shows the plain-name screen.
   String _effectiveKind(TraceFile f) {
     if (f.kind != MediaKind.file) return f.kind;
     final ext = p.extension(f.path.isEmpty ? f.name : f.path).toLowerCase();
@@ -233,9 +230,6 @@ class _MediaViewerState extends State<MediaViewer> {
     } catch (_) {}
   }
 
-  // Tapping the «lat, lon» line copies it. Feedback is a brief
-  // label over the coordinates; no SnackBar (its slide-in is an
-  // animation).
   Future<void> _copyCoords(String lat, String lon) async {
     await Clipboard.setData(ClipboardData(text: '$lat, $lon'));
     if (!mounted) return;
@@ -252,7 +246,9 @@ class _MediaViewerState extends State<MediaViewer> {
     final idx = _files.indexOf(f);
     if (idx < 0) return;
 
-    final originalIdx = widget.files.indexOf(f);
+    final originalIdx = widget.singleFile
+        ? widget.startIndex
+        : widget.files.indexOf(f);
     if (originalIdx < 0) return;
     await traceLayer.removeFile(journal, widget.traceId, originalIdx);
     if (!mounted) return;
@@ -271,10 +267,6 @@ class _MediaViewerState extends State<MediaViewer> {
     if (_files.isEmpty) {
       Navigator.of(context).pop();
     }
-  }
-
-  void _close() {
-    Navigator.of(context).pop();
   }
 
   Future<void> _toggleAudio() async {
@@ -314,9 +306,7 @@ class _MediaViewerState extends State<MediaViewer> {
     final f = _current;
     final ek = f == null ? null : _effectiveKind(f);
 
-    // Second title line: routine title, and the frame order when
-    // there is somewhere to page.
-    final subtitle = _files.length > 2
+    final subtitle = !widget.singleFile && _files.length > 2
         ? '${widget.routineTitle.isEmpty ? '—' : widget.routineTitle}'
               ' · ${_pos + 1}/${_files.length}'
         : (widget.routineTitle.isEmpty ? '—' : widget.routineTitle);
@@ -329,7 +319,6 @@ class _MediaViewerState extends State<MediaViewer> {
             ScreenHeader(
               title: widget.blockTitle.isEmpty ? '—' : widget.blockTitle,
               subtitle: subtitle,
-              onExit: _close,
             ),
             Expanded(
               child: Stack(
@@ -382,7 +371,7 @@ class _MediaViewerState extends State<MediaViewer> {
           longSubs: () => _subsFor(f, i18n),
         );
       } else {
-        // geo, unknown file
+        // Geo and unknown files open externally.
         spec = PultSpec(
           id: 'media_center',
           icon: Icons.open_in_new,
@@ -461,9 +450,6 @@ class _MediaViewerState extends State<MediaViewer> {
     ),
   ];
 
-  // No overlay on the thumb: the overlay color would be a soft
-  // translucent halo, which the project rules out. Active track and
-  // thumb share the signal color; the inactive track is mid.
   Widget _sliderFor(TraceFile f, OperationalLayer bort, double side) {
     Widget slider(Duration pos, Duration dur, void Function(Duration) onSeek) {
       final maxMs = dur.inMilliseconds > 0
@@ -496,9 +482,10 @@ class _MediaViewerState extends State<MediaViewer> {
                   _fmtDur(pos),
                   style: TextStyle(
                     color: bort.mid,
-                    fontSize: BortMetrics.of(context, compact: true).textSize(
-                      BortTextRole.caption,
-                    ),
+                    fontSize: BortMetrics.of(
+                      context,
+                      compact: true,
+                    ).textSize(BortTextRole.caption),
                     fontFamily: 'monospace',
                   ),
                 ),
@@ -506,9 +493,10 @@ class _MediaViewerState extends State<MediaViewer> {
                   _fmtDur(dur),
                   style: TextStyle(
                     color: bort.mid,
-                    fontSize: BortMetrics.of(context, compact: true).textSize(
-                      BortTextRole.caption,
-                    ),
+                    fontSize: BortMetrics.of(
+                      context,
+                      compact: true,
+                    ).textSize(BortTextRole.caption),
                     fontFamily: 'monospace',
                   ),
                 ),
@@ -531,7 +519,7 @@ class _MediaViewerState extends State<MediaViewer> {
       );
     }
 
-    // audio
+    // Audio playback.
     final player = _audio;
     final dur = player?.duration;
     if (player == null || dur == null) return const SizedBox.shrink();
@@ -585,9 +573,10 @@ class _MediaViewerState extends State<MediaViewer> {
             '$lat, $lon',
             style: TextStyle(
               color: bort.mid,
-              fontSize: BortMetrics.of(context, compact: true).textSize(
-                BortTextRole.caption,
-              ),
+              fontSize: BortMetrics.of(
+                context,
+                compact: true,
+              ).textSize(BortTextRole.caption),
             ),
           ),
         );
@@ -610,8 +599,6 @@ class _MediaViewerState extends State<MediaViewer> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Solid background: no translucency. The label
-                  // is drawn on bort.bg, not on a blend.
                   GestureDetector(
                     onTap: () => _copyCoords(lat, lon),
                     child: Container(
@@ -620,7 +607,7 @@ class _MediaViewerState extends State<MediaViewer> {
                         vertical: side * 0.1,
                       ),
                       decoration: BoxDecoration(
-                        color: bort.bg,
+                        color: bort.fgsignal,
                         border: Border.all(color: bort.mid),
                         borderRadius: BorderRadius.circular(
                           side * bort.kRadius,
@@ -629,7 +616,7 @@ class _MediaViewerState extends State<MediaViewer> {
                       child: Text(
                         '$lat, $lon (±$acc ${i18n.t('time.m')})',
                         style: TextStyle(
-                          color: bort.fg,
+                          color: bort.bgsignal,
                           fontSize: BortMetrics.of(
                             context,
                             compact: true,
@@ -642,14 +629,21 @@ class _MediaViewerState extends State<MediaViewer> {
                   if (_copied)
                     Padding(
                       padding: EdgeInsets.only(top: side * 0.15),
-                      child: Text(
-                        i18n.t('media.copied'),
-                        style: TextStyle(
-                          color: bort.fgsignal,
-                          fontSize: BortMetrics.of(
-                            context,
-                            compact: true,
-                          ).textSize(BortTextRole.caption),
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: side * 0.2,
+                          vertical: side * 0.1,
+                        ),
+                        color: bort.bgsignal,
+                        child: Text(
+                          i18n.t('media.copied'),
+                          style: TextStyle(
+                            color: bort.fgsignal,
+                            fontSize: BortMetrics.of(
+                              context,
+                              compact: true,
+                            ).textSize(BortTextRole.caption),
+                          ),
                         ),
                       ),
                     ),
@@ -661,8 +655,7 @@ class _MediaViewerState extends State<MediaViewer> {
       );
     }
 
-    // Unknown file: show only the short name (no internal path);
-    // open externally via the bottom center pult.
+    // Keep internal paths hidden; external opening is available below.
     final displayName = f.name.isNotEmpty
         ? f.name
         : (f.path.isEmpty ? '—' : p.basename(f.path));
@@ -678,10 +671,11 @@ class _MediaViewerState extends State<MediaViewer> {
               displayName,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: bort.fg,
-                fontSize: BortMetrics.of(context, compact: true).textSize(
-                  BortTextRole.base,
-                ),
+                color: bort.bgsignal,
+                fontSize: BortMetrics.of(
+                  context,
+                  compact: true,
+                ).textSize(BortTextRole.base),
               ),
             ),
           ],
@@ -703,9 +697,10 @@ class _MediaViewerState extends State<MediaViewer> {
               f.name,
               style: TextStyle(
                 color: bort.mid,
-                fontSize: BortMetrics.of(context, compact: true).textSize(
-                  BortTextRole.caption,
-                ),
+                fontSize: BortMetrics.of(
+                  context,
+                  compact: true,
+                ).textSize(BortTextRole.caption),
               ),
             ),
           ],
@@ -730,9 +725,10 @@ class _MediaViewerState extends State<MediaViewer> {
                     _fmtDur(v.duration),
                     style: TextStyle(
                       color: bort.fg,
-                      fontSize: BortMetrics.of(context, compact: true).textSize(
-                        BortTextRole.header,
-                      ),
+                      fontSize: BortMetrics.of(
+                        context,
+                        compact: true,
+                      ).textSize(BortTextRole.header),
                       fontFamily: 'monospace',
                     ),
                   ),
@@ -756,9 +752,10 @@ class _MediaViewerState extends State<MediaViewer> {
               _fmtDur(dur),
               style: TextStyle(
                 color: bort.fg,
-                fontSize: BortMetrics.of(context, compact: true).textSize(
-                  BortTextRole.header,
-                ),
+                fontSize: BortMetrics.of(
+                  context,
+                  compact: true,
+                ).textSize(BortTextRole.header),
                 fontFamily: 'monospace',
               ),
             )
@@ -768,9 +765,10 @@ class _MediaViewerState extends State<MediaViewer> {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: bort.fg,
-                fontSize: BortMetrics.of(context, compact: true).textSize(
-                  BortTextRole.base,
-                ),
+                fontSize: BortMetrics.of(
+                  context,
+                  compact: true,
+                ).textSize(BortTextRole.base),
               ),
             ),
         ],

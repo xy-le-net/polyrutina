@@ -15,7 +15,7 @@ import 'package:polyrutina/shared/models/routine.dart';
 import 'package:polyrutina/shared/application/routine_access.dart';
 import 'package:polyrutina/core/data/trace_layer.dart';
 
-/// Hook for the deferred-notice scheduler.
+/// Refreshes or cancels a routine's deferred notice.
 abstract class OverdueScheduler {
   void refresh(Routine routine);
   void cancel(int routineId);
@@ -108,8 +108,7 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
     final dir = await getApplicationDocumentsDirectory();
     _file = File(p.join(dir.path, 'routine_layer.json'));
 
-    // Cache may be stale, malformed, or empty; in every such case
-    // the journal has to be replayed for this layer.
+    // Rebuild this cache from the journal when it is invalid or empty.
     final needsRebuild = await _loadFromFile();
 
     journal.register(
@@ -121,11 +120,7 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
 
     if (needsRebuild) {
       journal.clearMark('routine');
-      // Explicit pump, awaited here: watchAll's initial emission
-      // would also trigger pump, but the UI asks for routines right
-      // after init, and a scheduled pump may run a frame later. This
-      // await guarantees the list is populated before the first
-      // build sees it.
+      // Populate routines before the first build.
       await journal.pump();
     }
 
@@ -221,18 +216,8 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
     super.dispose();
   }
 
-  // Returns true when the journal must be replayed for this layer.
-  //
-  // Three cases yield true: stale schema, malformed file, and — the
-  // subtle one — an EMPTY routine list in a valid cache. The last
-  // case handles the failure loop seen in the field: a failed start
-  // wrote a schema-valid cache with no routines; on every next
-  // launch that cache was trusted, the mark from journal_layer.json
-  // pointed at the end of the journal, the pump found nothing to
-  // read, and the routines stayed empty forever, even after an
-  // import. Treating an empty cache as «needs replay» breaks the
-  // loop: the cost is one full journal pass on a genuinely empty
-  // state, which is bounded by journal size and harmless.
+  // Empty caches must replay the journal too; otherwise a stale mark
+  // can leave routines missing after a failed start or import.
   Future<bool> _loadFromFile() async {
     if (_file == null || !await _file!.exists()) return false;
     try {
@@ -264,10 +249,10 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
         }
       }
       _rebuildIndices();
-      // Empty but schema-valid cache is treated as «needs replay».
+      // Empty cache: replay the journal.
       return routines.isEmpty;
     } catch (_) {
-      // Malformed cache — rebuild from journal.
+      // Malformed cache: replay the journal.
       return true;
     }
   }
@@ -695,12 +680,7 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
     final r = findRoutine(id);
     if (r == null) return;
     if (r.scheduledAt == null) return;
-    // Zero seconds annuls the notice: a zero interval is a valid
-    // «remind at the due moment» value only at the moment of
-    // assignment, but stored it would make the pult read «notice
-    // set» while nothing distinguishable is scheduled. Clearing is
-    // routed through clearNotice so the journal carries
-    // clear_notice and the pult state matches the number.
+    // Clear zero-valued notices so the journal and pult stay in sync.
     if (seconds <= 0) {
       await clearNotice(journal, id);
       return;
