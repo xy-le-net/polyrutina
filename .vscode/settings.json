@@ -1,3 +1,4 @@
 {
-    "java.import.gradle.java.home": "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.20.101-hotspot"
+    "java.import.gradle.java.home": "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.13.10002-hotspot",
+    "cmake.sourceDirectory": "D:/polyrutina/windows"
 }
