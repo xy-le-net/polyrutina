@@ -4,9 +4,9 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
-import '../core/bort_field.dart';
+import '../widgets/bort_field.dart';
 import '../core/bort_metrics.dart';
-import '../core/screen_header.dart';
+import '../widgets/screen_header.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_tick.dart';
 

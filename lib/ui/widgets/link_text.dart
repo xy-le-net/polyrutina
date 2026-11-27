@@ -1,6 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
-import 'app_scope.dart';
+import '../core/app_scope.dart';
 
 class LinkText extends StatelessWidget {
   final String text;

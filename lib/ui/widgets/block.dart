@@ -1,6 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
-import 'frame.dart';
+import '../core/frame.dart';
 
 class Block extends StatelessWidget {
   final String title;

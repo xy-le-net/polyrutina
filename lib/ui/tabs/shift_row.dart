@@ -2,7 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../data/journal_types.dart';
 import '../core/app_scope.dart';
-import '../core/wheel_picker.dart';
+import '../widgets/wheel_picker.dart';
 import '../pults/pulse.dart';
 import '../pults/pult_core.dart';
 

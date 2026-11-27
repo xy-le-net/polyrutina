@@ -2,13 +2,13 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../data/routine.dart';
 import '../core/app_scope.dart';
-import '../core/block.dart';
+import '../widgets/block.dart';
 import '../core/bort_metrics.dart';
 import '../core/format.dart';
 import '../core/routine_flags.dart';
 import '../core/timer_text.dart';
 import '../core/trace_field.dart';
-import '../core/wheel_picker.dart';
+import '../widgets/wheel_picker.dart';
 import '../pults/pulse.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_tick.dart';

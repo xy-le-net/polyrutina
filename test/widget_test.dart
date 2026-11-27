@@ -6,10 +6,10 @@ import 'package:polyrutina/data/i18n.dart';
 import 'package:polyrutina/data/operational_layer.dart';
 import 'package:polyrutina/ui/cards/bort_date_picker.dart';
 import 'package:polyrutina/ui/core/app_scope.dart';
-import 'package:polyrutina/ui/core/bort_field.dart';
+import 'package:polyrutina/ui/widgets/bort_field.dart';
 import 'package:polyrutina/ui/core/bort_metrics.dart';
 import 'package:polyrutina/ui/core/control_row.dart';
-import 'package:polyrutina/ui/core/wheel_picker.dart';
+import 'package:polyrutina/ui/widgets/wheel_picker.dart';
 import 'package:polyrutina/ui/pults/pult_core.dart';
 
 void main() {

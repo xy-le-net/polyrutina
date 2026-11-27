@@ -1,9 +1,9 @@
 import 'package:material_ui/material_ui.dart';
 
-import 'bort_metrics.dart';
+import '../core/bort_metrics.dart';
 import '../pults/pult_core.dart';
-import 'app_scope.dart';
-import 'control_row.dart';
+import '../core/app_scope.dart';
+import '../core/control_row.dart';
 
 class ScreenHeader extends StatelessWidget {
   // Title — the main label (block name, month, etc.).

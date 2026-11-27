@@ -4,7 +4,7 @@ import '../../data/routine.dart';
 import '../../data/ticker.dart';
 import '../core/app_scope.dart';
 import '../core/app_layout.dart';
-import '../core/bort_field.dart';
+import '../widgets/bort_field.dart';
 import '../core/control_row.dart';
 import '../core/format.dart';
 import '../pults/pult_core.dart';

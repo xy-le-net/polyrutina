@@ -4,7 +4,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/app_scope.dart';
-import '../core/block.dart';
+import '../widgets/block.dart';
 import '../core/bort_metrics.dart';
 import '../pults/pult_core.dart';
 

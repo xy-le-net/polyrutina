@@ -1,8 +1,8 @@
 import 'package:flutter/gestures.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
 
-import 'app_scope.dart';
-import 'bort_metrics.dart';
+import '../core/app_scope.dart';
+import '../core/bort_metrics.dart';
 
 class WheelValuePicker extends StatelessWidget {
   final List<WheelColumn> columns;

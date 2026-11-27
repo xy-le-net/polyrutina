@@ -2,7 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../data/operational_layer.dart';
 import '../core/app_scope.dart';
-import '../core/bort_field.dart';
+import '../widgets/bort_field.dart';
 import '../core/bort_metrics.dart';
 import '../core/help_label.dart';
 import '../pults/pult_core.dart';

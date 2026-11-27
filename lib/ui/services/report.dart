@@ -13,7 +13,7 @@ import '../../data/routine.dart';
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
 import '../core/format.dart';
-import '../core/progress_dialog.dart';
+import '../widgets/progress_dialog.dart';
 import 'report_json.dart';
 
 Future<void> _buildArchiveIsolate(Map<String, dynamic> args) async {

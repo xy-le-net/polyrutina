@@ -1,7 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../core/app_scope.dart';
-import '../core/block.dart';
+import '../widgets/block.dart';
 import '../core/bort_metrics.dart';
 import '../core/control_row.dart';
 import '../pults/pult_core.dart';

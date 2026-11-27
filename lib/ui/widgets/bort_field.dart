@@ -1,6 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
-import 'bort_metrics.dart';
+import '../core/bort_metrics.dart';
 
 InputDecoration bortInputDecoration(
   BuildContext context, {

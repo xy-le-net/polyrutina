@@ -4,7 +4,7 @@ import '../../data/journal_layer.dart';
 import '../../data/operational_layer.dart';
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
-import 'bort_field.dart';
+import '../widgets/bort_field.dart';
 import 'bort_metrics.dart';
 import '../pults/pult_core.dart';
 import '../screens/checklist_screen.dart';

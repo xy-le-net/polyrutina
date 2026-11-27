@@ -1,7 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import 'app_scope.dart';
-import 'notice_dialog.dart';
+import '../widgets/notice_dialog.dart';
 
 class HelpLabel extends StatelessWidget {
   // Dictionary key (without the `help.` prefix) — e.g. `bort.scale`.

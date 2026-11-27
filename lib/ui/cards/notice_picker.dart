@@ -2,8 +2,8 @@ import 'package:material_ui/material_ui.dart';
 
 import '../core/app_scope.dart';
 import '../core/bort_metrics.dart';
-import '../core/dialog_frame.dart';
-import '../core/wheel_picker.dart';
+import '../widgets/dialog_frame.dart';
+import '../widgets/wheel_picker.dart';
 
 Future<int?> showNoticePicker(
   BuildContext context, {

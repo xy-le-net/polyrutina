@@ -2,9 +2,9 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../data/theme_store.dart';
 import '../core/app_scope.dart';
-import '../core/block.dart';
+import '../widgets/block.dart';
 import '../core/bort_metrics.dart';
-import '../core/bort_field.dart';
+import '../widgets/bort_field.dart';
 import '../core/help_label.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_tick.dart';

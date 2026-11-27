@@ -1,7 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
-import 'app_scope.dart';
-import 'bort_metrics.dart';
+import '../core/app_scope.dart';
+import '../core/bort_metrics.dart';
 import 'dialog_frame.dart';
 
 Future<void> showNotice(

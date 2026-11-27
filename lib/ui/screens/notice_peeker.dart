@@ -1,9 +1,9 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../core/app_scope.dart';
-import '../core/bort_field.dart';
+import '../widgets/bort_field.dart';
 import '../core/bort_metrics.dart';
-import '../core/dialog_frame.dart';
+import '../widgets/dialog_frame.dart';
 import '../core/format.dart';
 
 Future<int?> showNoticePicker(

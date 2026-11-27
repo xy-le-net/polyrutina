@@ -1,12 +1,12 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../core/app_scope.dart';
-import '../core/block.dart';
+import '../widgets/block.dart';
 import '../core/bort_metrics.dart';
-import '../core/bort_field.dart';
+import '../widgets/bort_field.dart';
 import '../core/format.dart';
 import '../core/help_label.dart';
-import '../core/link_text.dart';
+import '../widgets/link_text.dart';
 import '../pults/pult_core.dart';
 import '../pults/pult_tick.dart';
 import '../services/action_dialog.dart';

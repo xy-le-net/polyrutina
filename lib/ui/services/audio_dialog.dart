@@ -8,7 +8,7 @@ import 'package:record/record.dart';
 import '../../data/trace_layer.dart';
 import '../core/app_scope.dart';
 import '../core/bort_metrics.dart';
-import '../core/dialog_frame.dart';
+import '../widgets/dialog_frame.dart';
 import '../core/format.dart';
 import '../pults/pult_core.dart';
 

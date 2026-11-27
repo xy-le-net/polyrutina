@@ -4,7 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../core/app_scope.dart';
-import '../core/screen_header.dart';
+import '../widgets/screen_header.dart';
 import '../pults/pult_core.dart';
 
 Future<XFile?> captureWindowsCamera(
