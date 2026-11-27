@@ -34,7 +34,8 @@ class RubkaAppearance extends StatelessWidget {
     final fgsignal = bort.fgsignal;
     final side = PultScope.of(context).smallSide;
 
-    final titleSize = BortMetrics.fontSizeForSide(side, BortTextRole.header);
+    final metrics = BortMetrics.of(context, compact: true);
+    final titleSize = metrics.textSize(BortTextRole.header);
     final pad = side * bort.kFramePad;
     final gap = side * bort.kBlockGap;
     final strokeW = side * bort.kStroke;
@@ -62,7 +63,7 @@ class RubkaAppearance extends StatelessWidget {
         children: [
           _themeRow(context, fg, mid, bg, fgsignal, side),
           if (bort.themeCustom) ...[
-            _sectionTitle(i18n.t('theme.custom'), mid, side),
+            _sectionTitle(context, i18n.t('theme.custom'), mid, side),
             for (final role in _roles)
               _colorRow(context, 'custom', role, fg, mid, bg, fgsignal, side),
           ],
@@ -71,7 +72,12 @@ class RubkaAppearance extends StatelessWidget {
     );
   }
 
-  Widget _sectionTitle(String text, Color mid, double side) {
+  Widget _sectionTitle(
+    BuildContext context,
+    String text,
+    Color mid,
+    double side,
+  ) {
     return Padding(
       padding: EdgeInsets.only(top: side * 0.3, bottom: side * 0.1),
       child: HelpLabel(
@@ -79,7 +85,10 @@ class RubkaAppearance extends StatelessWidget {
         text: text,
         style: TextStyle(
           color: mid,
-          fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.caption),
+          fontSize: BortMetrics.of(
+            context,
+            compact: true,
+          ).textSize(BortTextRole.caption),
         ),
       ),
     );

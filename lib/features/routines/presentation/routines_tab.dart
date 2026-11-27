@@ -806,8 +806,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
                     label,
                     style: TextStyle(
                       color: bort.mid,
-                      fontSize: BortMetrics.fontSizeForSide(
-                        side,
+                      fontSize: BortMetrics.of(context).textSize(
                         BortTextRole.caption,
                       ),
                     ),
@@ -1183,10 +1182,9 @@ class _RoutinesTabState extends State<RoutinesTab> {
                               fieldName,
                               style: TextStyle(
                                 color: signal,
-                                fontSize: BortMetrics.fontSizeForSide(
-                                  side,
-                                  BortTextRole.base,
-                                ),
+                                fontSize: BortMetrics.of(
+                                  context,
+                                ).textSize(BortTextRole.base),
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -1308,10 +1306,9 @@ class _FieldPlate extends StatelessWidget {
                 title,
                 style: TextStyle(
                   color: bort.fg,
-                  fontSize: BortMetrics.fontSizeForSide(
-                    side,
-                    BortTextRole.base,
-                  ),
+                  fontSize: BortMetrics.of(
+                    context,
+                  ).textSize(BortTextRole.base),
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

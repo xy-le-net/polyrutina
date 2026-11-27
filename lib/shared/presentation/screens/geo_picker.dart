@@ -121,6 +121,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
 
   final _boundaryKey = GlobalKey();
   final _addressController = TextEditingController();
+  final _addressFocus = FocusNode();
   bool _busy = false;
   bool _searchingAddress = false;
   String? _addressMessage;
@@ -143,6 +144,9 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
   @override
   void initState() {
     super.initState();
+    _addressFocus.addListener(() {
+      if (mounted) setState(() {});
+    });
     _startTracking();
   }
 
@@ -150,6 +154,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
   void dispose() {
     _positionStream?.cancel();
     _addressController.dispose();
+    _addressFocus.dispose();
     super.dispose();
   }
 
@@ -463,6 +468,10 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
     final bort = app.bort;
     final i18n = app.i18n;
     final side = PultScope.of(context).smallSide;
+    final metrics = BortMetrics.of(context, compact: true);
+    final inputSize = metrics.textSize(
+      _addressFocus.hasFocus ? BortTextRole.edit : BortTextRole.base,
+    );
 
     final sourceIndex = _tileSourceIndex;
     final source = _tileSources[sourceIndex];
@@ -482,13 +491,19 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                     Expanded(
                       child: TextField(
                         controller: _addressController,
-                        style: bortInputTextStyle(context, color: bort.fg),
+                        focusNode: _addressFocus,
+                        style: bortInputTextStyle(
+                          context,
+                          color: bort.fg,
+                          fontSize: inputSize,
+                        ),
                         textInputAction: TextInputAction.search,
                         onSubmitted: (_) => _searchAddress(),
                         decoration: bortInputDecoration(
                           context,
                           borderColor: bort.fg,
                           hintText: i18n.t('media.search_address'),
+                          fontSize: inputSize,
                           borderless: true,
                         ),
                       ),
@@ -581,10 +596,10 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                                 i18n.t('media.no_network'),
                                 style: TextStyle(
                                   color: bort.mid,
-                                  fontSize: BortMetrics.fontSizeForSide(
-                                    side,
-                                    BortTextRole.caption,
-                                  ),
+                                  fontSize: BortMetrics.of(
+                                    context,
+                                    compact: true,
+                                  ).textSize(BortTextRole.caption),
                                 ),
                               ),
                             ),
@@ -606,10 +621,10 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                                 _addressMessage!,
                                 style: TextStyle(
                                   color: bort.mid,
-                                  fontSize: BortMetrics.fontSizeForSide(
-                                    side,
-                                    BortTextRole.caption,
-                                  ),
+                                  fontSize: BortMetrics.of(
+                                    context,
+                                    compact: true,
+                                  ).textSize(BortTextRole.caption),
                                 ),
                               ),
                             ),
@@ -625,10 +640,10 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
                               '…',
                               style: TextStyle(
                                 color: bort.mid,
-                                fontSize: BortMetrics.fontSizeForSide(
-                                  side,
-                                  BortTextRole.header,
-                                ),
+                                fontSize: BortMetrics.of(
+                                  context,
+                                  compact: true,
+                                ).textSize(BortTextRole.header),
                               ),
                             ),
                           ),
@@ -880,10 +895,10 @@ class _GeoMapPreviewState extends State<GeoMapPreview> {
                       i18n.t('media.no_network'),
                       style: TextStyle(
                         color: bort.mid,
-                        fontSize: BortMetrics.fontSizeForSide(
-                          side,
-                          BortTextRole.caption,
-                        ),
+                        fontSize: BortMetrics.of(
+                          context,
+                          compact: true,
+                        ).textSize(BortTextRole.caption),
                       ),
                     ),
                   ),

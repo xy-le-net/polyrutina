@@ -100,6 +100,7 @@ class RoutineBlockView extends StatelessWidget {
     final i18n = I18nScope.of(context);
     final colonVisible = TickerScope.of(context).colonVisible;
     final side = PultScope.of(context).smallSide;
+    final metrics = BortMetrics.of(context);
     final fieldId =
         FieldScope.of(context).activeFieldId ?? FieldScope.of(context).rootId;
 
@@ -122,13 +123,13 @@ class RoutineBlockView extends StatelessWidget {
 
     // Padding is taken straight from the (now halved) coefficients:
     // quarter-sized values, drifting away from the unified scale.
-    final titleSize = BortMetrics.fontSizeForSide(side, BortTextRole.header);
+    final titleSize = metrics.textSize(BortTextRole.header);
     final pad = side * bort.kFramePad;
     final gap = side * bort.kBlockGap;
 
     final strokeW = side * bort.kStroke;
     final radiusW = side * bort.kRadius;
-    final numberSize = BortMetrics.fontSizeForSide(side, BortTextRole.base);
+    final numberSize = metrics.textSize(BortTextRole.base);
     final pultSide = side * bort.kPultSmall;
 
     Widget? cornerTop;
@@ -253,10 +254,7 @@ class RoutineBlockView extends StatelessWidget {
                 '${fmtTime(sec, i18n.t)}.',
                 style: TextStyle(
                   color: dim,
-                  fontSize: BortMetrics.fontSizeForSide(
-                    side,
-                    BortTextRole.caption,
-                  ),
+                  fontSize: metrics.textSize(BortTextRole.caption),
                 ),
               ),
             ),

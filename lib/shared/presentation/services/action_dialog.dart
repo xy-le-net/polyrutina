@@ -177,8 +177,7 @@ class _TimeHistoryDialogState extends State<_TimeHistoryDialog> {
                     _monthTitle(),
                     style: TextStyle(
                       color: bort.fg,
-                      fontSize: BortMetrics.fontSizeForSide(
-                        side,
+                      fontSize: BortMetrics.of(context).textSize(
                         BortTextRole.base,
                       ),
                     ),
@@ -203,7 +202,7 @@ class _TimeHistoryDialogState extends State<_TimeHistoryDialog> {
             '${i18n.t(ui.labelKey)}: ${fmtTime(total, i18n.t)}',
             style: TextStyle(
               color: bort.fgsignal,
-              fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.base),
+              fontSize: BortMetrics.of(context).textSize(BortTextRole.base),
             ),
           ),
           SizedBox(height: side * bort.kFramePad * 0.5),
@@ -226,8 +225,7 @@ class _TimeHistoryDialogState extends State<_TimeHistoryDialog> {
                             '$d: ${fmtTime(days[d]!, i18n.t)}',
                             style: TextStyle(
                               color: bort.fg,
-                              fontSize: BortMetrics.fontSizeForSide(
-                                side,
+                              fontSize: BortMetrics.of(context).textSize(
                                 BortTextRole.caption,
                               ),
                               fontFamily: 'monospace',

@@ -8,6 +8,7 @@ InputDecoration bortInputDecoration(
   Color? focusedBorderColor,
   Color? fillColor,
   String? hintText,
+  double? fontSize,
   bool borderless = false,
   EdgeInsets? contentPadding,
   TextStyle? hintStyle,
@@ -35,7 +36,10 @@ InputDecoration bortInputDecoration(
     hintText: hintText,
     hintStyle:
         hintStyle ??
-        TextStyle(color: metrics.bort.mid, fontSize: metrics.fieldFontSize),
+        TextStyle(
+          color: metrics.bort.mid,
+          fontSize: fontSize ?? metrics.baseFontSize,
+        ),
     border: inputBorder,
     enabledBorder: inputBorder,
     focusedBorder: borderless ? InputBorder.none : focusedBorder,
@@ -56,7 +60,7 @@ TextStyle bortInputTextStyle(
   final metrics = BortMetrics.of(context);
   return TextStyle(
     color: color ?? metrics.bort.fg,
-    fontSize: fontSize ?? metrics.fieldFontSize,
+    fontSize: fontSize ?? metrics.baseFontSize,
     decoration: TextDecoration.none,
   );
 }
@@ -100,9 +104,13 @@ class _BortFieldState extends State<BortField> {
     super.initState();
     _ctrl = TextEditingController(text: widget.initial);
     _lastCommitted = widget.initial;
-    _focus.addListener(() {
-      if (!_focus.hasFocus) _commit();
-    });
+    _focus.addListener(_onFocusChanged);
+  }
+
+  void _onFocusChanged() {
+    if (!mounted) return;
+    setState(() {});
+    if (!_focus.hasFocus) _commit();
   }
 
   @override
@@ -149,18 +157,24 @@ class _BortFieldState extends State<BortField> {
   Widget build(BuildContext context) {
     final metrics = BortMetrics.of(context);
     final bort = metrics.bort;
+    final fontSize = metrics.textSize(
+      widget.readOnly || !_focus.hasFocus
+          ? BortTextRole.base
+          : BortTextRole.edit,
+    );
     return TextField(
       controller: _ctrl,
       focusNode: _focus,
       readOnly: widget.readOnly,
       autofocus: widget.autofocus,
       cursorColor: bort.bgsignal,
-      style: bortInputTextStyle(context, color: widget.fg),
+      style: bortInputTextStyle(context, color: widget.fg, fontSize: fontSize),
       decoration: bortInputDecoration(
         context,
         borderColor: widget.fg,
         focusedBorderColor: bort.bgsignal,
         hintText: widget.hint,
+        fontSize: fontSize,
         borderless: !widget.showBorder,
         contentPadding: EdgeInsets.symmetric(
           horizontal: widget.showBorder ? metrics.fieldPadding : 0,

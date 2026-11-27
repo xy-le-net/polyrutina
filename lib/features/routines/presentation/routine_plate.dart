@@ -35,7 +35,9 @@ class RoutinePlate extends StatelessWidget {
     final app = AppScope.of(context);
     final fieldId =
         FieldScope.of(context).activeFieldId ?? FieldScope.of(context).rootId;
-    final side = PultScope.of(context).smallSide;
+    final pult = PultScope.of(context);
+    final metrics = BortMetrics.of(context);
+    final side = pult.smallSide;
     final running = routine.runningBlock != null;
 
     // Overdue is a visual state of its own: signal frame with doubled
@@ -62,9 +64,9 @@ class RoutinePlate extends StatelessWidget {
       accent = bort.fgsignal;
     }
 
-    final nameSize = BortMetrics.fontSizeForSide(side, BortTextRole.base);
-    final dateSize = BortMetrics.fontSizeForSide(side, BortTextRole.caption);
-    final numberSize = BortMetrics.fontSizeForSide(side, BortTextRole.caption);
+    final nameSize = metrics.textSize(BortTextRole.base);
+    final dateSize = metrics.textSize(BortTextRole.caption);
+    final numberSize = metrics.textSize(BortTextRole.caption);
     final pultSide = side * bort.kPultSmall;
     final strokeW = side * bort.kStroke;
     final radiusW = side * bort.kRadius;

@@ -210,6 +210,7 @@ class Pult extends StatelessWidget {
     final side = overrideSize ?? state.side;
     final confirming = state.confirmingId == spec.id;
     final bort = BortScope.of(context);
+    final metrics = BortMetrics.of(context);
 
     final selected = spec.selected;
     // Apply signal palette when selected OR confirming.
@@ -246,10 +247,7 @@ class Pult extends StatelessWidget {
                     style: TextStyle(
                       color: iconColor,
                       fontFamily: 'monospace',
-                      fontSize: BortMetrics.fontSizeForSide(
-                        side,
-                        BortTextRole.base,
-                      ),
+                      fontSize: metrics.textSize(BortTextRole.base),
                       height: 1.0,
                       decoration: TextDecoration.none,
                     ),
@@ -322,7 +320,7 @@ class Pult extends StatelessWidget {
       content = scaledCore;
     } else {
       final labelStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
-        fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.base),
+        fontSize: metrics.textSize(BortTextRole.base),
         fontWeight: FontWeight.normal,
       );
 
@@ -370,10 +368,7 @@ class Pult extends StatelessWidget {
                   ) ??
                   TextStyle(
                     color: iconColor,
-                    fontSize: BortMetrics.fontSizeForSide(
-                      side,
-                      BortTextRole.base,
-                    ),
+                    fontSize: metrics.textSize(BortTextRole.base),
                     fontWeight: FontWeight.normal,
                     decoration: TextDecoration.none,
                   ),

@@ -245,16 +245,15 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     final i18n = I18nScope.of(context);
     final side = PultScope.of(context).smallSide;
 
-    final metrics = BortMetrics.of(context);
-    final itemSize = metrics.smallFontSize;
+    final metrics = BortMetrics.of(context, compact: true);
     final pultSide = side * bort.kPultSmall;
-    final inputStyle = bortInputTextStyle(
+    final measureStyle = bortInputTextStyle(
       context,
       color: bort.fg,
-      fontSize: itemSize,
+      fontSize: metrics.textSize(BortTextRole.edit),
     );
     final inputLineHeight = TextPainter(
-      text: TextSpan(text: ' ', style: inputStyle),
+      text: TextSpan(text: ' ', style: measureStyle),
       textDirection: Directionality.of(context),
       textScaler: MediaQuery.textScalerOf(context),
     )..layout();
@@ -311,6 +310,11 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                 itemBuilder: (context, i) {
                   final it = _items[i];
                   final canToggle = it.text.trim().isNotEmpty;
+                  final inputSize = metrics.textSize(
+                    _focusNodes[i].hasFocus
+                        ? BortTextRole.edit
+                        : BortTextRole.base,
+                  );
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Row(
@@ -330,6 +334,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                         Expanded(
                           child: Focus(
                             onFocusChange: (hasFocus) {
+                              if (mounted) setState(() {});
                               if (!hasFocus) _onBlur(i);
                             },
                             child: ConstrainedBox(
@@ -339,15 +344,20 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                               child: TextField(
                                 controller: _controllers[i],
                                 focusNode: _focusNodes[i],
-                                style: inputStyle,
+                                style: bortInputTextStyle(
+                                  context,
+                                  color: bort.fg,
+                                  fontSize: inputSize,
+                                ),
                                 decoration: bortInputDecoration(
                                   context,
                                   borderColor: bort.fg,
                                   focusedBorderColor: bort.bgsignal,
                                   hintText: i18n.t('routine.block.note'),
+                                  fontSize: inputSize,
                                   hintStyle: TextStyle(
                                     color: bort.mid,
-                                    fontSize: inputStyle.fontSize,
+                                    fontSize: inputSize,
                                   ),
                                   contentPadding: EdgeInsets.all(side * 0.15),
                                 ),

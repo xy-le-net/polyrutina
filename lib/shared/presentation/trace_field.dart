@@ -323,7 +323,15 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
 
     final files = _files();
 
-    final textStyle = bortInputTextStyle(context, color: widget.fg);
+    final metrics = BortMetrics.of(context);
+    final textSize = metrics.textSize(
+      _focused ? BortTextRole.edit : BortTextRole.base,
+    );
+    final textStyle = bortInputTextStyle(
+      context,
+      color: widget.fg,
+      fontSize: textSize,
+    );
 
     // View mode: text is present, the field is not focused, and the
     // user is not in the tap-to-edit window. The text is rendered as
@@ -344,10 +352,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     if (_focused) {
       final viewInsets = MediaQuery.of(context).viewInsets.bottom;
       final textScale = MediaQuery.textScalerOf(context).scale(1.0);
-      final lineH =
-          BortMetrics.fontSizeForSide(widget.side, BortTextRole.edit) *
-          1.4 *
-          textScale;
+      final lineH = metrics.textSize(BortTextRole.edit) * 1.4 * textScale;
       final availableH = MediaQuery.of(context).size.height - viewInsets;
       final reserved = widget.side * 4;
       final budget = (availableH - reserved) * 0.55;
@@ -367,15 +372,8 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
     Widget fieldWidget;
     if (viewMode) {
       final maxViewH = MediaQuery.of(context).size.height / 3;
-      final metrics = BortMetrics.of(context);
       final viewPadding = metrics.fieldPadding;
       final borderWidth = metrics.fieldBorderWidth;
-      final viewTextStyle = textStyle.copyWith(
-        fontSize: BortMetrics.fontSizeForSide(
-          widget.side,
-          BortTextRole.caption,
-        ),
-      );
       fieldWidget = LayoutBuilder(
         builder: (context, constraints) {
           final textPainter =
@@ -389,8 +387,6 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
                         .clamp(0.0, double.infinity)
                         .toDouble(),
               );
-          // Measure with the original style so the read-only slot keeps its
-          // previous height even though its displayed text is smaller.
           final viewHeight =
               (textPainter.height + viewPadding * 2 + borderWidth * 2)
                   .clamp(0.0, maxViewH)
@@ -414,7 +410,7 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
                 borderRadius: BorderRadius.circular(metrics.radius),
               ),
               child: SingleChildScrollView(
-                child: Text(_ctrl.text, style: viewTextStyle),
+                child: Text(_ctrl.text, style: textStyle),
               ),
             ),
           );

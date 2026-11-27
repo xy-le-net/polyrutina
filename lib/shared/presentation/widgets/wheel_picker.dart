@@ -17,6 +17,7 @@ class WheelValuePicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bort = BortScope.of(context);
+    final metrics = BortMetrics.of(context);
     final columnHeight = side * BortMetrics.wheelHeightFactor;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -33,10 +34,7 @@ class WheelValuePicker extends StatelessWidget {
                     columns[i].separator,
                     style: TextStyle(
                       color: bort.fg,
-                      fontSize: BortMetrics.fontSizeForSide(
-                        side,
-                        BortTextRole.base,
-                      ),
+                      fontSize: metrics.textSize(BortTextRole.base),
                       decoration: TextDecoration.none,
                     ),
                   ),
@@ -149,10 +147,10 @@ class _WheelColumnState extends State<_WheelColumn> {
               maxLines: 1,
               style: TextStyle(
                 color: bort.mid,
-                fontSize: BortMetrics.fontSizeForSide(
-                  side,
-                  BortTextRole.caption,
-                ),
+                fontSize: BortMetrics.of(
+                  context,
+                  compact: true,
+                ).textSize(BortTextRole.caption),
                 decoration: TextDecoration.none,
               ),
             ),
@@ -189,8 +187,7 @@ class _WheelColumnState extends State<_WheelColumn> {
                   column.formatter?.call(i) ?? i.toString(),
                   style: TextStyle(
                     color: i == _selectedValue ? bort.bgsignal : bort.fg,
-                    fontSize: BortMetrics.fontSizeForSide(
-                      side,
+                    fontSize: BortMetrics.of(context).textSize(
                       BortTextRole.base,
                     ),
                     decoration: TextDecoration.none,

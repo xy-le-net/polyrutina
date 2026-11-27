@@ -28,7 +28,8 @@ class RubkaControl extends StatelessWidget {
     final fgsignal = bort.fgsignal;
     final side = PultScope.of(context).smallSide;
 
-    final titleSize = BortMetrics.fontSizeForSide(side, BortTextRole.header);
+    final metrics = BortMetrics.of(context, compact: true);
+    final titleSize = metrics.textSize(BortTextRole.header);
     final pad = side * bort.kFramePad;
     final gap = side * bort.kBlockGap;
     final strokeW = side * bort.kStroke;
@@ -70,7 +71,7 @@ class RubkaControl extends StatelessWidget {
           text: text,
           style: TextStyle(
             color: mid,
-            fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.caption),
+            fontSize: metrics.textSize(BortTextRole.caption),
           ),
         ),
       );
@@ -106,7 +107,7 @@ class RubkaControl extends StatelessWidget {
                     ? '0${i18n.t('time.m')}'
                     : fmtTime(bort.bortTime, i18n.t),
                 color: bort.bgsignal,
-                fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.base),
+                fontSize: metrics.textSize(BortTextRole.base),
                 fontFamily: 'monospace',
                 onTap: () => showTimeHistory(context, key: 'bort'),
               ),
@@ -137,7 +138,7 @@ class RubkaControl extends StatelessWidget {
           LinkText(
             text: shiftTimeStr,
             color: bort.bgsignal,
-            fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.base),
+            fontSize: metrics.textSize(BortTextRole.base),
             fontFamily: 'monospace',
             onTap: () => showTimeHistory(context, key: 'shift', fieldId: 0),
           ),

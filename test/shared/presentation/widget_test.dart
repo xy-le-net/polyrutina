@@ -39,9 +39,9 @@ void main() {
   test('text roles share the Rubka base size', () {
     const side = 40.0;
     final base = BortMetrics.fontSizeForSide(side, BortTextRole.base);
-    expect(BortMetrics.fontSizeForSide(side, BortTextRole.header) / base, 1.4);
-    expect(BortMetrics.fontSizeForSide(side, BortTextRole.caption) / base, 0.7);
-    expect(BortMetrics.fontSizeForSide(side, BortTextRole.edit) / base, 1.2);
+    expect(BortMetrics.fontSizeForSide(side, BortTextRole.header) / base, 1.2);
+    expect(BortMetrics.fontSizeForSide(side, BortTextRole.caption) / base, 0.8);
+    expect(BortMetrics.fontSizeForSide(side, BortTextRole.edit) / base, 1.1);
 
     final theme = BortMetrics.normalizeTextTheme(ThemeData().textTheme, 18);
     final sizes = [
@@ -62,6 +62,44 @@ void main() {
       theme.labelSmall,
     ];
     expect(sizes.every((style) => style?.fontSize == 18), isTrue);
+  });
+
+  testWidgets('compact layouts retain the shared base font size', (
+    tester,
+  ) async {
+    final bort = OperationalLayer();
+    final pultState = PultState()..baseSide = 32;
+    addTearDown(bort.dispose);
+    addTearDown(pultState.dispose);
+
+    double? compactSize;
+    double? regularSize;
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => BortScope(
+          bort: bort,
+          child: PultScope(
+            state: pultState,
+            child: Builder(
+              builder: (context) {
+                compactSize = BortMetrics.of(
+                  context,
+                  compact: true,
+                ).textSize(BortTextRole.base);
+                regularSize = BortMetrics.of(
+                  context,
+                ).textSize(BortTextRole.base);
+                return child!;
+              },
+            ),
+          ),
+        ),
+        home: const Scaffold(),
+      ),
+    );
+
+    expect(compactSize, 12.8);
+    expect(regularSize, 12.8);
   });
 
   testWidgets('wheel scroll moves one item and remains draggable', (
@@ -144,12 +182,22 @@ void main() {
       ),
     );
 
-    await tester.enterText(find.byType(TextField), 'after');
+    final field = find.byType(TextField);
+    expect(tester.widget<TextField>(field).style?.fontSize, 12.8);
+    await tester.tap(field);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(field).style?.fontSize,
+      closeTo(14.08, .01),
+    );
+
+    await tester.enterText(field, 'after');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 
     expect(committed, ['after']);
     expect(submitted, 1);
+    expect(tester.widget<TextField>(field).style?.fontSize, 12.8);
   });
 
   testWidgets('transparent app icon asset renders', (tester) async {

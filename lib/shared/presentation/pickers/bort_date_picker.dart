@@ -83,10 +83,7 @@ Future<DateTime?> showBortDatePicker(
                         '$dayNum',
                         style: TextStyle(
                           color: isSelected ? bort.fgsignal : bort.fg,
-                          fontSize: BortMetrics.fontSizeForSide(
-                            side,
-                            BortTextRole.caption,
-                          ),
+                          fontSize: metrics.textSize(BortTextRole.caption),
                           height: 1,
                         ),
                       ),
@@ -131,10 +128,7 @@ Future<DateTime?> showBortDatePicker(
                             '${viewing.year}.${two(viewing.month)}',
                             style: TextStyle(
                               color: bort.fg,
-                              fontSize: BortMetrics.fontSizeForSide(
-                                side,
-                                BortTextRole.header,
-                              ),
+                              fontSize: metrics.textSize(BortTextRole.header),
                               decoration: TextDecoration.none,
                             ),
                           ),

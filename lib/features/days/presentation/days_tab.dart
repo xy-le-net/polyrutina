@@ -219,8 +219,7 @@ class _DaysTabState extends State<DaysTab> {
                           '${vm.month.toString().padLeft(2, '0')}',
                           style: TextStyle(
                             color: bort.fg,
-                            fontSize: BortMetrics.fontSizeForSide(
-                              side,
+                            fontSize: BortMetrics.of(context).textSize(
                               BortTextRole.header,
                             ),
                           ),
@@ -232,8 +231,7 @@ class _DaysTabState extends State<DaysTab> {
                           '(${i18n.t('month.${vm.month}')})',
                           style: TextStyle(
                             color: bort.mid,
-                            fontSize: BortMetrics.fontSizeForSide(
-                              side,
+                            fontSize: BortMetrics.of(context).textSize(
                               BortTextRole.caption,
                             ),
                           ),
@@ -383,7 +381,7 @@ class _DaysTabState extends State<DaysTab> {
     final color = bort.mid;
     final itemSize = side * 0.9;
     final markStroke = side * 0.04;
-    final fontSize = BortMetrics.fontSizeForSide(side, BortTextRole.base);
+    final fontSize = BortMetrics.of(context).textSize(BortTextRole.base);
     final gap = side * 0.3;
 
     Widget item(Widget mark, int count, String label, List<Routine> routines) {
@@ -505,7 +503,7 @@ class _DaysTabState extends State<DaysTab> {
 
     final TextStyle style = TextStyle(
       color: numberColor,
-      fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.base),
+      fontSize: BortMetrics.of(context).textSize(BortTextRole.base),
       height: 1.0,
       decoration: m.completed ? TextDecoration.underline : TextDecoration.none,
       decorationColor: bort.mid,

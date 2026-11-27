@@ -24,7 +24,7 @@ class RubkaTab extends StatelessWidget {
     final fgsignal = bort.fgsignal;
     final side = PultScope.of(context).smallSide;
 
-    final titleSize = BortMetrics.fontSizeForSide(side, BortTextRole.header);
+    final titleSize = BortMetrics.of(context).textSize(BortTextRole.header);
     final pad = side * bort.kFramePad;
     final gap = side * bort.kBlockGap;
     final strokeW = side * bort.kStroke;

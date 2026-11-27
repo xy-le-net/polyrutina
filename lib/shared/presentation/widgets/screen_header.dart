@@ -40,9 +40,10 @@ class ScreenHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final bort = BortScope.of(context);
     final side = PultScope.of(context).smallSide;
+    final metrics = BortMetrics.of(context, compact: true);
 
-    final titleSize = BortMetrics.fontSizeForSide(side, BortTextRole.caption);
-    final primarySize = BortMetrics.fontSizeForSide(side, BortTextRole.header);
+    final titleSize = metrics.textSize(BortTextRole.caption);
+    final primarySize = metrics.textSize(BortTextRole.header);
 
     final pultSide = side * bort.kPultSmall;
 

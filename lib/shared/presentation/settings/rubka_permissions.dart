@@ -232,7 +232,9 @@ class _RubkaPermissionsState extends State<RubkaPermissions>
       dim: mid,
       fg: fg,
       signal: fgsignal,
-      titleSize: BortMetrics.fontSizeForSide(side, BortTextRole.header),
+      titleSize: BortMetrics.of(context, compact: true).textSize(
+        BortTextRole.header,
+      ),
       pad: side * bort.kFramePad,
       gap: side * bort.kBlockGap,
       strokeW: side * bort.kStroke,

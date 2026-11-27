@@ -5,10 +5,10 @@ import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 import 'package:polyrutina/shared/presentation/app_scope.dart';
 
 enum BortTextRole {
-  header(1.4),
+  caption(0.8),
   base(1),
-  caption(0.7),
-  edit(1.2);
+  edit(1.1),
+  header(1.2);
 
   final double factor;
 
@@ -28,14 +28,17 @@ class BortMetrics {
 
   final OperationalLayer bort;
   final double side;
+  final double fontSide;
 
-  const BortMetrics({required this.bort, required this.side});
+  const BortMetrics({required this.bort, required this.side, double? fontSide})
+    : fontSide = fontSide ?? side;
 
   factory BortMetrics.of(BuildContext context, {bool compact = false}) {
     final pult = PultScope.of(context);
     return BortMetrics(
       bort: BortScope.of(context),
       side: compact ? pult.smallSide : pult.side,
+      fontSide: pult.side,
     );
   }
 
@@ -52,7 +55,7 @@ class BortMetrics {
 
   double unit(double factor) => side * factor;
 
-  double textSize(BortTextRole role) => fontSizeForSide(side, role);
+  double textSize(BortTextRole role) => fontSizeForSide(fontSide, role);
 
   static double fontSizeForSide(double side, BortTextRole role) =>
       side * baseFontFactor * role.factor;
@@ -84,6 +87,7 @@ class BortMetrics {
   double get stroke => unit(bort.kStroke);
   double get titleFontSize => textSize(BortTextRole.header);
   double get numberFontSize => textSize(BortTextRole.base);
+  double get baseFontSize => textSize(BortTextRole.base);
   double get smallFontSize => textSize(BortTextRole.caption);
   double get fieldFontSize => textSize(BortTextRole.edit);
   double get wheelPickerHeight => unit(wheelHeightFactor);

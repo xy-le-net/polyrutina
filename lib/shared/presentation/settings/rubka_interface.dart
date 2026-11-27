@@ -39,13 +39,18 @@ class RubkaInterface extends StatelessWidget {
         _settingRow(context, 'scale', fg, dim, bg, signal, side),
         _langRow(context, fg, dim, bg, signal, side),
         _settingRow(context, 'labels_buttons', fg, dim, bg, signal, side),
-        _sectionTitle(i18n.t('bort.default_slots'), dim, side),
+        _sectionTitle(context, i18n.t('bort.default_slots'), dim, side),
         ..._slotTicks(context, fg, dim, bg, signal, side),
       ],
     );
   }
 
-  Widget _sectionTitle(String text, Color dim, double side) {
+  Widget _sectionTitle(
+    BuildContext context,
+    String text,
+    Color dim,
+    double side,
+  ) {
     return Padding(
       padding: EdgeInsets.only(top: side * 0.3, bottom: side * 0.1),
       child: HelpLabel(
@@ -53,7 +58,10 @@ class RubkaInterface extends StatelessWidget {
         text: text,
         style: TextStyle(
           color: dim,
-          fontSize: BortMetrics.fontSizeForSide(side, BortTextRole.caption),
+          fontSize: BortMetrics.of(
+            context,
+            compact: true,
+          ).textSize(BortTextRole.caption),
         ),
       ),
     );
