@@ -1,12 +1,14 @@
 import 'dart:io';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import 'package:polyrutina/shared/models/routine.dart';
+import 'package:polyrutina/core/application/providers.dart';
+import 'package:polyrutina/features/routines/domain/routine.dart';
 import 'package:polyrutina/core/data/trace_layer.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/widgets/confirm_dialog.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/widgets/dialog_frame.dart';
@@ -21,14 +23,14 @@ import 'package:polyrutina/features/export_import/presentation/import_service.da
 import 'package:polyrutina/features/export_import/application/journal_compactor.dart';
 import 'package:polyrutina/features/export_import/presentation/report.dart';
 
-class RubkaData extends StatefulWidget {
+class RubkaData extends ConsumerStatefulWidget {
   const RubkaData({super.key});
 
   @override
-  State<RubkaData> createState() => _RubkaDataState();
+  ConsumerState<RubkaData> createState() => _RubkaDataState();
 }
 
-class _RubkaDataState extends State<RubkaData> {
+class _RubkaDataState extends ConsumerState<RubkaData> {
   int _journalBytes = 0;
   int _mediaBytes = 0;
   int _exportsBytes = 0;
@@ -56,8 +58,8 @@ class _RubkaDataState extends State<RubkaData> {
   }
 
   Future<void> _showMediaList() async {
-    final app = AppScope.of(context);
-    final i18n = I18nScope.of(context);
+    final app = appContextOf(context);
+    final i18n = ref.read(i18nProvider)!;
     final entries = <_MediaListEntry>[];
     final seenPaths = <String>{};
 
@@ -233,8 +235,8 @@ class _RubkaDataState extends State<RubkaData> {
   }
 
   Future<void> _reload() async {
-    final app = AppScope.of(context);
-    final bort = BortScope.of(context);
+    final app = appContextOf(context);
+    final bort = ref.read(operationalLayerProvider);
     await app.journal.reread();
     bort.setLastRereadId(await app.journal.lastEntryId());
     await app.reloadI18n();
@@ -243,9 +245,9 @@ class _RubkaDataState extends State<RubkaData> {
   }
 
   Future<void> _deleteAll() async {
-    final app = AppScope.of(context);
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
+    final app = appContextOf(context);
+    final bort = ref.read(operationalLayerProvider);
+    final i18n = ref.read(i18nProvider)!;
     FocusManager.instance.primaryFocus?.unfocus();
     final ok = await showConfirm(
       context,
@@ -274,8 +276,8 @@ class _RubkaDataState extends State<RubkaData> {
 
   Future<void> _compress() async {
     if (_compacting) return;
-    final app = AppScope.of(context);
-    final i18n = I18nScope.of(context);
+    final app = appContextOf(context);
+    final i18n = ref.read(i18nProvider)!;
     FocusManager.instance.primaryFocus?.unfocus();
     final token = ProgressToken();
     setState(() => _compacting = true);
@@ -319,8 +321,8 @@ class _RubkaDataState extends State<RubkaData> {
   }
 
   Future<void> _export() async {
-    final app = AppScope.of(context);
-    final i18n = I18nScope.of(context);
+    final app = appContextOf(context);
+    final i18n = ref.read(i18nProvider)!;
     FocusManager.instance.primaryFocus?.unfocus();
     await ReportBuilder.build(app, i18n, uiContext: context);
     await _refreshSize();
@@ -328,7 +330,7 @@ class _RubkaDataState extends State<RubkaData> {
   }
 
   Future<void> _clearExports() async {
-    final i18n = I18nScope.of(context);
+    final i18n = ref.read(i18nProvider)!;
     FocusManager.instance.primaryFocus?.unfocus();
     final ok = await showConfirm(
       context,
@@ -351,8 +353,8 @@ class _RubkaDataState extends State<RubkaData> {
   }
 
   Future<void> _import() async {
-    final app = AppScope.of(context);
-    final i18n = I18nScope.of(context);
+    final app = appContextOf(context);
+    final i18n = ref.read(i18nProvider)!;
     FocusManager.instance.primaryFocus?.unfocus();
 
     final token = ProgressToken();
@@ -399,9 +401,9 @@ class _RubkaDataState extends State<RubkaData> {
   }
 
   Future<void> _resetCache() async {
-    final app = AppScope.of(context);
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
+    final app = appContextOf(context);
+    final bort = ref.read(operationalLayerProvider);
+    final i18n = ref.read(i18nProvider)!;
     FocusManager.instance.primaryFocus?.unfocus();
     final ok = await showConfirm(
       context,
@@ -454,8 +456,8 @@ class _RubkaDataState extends State<RubkaData> {
   }
 
   Future<void> _shakeOrphans() async {
-    final app = AppScope.of(context);
-    final i18n = I18nScope.of(context);
+    final app = appContextOf(context);
+    final i18n = ref.read(i18nProvider)!;
     final dir = await getApplicationDocumentsDirectory();
     final mediaDir = Directory(p.join(dir.path, 'media'));
     if (!await mediaDir.exists()) {
@@ -546,8 +548,10 @@ class _RubkaDataState extends State<RubkaData> {
 
   @override
   Widget build(BuildContext context) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
+    ref.watch(operationalLayerProvider);
+    ref.watch(i18nProvider);
+    final bort = ref.read(operationalLayerProvider);
+    final i18n = ref.read(i18nProvider)!;
     final fg = bort.fg;
     final mid = bort.mid;
     final bg = bort.bg;

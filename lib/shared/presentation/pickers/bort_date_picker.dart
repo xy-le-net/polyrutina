@@ -1,7 +1,8 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:polyrutina/core/domain/bort_time.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/widgets/dialog_frame.dart';
 import 'package:polyrutina/shared/presentation/widgets/wheel_picker.dart';
@@ -11,8 +12,9 @@ Future<DateTime?> showBortDatePicker(
   BuildContext context,
   DateTime initial,
 ) async {
-  final bort = BortScope.of(context);
-  final i18n = I18nScope.of(context);
+  final container = ProviderScope.containerOf(context, listen: false);
+  final bort = container.read(operationalLayerProvider);
+  final i18n = container.read(i18nProvider)!;
   final metrics = BortMetrics.of(context, compact: true);
   final side = metrics.side;
 

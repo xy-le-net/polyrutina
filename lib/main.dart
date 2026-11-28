@@ -13,15 +13,16 @@ import 'package:polyrutina/core/localization/i18n.dart';
 import 'package:polyrutina/core/data/journal_layer.dart';
 import 'package:polyrutina/core/domain/journal_types.dart';
 import 'package:polyrutina/core/application/operational_layer.dart';
-import 'package:polyrutina/shared/models/routine.dart';
+import 'package:polyrutina/features/routines/domain/routine.dart';
 import 'package:polyrutina/features/routines/application/routine_layer.dart';
+import 'package:polyrutina/features/routines/application/providers.dart';
 import 'package:polyrutina/core/application/ticker.dart';
 import 'package:polyrutina/core/data/trace_layer.dart';
 import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/features/routines/presentation/routine_card.dart';
 import 'package:polyrutina/shared/presentation/app_layout.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/control_row.dart';
 import 'package:polyrutina/shared/application/format.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
@@ -170,6 +171,7 @@ class _PolyRutinaAppState extends ConsumerState<PolyRutinaApp>
         final data = jsonDecode(raw) as Map<String, dynamic>;
         final lang = data['lang'] as String? ?? 'ru';
         _i18n = await I18n.load(lang);
+        ref.read(i18nProvider.notifier).update(_i18n!);
         _splashSlogan = _chooseSplashSlogan(_i18n!);
         if (mounted) setState(() {});
       } catch (_) {
@@ -185,6 +187,7 @@ class _PolyRutinaAppState extends ConsumerState<PolyRutinaApp>
 
       final previousLang = _i18n?.lang;
       _i18n = await I18n.load(_bort.lang);
+      ref.read(i18nProvider.notifier).update(_i18n!);
       if (previousLang != _i18n!.lang || _splashSlogan == null) {
         _splashSlogan = _chooseSplashSlogan(_i18n!);
       }
@@ -216,6 +219,7 @@ class _PolyRutinaAppState extends ConsumerState<PolyRutinaApp>
         i18n: _i18n!,
       );
 
+      _publishAppContext();
       await minimumSplashDuration;
       _bootDone = true;
     } catch (e, st) {
@@ -241,6 +245,32 @@ class _PolyRutinaAppState extends ConsumerState<PolyRutinaApp>
     if (mounted) setState(() {});
   }
 
+  void _publishAppContext() {
+    late final AppContext appContext;
+    appContext = AppContext(
+      bort: _bort,
+      routineLayer: _routineLayer,
+      traceLayer: _traceLayer,
+      fieldLayer: _fieldLayer,
+      journal: _journal,
+      ticker: _ticker,
+      i18n: _i18n!,
+      refresh: _refreshAll,
+      reloadI18n: _reloadI18n,
+      openRoutine: _openRoutine,
+      exportRoutine: (routineId, context) async {
+        await ReportBuilder.buildSingle(
+          appContext,
+          _i18n!,
+          routineId,
+          uiContext: context,
+        );
+      },
+      afterJournalReset: _afterJournalReset,
+    );
+    ref.read(appContextProvider.notifier).state = appContext;
+  }
+
   Future<void> _reloadI18n() async {
     final i18n = await I18n.load(_bort.lang);
     if (mounted) {
@@ -257,6 +287,8 @@ class _PolyRutinaAppState extends ConsumerState<PolyRutinaApp>
         _scheduler = _OverdueSchedulerImpl(i18n);
         _routineLayer.scheduler = _scheduler;
       });
+      ref.read(i18nProvider.notifier).update(i18n);
+      _publishAppContext();
     }
   }
 
@@ -606,29 +638,6 @@ class _PolyRutinaAppState extends ConsumerState<PolyRutinaApp>
       BortMetrics.fontSizeForSide(side, BortTextRole.base),
     ).apply(bodyColor: _bort.fg, displayColor: _bort.fg);
 
-    late final AppContext appContext;
-    appContext = AppContext(
-      bort: _bort,
-      routineLayer: _routineLayer,
-      traceLayer: _traceLayer,
-      fieldLayer: _fieldLayer,
-      journal: _journal,
-      ticker: _ticker,
-      i18n: _i18n!,
-      refresh: _refreshAll,
-      reloadI18n: _reloadI18n,
-      openRoutine: _openRoutine,
-      exportRoutine: (routineId, context) async {
-        await ReportBuilder.buildSingle(
-          appContext,
-          _i18n!,
-          routineId,
-          uiContext: context,
-        );
-      },
-      afterJournalReset: _afterJournalReset,
-    );
-
     return MaterialApp(
       navigatorKey: _navigatorKey,
       title: _i18n!.t('app.title'),
@@ -686,66 +695,40 @@ class _PolyRutinaAppState extends ConsumerState<PolyRutinaApp>
                   defaultTargetPlatform == TargetPlatform.macOS)
                 const SingleActivator(LogicalKeyboardKey.escape): _handleEscape,
             },
-            child: AppScope(
-              appContext: appContext,
-              child: BortScope(
-                bort: _bort,
-                child: RoutineScope(
-                  routineLayer: _routineLayer,
-                  child: TraceScope(
-                    traceLayer: _traceLayer,
-                    child: FieldScope(
-                      fieldLayer: _fieldLayer,
-                      child: TickerScope(
-                        ticker: _ticker,
-                        child: I18nScope(
-                          i18n: _i18n!,
-                          child: PultScope(
-                            state: _pultState,
-                            child: MediaQuery(
-                              data: MediaQuery.of(
-                                context,
-                              ).copyWith(textScaler: TextScaler.noScaling),
-                              child: AnnotatedRegion<SystemUiOverlayStyle>(
-                                value: _overlayStyle(
-                                  _effectiveBrightness(systemBrightness),
-                                ),
-                                child: ColoredBox(
-                                  color: _bort.bg,
-                                  child: Listener(
-                                    behavior: HitTestBehavior.translucent,
-                                    onPointerDown: (event) {
-                                      _bort.pulseBort();
-                                      if (event.kind ==
-                                              PointerDeviceKind.mouse &&
-                                          (event.buttons &
-                                                  kSecondaryMouseButton) !=
-                                              0) {
-                                        _handleEscape();
-                                      }
-                                    },
-                                    child: SafeArea(
-                                      child: Stack(
-                                        children: [
-                                          child ?? const SizedBox.shrink(),
-                                          Positioned(
-                                            left: _rootPad,
-                                            top: _rootPad,
-                                            child: RootPult(
-                                              side: rootSide,
-                                              fg: _bort.fg,
-                                              bg: _bort.bg,
-                                              onOpen: _openTabsSheet,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
+            child: PultScope(
+              state: _pultState,
+              child: MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.noScaling),
+                child: AnnotatedRegion<SystemUiOverlayStyle>(
+                  value: _overlayStyle(_effectiveBrightness(systemBrightness)),
+                  child: ColoredBox(
+                    color: _bort.bg,
+                    child: Listener(
+                      behavior: HitTestBehavior.translucent,
+                      onPointerDown: (event) {
+                        _bort.pulseBort();
+                        if (event.kind == PointerDeviceKind.mouse &&
+                            (event.buttons & kSecondaryMouseButton) != 0) {
+                          _handleEscape();
+                        }
+                      },
+                      child: SafeArea(
+                        child: Stack(
+                          children: [
+                            child ?? const SizedBox.shrink(),
+                            Positioned(
+                              left: _rootPad,
+                              top: _rootPad,
+                              child: RootPult(
+                                side: rootSide,
+                                fg: _bort.fg,
+                                bg: _bort.bg,
+                                onOpen: _openTabsSheet,
                               ),
                             ),
-                          ),
+                          ],
                         ),
                       ),
                     ),

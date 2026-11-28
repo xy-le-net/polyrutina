@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/shared/presentation/widgets/block.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/control_row.dart';
@@ -11,13 +12,13 @@ import 'package:polyrutina/features/export_import/presentation/rubka_data.dart';
 import 'package:polyrutina/shared/presentation/settings/rubka_interface.dart';
 import 'package:polyrutina/shared/presentation/settings/rubka_permissions.dart';
 
-class RubkaTab extends StatelessWidget {
+class RubkaTab extends ConsumerWidget {
   const RubkaTab({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bort = ref.watch(operationalLayerProvider);
+    final i18n = ref.watch(i18nProvider)!;
     final fg = bort.fg;
     final mid = bort.mid;
     final bg = bort.bg;

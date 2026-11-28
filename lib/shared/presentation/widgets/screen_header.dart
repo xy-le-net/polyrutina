@@ -1,11 +1,12 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
 import 'package:polyrutina/shared/presentation/control_row.dart';
 
-class ScreenHeader extends StatelessWidget {
+class ScreenHeader extends ConsumerWidget {
   final String title;
   final String? subtitle;
   final VoidCallback? onExit;
@@ -24,8 +25,8 @@ class ScreenHeader extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final bort = BortScope.of(context);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bort = ref.watch(operationalLayerProvider);
     final side = PultScope.of(context).smallSide;
     final metrics = BortMetrics.of(context, compact: true);
 

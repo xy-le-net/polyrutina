@@ -1,7 +1,10 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:polyrutina/shared/models/routine.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/core/application/providers.dart';
+import 'package:polyrutina/features/routines/application/providers.dart';
+import 'package:polyrutina/features/routines/domain/routine.dart';
+import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/application/format.dart';
 import 'package:polyrutina/shared/presentation/frame.dart';
@@ -9,7 +12,7 @@ import 'package:polyrutina/shared/presentation/routine_flags.dart';
 import 'package:polyrutina/shared/presentation/timer_text.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 
-class RoutinePlate extends StatelessWidget {
+class RoutinePlate extends ConsumerWidget {
   final Routine routine;
   final int parity;
   final VoidCallback onTap;
@@ -26,14 +29,15 @@ class RoutinePlate extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
-    final ticker = TickerScope.of(context);
-    final routineLayer = RoutineScope.of(context);
-    final app = AppScope.of(context);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bort = ref.watch(operationalLayerProvider);
+    final i18n = ref.watch(i18nProvider)!;
+    final ticker = ref.watch(tickerProvider);
+    final routineLayer = ref.watch(routineLayerProvider);
+    final app = appContextOf(context);
     final fieldId =
-        FieldScope.of(context).activeFieldId ?? FieldScope.of(context).rootId;
+        ref.watch(fieldLayerProvider).activeFieldId ??
+        ref.read(fieldLayerProvider).rootId;
     final pult = PultScope.of(context);
     final metrics = BortMetrics.of(context);
     final side = pult.smallSide;

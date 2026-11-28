@@ -1,8 +1,9 @@
 import 'package:flutter/gestures.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
 
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/widgets/dialog_frame.dart';
 import 'package:polyrutina/shared/presentation/widgets/link_text.dart';
@@ -20,7 +21,10 @@ class WheelValuePicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bort = BortScope.of(context);
+    final bort = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(operationalLayerProvider);
     final metrics = BortMetrics.of(context);
     final columnHeight = side * BortMetrics.wheelHeightFactor;
     return Row(
@@ -56,7 +60,10 @@ class WheelValuePicker extends StatelessWidget {
     required int initialSeconds,
   }) {
     final side = PultScope.of(context).smallSide;
-    final i18n = I18nScope.of(context);
+    final i18n = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(i18nProvider)!;
     var hours = initialSeconds ~/ 3600;
     var minutes = (initialSeconds % 3600) ~/ 60;
     var seconds = initialSeconds % 60;
@@ -133,9 +140,18 @@ class WheelValuePicker extends StatelessWidget {
                         seconds = 0;
                       }),
                     ),
-                    fg: BortScope.of(context).fg,
-                    bg: BortScope.of(context).bg,
-                    signal: BortScope.of(context).fgsignal,
+                    fg: ProviderScope.containerOf(
+                      context,
+                      listen: false,
+                    ).read(operationalLayerProvider).fg,
+                    bg: ProviderScope.containerOf(
+                      context,
+                      listen: false,
+                    ).read(operationalLayerProvider).bg,
+                    signal: ProviderScope.containerOf(
+                      context,
+                      listen: false,
+                    ).read(operationalLayerProvider).fgsignal,
                     overrideSize: side,
                   ),
                   LinkText(
@@ -249,7 +265,10 @@ class _WheelColumnState extends State<_WheelColumn> {
 
   @override
   Widget build(BuildContext context) {
-    final bort = BortScope.of(context);
+    final bort = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(operationalLayerProvider);
     final column = widget.column;
     final side = widget.side;
     return Column(

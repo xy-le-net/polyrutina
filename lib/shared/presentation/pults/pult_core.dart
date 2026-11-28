@@ -1,6 +1,8 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/core/application/providers.dart';
+import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_sheet.dart';
 
@@ -86,7 +88,7 @@ class PultSheetScope extends InheritedWidget {
   bool updateShouldNotify(PultSheetScope old) => closeSheet != old.closeSheet;
 }
 
-class Pult extends StatelessWidget {
+class Pult extends ConsumerWidget {
   final PultSpec spec;
   final double? overrideSize;
   final Color fg;
@@ -108,7 +110,7 @@ class Pult extends StatelessWidget {
 
   void _pulseBort(BuildContext context) {
     try {
-      AppScope.of(context).pulseBort();
+      appContextOf(context).pulseBort();
     } catch (_) {}
   }
 
@@ -198,11 +200,11 @@ class Pult extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final state = PultScope.of(context);
     final side = overrideSize ?? state.side;
     final confirming = state.confirmingId == spec.id;
-    final bort = BortScope.of(context);
+    final bort = ref.watch(operationalLayerProvider);
     final metrics = BortMetrics.of(context);
 
     final selected = spec.selected;

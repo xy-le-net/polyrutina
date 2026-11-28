@@ -7,7 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'package:polyrutina/core/data/trace_layer.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/application/format.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_sheet.dart';
@@ -20,7 +20,7 @@ Future<void> showMediaPicker({
   required int objectId,
   required String slot,
 }) async {
-  final app = AppScope.of(context);
+  final app = appContextOf(context);
   final i18n = app.i18n;
   final bort = app.bort;
   final side = PultScope.of(context).smallSide;
@@ -200,7 +200,7 @@ void _showMediaError(
   if (!context.mounted) return;
   ScaffoldMessenger.maybeOf(context)?.showSnackBar(
     SnackBar(
-      content: Text(AppScope.of(context).i18n.t('media.capture_failed')),
+      content: Text(appContextOf(context).i18n.t('media.capture_failed')),
     ),
   );
 }

@@ -1,22 +1,24 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/core/domain/journal_types.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/widgets/wheel_picker.dart';
 import 'package:polyrutina/shared/presentation/pults/pulse.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 
-class ShiftRow extends StatefulWidget {
+class ShiftRow extends ConsumerStatefulWidget {
   final VoidCallback onChanged;
 
   const ShiftRow({super.key, required this.onChanged});
 
   @override
-  State<ShiftRow> createState() => _ShiftRowState();
+  ConsumerState<ShiftRow> createState() => _ShiftRowState();
 }
 
-class _ShiftRowState extends State<ShiftRow> {
+class _ShiftRowState extends ConsumerState<ShiftRow> {
   // Shift time is stored under field zero.
   static const int _fieldId = 0;
 
@@ -26,8 +28,8 @@ class _ShiftRowState extends State<ShiftRow> {
       initialSeconds: seconds,
     );
     if (edited == null || !mounted) return;
-    final bort = BortScope.of(context);
-    final journal = AppScope.of(context).journal;
+    final bort = ref.read(operationalLayerProvider);
+    final journal = appContextOf(context).journal;
     if (edited == seconds) return;
     await journal.log(
       type: JournalType.actor,
@@ -39,10 +41,10 @@ class _ShiftRowState extends State<ShiftRow> {
 
   @override
   Widget build(BuildContext context) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
-    final ticker = TickerScope.of(context);
-    final app = AppScope.of(context);
+    final bort = ref.watch(operationalLayerProvider);
+    final i18n = ref.watch(i18nProvider)!;
+    final ticker = ref.watch(tickerProvider);
+    final app = appContextOf(context);
     final side = PultScope.of(context).smallSide;
     final fg = bort.fg;
     final dim = bort.mid;

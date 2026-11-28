@@ -6,7 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
 import 'package:polyrutina/core/data/trace_layer.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/widgets/dialog_frame.dart';
 import 'package:polyrutina/shared/application/format.dart';
@@ -46,7 +46,7 @@ class _AudioDialogState extends State<_AudioDialog> {
       final media = Directory(p.join(dir.path, 'media'));
       if (!await media.exists()) await media.create(recursive: true);
       if (!mounted) return;
-      final app = AppScope.of(context);
+      final app = appContextOf(context);
       final idx = app.bort.nextMediaIndex();
       final name = safeFileName(
         'audio_$idx'
@@ -71,7 +71,7 @@ class _AudioDialogState extends State<_AudioDialog> {
       final path = _path;
       final name = _name;
       if (attach && path != null && name != null) {
-        final app = AppScope.of(context);
+        final app = appContextOf(context);
         await app.traceLayer.attachFile(
           app.journal,
           objectId: widget.objectId,
@@ -91,7 +91,7 @@ class _AudioDialogState extends State<_AudioDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.of(context);
+    final app = appContextOf(context);
     final i18n = app.i18n;
     final bort = app.bort;
     final metrics = BortMetrics.of(context, compact: true);

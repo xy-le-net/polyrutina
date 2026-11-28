@@ -1,7 +1,7 @@
 import 'package:path/path.dart' as p;
 
-import 'package:polyrutina/shared/models/routine.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/features/routines/domain/routine.dart';
+import 'package:polyrutina/shared/application/app_context.dart';
 
 class ReportJson {
   static const int schemaVersion = 1;

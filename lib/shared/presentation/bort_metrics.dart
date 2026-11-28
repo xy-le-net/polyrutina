@@ -1,8 +1,9 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:polyrutina/core/application/operational_layer.dart';
+import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
 
 enum BortTextRole {
   caption(0.8),
@@ -36,7 +37,10 @@ class BortMetrics {
   factory BortMetrics.of(BuildContext context, {bool compact = false}) {
     final pult = PultScope.of(context);
     return BortMetrics(
-      bort: BortScope.of(context),
+      bort: ProviderScope.containerOf(
+        context,
+        listen: false,
+      ).read(operationalLayerProvider),
       side: compact ? pult.smallSide : pult.side,
       fontSide: pult.side,
     );

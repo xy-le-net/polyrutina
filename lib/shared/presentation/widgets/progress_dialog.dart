@@ -1,6 +1,8 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/core/application/providers.dart';
+import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/widgets/dialog_frame.dart';
 
@@ -27,16 +29,16 @@ class ProgressToken extends ChangeNotifier {
   }
 }
 
-class ProgressDialog extends StatelessWidget {
+class ProgressDialog extends ConsumerWidget {
   final ProgressToken token;
   final String title;
 
   const ProgressDialog({super.key, required this.token, required this.title});
 
   @override
-  Widget build(BuildContext context) {
-    final app = AppScope.of(context);
-    final bort = app.bort;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final app = appContextOf(context);
+    final bort = ref.watch(operationalLayerProvider);
     final i18n = app.i18n;
     final metrics = BortMetrics.of(context, compact: true);
 

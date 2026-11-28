@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:polyrutina/core/localization/i18n.dart';
 import 'package:polyrutina/core/application/operational_layer.dart';
 import 'package:polyrutina/shared/presentation/pickers/bort_date_picker.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import '../../support/provider_scope_helpers.dart';
 import 'package:polyrutina/shared/presentation/widgets/bort_field.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/control_row.dart';
@@ -70,7 +70,6 @@ void main() {
   ) async {
     final bort = OperationalLayer();
     final pultState = PultState()..baseSide = 32;
-    addTearDown(bort.dispose);
     addTearDown(pultState.dispose);
 
     double? compactSize;
@@ -108,7 +107,6 @@ void main() {
   ) async {
     final bort = OperationalLayer();
     final pultState = PultState()..baseSide = 32;
-    addTearDown(bort.dispose);
     addTearDown(pultState.dispose);
 
     var value = 4;
@@ -158,7 +156,6 @@ void main() {
   ) async {
     final bort = OperationalLayer();
     final pultState = PultState();
-    addTearDown(bort.dispose);
     addTearDown(pultState.dispose);
 
     final committed = <String>[];
@@ -265,7 +262,6 @@ void main() {
     final bort = OperationalLayer();
     final pultState = PultState()..maxSide = 64;
     final i18n = await I18n.load('ru');
-    addTearDown(bort.dispose);
     addTearDown(pultState.dispose);
 
     const samples = [
@@ -321,7 +317,6 @@ void main() {
   ) async {
     final bort = OperationalLayer();
     final pultState = PultState();
-    addTearDown(bort.dispose);
     addTearDown(pultState.dispose);
 
     await tester.pumpWidget(
@@ -360,7 +355,6 @@ void main() {
   testWidgets('pult with tap submenu opens from a long press', (tester) async {
     final bort = OperationalLayer();
     final pultState = PultState();
-    addTearDown(bort.dispose);
     addTearDown(pultState.dispose);
 
     await tester.pumpWidget(_pultSubmenuApp(bort, pultState));
@@ -375,7 +369,6 @@ void main() {
   ) async {
     final bort = OperationalLayer();
     final pultState = PultState();
-    addTearDown(bort.dispose);
     addTearDown(pultState.dispose);
 
     await tester.pumpWidget(_pultSubmenuApp(bort, pultState));

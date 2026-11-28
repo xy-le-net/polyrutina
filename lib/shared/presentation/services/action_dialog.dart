@@ -2,7 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'package:polyrutina/core/application/operational_layer.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/application/downloads.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/widgets/dialog_frame.dart';
@@ -157,7 +157,7 @@ class _TimeHistoryDialogState extends State<_TimeHistoryDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.of(context);
+    final app = appContextOf(context);
     final bort = app.bort;
     final i18n = app.i18n;
     final side = widget.side;

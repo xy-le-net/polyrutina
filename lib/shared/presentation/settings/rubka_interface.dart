@@ -1,14 +1,15 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/core/application/operational_layer.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
 import 'package:polyrutina/shared/presentation/widgets/bort_field.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/help_label.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_tick.dart';
 
-class RubkaInterface extends StatelessWidget {
+class RubkaInterface extends ConsumerWidget {
   final void Function(String key, String value) onSet;
 
   const RubkaInterface({super.key, required this.onSet});
@@ -24,9 +25,9 @@ class RubkaInterface extends StatelessWidget {
   static const double _labelW = 140.0;
 
   @override
-  Widget build(BuildContext context) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bort = ref.watch(operationalLayerProvider);
+    final i18n = ref.watch(i18nProvider)!;
     final fg = bort.fg;
     final dim = bort.mid;
     final bg = bort.bg;
@@ -74,8 +75,14 @@ class RubkaInterface extends StatelessWidget {
     Color signal,
     double side,
   ) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
+    final bort = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(operationalLayerProvider);
+    final i18n = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(i18nProvider)!;
 
     const langs = <(String, String)>[('ru', 'lang.ru'), ('en', 'lang.en')];
 
@@ -133,8 +140,14 @@ class RubkaInterface extends StatelessWidget {
     Color signal,
     double side,
   ) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
+    final bort = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(operationalLayerProvider);
+    final i18n = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(i18nProvider)!;
     final out = <Widget>[];
     for (final k in _slotKinds) {
       final on = bort.defaultSlots.contains(k);
@@ -181,8 +194,14 @@ class RubkaInterface extends StatelessWidget {
     Color signal,
     double side,
   ) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
+    final bort = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(operationalLayerProvider);
+    final i18n = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(i18nProvider)!;
     final type = OperationalLayer.settingTypes[key] ?? 'string';
     final value = bort.allAsStrings[key] ?? '';
 
@@ -223,7 +242,10 @@ class RubkaInterface extends StatelessWidget {
     Color signal,
     double side,
   ) {
-    final bort = BortScope.of(context);
+    final bort = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(operationalLayerProvider);
 
     switch (type) {
       case 'bool':

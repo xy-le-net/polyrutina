@@ -1,9 +1,11 @@
 import 'dart:math' as math;
 
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/core/data/trace_layer.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/widgets/bort_field.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/widgets/screen_header.dart';
@@ -12,7 +14,7 @@ import 'package:polyrutina/shared/presentation/pults/pult_tick.dart';
 
 typedef _Item = ({String text, bool done});
 
-class ChecklistScreen extends StatefulWidget {
+class ChecklistScreen extends ConsumerStatefulWidget {
   final int objectId;
   final String slot;
   final String blockTitle;
@@ -27,10 +29,10 @@ class ChecklistScreen extends StatefulWidget {
   });
 
   @override
-  State<ChecklistScreen> createState() => _ChecklistScreenState();
+  ConsumerState<ChecklistScreen> createState() => _ChecklistScreenState();
 }
 
-class _ChecklistScreenState extends State<ChecklistScreen> {
+class _ChecklistScreenState extends ConsumerState<ChecklistScreen> {
   int _traceId = -1;
   List<_Item> _items = [];
   final List<TextEditingController> _controllers = [];
@@ -65,7 +67,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
   }
 
   void _loadTrace() {
-    final traceLayer = TraceScope.of(context);
+    final traceLayer = ref.read(traceLayerProvider);
     final t = traceLayer.findFirstByKindSlot(
       widget.objectId,
       TraceKind.checklist,
@@ -93,8 +95,8 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
   }
 
   Future<void> _save() async {
-    final traceLayer = TraceScope.of(context);
-    final journal = AppScope.of(context).journal;
+    final traceLayer = ref.read(traceLayerProvider);
+    final journal = appContextOf(context).journal;
     final saved = <TraceItem>[];
     for (var i = 0; i < _items.length; i++) {
       final it = _items[i];
@@ -241,8 +243,9 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
+    ref.watch(traceLayerProvider);
+    final bort = ref.watch(operationalLayerProvider);
+    final i18n = ref.watch(i18nProvider)!;
     final side = PultScope.of(context).smallSide;
 
     final metrics = BortMetrics.of(context, compact: true);

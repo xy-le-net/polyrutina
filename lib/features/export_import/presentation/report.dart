@@ -9,9 +9,9 @@ import 'package:share_plus/share_plus.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'package:polyrutina/core/localization/i18n.dart';
-import 'package:polyrutina/shared/models/routine.dart';
+import 'package:polyrutina/features/routines/domain/routine.dart';
 import 'package:polyrutina/core/data/trace_layer.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/application/format.dart';
 import 'package:polyrutina/shared/presentation/widgets/progress_dialog.dart';
 import 'package:polyrutina/features/export_import/presentation/report_json.dart';

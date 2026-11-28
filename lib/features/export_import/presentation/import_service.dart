@@ -11,7 +11,7 @@ import 'package:polyrutina/core/data/journal_layer.dart';
 import 'package:polyrutina/core/domain/journal_types.dart';
 import 'package:polyrutina/shared/application/routine_access.dart';
 import 'package:polyrutina/core/data/trace_layer.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/application/format.dart';
 import 'package:polyrutina/features/export_import/presentation/report_json.dart';
 

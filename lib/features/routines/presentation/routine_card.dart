@@ -1,8 +1,11 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:polyrutina/shared/models/routine.dart';
+import 'package:polyrutina/core/application/providers.dart';
+import 'package:polyrutina/features/routines/application/providers.dart';
+import 'package:polyrutina/features/routines/domain/routine.dart';
 import 'package:polyrutina/core/application/ticker.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/widgets/bort_field.dart';
 import 'package:polyrutina/shared/presentation/control_row.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
@@ -13,7 +16,7 @@ import 'package:polyrutina/shared/presentation/pickers/notice_picker.dart';
 import 'package:polyrutina/shared/presentation/widgets/wheel_picker.dart';
 import 'package:polyrutina/features/routines/presentation/routine_block_view.dart';
 
-class RoutineCard extends StatefulWidget {
+class RoutineCard extends ConsumerStatefulWidget {
   final int routineId;
   final bool autofocusName;
 
@@ -24,10 +27,10 @@ class RoutineCard extends StatefulWidget {
   });
 
   @override
-  State<RoutineCard> createState() => _RoutineCardState();
+  ConsumerState<RoutineCard> createState() => _RoutineCardState();
 }
 
-class _RoutineCardState extends State<RoutineCard> {
+class _RoutineCardState extends ConsumerState<RoutineCard> {
   AppTicker? _ticker;
   final Map<String, GlobalKey> _blockKeys = {};
   final _scrollController = ScrollController();
@@ -56,14 +59,14 @@ class _RoutineCardState extends State<RoutineCard> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final ticker = TickerScope.of(context);
+    final ticker = ref.read(tickerProvider);
     _ticker?.removeListener(_onTick);
     _ticker = ticker;
     _ticker?.addListener(_onTick);
 
     if (!_initializedExpand) {
       _initializedExpand = true;
-      final layer = RoutineScope.of(context);
+      final layer = ref.read(routineLayerProvider);
       final r = layer.findRoutine(widget.routineId);
       if (r != null) {
         final fresh =
@@ -86,7 +89,7 @@ class _RoutineCardState extends State<RoutineCard> {
 
   void _onTick() {
     if (!mounted) return;
-    final r = RoutineScope.of(context).findRoutine(widget.routineId);
+    final r = ref.read(routineLayerProvider).findRoutine(widget.routineId);
     if (r == null) return;
     final running = r.runningBlock;
     if (running == null) return;
@@ -119,7 +122,7 @@ class _RoutineCardState extends State<RoutineCard> {
   void _autoScroll() {
     if (_autoScrolled) return;
     _autoScrolled = true;
-    final kind = RoutineScope.of(context).lastActiveBlockKind;
+    final kind = ref.read(routineLayerProvider).lastActiveBlockKind;
     if (kind == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ctx = _blockKeys[kind]?.currentContext;
@@ -131,9 +134,10 @@ class _RoutineCardState extends State<RoutineCard> {
 
   bool _hasTrace(int routineId, String kind) {
     if (kind == 'summary') return false;
-    return TraceScope.of(
-      context,
-    ).attachedTo(routineId).any((trace) => trace.slot == kind);
+    return ref
+        .read(traceLayerProvider)
+        .attachedTo(routineId)
+        .any((trace) => trace.slot == kind);
   }
 
   bool _shouldShowSlot(Routine r, String kind) {
@@ -141,7 +145,7 @@ class _RoutineCardState extends State<RoutineCard> {
     if (kind == 'note') return true;
     if (kind == 'summary') return true;
 
-    final bort = BortScope.of(context);
+    final bort = ref.read(operationalLayerProvider);
     if (bort.defaultSlots.contains(kind)) return true;
 
     final b = r.blockOf(kind);
@@ -151,7 +155,7 @@ class _RoutineCardState extends State<RoutineCard> {
   }
 
   bool _isExpanded(String kind) {
-    final bort = BortScope.of(context);
+    final bort = ref.read(operationalLayerProvider);
     if (bort.collapsedBlocks.containsKey(widget.routineId)) {
       return !bort.isBlockCollapsed(widget.routineId, kind);
     }
@@ -164,18 +168,20 @@ class _RoutineCardState extends State<RoutineCard> {
       for (final slot in ['note', ...RoutineBlock.kinds, 'summary'])
         if (_isExpanded(slot)) slot,
     };
-    BortScope.of(context).setBlockCollapsed(
-      widget.routineId,
-      kind,
-      _isExpanded(kind),
-      initiallyExpanded: expandedKinds,
-    );
+    ref
+        .read(operationalLayerProvider)
+        .setBlockCollapsed(
+          widget.routineId,
+          kind,
+          _isExpanded(kind),
+          initiallyExpanded: expandedKinds,
+        );
     setState(() {});
   }
 
   Future<void> _startEdit(Routine r, String kind) async {
-    final routineLayer = RoutineScope.of(context);
-    final journal = AppScope.of(context).journal;
+    final routineLayer = ref.read(routineLayerProvider);
+    final journal = appContextOf(context).journal;
     final b = r.blockOf(kind);
     if (b == null) return;
 
@@ -193,33 +199,33 @@ class _RoutineCardState extends State<RoutineCard> {
   }
 
   Future<void> _toggleCompleted(Routine r) async {
-    final routineLayer = RoutineScope.of(context);
-    final journal = AppScope.of(context).journal;
+    final routineLayer = ref.read(routineLayerProvider);
+    final journal = appContextOf(context).journal;
     await routineLayer.setCompleted(journal, r.id, !r.completed);
   }
 
   Future<void> _deleteRoutine(Routine r) async {
-    final routineLayer = RoutineScope.of(context);
-    final journal = AppScope.of(context).journal;
+    final routineLayer = ref.read(routineLayerProvider);
+    final journal = appContextOf(context).journal;
     final nav = Navigator.of(context);
     await routineLayer.deleteRoutine(journal, r.id);
     if (mounted) nav.pop();
   }
 
   Future<void> _exportOne(Routine r) async {
-    final app = AppScope.of(context);
+    final app = appContextOf(context);
     await app.exportRoutine(r.id, context);
   }
 
   Future<void> _clearSchedule(Routine r) async {
-    final routineLayer = RoutineScope.of(context);
-    final journal = AppScope.of(context).journal;
+    final routineLayer = ref.read(routineLayerProvider);
+    final journal = appContextOf(context).journal;
     await routineLayer.setSchedule(journal, r.id, null);
   }
 
   Future<void> _pickSchedule(Routine r) async {
-    final routineLayer = RoutineScope.of(context);
-    final journal = AppScope.of(context).journal;
+    final routineLayer = ref.read(routineLayerProvider);
+    final journal = appContextOf(context).journal;
 
     // Preserve the full scheduled moment; new dates start at midnight.
     final now = DateTime.now();
@@ -240,8 +246,8 @@ class _RoutineCardState extends State<RoutineCard> {
   Future<void> _pickNotice(Routine r) async {
     // Notices require a scheduled date.
     if (r.scheduledAt == null) return;
-    final routineLayer = RoutineScope.of(context);
-    final journal = AppScope.of(context).journal;
+    final routineLayer = ref.read(routineLayerProvider);
+    final journal = appContextOf(context).journal;
 
     final total = await showNoticePicker(
       context,
@@ -253,13 +259,13 @@ class _RoutineCardState extends State<RoutineCard> {
   }
 
   Future<void> _clearNotice(Routine r) async {
-    final routineLayer = RoutineScope.of(context);
-    final journal = AppScope.of(context).journal;
+    final routineLayer = ref.read(routineLayerProvider);
+    final journal = appContextOf(context).journal;
     await routineLayer.clearNotice(journal, r.id);
   }
 
   Future<void> _moveRoutine(Routine r) async {
-    final app = AppScope.of(context);
+    final app = appContextOf(context);
     final i18n = app.i18n;
     final bort = app.bort;
     final attached = r.fieldParents.isNotEmpty;
@@ -350,9 +356,15 @@ class _RoutineCardState extends State<RoutineCard> {
 
   @override
   Widget build(BuildContext context) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
-    final routineLayer = RoutineScope.of(context);
+    ref.watch(operationalLayerProvider);
+    ref.watch(routineLayerProvider);
+    ref.watch(traceLayerProvider);
+    ref.watch(fieldLayerProvider);
+    ref.watch(tickerProvider);
+    ref.watch(i18nProvider);
+    final bort = ref.read(operationalLayerProvider);
+    final i18n = ref.read(i18nProvider)!;
+    final routineLayer = ref.read(routineLayerProvider);
     final side = PultScope.of(context).smallSide;
 
     final r = routineLayer.findRoutine(widget.routineId);
@@ -460,7 +472,7 @@ class _RoutineCardState extends State<RoutineCard> {
                       : i18n.t('routine.no_name'),
                   idleTextRole: BortTextRole.caption,
                   onCommit: (v) => routineLayer.renameRoutine(
-                    AppScope.of(context).journal,
+                    appContextOf(context).journal,
                     r.id,
                     v,
                   ),

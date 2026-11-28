@@ -1,8 +1,9 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/core/application/providers.dart';
 
-class LinkText extends StatelessWidget {
+class LinkText extends ConsumerWidget {
   final String text;
   final double fontSize;
   final VoidCallback? onTap;
@@ -19,8 +20,8 @@ class LinkText extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final bort = BortScope.of(context);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bort = ref.watch(operationalLayerProvider);
     final linkSize = fontSize;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,

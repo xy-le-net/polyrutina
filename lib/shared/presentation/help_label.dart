@@ -1,9 +1,10 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/shared/presentation/widgets/notice_dialog.dart';
 
-class HelpLabel extends StatelessWidget {
+class HelpLabel extends ConsumerWidget {
   // Dictionary key (without the `help.` prefix) — e.g. `bort.scale`.
   final String helpKey;
 
@@ -35,24 +36,12 @@ class HelpLabel extends StatelessWidget {
     this.maxLines = 1,
   });
 
-  bool _hasHelp(BuildContext context) {
-    final i18n = I18nScope.of(context);
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final i18n = ref.watch(i18nProvider)!;
     final key = 'help.$helpKey';
     final translated = i18n.t(key);
-    // I18n.t falls back to the key itself when the entry is missing;
-    // an identical return means «no help text».
-    return translated != key && translated.isNotEmpty;
-  }
-
-  Future<void> _show(BuildContext context) async {
-    final i18n = I18nScope.of(context);
-    final text = i18n.t('help.$helpKey');
-    await showNotice(context, title: text);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final hasHelp = _hasHelp(context);
+    final hasHelp = translated != key && translated.isNotEmpty;
     final child = Text(
       text,
       style: style,
@@ -68,7 +57,7 @@ class HelpLabel extends StatelessWidget {
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => _show(context),
+      onTap: () => showNotice(context, title: i18n.t(key)),
       child: wrapped,
     );
   }

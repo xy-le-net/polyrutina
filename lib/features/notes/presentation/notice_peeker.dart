@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/shared/presentation/widgets/bort_field.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/widgets/dialog_frame.dart';
@@ -11,7 +12,10 @@ Future<int?> showNoticePicker(
   required int initialSeconds,
   bool noticeSet = false,
 }) async {
-  final i18n = I18nScope.of(context);
+  final i18n = ProviderScope.containerOf(
+    context,
+    listen: false,
+  ).read(i18nProvider)!;
   final metrics = BortMetrics.of(context, compact: true);
 
   // Pre-fill only when a notice was actually assigned. An unset

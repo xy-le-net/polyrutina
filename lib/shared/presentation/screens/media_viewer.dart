@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:open_filex/open_filex.dart';
@@ -11,17 +12,18 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import 'package:polyrutina/core/localization/i18n.dart';
+import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/core/application/operational_layer.dart';
 import 'package:polyrutina/core/data/trace_layer.dart';
 import 'package:polyrutina/shared/application/downloads.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/widgets/screen_header.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 import 'package:polyrutina/shared/presentation/screens/geo_picker.dart';
 import 'package:polyrutina/shared/presentation/widgets/notice_dialog.dart';
 
-class MediaViewer extends StatefulWidget {
+class MediaViewer extends ConsumerStatefulWidget {
   final int traceId;
   final int objectId;
   final String slot;
@@ -46,10 +48,10 @@ class MediaViewer extends StatefulWidget {
   });
 
   @override
-  State<MediaViewer> createState() => _MediaViewerState();
+  ConsumerState<MediaViewer> createState() => _MediaViewerState();
 }
 
-class _MediaViewerState extends State<MediaViewer> {
+class _MediaViewerState extends ConsumerState<MediaViewer> {
   static const Set<String> _photoExt = {
     '.jpg',
     '.jpeg',
@@ -218,7 +220,7 @@ class _MediaViewerState extends State<MediaViewer> {
       if (mounted) {
         await showNotice(
           context,
-          title: I18nScope.of(context).t('media.saved'),
+          title: ref.read(i18nProvider)!.t('media.saved'),
           subtitle: saved.name,
         );
       }
@@ -226,7 +228,7 @@ class _MediaViewerState extends State<MediaViewer> {
       if (mounted) {
         await showNotice(
           context,
-          title: I18nScope.of(context).t('media.save_failed'),
+          title: ref.read(i18nProvider)!.t('media.save_failed'),
           subtitle: '$error',
         );
       }
@@ -236,7 +238,7 @@ class _MediaViewerState extends State<MediaViewer> {
   Future<void> _openParent() async {
     final id = widget.parentRoutineId;
     if (id == null) return;
-    final app = AppScope.of(context);
+    final app = appContextOf(context);
     Navigator.of(context).pop();
     await app.openRoutine(id);
   }
@@ -274,8 +276,8 @@ class _MediaViewerState extends State<MediaViewer> {
   }
 
   Future<void> _remove(TraceFile f) async {
-    final traceLayer = TraceScope.of(context);
-    final journal = AppScope.of(context).journal;
+    final traceLayer = ref.read(traceLayerProvider);
+    final journal = appContextOf(context).journal;
     final idx = _files.indexOf(f);
     if (idx < 0) return;
 
@@ -333,7 +335,8 @@ class _MediaViewerState extends State<MediaViewer> {
 
   @override
   Widget build(BuildContext context) {
-    final bort = BortScope.of(context);
+    ref.watch(traceLayerProvider);
+    final bort = ref.watch(operationalLayerProvider);
     final side = PultScope.of(context).smallSide;
 
     final f = _current;
@@ -380,7 +383,7 @@ class _MediaViewerState extends State<MediaViewer> {
   }
 
   Widget _bottomRow(TraceFile? f, OperationalLayer bort, double side) {
-    final i18n = I18nScope.of(context);
+    final i18n = ref.read(i18nProvider)!;
     final ek = f == null ? null : _effectiveKind(f);
 
     Widget centerPult(bool playing) {
@@ -587,7 +590,7 @@ class _MediaViewerState extends State<MediaViewer> {
   }
 
   Widget _body(TraceFile? f, OperationalLayer bort, double side) {
-    final i18n = I18nScope.of(context);
+    final i18n = ref.watch(i18nProvider)!;
     if (f == null) {
       return Center(
         child: Text(

@@ -1,22 +1,25 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:polyrutina/core/application/providers.dart';
+import 'package:polyrutina/features/routines/application/providers.dart';
 import 'package:polyrutina/core/localization/i18n.dart';
 import 'package:polyrutina/core/application/operational_layer.dart';
-import 'package:polyrutina/shared/models/routine.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/features/routines/domain/routine.dart';
+import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/control_row.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_sheet.dart';
 
-class DaysTab extends StatefulWidget {
+class DaysTab extends ConsumerStatefulWidget {
   const DaysTab({super.key});
 
   @override
-  State<DaysTab> createState() => _DaysTabState();
+  ConsumerState<DaysTab> createState() => _DaysTabState();
 }
 
-class _DaysTabState extends State<DaysTab> {
+class _DaysTabState extends ConsumerState<DaysTab> {
   // A generous anchor so that both directions are effectively
   // unbounded. About 8300 years in either direction.
   static const int _centerPage = 100000;
@@ -154,8 +157,8 @@ class _DaysTabState extends State<DaysTab> {
 
   void _showLegendSheet(List<Routine> routines) {
     if (routines.isEmpty) return;
-    final bort = BortScope.of(context);
-    final openRoutine = AppScope.of(context).openRoutine;
+    final bort = ref.read(operationalLayerProvider);
+    final openRoutine = appContextOf(context).openRoutine;
 
     showPultSheet(
       context: context,
@@ -178,8 +181,10 @@ class _DaysTabState extends State<DaysTab> {
 
   @override
   Widget build(BuildContext context) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
+    ref.watch(operationalLayerProvider);
+    ref.watch(routineLayerProvider);
+    final bort = ref.read(operationalLayerProvider);
+    final i18n = ref.watch(i18nProvider)!;
     final side = PultScope.of(context).smallSide;
 
     final vm = _visibleMonth;
@@ -284,7 +289,7 @@ class _DaysTabState extends State<DaysTab> {
     final unfinishedRoutines = <Routine>[];
     final completedRoutines = <Routine>[];
 
-    for (final r in RoutineScope.of(context).routines) {
+    for (final r in ref.read(routineLayerProvider).routines) {
       final day = _dayOf(month, r);
       if (day == null) continue;
       cells.putIfAbsent(day, () => []).add(r);
@@ -571,8 +576,8 @@ class _DaysTabState extends State<DaysTab> {
   }
 
   void _openDay(List<Routine> routines) {
-    final bort = BortScope.of(context);
-    final openRoutine = AppScope.of(context).openRoutine;
+    final bort = ref.read(operationalLayerProvider);
+    final openRoutine = appContextOf(context).openRoutine;
     showPultSheet(
       context: context,
       subs: [
@@ -593,8 +598,8 @@ class _DaysTabState extends State<DaysTab> {
   }
 
   Future<void> _createOnDay(DateTime month, int day) async {
-    final app = AppScope.of(context);
-    final routineLayer = RoutineScope.of(context);
+    final app = appContextOf(context);
+    final routineLayer = ref.read(routineLayerProvider);
     final r = await routineLayer.createRoutine(app.journal);
     final dt = DateTime(month.year, month.month, day);
 

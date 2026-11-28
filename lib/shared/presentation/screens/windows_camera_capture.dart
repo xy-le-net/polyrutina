@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:material_ui/material_ui.dart';
 
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/widgets/screen_header.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 
@@ -138,7 +138,7 @@ class _WindowsCameraCaptureState extends State<_WindowsCameraCapture> {
 
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.of(context);
+    final app = appContextOf(context);
     final side = PultScope.of(context).smallSide;
     final controller = _controller;
 

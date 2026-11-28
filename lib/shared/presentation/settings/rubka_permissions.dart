@@ -1,9 +1,10 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/shared/presentation/widgets/block.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
@@ -19,16 +20,16 @@ class _PermEntry {
   });
 }
 
-class RubkaPermissions extends StatefulWidget {
+class RubkaPermissions extends ConsumerStatefulWidget {
   final int parity;
 
   const RubkaPermissions({super.key, this.parity = 4});
 
   @override
-  State<RubkaPermissions> createState() => _RubkaPermissionsState();
+  ConsumerState<RubkaPermissions> createState() => _RubkaPermissionsState();
 }
 
-class _RubkaPermissionsState extends State<RubkaPermissions>
+class _RubkaPermissionsState extends ConsumerState<RubkaPermissions>
     with WidgetsBindingObserver {
   static const List<_PermEntry> _entries = [
     _PermEntry(
@@ -102,7 +103,7 @@ class _RubkaPermissionsState extends State<RubkaPermissions>
         if (!opened && mounted) {
           ScaffoldMessenger.maybeOf(context)?.showSnackBar(
             SnackBar(
-              content: Text(I18nScope.of(context).t('perm.settings_failed')),
+              content: Text(ref.read(i18nProvider)!.t('perm.settings_failed')),
             ),
           );
         }
@@ -113,7 +114,7 @@ class _RubkaPermissionsState extends State<RubkaPermissions>
         if (mounted) {
           ScaffoldMessenger.maybeOf(context)?.showSnackBar(
             SnackBar(
-              content: Text(I18nScope.of(context).t('perm.settings_failed')),
+              content: Text(ref.read(i18nProvider)!.t('perm.settings_failed')),
             ),
           );
         }
@@ -141,7 +142,7 @@ class _RubkaPermissionsState extends State<RubkaPermissions>
         if (!opened && mounted) {
           ScaffoldMessenger.maybeOf(context)?.showSnackBar(
             SnackBar(
-              content: Text(I18nScope.of(context).t('perm.settings_failed')),
+              content: Text(ref.read(i18nProvider)!.t('perm.settings_failed')),
             ),
           );
         }
@@ -152,7 +153,7 @@ class _RubkaPermissionsState extends State<RubkaPermissions>
         if (mounted) {
           ScaffoldMessenger.maybeOf(context)?.showSnackBar(
             SnackBar(
-              content: Text(I18nScope.of(context).t('perm.settings_failed')),
+              content: Text(ref.read(i18nProvider)!.t('perm.settings_failed')),
             ),
           );
         }
@@ -179,8 +180,8 @@ class _RubkaPermissionsState extends State<RubkaPermissions>
 
   @override
   Widget build(BuildContext context) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
+    final bort = ref.watch(operationalLayerProvider);
+    final i18n = ref.watch(i18nProvider)!;
     final fg = bort.fg;
     final mid = bort.mid;
     final bg = bort.bg;
@@ -232,9 +233,10 @@ class _RubkaPermissionsState extends State<RubkaPermissions>
       dim: mid,
       fg: fg,
       signal: fgsignal,
-      titleSize: BortMetrics.of(context, compact: true).textSize(
-        BortTextRole.header,
-      ),
+      titleSize: BortMetrics.of(
+        context,
+        compact: true,
+      ).textSize(BortTextRole.header),
       pad: side * bort.kFramePad,
       gap: side * bort.kBlockGap,
       strokeW: side * bort.kStroke,

@@ -1,7 +1,10 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:polyrutina/shared/models/routine.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/core/application/providers.dart';
+import 'package:polyrutina/features/routines/application/providers.dart';
+import 'package:polyrutina/features/routines/domain/routine.dart';
+import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/widgets/block.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/application/format.dart';
@@ -12,7 +15,7 @@ import 'package:polyrutina/shared/presentation/pults/pulse.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_tick.dart';
 
-class RoutineBlockView extends StatelessWidget {
+class RoutineBlockView extends ConsumerWidget {
   final Routine routine;
   final String kind;
   final String title;
@@ -83,14 +86,16 @@ class RoutineBlockView extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
-    final colonVisible = TickerScope.of(context).colonVisible;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bort = ref.watch(operationalLayerProvider);
+    final i18n = ref.watch(i18nProvider)!;
+    final ticker = ref.watch(tickerProvider);
+    final colonVisible = ticker.colonVisible;
     final side = PultScope.of(context).smallSide;
     final metrics = BortMetrics.of(context);
     final fieldId =
-        FieldScope.of(context).activeFieldId ?? FieldScope.of(context).rootId;
+        ref.watch(fieldLayerProvider).activeFieldId ??
+        ref.read(fieldLayerProvider).rootId;
 
     final Color bg;
     final Color dim;
@@ -128,7 +133,7 @@ class RoutineBlockView extends StatelessWidget {
           selected: running,
           onTap: () {
             if (fieldId != null) {
-              AppScope.of(
+              appContextOf(
                 context,
               ).toggleBlockWithShift(fieldId, routine.id, kind);
             }
@@ -145,7 +150,7 @@ class RoutineBlockView extends StatelessWidget {
         colonVisible: colonVisible,
         pultSize: pultSide,
         t: i18n.t,
-        ticker: TickerScope.of(context),
+        ticker: ticker,
       );
       if (timeEdited) {
         pulse = Container(
@@ -328,13 +333,13 @@ class RoutineBlockView extends StatelessWidget {
           id: 'flags_${routine.id}',
           icon: Icons.flag,
           selected: hasFlags,
-          rebuildOn: RoutineScope.of(context),
+          rebuildOn: ref.watch(routineLayerProvider),
           subsBuilder: () => buildFlagSubs(
             flags: routine.flags,
             i18n: i18n,
-            onToggle: (newVal) => RoutineScope.of(
-              context,
-            ).setFlags(AppScope.of(context).journal, routine.id, newVal),
+            onToggle: (newVal) => ref
+                .read(routineLayerProvider)
+                .setFlags(appContextOf(context).journal, routine.id, newVal),
           ),
         ),
         fg: fg,

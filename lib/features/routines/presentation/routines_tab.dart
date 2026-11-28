@@ -1,9 +1,12 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:polyrutina/core/application/providers.dart';
+import 'package:polyrutina/features/routines/application/providers.dart';
 import 'package:polyrutina/core/data/field_layer.dart';
-import 'package:polyrutina/shared/models/routine.dart';
+import 'package:polyrutina/features/routines/domain/routine.dart';
 import 'package:polyrutina/core/application/ticker.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/widgets/bort_field.dart';
 import 'package:polyrutina/shared/presentation/widgets/confirm_dialog.dart';
 import 'package:polyrutina/shared/presentation/control_row.dart';
@@ -14,14 +17,14 @@ import 'package:polyrutina/shared/presentation/pults/pult_sheet.dart';
 import 'package:polyrutina/features/routines/presentation/routine_plate.dart';
 import 'package:polyrutina/shared/presentation/shift_row.dart';
 
-class RoutinesTab extends StatefulWidget {
+class RoutinesTab extends ConsumerStatefulWidget {
   const RoutinesTab({super.key});
 
   @override
-  State<RoutinesTab> createState() => _RoutinesTabState();
+  ConsumerState<RoutinesTab> createState() => _RoutinesTabState();
 }
 
-class _RoutinesTabState extends State<RoutinesTab> {
+class _RoutinesTabState extends ConsumerState<RoutinesTab> {
   AppTicker? _ticker;
 
   final Set<int> _expanded = {};
@@ -38,7 +41,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final ticker = TickerScope.of(context);
+    final ticker = ref.read(tickerProvider);
     _ticker?.removeListener(_onTick);
     _ticker = ticker;
     _ticker?.addListener(_onTick);
@@ -46,7 +49,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     _lastMinute = now.millisecondsSinceEpoch ~/ 60000;
     _lastSecond = now.millisecondsSinceEpoch ~/ 1000;
 
-    final fieldLayer = FieldScope.of(context);
+    final fieldLayer = ref.read(fieldLayerProvider);
     if (_expanded.isEmpty && fieldLayer.activeFieldId != null) {
       _expanded.add(fieldLayer.activeFieldId!);
     }
@@ -54,8 +57,8 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
   void _onTick() {
     if (!mounted) return;
-    final routineLayer = RoutineScope.of(context);
-    final bort = BortScope.of(context);
+    final routineLayer = ref.read(routineLayerProvider);
+    final bort = ref.read(operationalLayerProvider);
 
     final shiftRunning = bort.shiftEnabled && bort.onShift(0);
 
@@ -98,9 +101,9 @@ class _RoutinesTabState extends State<RoutinesTab> {
   }
 
   Future<void> _create(BuildContext context) async {
-    final routineLayer = RoutineScope.of(context);
-    final journal = AppScope.of(context).journal;
-    final openRoutine = AppScope.of(context).openRoutine;
+    final routineLayer = ref.read(routineLayerProvider);
+    final journal = appContextOf(context).journal;
+    final openRoutine = appContextOf(context).openRoutine;
     final r = await routineLayer.createRoutine(journal);
     if (context.mounted) {
       await openRoutine(r.id, autofocusName: true);
@@ -138,7 +141,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
   }
 
   void _expandAllBranches() {
-    final fieldLayer = FieldScope.of(context);
+    final fieldLayer = ref.read(fieldLayerProvider);
     setState(() {
       _expanded.addAll(
         fieldLayer.nodes.values
@@ -163,7 +166,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
   }
 
   void _expandAllDone() {
-    final fieldLayer = FieldScope.of(context);
+    final fieldLayer = ref.read(fieldLayerProvider);
     setState(() {
       _expandedDone.addAll(fieldLayer.nodes.keys);
       _orphansDoneExpanded = true;
@@ -178,7 +181,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
   }
 
   Set<int> _routineFieldPathIds(Routine routine) {
-    final nodes = FieldScope.of(context).nodes;
+    final nodes = ref.read(fieldLayerProvider).nodes;
     final selected = <int>{};
     void addPath(int id) {
       if (!selected.add(id)) return;
@@ -209,10 +212,10 @@ class _RoutinesTabState extends State<RoutinesTab> {
     if (nodeId == excludeId) return;
     if (excludeDescendants &&
         excludeId != null &&
-        FieldScope.of(context).isDescendant(nodeId, excludeId)) {
+        ref.read(fieldLayerProvider).isDescendant(nodeId, excludeId)) {
       return;
     }
-    final node = FieldScope.of(context).nodes[nodeId];
+    final node = ref.read(fieldLayerProvider).nodes[nodeId];
     if (node == null) return;
 
     out.add(
@@ -250,7 +253,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     Set<int>? selectedIds,
     required void Function(FieldNode) onTap,
   }) {
-    final fieldLayer = FieldScope.of(context);
+    final fieldLayer = ref.read(fieldLayerProvider);
     final roots = fieldLayer.nodes.values.where((n) => n.isRoot).toList()
       ..sort((a, b) => a.id.compareTo(b.id));
     for (final r in roots) {
@@ -267,7 +270,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
   }
 
   void _showRoutineActions(Routine r) {
-    final app = AppScope.of(context);
+    final app = appContextOf(context);
     final i18n = app.i18n;
     final running = r.runningBlock != null;
     final rootId = app.fieldLayer.rootId;
@@ -344,7 +347,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
   }
 
   void _moveRoutine(Routine r) {
-    final app = AppScope.of(context);
+    final app = appContextOf(context);
     final i18n = app.i18n;
     final rootId = app.fieldLayer.rootId;
     final onlyInRoot =
@@ -399,7 +402,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
   }
 
   void _showNodeActions(int id) {
-    final app = AppScope.of(context);
+    final app = appContextOf(context);
     final i18n = app.i18n;
     final node = app.fieldLayer.nodes[id];
     if (node == null) return;
@@ -479,7 +482,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
   // Reattach direct routine and trace links to the default root.
   Future<void> _shakeNode(int id) async {
-    final app = AppScope.of(context);
+    final app = appContextOf(context);
     final root = app.fieldLayer.rootId;
     if (root == null || root == id) return;
 
@@ -508,7 +511,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
   }
 
   Future<void> _createChildNode(int parentId) async {
-    final app = AppScope.of(context);
+    final app = appContextOf(context);
     final node = await app.fieldLayer.createNode(
       app.journal,
       name: '',
@@ -522,12 +525,12 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
   // Journal IDs remain stable when neighboring fields are deleted.
   String _autoName(int id) {
-    final lang = AppScope.of(context).bort.lang;
+    final lang = appContextOf(context).bort.lang;
     return lang == 'en' ? 'field #$id' : 'поле №$id';
   }
 
   void _renameNodeDialog(int id, String currentName) {
-    final app = AppScope.of(context);
+    final app = appContextOf(context);
     final i18n = app.i18n;
     final bort = app.bort;
     final metrics = BortMetrics.of(context, compact: true);
@@ -582,7 +585,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
   }
 
   void _attachRoutine(int nodeId) {
-    final app = AppScope.of(context);
+    final app = appContextOf(context);
     final i18n = app.i18n;
 
     final routines = <Routine>[];
@@ -623,7 +626,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
   }
 
   void _pickNodeForBranch(int nodeId, int? currentParentId) {
-    final app = AppScope.of(context);
+    final app = appContextOf(context);
     final subs = <PultSpec>[];
     _collectAllRootsSubs(
       subs,
@@ -658,7 +661,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
   }
 
   void _showTraceList(int nodeId) {
-    final app = AppScope.of(context);
+    final app = appContextOf(context);
     final traces = app.traceLayer.attachedToField(nodeId);
     if (traces.isEmpty) return;
     showPultSheet(
@@ -679,7 +682,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
   }
 
   void _openFieldSwitcher(int currentId) {
-    final app = AppScope.of(context);
+    final app = appContextOf(context);
     final i18n = app.i18n;
     final fields = app.fieldLayer.nodes.values.where((n) => n.isRoot).toList()
       ..sort((a, b) => a.id.compareTo(b.id));
@@ -781,7 +784,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
   }
 
   Widget _bareDivider(double indent) {
-    final bort = BortScope.of(context);
+    final bort = ref.read(operationalLayerProvider);
     final side = PultScope.of(context).smallSide;
     final strokeW = side * bort.kStroke;
     return Padding(
@@ -798,8 +801,8 @@ class _RoutinesTabState extends State<RoutinesTab> {
     VoidCallback? onTap,
     bool fieldLabel = false,
   }) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
+    final bort = ref.read(operationalLayerProvider);
+    final i18n = ref.read(i18nProvider)!;
     final side = PultScope.of(context).smallSide;
     final strokeW = side * bort.kStroke;
     final titleText = title ?? i18n.t('routine.completed');
@@ -854,7 +857,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     bool includeOrphans = true,
     Set<int> excludedRoutineIds = const {},
   }) {
-    final fieldLayer = FieldScope.of(context);
+    final fieldLayer = ref.read(fieldLayerProvider);
     final node = fieldLayer.nodes[nodeId];
     if (node == null || visited.contains(nodeId)) return;
 
@@ -863,7 +866,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
     // Show unattached routines only under the default root.
     final nodeRoutines = <Routine>[];
-    for (final r in RoutineScope.of(context).routines) {
+    for (final r in ref.read(routineLayerProvider).routines) {
       if (r.fieldParents.contains(nodeId)) {
         nodeRoutines.add(r);
       } else if (includeOrphans &&
@@ -876,7 +879,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final hasChildren =
         node.children.isNotEmpty ||
         nodeRoutines.isNotEmpty ||
-        TraceScope.of(context).attachedToField(nodeId).isNotEmpty;
+        ref.read(traceLayerProvider).attachedToField(nodeId).isNotEmpty;
 
     if (!node.isRoot) {
       out.add(
@@ -965,9 +968,9 @@ class _RoutinesTabState extends State<RoutinesTab> {
       }
     }
 
-    final traces = TraceScope.of(context).attachedToField(nodeId);
+    final traces = ref.read(traceLayerProvider).attachedToField(nodeId);
     if (traces.isNotEmpty) {
-      final bort = BortScope.of(context);
+      final bort = ref.read(operationalLayerProvider);
       final side = PultScope.of(context).smallSide;
       final pultSide = side * bort.kPultSmall;
       out.add(
@@ -1028,8 +1031,8 @@ class _RoutinesTabState extends State<RoutinesTab> {
       ..clear()
       ..addAll(rootIds);
 
-    final routines = RoutineScope.of(context).routines;
-    final i18n = I18nScope.of(context);
+    final routines = ref.read(routineLayerProvider).routines;
+    final i18n = ref.read(i18nProvider)!;
     final orphans = routines.where((r) => r.fieldParents.isEmpty).toList();
     if (orphans.isNotEmpty) {
       out.add(
@@ -1136,7 +1139,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
   Widget _routinePlate(Routine r) {
     return RoutinePlate(
       routine: r,
-      onTap: () => AppScope.of(context).openRoutine(r.id),
+      onTap: () => appContextOf(context).openRoutine(r.id),
       onLongPress: () {
         FocusManager.instance.primaryFocus?.unfocus();
         _showRoutineActions(r);
@@ -1158,7 +1161,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     }
 
     final isAllFields = activeId == fieldLayer.rootId;
-    final running = RoutineScope.of(context).routines.where((routine) {
+    final running = ref.read(routineLayerProvider).routines.where((routine) {
       if (routine.runningBlock == null) return false;
       if (routine.fieldParents.isEmpty) return isAllFields;
       return routine.fieldParents.any(fieldIds.contains);
@@ -1169,8 +1172,14 @@ class _RoutinesTabState extends State<RoutinesTab> {
 
   @override
   Widget build(BuildContext context) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
+    ref.watch(operationalLayerProvider);
+    ref.watch(routineLayerProvider);
+    ref.watch(traceLayerProvider);
+    ref.watch(fieldLayerProvider);
+    ref.watch(tickerProvider);
+    ref.watch(i18nProvider);
+    final bort = ref.read(operationalLayerProvider);
+    final i18n = ref.read(i18nProvider)!;
     final fg = bort.fg;
     final bg = bort.bg;
     final signal = bort.fgsignal;
@@ -1178,7 +1187,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
     final side = PultScope.of(context).smallSide;
 
     final items = <Widget>[];
-    final fieldLayer = FieldScope.of(context);
+    final fieldLayer = ref.read(fieldLayerProvider);
     final activeFieldId = fieldLayer.activeFieldId;
     final runningRoutines = _runningRoutinesForCurrentField(fieldLayer);
     final runningIds = runningRoutines.map((routine) => routine.id).toSet();
@@ -1339,7 +1348,7 @@ class _RoutinesTabState extends State<RoutinesTab> {
   }
 }
 
-class _FieldPlate extends StatelessWidget {
+class _FieldPlate extends ConsumerWidget {
   final String title;
   final bool expanded;
   final bool hasChildren;
@@ -1355,8 +1364,8 @@ class _FieldPlate extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final bort = BortScope.of(context);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bort = ref.watch(operationalLayerProvider);
     final side = PultScope.of(context).smallSide;
     final strokeW = side * bort.kStroke;
     final radius = side * bort.kRadius;

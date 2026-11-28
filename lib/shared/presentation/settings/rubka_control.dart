@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/shared/presentation/widgets/block.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/widgets/bort_field.dart';
@@ -11,7 +12,7 @@ import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_tick.dart';
 import 'package:polyrutina/shared/presentation/services/action_dialog.dart';
 
-class RubkaControl extends StatelessWidget {
+class RubkaControl extends ConsumerWidget {
   final int parity;
 
   const RubkaControl({super.key, this.parity = 2});
@@ -19,9 +20,9 @@ class RubkaControl extends StatelessWidget {
   static const double _labelW = 140.0;
 
   @override
-  Widget build(BuildContext context) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bort = ref.watch(operationalLayerProvider);
+    final i18n = ref.watch(i18nProvider)!;
     final fg = bort.fg;
     final mid = bort.mid;
     final bg = bort.bg;

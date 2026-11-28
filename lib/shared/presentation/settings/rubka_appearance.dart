@@ -1,7 +1,8 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/core/data/theme_store.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
 import 'package:polyrutina/shared/presentation/widgets/block.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/widgets/bort_field.dart';
@@ -9,7 +10,7 @@ import 'package:polyrutina/shared/presentation/help_label.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_tick.dart';
 
-class RubkaAppearance extends StatelessWidget {
+class RubkaAppearance extends ConsumerWidget {
   final int parity;
 
   const RubkaAppearance({super.key, this.parity = 1});
@@ -25,9 +26,9 @@ class RubkaAppearance extends StatelessWidget {
   static const double _labelW = 140.0;
 
   @override
-  Widget build(BuildContext context) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bort = ref.watch(operationalLayerProvider);
+    final i18n = ref.watch(i18nProvider)!;
     final fg = bort.fg;
     final mid = bort.mid;
     final bg = bort.bg;
@@ -102,8 +103,14 @@ class RubkaAppearance extends StatelessWidget {
     Color fgsignal,
     double side,
   ) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
+    final bort = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(operationalLayerProvider);
+    final i18n = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(i18nProvider)!;
 
     Widget toggle({
       required String id,
@@ -175,7 +182,10 @@ class RubkaAppearance extends StatelessWidget {
     Color fgsignal,
     double side,
   ) {
-    final bort = BortScope.of(context);
+    final bort = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(operationalLayerProvider);
     final key = 'theme.$themeName.$role';
     final value = bort.allAsStrings[key] ?? '';
     final c = parseColor(value) ?? Colors.transparent;

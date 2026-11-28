@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:polyrutina/shared/models/routine.dart';
+import 'package:polyrutina/features/routines/domain/routine.dart';
 
 void main() {
   test('scheduled routine notifies at its due moment by default', () {

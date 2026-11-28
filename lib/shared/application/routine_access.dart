@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:polyrutina/core/data/journal_layer.dart';
-import 'package:polyrutina/shared/models/routine.dart';
+import 'package:polyrutina/features/routines/domain/routine.dart';
 
 abstract interface class RoutineAccess implements Listenable {
   List<Routine> get routines;

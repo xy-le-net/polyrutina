@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:polyrutina/core/application/operational_layer.dart';
 import 'package:polyrutina/core/data/trace_layer.dart';
 import 'package:polyrutina/core/localization/i18n.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import '../../support/provider_scope_helpers.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 import 'package:polyrutina/shared/presentation/screens/media_viewer.dart';
 
@@ -14,7 +14,6 @@ void main() {
     final bort = OperationalLayer();
     final pultState = PultState();
     final i18n = await I18n.load('en');
-    addTearDown(bort.dispose);
     addTearDown(pultState.dispose);
 
     await tester.pumpWidget(

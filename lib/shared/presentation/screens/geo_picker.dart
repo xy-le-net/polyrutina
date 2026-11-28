@@ -14,7 +14,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:polyrutina/core/data/trace_layer.dart';
 import 'package:polyrutina/core/data/geo_repository.dart';
 import 'package:polyrutina/core/application/providers.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/widgets/bort_field.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/control_row.dart';
@@ -195,7 +195,9 @@ class _GeoPickerScreenState extends ConsumerState<_GeoPickerScreen> {
       if (mounted) {
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(
-            content: Text(AppScope.of(context).i18n.t('media.location_failed')),
+            content: Text(
+              appContextOf(context).i18n.t('media.location_failed'),
+            ),
           ),
         );
       }
@@ -208,7 +210,7 @@ class _GeoPickerScreenState extends ConsumerState<_GeoPickerScreen> {
     final query = _addressController.text.trim();
     if (_searchingAddress || query.isEmpty) return;
 
-    final app = AppScope.of(context);
+    final app = appContextOf(context);
     setState(() {
       _searchingAddress = true;
       _addressMessage = null;
@@ -307,7 +309,7 @@ class _GeoPickerScreenState extends ConsumerState<_GeoPickerScreen> {
     if (latLng == null) return;
 
     setState(() => _busy = true);
-    final app = AppScope.of(context);
+    final app = appContextOf(context);
 
     try {
       final img = await _captureImage();
@@ -376,7 +378,7 @@ class _GeoPickerScreenState extends ConsumerState<_GeoPickerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.of(context);
+    final app = appContextOf(context);
     final bort = app.bort;
     final i18n = app.i18n;
     final side = PultScope.of(context).smallSide;
@@ -693,7 +695,7 @@ class _GeoMapPreviewState extends ConsumerState<GeoMapPreview> {
     } catch (error, stackTrace) {
       debugPrint('Current location lookup failed: $error\n$stackTrace');
       if (mounted) {
-        final i18n = AppScope.of(context).i18n;
+        final i18n = appContextOf(context).i18n;
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(content: Text(i18n.t('media.location_failed'))),
         );
@@ -705,7 +707,7 @@ class _GeoMapPreviewState extends ConsumerState<GeoMapPreview> {
 
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.of(context);
+    final app = appContextOf(context);
     final bort = app.bort;
     final i18n = app.i18n;
     final side = PultScope.of(context).smallSide;

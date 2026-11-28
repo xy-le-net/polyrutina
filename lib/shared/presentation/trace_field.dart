@@ -1,9 +1,11 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/core/data/journal_layer.dart';
 import 'package:polyrutina/core/application/operational_layer.dart';
 import 'package:polyrutina/core/data/trace_layer.dart';
-import 'package:polyrutina/shared/presentation/app_scope.dart';
+import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/widgets/bort_field.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
@@ -12,7 +14,7 @@ import 'package:polyrutina/shared/presentation/screens/media_viewer.dart';
 import 'package:polyrutina/shared/presentation/services/media_picker.dart';
 import 'package:polyrutina/shared/presentation/trace_media_row.dart';
 
-class TraceField extends StatefulWidget {
+class TraceField extends ConsumerStatefulWidget {
   final int objectId;
   final String slot;
   final Color fg;
@@ -40,10 +42,11 @@ class TraceField extends StatefulWidget {
   }) : fieldBg = fieldBg ?? bg;
 
   @override
-  State<TraceField> createState() => _TraceFieldState();
+  ConsumerState<TraceField> createState() => _TraceFieldState();
 }
 
-class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
+class _TraceFieldState extends ConsumerState<TraceField>
+    with WidgetsBindingObserver {
   static const int _maxExpandedLines = 24;
   static const int _collapsedLines = 3;
   static const int _emptyLines = 2;
@@ -101,9 +104,9 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
   void didChangeDependencies() {
     super.didChangeDependencies();
     // Retain layers so pending edits can be saved during dispose.
-    _traceLayer = TraceScope.of(context);
-    _bort = BortScope.of(context);
-    _journal = AppScope.of(context).journal;
+    _traceLayer = ref.read(traceLayerProvider);
+    _bort = ref.read(operationalLayerProvider);
+    _journal = appContextOf(context).journal;
 
     if (_initialized) return;
     _initialized = true;
@@ -288,8 +291,9 @@ class _TraceFieldState extends State<TraceField> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final bort = BortScope.of(context);
-    final i18n = I18nScope.of(context);
+    ref.watch(traceLayerProvider);
+    final bort = ref.watch(operationalLayerProvider);
+    final i18n = ref.watch(i18nProvider)!;
     final canSend = _canSend();
     final pultSide = widget.side * bort.kPultSmall;
 
