@@ -36,7 +36,6 @@ class RubkaInterface extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _settingRow(context, 'scale', fg, dim, bg, signal, side),
         _langRow(context, fg, dim, bg, signal, side),
         _settingRow(context, 'labels_buttons', fg, dim, bg, signal, side),
         _sectionTitle(context, i18n.t('bort.default_slots'), dim, side),

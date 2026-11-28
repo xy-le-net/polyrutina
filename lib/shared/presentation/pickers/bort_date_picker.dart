@@ -70,20 +70,22 @@ Future<DateTime?> showBortDatePicker(
                   },
                   child: Center(
                     child: Container(
-                      width: side * 0.44,
-                      height: side * 0.44,
+                      width: metrics.unit(0.65),
+                      height: metrics.unit(0.65),
                       alignment: Alignment.center,
                       decoration: isSelected
                           ? BoxDecoration(
                               color: bort.bgsignal,
-                              borderRadius: BorderRadius.circular(side * 0.14),
+                              borderRadius: BorderRadius.circular(
+                                metrics.unit(0.16),
+                              ),
                             )
                           : null,
                       child: Text(
                         '$dayNum',
                         style: TextStyle(
                           color: isSelected ? bort.fgsignal : bort.fg,
-                          fontSize: metrics.textSize(BortTextRole.caption),
+                          fontSize: metrics.textSize(BortTextRole.base),
                           height: 1,
                         ),
                       ),
@@ -93,7 +95,7 @@ Future<DateTime?> showBortDatePicker(
               );
             }
 
-            final gridW = side * 3.15;
+            final gridW = metrics.unit(4.2);
             final gridH = gridW / 7 * rows;
 
             return DialogFrame(
@@ -176,6 +178,7 @@ Future<DateTime?> showBortDatePicker(
                           itemCount: 24,
                           onChanged: (v) => setState(() => hour = v),
                           formatter: two,
+                          textRole: BortTextRole.caption,
                         ),
                         WheelColumn(
                           label: i18n.t('notice.minutes'),
@@ -184,6 +187,7 @@ Future<DateTime?> showBortDatePicker(
                           itemCount: 60,
                           onChanged: (v) => setState(() => minute = v),
                           formatter: two,
+                          textRole: BortTextRole.caption,
                         ),
                       ],
                       side: side,

@@ -5,6 +5,7 @@ import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:polyrutina/shared/presentation/app_scope.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/widgets/dialog_frame.dart';
+import 'package:polyrutina/shared/presentation/widgets/link_text.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 
 class WheelValuePicker extends StatelessWidget {
@@ -102,14 +103,51 @@ class WheelValuePicker extends StatelessWidget {
                 ),
               ),
               SizedBox(height: side * 0.3),
-              DialogActions(
-                actions: [
-                  DialogAction(
-                    label: i18n.t('common.cancel'),
+              Wrap(
+                alignment: WrapAlignment.end,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: BortMetrics.of(context, compact: true).actionGap,
+                runSpacing: BortMetrics.of(context, compact: true).unit(0.2),
+                children: [
+                  LinkText(
+                    text: i18n.t('common.cancel'),
+                    fontSize: BortMetrics.of(
+                      context,
+                      compact: true,
+                    ).actionFontSize,
+                    padding: BortMetrics.of(
+                      context,
+                      compact: true,
+                    ).actionPadding,
                     onTap: () => Navigator.of(dialogContext).pop(),
                   ),
-                  DialogAction(
-                    label: i18n.t('common.ok'),
+                  Pult(
+                    spec: PultSpec(
+                      id: 'wheel_reset',
+                      icon: Icons.replay,
+                      confirmIcon: Icons.check,
+                      confirm: true,
+                      onTap: () => setState(() {
+                        hours = 0;
+                        minutes = 0;
+                        seconds = 0;
+                      }),
+                    ),
+                    fg: BortScope.of(context).fg,
+                    bg: BortScope.of(context).bg,
+                    signal: BortScope.of(context).fgsignal,
+                    overrideSize: side,
+                  ),
+                  LinkText(
+                    text: i18n.t('common.ok'),
+                    fontSize: BortMetrics.of(
+                      context,
+                      compact: true,
+                    ).actionFontSize,
+                    padding: BortMetrics.of(
+                      context,
+                      compact: true,
+                    ).actionPadding,
                     onTap: () => Navigator.of(
                       dialogContext,
                     ).pop(hours * 3600 + minutes * 60 + seconds),
@@ -131,6 +169,7 @@ class WheelColumn {
   final int itemCount;
   final ValueChanged<int> onChanged;
   final String Function(int)? formatter;
+  final BortTextRole textRole;
 
   const WheelColumn({
     required this.label,
@@ -139,6 +178,7 @@ class WheelColumn {
     required this.itemCount,
     required this.onChanged,
     this.formatter,
+    this.textRole = BortTextRole.base,
   });
 }
 
@@ -263,9 +303,7 @@ class _WheelColumnState extends State<_WheelColumn> {
                   column.formatter?.call(i) ?? i.toString(),
                   style: TextStyle(
                     color: i == _selectedValue ? bort.bgsignal : bort.fg,
-                    fontSize: BortMetrics.of(
-                      context,
-                    ).textSize(BortTextRole.base),
+                    fontSize: BortMetrics.of(context).textSize(column.textRole),
                     decoration: TextDecoration.none,
                   ),
                 ),

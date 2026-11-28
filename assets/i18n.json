@@ -173,6 +173,7 @@
 
     "common.ok": "ок",
     "common.cancel": "отмена",
+    "common.reset": "сброс",
     "common.wait": "простите, придётся подождать",
     "common.help": "пояснение",
     "export.prep": "подготовка архива",
@@ -436,6 +437,7 @@
 
     "common.ok": "ok",
     "common.cancel": "cancel",
+    "common.reset": "reset",
     "common.wait": "please wait, this may take a moment",
     "common.help": "help",
     "export.prep": "preparing archive",
