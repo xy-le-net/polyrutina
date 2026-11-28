@@ -1,5 +1,13 @@
 import 'dart:io';
 
+import 'package:polyrutina/core/localization/providers.dart';
+import 'package:polyrutina/features/traces/application/providers.dart';
+import 'package:polyrutina/features/fields/application/providers.dart';
+import 'package:polyrutina/features/export_import/application/export_context.dart';
+import 'package:polyrutina/shared/application/app_actions.dart';
+import 'package:polyrutina/features/routines/application/providers.dart';
+import 'package:polyrutina/shared/application/provider_read.dart';
+import 'package:polyrutina/features/settings/application/providers.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
@@ -7,8 +15,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/features/routines/domain/routine.dart';
-import 'package:polyrutina/core/data/trace_layer.dart';
-import 'package:polyrutina/shared/application/app_context.dart';
+import 'package:polyrutina/features/traces/application/trace_layer.dart';
 import 'package:polyrutina/shared/presentation/widgets/confirm_dialog.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/widgets/dialog_frame.dart';
@@ -18,8 +25,8 @@ import 'package:polyrutina/shared/presentation/widgets/link_text.dart';
 import 'package:polyrutina/shared/presentation/widgets/notice_dialog.dart';
 import 'package:polyrutina/shared/presentation/widgets/progress_dialog.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
-import 'package:polyrutina/shared/presentation/screens/media_viewer.dart';
-import 'package:polyrutina/features/export_import/presentation/import_service.dart';
+import 'package:polyrutina/features/traces/presentation/screens/media_viewer.dart';
+import 'package:polyrutina/features/export_import/application/import_service.dart';
 import 'package:polyrutina/features/export_import/application/journal_compactor.dart';
 import 'package:polyrutina/features/export_import/presentation/report.dart';
 
@@ -58,18 +65,23 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
   }
 
   Future<void> _showMediaList() async {
-    final app = appContextOf(context);
     final i18n = ref.read(i18nProvider)!;
     final entries = <_MediaListEntry>[];
     final seenPaths = <String>{};
 
     try {
-      for (final trace in app.traceLayer.traces.values) {
+      for (final trace in readProvider(
+        context,
+        traceLayerProvider,
+      ).traces.values) {
         if (trace.deleted) continue;
 
         Routine? routine;
         for (final parentId in trace.parents) {
-          routine = app.routineLayer.findRoutine(parentId);
+          routine = readProvider(
+            context,
+            routineLayerProvider,
+          ).findRoutine(parentId);
           if (routine != null) break;
         }
         final owner = routine == null
@@ -235,17 +247,17 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
   }
 
   Future<void> _reload() async {
-    final app = appContextOf(context);
     final bort = ref.read(operationalLayerProvider);
-    await app.journal.reread();
-    bort.setLastRereadId(await app.journal.lastEntryId());
-    await app.reloadI18n();
+    await readProvider(context, journalLayerProvider).reread();
+    bort.setLastRereadId(
+      await readProvider(context, journalLayerProvider).lastEntryId(),
+    );
+    await appActionsOf(context).reloadI18n();
     await _refreshSize();
     if (mounted) setState(() {});
   }
 
   Future<void> _deleteAll() async {
-    final app = appContextOf(context);
     final bort = ref.read(operationalLayerProvider);
     final i18n = ref.read(i18nProvider)!;
     FocusManager.instance.primaryFocus?.unfocus();
@@ -264,9 +276,11 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
       builder: (_) =>
           ProgressDialog(token: token, title: i18n.t('bort.delete')),
     );
-    await app.journal.clearAll();
-    bort.setLastRereadId(await app.journal.lastEntryId());
-    await app.afterJournalReset();
+    await readProvider(context, journalLayerProvider).clearAll();
+    bort.setLastRereadId(
+      await readProvider(context, journalLayerProvider).lastEntryId(),
+    );
+    await appActionsOf(context).afterJournalReset();
     await _refreshSize();
     if (mounted) {
       Navigator.of(context, rootNavigator: true).pop();
@@ -276,7 +290,6 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
 
   Future<void> _compress() async {
     if (_compacting) return;
-    final app = appContextOf(context);
     final i18n = ref.read(i18nProvider)!;
     FocusManager.instance.primaryFocus?.unfocus();
     final token = ProgressToken();
@@ -291,11 +304,11 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
     CompactResult? result;
     try {
       result = await JournalCompactor.compact(
-        journal: app.journal,
-        routineLayer: app.routineLayer,
-        traceLayer: app.traceLayer,
-        fieldLayer: app.fieldLayer,
-        bort: app.bort,
+        journal: readProvider(context, journalLayerProvider),
+        routineLayer: readProvider(context, routineLayerProvider),
+        traceLayer: readProvider(context, traceLayerProvider),
+        fieldLayer: readProvider(context, fieldLayerProvider),
+        bort: readProvider(context, operationalLayerProvider),
         onProgress: (v) {
           if (!token.cancelled) token.report(v);
         },
@@ -321,10 +334,13 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
   }
 
   Future<void> _export() async {
-    final app = appContextOf(context);
     final i18n = ref.read(i18nProvider)!;
     FocusManager.instance.primaryFocus?.unfocus();
-    await ReportBuilder.build(app, i18n, uiContext: context);
+    await ReportBuilder.build(
+      ref.read(exportContextProvider),
+      i18n,
+      uiContext: context,
+    );
     await _refreshSize();
     if (mounted) setState(() {});
   }
@@ -353,7 +369,6 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
   }
 
   Future<void> _import() async {
-    final app = appContextOf(context);
     final i18n = ref.read(i18nProvider)!;
     FocusManager.instance.primaryFocus?.unfocus();
 
@@ -366,10 +381,13 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
           ProgressDialog(token: token, title: i18n.t('bort.import')),
     );
 
-    final result = await importFromPicker(app: app, onProgress: token.report);
+    final result = await importFromPicker(
+      app: ref.read(exportContextProvider),
+      onProgress: token.report,
+    );
 
-    await app.afterJournalReset();
-    await app.refresh();
+    await appActionsOf(context).afterJournalReset();
+    await appActionsOf(context).refresh();
     await _refreshSize();
 
     if (!mounted) return;
@@ -401,7 +419,6 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
   }
 
   Future<void> _resetCache() async {
-    final app = appContextOf(context);
     final bort = ref.read(operationalLayerProvider);
     final i18n = ref.read(i18nProvider)!;
     FocusManager.instance.primaryFocus?.unfocus();
@@ -429,10 +446,12 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
       token.report(0.05);
       await bort.resetCache();
       token.report(0.30);
-      await app.journal.reread();
+      await readProvider(context, journalLayerProvider).reread();
       token.report(0.55);
-      bort.setLastRereadId(await app.journal.lastEntryId());
-      await app.afterJournalReset();
+      bort.setLastRereadId(
+        await readProvider(context, journalLayerProvider).lastEntryId(),
+      );
+      await appActionsOf(context).afterJournalReset();
       token.report(0.80);
       await _refreshSize();
       token.report(1.0);
@@ -456,7 +475,6 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
   }
 
   Future<void> _shakeOrphans() async {
-    final app = appContextOf(context);
     final i18n = ref.read(i18nProvider)!;
     final dir = await getApplicationDocumentsDirectory();
     final mediaDir = Directory(p.join(dir.path, 'media'));
@@ -467,9 +485,12 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
       return;
     }
 
-    final used = app.traceLayer.attachedMediaNames(
-      parentIds: app.routineLayer.routines.map((r) => r.id).toSet(),
-      fieldIds: app.fieldLayer.nodes.keys.toSet(),
+    final used = readProvider(context, traceLayerProvider).attachedMediaNames(
+      parentIds: readProvider(
+        context,
+        routineLayerProvider,
+      ).routines.map((r) => r.id).toSet(),
+      fieldIds: readProvider(context, fieldLayerProvider).nodes.keys.toSet(),
     );
 
     final files = <File>[];

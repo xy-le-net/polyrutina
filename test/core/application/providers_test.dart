@@ -1,6 +1,6 @@
+import 'package:polyrutina/shared/application/navigation_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:polyrutina/core/application/providers.dart';
 
 void main() {
   test('selected tab starts at routines and can be changed', () {

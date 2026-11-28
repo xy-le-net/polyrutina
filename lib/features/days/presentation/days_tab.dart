@@ -1,12 +1,15 @@
+import 'package:polyrutina/core/localization/providers.dart';
+import 'package:polyrutina/shared/application/app_actions.dart';
+import 'package:polyrutina/shared/application/provider_read.dart';
+import 'package:polyrutina/features/settings/application/providers.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/features/routines/application/providers.dart';
 import 'package:polyrutina/core/localization/i18n.dart';
-import 'package:polyrutina/core/application/operational_layer.dart';
+import 'package:polyrutina/features/settings/application/operational_layer.dart';
 import 'package:polyrutina/features/routines/domain/routine.dart';
-import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/control_row.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
@@ -158,7 +161,7 @@ class _DaysTabState extends ConsumerState<DaysTab> {
   void _showLegendSheet(List<Routine> routines) {
     if (routines.isEmpty) return;
     final bort = ref.read(operationalLayerProvider);
-    final openRoutine = appContextOf(context).openRoutine;
+    final openRoutine = appActionsOf(context).openRoutine;
 
     showPultSheet(
       context: context,
@@ -577,7 +580,7 @@ class _DaysTabState extends ConsumerState<DaysTab> {
 
   void _openDay(List<Routine> routines) {
     final bort = ref.read(operationalLayerProvider);
-    final openRoutine = appContextOf(context).openRoutine;
+    final openRoutine = appActionsOf(context).openRoutine;
     showPultSheet(
       context: context,
       subs: [
@@ -598,23 +601,27 @@ class _DaysTabState extends ConsumerState<DaysTab> {
   }
 
   Future<void> _createOnDay(DateTime month, int day) async {
-    final app = appContextOf(context);
     final routineLayer = ref.read(routineLayerProvider);
-    final r = await routineLayer.createRoutine(app.journal);
+    final r = await routineLayer.createRoutine(
+      readProvider(context, journalLayerProvider),
+    );
     final dt = DateTime(month.year, month.month, day);
 
-    final parts = app.bort.midnight.split(':');
+    final parts = readProvider(
+      context,
+      operationalLayerProvider,
+    ).midnight.split(':');
     final hh = int.tryParse(parts.isNotEmpty ? parts[0] : '0') ?? 0;
     final mm = int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0;
     final withMidnight = DateTime(dt.year, dt.month, dt.day, hh, mm);
 
     await routineLayer.setSchedule(
-      app.journal,
+      readProvider(context, journalLayerProvider),
       r.id,
       withMidnight.millisecondsSinceEpoch ~/ 1000,
     );
     if (!mounted) return;
-    await app.openRoutine(r.id, autofocusName: true);
+    await appActionsOf(context).openRoutine(r.id, autofocusName: true);
   }
 
   IconData _statusIcon(Routine r) {

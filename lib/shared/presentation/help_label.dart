@@ -1,7 +1,7 @@
+import 'package:polyrutina/core/localization/providers.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/shared/presentation/widgets/notice_dialog.dart';
 
 class HelpLabel extends ConsumerWidget {

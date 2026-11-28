@@ -1,8 +1,9 @@
+import 'package:polyrutina/core/localization/providers.dart';
+import 'package:polyrutina/features/settings/application/providers.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:polyrutina/core/domain/bort_time.dart';
-import 'package:polyrutina/core/application/providers.dart';
+import 'package:polyrutina/features/settings/domain/bort_time.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/widgets/dialog_frame.dart';
 import 'package:polyrutina/shared/presentation/widgets/wheel_picker.dart';

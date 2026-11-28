@@ -1,11 +1,11 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:polyrutina/core/application/operational_layer.dart';
-import 'package:polyrutina/core/data/trace_layer.dart';
+import 'package:polyrutina/features/settings/application/operational_layer.dart';
+import 'package:polyrutina/features/traces/application/trace_layer.dart';
 import 'package:polyrutina/core/localization/i18n.dart';
 import '../../support/provider_scope_helpers.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
-import 'package:polyrutina/shared/presentation/screens/media_viewer.dart';
+import 'package:polyrutina/features/traces/presentation/screens/media_viewer.dart';
 
 void main() {
   testWidgets('single-file viewer shows its parent control only', (

@@ -7,13 +7,13 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'package:polyrutina/core/data/atomic_json.dart';
-import 'package:polyrutina/core/data/field_layer.dart';
+import 'package:polyrutina/features/fields/application/field_layer.dart';
 import 'package:polyrutina/core/data/journal_layer.dart';
 import 'package:polyrutina/core/domain/journal_types.dart';
 import 'package:polyrutina/core/domain/journal_entry.dart';
 import 'package:polyrutina/features/routines/domain/routine.dart';
-import 'package:polyrutina/shared/application/routine_access.dart';
-import 'package:polyrutina/core/data/trace_layer.dart';
+import 'package:polyrutina/features/routines/application/routine_access.dart';
+import 'package:polyrutina/features/traces/application/trace_layer.dart';
 
 /// Refreshes or cancels a routine's deferred notice.
 abstract class OverdueScheduler {

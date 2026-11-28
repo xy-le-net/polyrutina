@@ -1,8 +1,8 @@
+import 'package:polyrutina/features/settings/application/providers.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:polyrutina/core/application/operational_layer.dart';
-import 'package:polyrutina/core/application/providers.dart';
+import 'package:polyrutina/features/settings/application/operational_layer.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 
 enum BortTextRole {

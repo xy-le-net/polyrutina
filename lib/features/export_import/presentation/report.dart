@@ -10,11 +10,11 @@ import 'package:material_ui/material_ui.dart';
 
 import 'package:polyrutina/core/localization/i18n.dart';
 import 'package:polyrutina/features/routines/domain/routine.dart';
-import 'package:polyrutina/core/data/trace_layer.dart';
-import 'package:polyrutina/shared/application/app_context.dart';
+import 'package:polyrutina/features/traces/application/trace_layer.dart';
+import 'package:polyrutina/features/export_import/application/export_context.dart';
 import 'package:polyrutina/shared/application/format.dart';
 import 'package:polyrutina/shared/presentation/widgets/progress_dialog.dart';
-import 'package:polyrutina/features/export_import/presentation/report_json.dart';
+import 'package:polyrutina/features/export_import/application/report_json.dart';
 
 Future<void> _buildArchiveIsolate(Map<String, dynamic> args) async {
   final zipPath = args['zipPath'] as String;
@@ -68,7 +68,7 @@ class ReportBuilder {
   }
 
   static Future<String?> build(
-    AppContext app,
+    ExportContext app,
     I18n i18n, {
     BuildContext? uiContext,
   }) async {
@@ -88,7 +88,7 @@ class ReportBuilder {
   }
 
   static Future<String?> buildSingle(
-    AppContext app,
+    ExportContext app,
     I18n i18n,
     int routineId, {
     BuildContext? uiContext,
@@ -106,7 +106,7 @@ class ReportBuilder {
   }
 
   static Future<String?> buildSelected(
-    AppContext app,
+    ExportContext app,
     I18n i18n,
     List<int> ids, {
     BuildContext? uiContext,
@@ -128,7 +128,7 @@ class ReportBuilder {
   }
 
   static Future<String?> _buildAndShare(
-    AppContext app,
+    ExportContext app,
     I18n i18n,
     List<Routine> routines, {
     required String objectKey,
@@ -220,11 +220,11 @@ class ReportBuilder {
     final exportsDir = Directory(p.join(dir.path, 'exports'));
     if (!await exportsDir.exists()) await exportsDir.create(recursive: true);
 
-    final idx = app.bort.nextExportIndex(objectKey);
+    final idx = app.settings.nextExportIndex(objectKey);
     final stamp = _stamp();
 
     final name =
-        'polyrutina_${label}_${stamp}_${idx}_${app.bort.deviceId}_${app.bort.firstRunUnixSec}.zip';
+        'polyrutina_${label}_${stamp}_${idx}_${app.settings.deviceId}_${app.settings.firstRunUnixSec}.zip';
     final zipFile = File(p.join(exportsDir.path, name));
 
     try {
@@ -245,7 +245,7 @@ class ReportBuilder {
 
     report(0.85);
     final lastId = await app.journal.lastEntryId();
-    app.bort.setLastExportId(lastId);
+    app.settings.setLastExportId(lastId);
 
     report(1.0);
     if (uiContext != null && uiContext.mounted) {
@@ -263,7 +263,7 @@ class ReportBuilder {
 
   static void _writeRoutine(
     StringBuffer buf,
-    AppContext app,
+    ExportContext app,
     I18n i18n,
     Routine r,
   ) {

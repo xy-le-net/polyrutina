@@ -2,7 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import 'package:polyrutina/core/application/ticker.dart';
 import 'package:polyrutina/shared/application/format.dart';
-import 'package:polyrutina/shared/presentation/timer_text.dart';
+import 'package:polyrutina/features/routines/presentation/timer_text.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 
 class Pulse extends StatelessWidget {

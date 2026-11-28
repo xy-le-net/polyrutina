@@ -1,8 +1,9 @@
+import 'package:polyrutina/core/localization/providers.dart';
+import 'package:polyrutina/shared/application/provider_read.dart';
+import 'package:polyrutina/features/settings/application/providers.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:polyrutina/core/application/providers.dart';
-import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/widgets/dialog_frame.dart';
 
@@ -37,9 +38,8 @@ class ProgressDialog extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final app = appContextOf(context);
     final bort = ref.watch(operationalLayerProvider);
-    final i18n = app.i18n;
+    final i18n = readProvider(context, i18nProvider)!;
     final metrics = BortMetrics.of(context, compact: true);
 
     final pad = metrics.framePadding;

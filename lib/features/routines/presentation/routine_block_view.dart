@@ -1,16 +1,20 @@
+import 'package:polyrutina/core/localization/providers.dart';
+import 'package:polyrutina/features/routines/application/routine_commands.dart';
+import 'package:polyrutina/shared/application/provider_read.dart';
+import 'package:polyrutina/features/settings/application/providers.dart';
+import 'package:polyrutina/features/fields/application/providers.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/features/routines/application/providers.dart';
 import 'package:polyrutina/features/routines/domain/routine.dart';
-import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/widgets/block.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/application/format.dart';
-import 'package:polyrutina/shared/presentation/routine_flags.dart';
-import 'package:polyrutina/shared/presentation/timer_text.dart';
-import 'package:polyrutina/shared/presentation/trace_field.dart';
+import 'package:polyrutina/features/routines/presentation/routine_flags.dart';
+import 'package:polyrutina/features/routines/presentation/timer_text.dart';
+import 'package:polyrutina/features/traces/presentation/trace_field.dart';
 import 'package:polyrutina/shared/presentation/pults/pulse.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_tick.dart';
@@ -133,9 +137,9 @@ class RoutineBlockView extends ConsumerWidget {
           selected: running,
           onTap: () {
             if (fieldId != null) {
-              appContextOf(
-                context,
-              ).toggleBlockWithShift(fieldId, routine.id, kind);
+              ref
+                  .read(routineCommandsProvider)
+                  .toggleBlockWithShift(routine.id, kind);
             }
           },
           onLongPress: onStartEdit,
@@ -339,7 +343,11 @@ class RoutineBlockView extends ConsumerWidget {
             i18n: i18n,
             onToggle: (newVal) => ref
                 .read(routineLayerProvider)
-                .setFlags(appContextOf(context).journal, routine.id, newVal),
+                .setFlags(
+                  readProvider(context, journalLayerProvider),
+                  routine.id,
+                  newVal,
+                ),
           ),
         ),
         fg: fg,

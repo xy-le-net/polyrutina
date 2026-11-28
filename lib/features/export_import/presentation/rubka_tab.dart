@@ -1,16 +1,17 @@
+import 'package:polyrutina/core/localization/providers.dart';
+import 'package:polyrutina/features/settings/application/providers.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/shared/presentation/widgets/block.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/control_row.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
-import 'package:polyrutina/shared/presentation/settings/rubka_appearance.dart';
-import 'package:polyrutina/shared/presentation/settings/rubka_control.dart';
+import 'package:polyrutina/features/settings/presentation/rubka_appearance.dart';
+import 'package:polyrutina/features/settings/presentation/rubka_control.dart';
 import 'package:polyrutina/features/export_import/presentation/rubka_data.dart';
-import 'package:polyrutina/shared/presentation/settings/rubka_interface.dart';
-import 'package:polyrutina/shared/presentation/settings/rubka_permissions.dart';
+import 'package:polyrutina/features/settings/presentation/rubka_interface.dart';
+import 'package:polyrutina/features/settings/presentation/rubka_permissions.dart';
 
 class RubkaTab extends ConsumerWidget {
   const RubkaTab({super.key});

@@ -5,12 +5,12 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import 'package:polyrutina/core/data/field_layer.dart';
+import 'package:polyrutina/features/fields/application/field_layer.dart';
 import 'package:polyrutina/core/data/journal_layer.dart';
 import 'package:polyrutina/core/domain/journal_types.dart';
-import 'package:polyrutina/core/application/operational_layer.dart';
-import 'package:polyrutina/shared/application/routine_access.dart';
-import 'package:polyrutina/core/data/trace_layer.dart';
+import 'package:polyrutina/features/settings/application/operational_layer.dart';
+import 'package:polyrutina/features/routines/application/routine_access.dart';
+import 'package:polyrutina/features/traces/application/trace_layer.dart';
 
 class CompactResult {
   final int entriesBefore;

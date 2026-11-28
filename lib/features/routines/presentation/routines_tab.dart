@@ -1,12 +1,17 @@
+import 'package:polyrutina/core/localization/providers.dart';
+import 'package:polyrutina/shared/application/app_actions.dart';
+import 'package:polyrutina/shared/application/provider_read.dart';
+import 'package:polyrutina/features/settings/application/providers.dart';
+import 'package:polyrutina/features/traces/application/providers.dart';
+import 'package:polyrutina/features/fields/application/providers.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/features/routines/application/providers.dart';
-import 'package:polyrutina/core/data/field_layer.dart';
+import 'package:polyrutina/features/fields/application/field_layer.dart';
 import 'package:polyrutina/features/routines/domain/routine.dart';
 import 'package:polyrutina/core/application/ticker.dart';
-import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/widgets/bort_field.dart';
 import 'package:polyrutina/shared/presentation/widgets/confirm_dialog.dart';
 import 'package:polyrutina/shared/presentation/control_row.dart';
@@ -15,7 +20,7 @@ import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_sheet.dart';
 import 'package:polyrutina/features/routines/presentation/routine_plate.dart';
-import 'package:polyrutina/shared/presentation/shift_row.dart';
+import 'package:polyrutina/features/settings/presentation/shift_row.dart';
 
 class RoutinesTab extends ConsumerStatefulWidget {
   const RoutinesTab({super.key});
@@ -102,8 +107,8 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
 
   Future<void> _create(BuildContext context) async {
     final routineLayer = ref.read(routineLayerProvider);
-    final journal = appContextOf(context).journal;
-    final openRoutine = appContextOf(context).openRoutine;
+    final journal = readProvider(context, journalLayerProvider);
+    final openRoutine = appActionsOf(context).openRoutine;
     final r = await routineLayer.createRoutine(journal);
     if (context.mounted) {
       await openRoutine(r.id, autofocusName: true);
@@ -270,10 +275,9 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
   }
 
   void _showRoutineActions(Routine r) {
-    final app = appContextOf(context);
-    final i18n = app.i18n;
+    final i18n = readProvider(context, i18nProvider)!;
     final running = r.runningBlock != null;
-    final rootId = app.fieldLayer.rootId;
+    final rootId = readProvider(context, fieldLayerProvider).rootId;
     final onlyInRoot =
         rootId != null &&
         r.fieldParents.length == 1 &&
@@ -284,7 +288,10 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
         icon: Icons.copy,
         label: i18n.t('bort.duplicate'),
         onTap: () async {
-          await app.routineLayer.duplicateRoutine(app.journal, r.id);
+          await readProvider(
+            context,
+            routineLayerProvider,
+          ).duplicateRoutine(readProvider(context, journalLayerProvider), r.id);
           if (mounted) setState(() {});
         },
       ),
@@ -300,13 +307,27 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
           icon: Icons.link_off,
           label: i18n.t('field.detach_routine'),
           onTap: () async {
-            await app.journal.transaction(() async {
-              final root = app.fieldLayer.rootId;
+            await readProvider(
+              context,
+              journalLayerProvider,
+            ).transaction(() async {
+              final root = readProvider(context, fieldLayerProvider).rootId;
               for (final pId in List<int>.from(r.fieldParents)) {
-                await app.routineLayer.detachFromField(app.journal, r.id, pId);
+                await readProvider(
+                  context,
+                  routineLayerProvider,
+                ).detachFromField(
+                  readProvider(context, journalLayerProvider),
+                  r.id,
+                  pId,
+                );
               }
               if (root != null) {
-                await app.routineLayer.attachToField(app.journal, r.id, root);
+                await readProvider(context, routineLayerProvider).attachToField(
+                  readProvider(context, journalLayerProvider),
+                  r.id,
+                  root,
+                );
               }
             });
           },
@@ -320,7 +341,11 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
           label: i18n.t('routine.mark_completed'),
           confirm: true,
           onTap: () {
-            app.routineLayer.setCompleted(app.journal, r.id, true);
+            readProvider(context, routineLayerProvider).setCompleted(
+              readProvider(context, journalLayerProvider),
+              r.id,
+              true,
+            );
           },
         ),
       );
@@ -332,24 +357,26 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
         label: i18n.t('bort.delete'),
         confirm: true,
         onTap: () {
-          app.routineLayer.deleteRoutine(app.journal, r.id);
+          readProvider(
+            context,
+            routineLayerProvider,
+          ).deleteRoutine(readProvider(context, journalLayerProvider), r.id);
         },
       ),
     );
     showPultSheet(
       context: context,
       subs: subs,
-      fg: app.bort.fg,
-      bg: app.bort.bg,
-      signal: app.bort.fgsignal,
+      fg: readProvider(context, operationalLayerProvider).fg,
+      bg: readProvider(context, operationalLayerProvider).bg,
+      signal: readProvider(context, operationalLayerProvider).fgsignal,
       side: PultScope.of(context).smallSide,
     );
   }
 
   void _moveRoutine(Routine r) {
-    final app = appContextOf(context);
-    final i18n = app.i18n;
-    final rootId = app.fieldLayer.rootId;
+    final i18n = readProvider(context, i18nProvider)!;
+    final rootId = readProvider(context, fieldLayerProvider).rootId;
     final onlyInRoot =
         rootId != null &&
         r.fieldParents.length == 1 &&
@@ -363,13 +390,27 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
           icon: Icons.link_off,
           label: i18n.t('field.detach_routine'),
           onTap: () async {
-            await app.journal.transaction(() async {
-              final root = app.fieldLayer.rootId;
+            await readProvider(
+              context,
+              journalLayerProvider,
+            ).transaction(() async {
+              final root = readProvider(context, fieldLayerProvider).rootId;
               for (final pId in List<int>.from(r.fieldParents)) {
-                await app.routineLayer.detachFromField(app.journal, r.id, pId);
+                await readProvider(
+                  context,
+                  routineLayerProvider,
+                ).detachFromField(
+                  readProvider(context, journalLayerProvider),
+                  r.id,
+                  pId,
+                );
               }
               if (root != null) {
-                await app.routineLayer.attachToField(app.journal, r.id, root);
+                await readProvider(context, routineLayerProvider).attachToField(
+                  readProvider(context, journalLayerProvider),
+                  r.id,
+                  root,
+                );
               }
             });
           },
@@ -380,11 +421,19 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
       subs,
       selectedIds: selectedFields,
       onTap: (n) async {
-        await app.journal.transaction(() async {
+        await readProvider(context, journalLayerProvider).transaction(() async {
           for (final pId in List<int>.from(r.fieldParents)) {
-            await app.routineLayer.detachFromField(app.journal, r.id, pId);
+            await readProvider(context, routineLayerProvider).detachFromField(
+              readProvider(context, journalLayerProvider),
+              r.id,
+              pId,
+            );
           }
-          await app.routineLayer.attachToField(app.journal, r.id, n.id);
+          await readProvider(context, routineLayerProvider).attachToField(
+            readProvider(context, journalLayerProvider),
+            r.id,
+            n.id,
+          );
         });
         if (mounted) setState(() => _expanded.add(n.id));
       },
@@ -394,17 +443,16 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
     showPultSheet(
       context: context,
       subs: subs,
-      fg: app.bort.fg,
-      bg: app.bort.bg,
-      signal: app.bort.fgsignal,
+      fg: readProvider(context, operationalLayerProvider).fg,
+      bg: readProvider(context, operationalLayerProvider).bg,
+      signal: readProvider(context, operationalLayerProvider).fgsignal,
       side: PultScope.of(context).smallSide,
     );
   }
 
   void _showNodeActions(int id) {
-    final app = appContextOf(context);
-    final i18n = app.i18n;
-    final node = app.fieldLayer.nodes[id];
+    final i18n = readProvider(context, i18nProvider)!;
+    final node = readProvider(context, fieldLayerProvider).nodes[id];
     if (node == null) return;
 
     final subs = <PultSpec>[
@@ -428,7 +476,7 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
       ),
     ];
 
-    if (node.id != app.fieldLayer.rootId) {
+    if (node.id != readProvider(context, fieldLayerProvider).rootId) {
       final currentParentId = node.parents.isNotEmpty
           ? node.parents.first
           : null;
@@ -463,7 +511,11 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
               cancelLabel: i18n.t('common.cancel'),
             );
             if (ok) {
-              await app.fieldLayer.deleteNode(app.journal, id, burn: true);
+              await readProvider(context, fieldLayerProvider).deleteNode(
+                readProvider(context, journalLayerProvider),
+                id,
+                burn: true,
+              );
             }
           },
         ),
@@ -473,51 +525,69 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
     showPultSheet(
       context: context,
       subs: subs,
-      fg: app.bort.fg,
-      bg: app.bort.bg,
-      signal: app.bort.fgsignal,
+      fg: readProvider(context, operationalLayerProvider).fg,
+      bg: readProvider(context, operationalLayerProvider).bg,
+      signal: readProvider(context, operationalLayerProvider).fgsignal,
       side: PultScope.of(context).smallSide,
     );
   }
 
   // Reattach direct routine and trace links to the default root.
   Future<void> _shakeNode(int id) async {
-    final app = appContextOf(context);
-    final root = app.fieldLayer.rootId;
+    final root = readProvider(context, fieldLayerProvider).rootId;
     if (root == null || root == id) return;
 
-    await app.journal.transaction(() async {
+    await readProvider(context, journalLayerProvider).transaction(() async {
       final affectedRoutines = <int>[];
-      for (final r in app.routineLayer.routines) {
+      for (final r in readProvider(context, routineLayerProvider).routines) {
         if (r.fieldParents.contains(id)) affectedRoutines.add(r.id);
       }
       final affectedTraces = <int>[];
-      for (final t in app.traceLayer.traces.values) {
+      for (final t in readProvider(context, traceLayerProvider).traces.values) {
         if (t.deleted) continue;
         if (t.fieldParents.contains(id)) affectedTraces.add(t.id);
       }
 
-      await app.fieldLayer.deleteNode(app.journal, id, burn: false);
+      await readProvider(context, fieldLayerProvider).deleteNode(
+        readProvider(context, journalLayerProvider),
+        id,
+        burn: false,
+      );
 
       for (final rId in affectedRoutines) {
-        await app.routineLayer.detachFromField(app.journal, rId, id);
-        await app.routineLayer.attachToField(app.journal, rId, root);
+        await readProvider(
+          context,
+          routineLayerProvider,
+        ).detachFromField(readProvider(context, journalLayerProvider), rId, id);
+        await readProvider(
+          context,
+          routineLayerProvider,
+        ).attachToField(readProvider(context, journalLayerProvider), rId, root);
       }
       for (final tId in affectedTraces) {
-        await app.traceLayer.detachFromField(app.journal, tId, id);
-        await app.traceLayer.attachToField(app.journal, tId, root);
+        await readProvider(
+          context,
+          traceLayerProvider,
+        ).detachFromField(readProvider(context, journalLayerProvider), tId, id);
+        await readProvider(
+          context,
+          traceLayerProvider,
+        ).attachToField(readProvider(context, journalLayerProvider), tId, root);
       }
     });
   }
 
   Future<void> _createChildNode(int parentId) async {
-    final app = appContextOf(context);
-    final node = await app.fieldLayer.createNode(
-      app.journal,
+    final node = await readProvider(context, fieldLayerProvider).createNode(
+      readProvider(context, journalLayerProvider),
       name: '',
       parentId: parentId,
     );
-    await app.fieldLayer.renameNode(app.journal, node.id, _autoName(node.id));
+    await readProvider(context, fieldLayerProvider).renameNode(
+      readProvider(context, journalLayerProvider),
+      node.id,
+      _autoName(node.id),
+    );
     if (!mounted) return;
     setState(() => _expanded.add(parentId));
     _renameNodeDialog(node.id, '');
@@ -525,14 +595,13 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
 
   // Journal IDs remain stable when neighboring fields are deleted.
   String _autoName(int id) {
-    final lang = appContextOf(context).bort.lang;
+    final lang = readProvider(context, operationalLayerProvider).lang;
     return lang == 'en' ? 'field #$id' : 'поле №$id';
   }
 
   void _renameNodeDialog(int id, String currentName) {
-    final app = appContextOf(context);
-    final i18n = app.i18n;
-    final bort = app.bort;
+    final i18n = readProvider(context, i18nProvider)!;
+    final bort = readProvider(context, operationalLayerProvider);
     final metrics = BortMetrics.of(context, compact: true);
     String currentText = currentName;
 
@@ -544,7 +613,10 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
           final trimmed = currentText.trim();
           final name = trimmed.isEmpty ? _autoName(id) : currentText;
           Navigator.of(ctx).pop();
-          await app.fieldLayer.renameNode(app.journal, id, name);
+          await readProvider(
+            context,
+            fieldLayerProvider,
+          ).renameNode(readProvider(context, journalLayerProvider), id, name);
           if (mounted) setState(() => _expanded.add(id));
         }
 
@@ -585,11 +657,10 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
   }
 
   void _attachRoutine(int nodeId) {
-    final app = appContextOf(context);
-    final i18n = app.i18n;
+    final i18n = readProvider(context, i18nProvider)!;
 
     final routines = <Routine>[];
-    for (final r in app.routineLayer.routines) {
+    for (final r in readProvider(context, routineLayerProvider).routines) {
       if (r.fieldParents.contains(nodeId)) continue;
       routines.add(r);
     }
@@ -615,18 +686,21 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
                       : Icons.radio_button_unchecked),
             label: r.name.isEmpty ? i18n.t('routine.no_name') : r.name,
             onTap: () =>
-                app.routineLayer.attachToField(app.journal, r.id, nodeId),
+                readProvider(context, routineLayerProvider).attachToField(
+                  readProvider(context, journalLayerProvider),
+                  r.id,
+                  nodeId,
+                ),
           ),
       ],
-      fg: app.bort.fg,
-      bg: app.bort.bg,
-      signal: app.bort.fgsignal,
+      fg: readProvider(context, operationalLayerProvider).fg,
+      bg: readProvider(context, operationalLayerProvider).bg,
+      signal: readProvider(context, operationalLayerProvider).fgsignal,
       side: PultScope.of(context).smallSide,
     );
   }
 
   void _pickNodeForBranch(int nodeId, int? currentParentId) {
-    final app = appContextOf(context);
     final subs = <PultSpec>[];
     _collectAllRootsSubs(
       subs,
@@ -635,16 +709,22 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
       selectedIds: currentParentId == null ? null : {currentParentId},
       onTap: (n) async {
         if (n.id != currentParentId) {
-          await app.journal.transaction(() async {
-            if (currentParentId != null) {
-              await app.fieldLayer.detachNode(
-                app.journal,
+          await readProvider(context, journalLayerProvider).transaction(
+            () async {
+              if (currentParentId != null) {
+                await readProvider(context, fieldLayerProvider).detachNode(
+                  readProvider(context, journalLayerProvider),
+                  nodeId,
+                  currentParentId,
+                );
+              }
+              await readProvider(context, fieldLayerProvider).attachNode(
+                readProvider(context, journalLayerProvider),
                 nodeId,
-                currentParentId,
+                n.id,
               );
-            }
-            await app.fieldLayer.attachNode(app.journal, nodeId, n.id);
-          });
+            },
+          );
           if (mounted) setState(() => _expanded.add(n.id));
         }
       },
@@ -653,16 +733,18 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
     showPultSheet(
       context: context,
       subs: subs,
-      fg: app.bort.fg,
-      bg: app.bort.bg,
-      signal: app.bort.fgsignal,
+      fg: readProvider(context, operationalLayerProvider).fg,
+      bg: readProvider(context, operationalLayerProvider).bg,
+      signal: readProvider(context, operationalLayerProvider).fgsignal,
       side: PultScope.of(context).smallSide,
     );
   }
 
   void _showTraceList(int nodeId) {
-    final app = appContextOf(context);
-    final traces = app.traceLayer.attachedToField(nodeId);
+    final traces = readProvider(
+      context,
+      traceLayerProvider,
+    ).attachedToField(nodeId);
     if (traces.isEmpty) return;
     showPultSheet(
       context: context,
@@ -671,21 +753,26 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
           PultSpec(
             id: 'trace_${t.id}',
             icon: Icons.text_snippet,
-            label: t.text.isEmpty ? app.i18n.t('type.trace') : t.text,
+            label: t.text.isEmpty
+                ? readProvider(context, i18nProvider)!.t('type.trace')
+                : t.text,
           ),
       ],
-      fg: app.bort.fg,
-      bg: app.bort.bg,
-      signal: app.bort.fgsignal,
+      fg: readProvider(context, operationalLayerProvider).fg,
+      bg: readProvider(context, operationalLayerProvider).bg,
+      signal: readProvider(context, operationalLayerProvider).fgsignal,
       side: PultScope.of(context).smallSide,
     );
   }
 
   void _openFieldSwitcher(int currentId) {
-    final app = appContextOf(context);
-    final i18n = app.i18n;
-    final fields = app.fieldLayer.nodes.values.where((n) => n.isRoot).toList()
-      ..sort((a, b) => a.id.compareTo(b.id));
+    final i18n = readProvider(context, i18nProvider)!;
+    final fields =
+        readProvider(
+            context,
+            fieldLayerProvider,
+          ).nodes.values.where((n) => n.isRoot).toList()
+          ..sort((a, b) => a.id.compareTo(b.id));
     showPultSheet(
       context: context,
       subs: [
@@ -693,29 +780,37 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
           PultSpec(
             id: 'switch_${f.id}',
             icon: Icons.layers,
-            label: f.id == app.fieldLayer.rootId
+            label: f.id == readProvider(context, fieldLayerProvider).rootId
                 ? i18n.t('field.root')
                 : f.name,
             selected: f.id == currentId,
-            onTap: () => app.fieldLayer.setActiveField(f.id),
+            onTap: () =>
+                readProvider(context, fieldLayerProvider).setActiveField(f.id),
           ),
         PultSpec(
           id: 'new_field',
           icon: Icons.add,
           label: i18n.t('field.new_field'),
           onTap: () async {
-            final f = await app.fieldLayer.createField(app.journal, '');
-            await app.fieldLayer.renameNode(app.journal, f.id, _autoName(f.id));
-            app.fieldLayer.setActiveField(f.id);
+            final f = await readProvider(
+              context,
+              fieldLayerProvider,
+            ).createField(readProvider(context, journalLayerProvider), '');
+            await readProvider(context, fieldLayerProvider).renameNode(
+              readProvider(context, journalLayerProvider),
+              f.id,
+              _autoName(f.id),
+            );
+            readProvider(context, fieldLayerProvider).setActiveField(f.id);
             if (mounted) {
               _renameNodeDialog(f.id, '');
             }
           },
         ),
       ],
-      fg: app.bort.fg,
-      bg: app.bort.bg,
-      signal: app.bort.fgsignal,
+      fg: readProvider(context, operationalLayerProvider).fg,
+      bg: readProvider(context, operationalLayerProvider).bg,
+      signal: readProvider(context, operationalLayerProvider).fgsignal,
       side: PultScope.of(context).smallSide,
     );
   }
@@ -1139,7 +1234,7 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
   Widget _routinePlate(Routine r) {
     return RoutinePlate(
       routine: r,
-      onTap: () => appContextOf(context).openRoutine(r.id),
+      onTap: () => appActionsOf(context).openRoutine(r.id),
       onLongPress: () {
         FocusManager.instance.primaryFocus?.unfocus();
         _showRoutineActions(r);

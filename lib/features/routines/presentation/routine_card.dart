@@ -1,3 +1,9 @@
+import 'package:polyrutina/core/localization/providers.dart';
+import 'package:polyrutina/shared/application/app_actions.dart';
+import 'package:polyrutina/shared/application/provider_read.dart';
+import 'package:polyrutina/features/settings/application/providers.dart';
+import 'package:polyrutina/features/traces/application/providers.dart';
+import 'package:polyrutina/features/fields/application/providers.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,14 +11,13 @@ import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/features/routines/application/providers.dart';
 import 'package:polyrutina/features/routines/domain/routine.dart';
 import 'package:polyrutina/core/application/ticker.dart';
-import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/widgets/bort_field.dart';
 import 'package:polyrutina/shared/presentation/control_row.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_sheet.dart';
 import 'package:polyrutina/shared/presentation/pickers/bort_date_picker.dart';
-import 'package:polyrutina/shared/presentation/pickers/notice_picker.dart';
+import 'package:polyrutina/features/routines/presentation/pickers/notice_picker.dart';
 import 'package:polyrutina/shared/presentation/widgets/wheel_picker.dart';
 import 'package:polyrutina/features/routines/presentation/routine_block_view.dart';
 
@@ -181,7 +186,7 @@ class _RoutineCardState extends ConsumerState<RoutineCard> {
 
   Future<void> _startEdit(Routine r, String kind) async {
     final routineLayer = ref.read(routineLayerProvider);
-    final journal = appContextOf(context).journal;
+    final journal = readProvider(context, journalLayerProvider);
     final b = r.blockOf(kind);
     if (b == null) return;
 
@@ -200,32 +205,31 @@ class _RoutineCardState extends ConsumerState<RoutineCard> {
 
   Future<void> _toggleCompleted(Routine r) async {
     final routineLayer = ref.read(routineLayerProvider);
-    final journal = appContextOf(context).journal;
+    final journal = readProvider(context, journalLayerProvider);
     await routineLayer.setCompleted(journal, r.id, !r.completed);
   }
 
   Future<void> _deleteRoutine(Routine r) async {
     final routineLayer = ref.read(routineLayerProvider);
-    final journal = appContextOf(context).journal;
+    final journal = readProvider(context, journalLayerProvider);
     final nav = Navigator.of(context);
     await routineLayer.deleteRoutine(journal, r.id);
     if (mounted) nav.pop();
   }
 
   Future<void> _exportOne(Routine r) async {
-    final app = appContextOf(context);
-    await app.exportRoutine(r.id, context);
+    await appActionsOf(context).exportRoutine(r.id, context);
   }
 
   Future<void> _clearSchedule(Routine r) async {
     final routineLayer = ref.read(routineLayerProvider);
-    final journal = appContextOf(context).journal;
+    final journal = readProvider(context, journalLayerProvider);
     await routineLayer.setSchedule(journal, r.id, null);
   }
 
   Future<void> _pickSchedule(Routine r) async {
     final routineLayer = ref.read(routineLayerProvider);
-    final journal = appContextOf(context).journal;
+    final journal = readProvider(context, journalLayerProvider);
 
     // Preserve the full scheduled moment; new dates start at midnight.
     final now = DateTime.now();
@@ -247,7 +251,7 @@ class _RoutineCardState extends ConsumerState<RoutineCard> {
     // Notices require a scheduled date.
     if (r.scheduledAt == null) return;
     final routineLayer = ref.read(routineLayerProvider);
-    final journal = appContextOf(context).journal;
+    final journal = readProvider(context, journalLayerProvider);
 
     final total = await showNoticePicker(
       context,
@@ -260,16 +264,15 @@ class _RoutineCardState extends ConsumerState<RoutineCard> {
 
   Future<void> _clearNotice(Routine r) async {
     final routineLayer = ref.read(routineLayerProvider);
-    final journal = appContextOf(context).journal;
+    final journal = readProvider(context, journalLayerProvider);
     await routineLayer.clearNotice(journal, r.id);
   }
 
   Future<void> _moveRoutine(Routine r) async {
-    final app = appContextOf(context);
-    final i18n = app.i18n;
-    final bort = app.bort;
+    final i18n = readProvider(context, i18nProvider)!;
+    final bort = readProvider(context, operationalLayerProvider);
     final attached = r.fieldParents.isNotEmpty;
-    final fieldLayer = app.fieldLayer;
+    final fieldLayer = readProvider(context, fieldLayerProvider);
     final selectedFields = <int>{};
     void addPath(int id) {
       if (!selectedFields.add(id)) return;
@@ -289,11 +292,20 @@ class _RoutineCardState extends ConsumerState<RoutineCard> {
           icon: Icons.link_off,
           label: i18n.t('field.detach_routine'),
           onTap: () async {
-            await app.journal.transaction(() async {
-              for (final pId in List<int>.from(r.fieldParents)) {
-                await app.routineLayer.detachFromField(app.journal, r.id, pId);
-              }
-            });
+            await readProvider(context, journalLayerProvider).transaction(
+              () async {
+                for (final pId in List<int>.from(r.fieldParents)) {
+                  await readProvider(
+                    context,
+                    routineLayerProvider,
+                  ).detachFromField(
+                    readProvider(context, journalLayerProvider),
+                    r.id,
+                    pId,
+                  );
+                }
+              },
+            );
           },
         ),
     ];
@@ -311,16 +323,25 @@ class _RoutineCardState extends ConsumerState<RoutineCard> {
           selected: selectedFields.contains(node.id),
           indent: depth * 20,
           onTap: () async {
-            await app.journal.transaction(() async {
-              for (final parentId in List<int>.from(r.fieldParents)) {
-                await app.routineLayer.detachFromField(
-                  app.journal,
+            await readProvider(context, journalLayerProvider).transaction(
+              () async {
+                for (final parentId in List<int>.from(r.fieldParents)) {
+                  await readProvider(
+                    context,
+                    routineLayerProvider,
+                  ).detachFromField(
+                    readProvider(context, journalLayerProvider),
+                    r.id,
+                    parentId,
+                  );
+                }
+                await readProvider(context, routineLayerProvider).attachToField(
+                  readProvider(context, journalLayerProvider),
                   r.id,
-                  parentId,
+                  node.id,
                 );
-              }
-              await app.routineLayer.attachToField(app.journal, r.id, node.id);
-            });
+              },
+            );
             var root = node;
             final visited = <int>{};
             while (!root.isRoot && root.parents.isNotEmpty) {
@@ -472,7 +493,7 @@ class _RoutineCardState extends ConsumerState<RoutineCard> {
                       : i18n.t('routine.no_name'),
                   idleTextRole: BortTextRole.caption,
                   onCommit: (v) => routineLayer.renameRoutine(
-                    appContextOf(context).journal,
+                    readProvider(context, journalLayerProvider),
                     r.id,
                     v,
                   ),

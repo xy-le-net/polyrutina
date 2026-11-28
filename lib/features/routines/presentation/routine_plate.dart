@@ -1,15 +1,20 @@
+import 'package:polyrutina/core/localization/providers.dart';
+import 'package:polyrutina/features/routines/application/routine_commands.dart';
+import 'package:polyrutina/shared/application/app_actions.dart';
+import 'package:polyrutina/shared/application/provider_read.dart';
+import 'package:polyrutina/features/settings/application/providers.dart';
+import 'package:polyrutina/features/fields/application/providers.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/features/routines/application/providers.dart';
 import 'package:polyrutina/features/routines/domain/routine.dart';
-import 'package:polyrutina/shared/application/app_context.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/application/format.dart';
 import 'package:polyrutina/shared/presentation/frame.dart';
-import 'package:polyrutina/shared/presentation/routine_flags.dart';
-import 'package:polyrutina/shared/presentation/timer_text.dart';
+import 'package:polyrutina/features/routines/presentation/routine_flags.dart';
+import 'package:polyrutina/features/routines/presentation/timer_text.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 
 class RoutinePlate extends ConsumerWidget {
@@ -34,7 +39,6 @@ class RoutinePlate extends ConsumerWidget {
     final i18n = ref.watch(i18nProvider)!;
     final ticker = ref.watch(tickerProvider);
     final routineLayer = ref.watch(routineLayerProvider);
-    final app = appContextOf(context);
     final fieldId =
         ref.watch(fieldLayerProvider).activeFieldId ??
         ref.read(fieldLayerProvider).rootId;
@@ -87,13 +91,17 @@ class RoutinePlate extends ConsumerWidget {
     final VoidCallback? pulseTap;
     if (routine.completed) {
       pulseIcon = Icons.check_box_outlined;
-      pulseTap = () => app.openRoutine(routine.id);
+      pulseTap = () => appActionsOf(context).openRoutine(routine.id);
     } else if (running) {
       pulseIcon = Icons.pause;
       pulseTap = () async {
         for (final b in routine.blocks) {
           if (b.isRunning) {
-            await routineLayer.pauseBlock(app.journal, routine.id, b.kind);
+            await routineLayer.pauseBlock(
+              readProvider(context, journalLayerProvider),
+              routine.id,
+              b.kind,
+            );
           }
         }
         onChanged();
@@ -103,7 +111,9 @@ class RoutinePlate extends ConsumerWidget {
       pulseTap = () async {
         if (fieldId != null) {
           final kind = routine.lastBlockKind ?? RoutineBlock.work;
-          await app.toggleBlockWithShift(fieldId, routine.id, kind);
+          await ref
+              .read(routineCommandsProvider)
+              .toggleBlockWithShift(routine.id, kind);
           onChanged();
         }
       };

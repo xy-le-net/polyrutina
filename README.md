@@ -23,7 +23,11 @@ further steps will be connected with testing server interaction and with determi
 
 ## Architecture
 
-The application separates core domain models and rules (`lib/core/domain`), infrastructure and repositories (`lib/core/data`), and feature workflows and widgets (`lib/features`). Shared UI and application helpers live in `lib/shared`. Drift access is isolated behind `JournalRepository`; `GeoRepository` owns device-location and address-search operations, while FlutterMap remains a presentation component. `ProviderScope` initializes Riverpod, which owns application services, feature layers, localization, application callbacks, and selected-tab state; presentation no longer depends on inherited scope wrappers. Tests live under `test/`; run `flutter analyze` and `flutter test` locally. GitHub Actions runs both checks on pushes and pull requests.
+The codebase is organized feature-first under `lib/features`: each feature owns the domain models, application logic, data code, and presentation components it needs. `core` contains cross-feature infrastructure, including the Drift journal database and localization; `shared` contains reusable application helpers and UI components.
+
+Drift access is isolated behind `JournalRepository` in `core/data`, and device location and address search are isolated behind `GeoRepository` in `features/traces/data`. FlutterMap is used by the trace presentation layer. Feature-owned Riverpod providers live alongside their features, while app-wide providers live in `core` or `shared`. The root widget is wrapped in `ProviderScope`; application dependencies are accessed through Riverpod rather than a global `AppContext`.
+
+Tests live under `test/`. Run `flutter analyze --no-fatal-infos` and `flutter test` locally. GitHub Actions runs both checks on pushes and pull requests.
 
 ---
 
@@ -49,4 +53,8 @@ The application separates core domain models and rules (`lib/core/domain`), infr
 
 ## Архитектура
 
-Приложение разделяет доменные модели и правила (`lib/core/domain`), инфраструктуру и репозитории (`lib/core/data`), а также сценарии и виджеты функций (`lib/features`). Общие элементы интерфейса и приложения находятся в `lib/shared`. Доступ к Drift изолирован за `JournalRepository`; `GeoRepository` отвечает за геолокацию устройства и поиск адресов, а FlutterMap остаётся компонентом представления. `ProviderScope` создаёт контейнер Riverpod, который управляет сервисами приложения, слоями функций, локализацией, прикладными callback-сценариями и выбранной вкладкой; представление больше не зависит от InheritedWidget-обёрток. Тесты находятся в `test/`; локально их можно запустить командами `flutter analyze` и `flutter test`. GitHub Actions выполняет обе проверки при push и создании pull request.
+Код организован по функциям в `lib/features`: функция владеет нужными ей доменными моделями, прикладной логикой, кодом данных и представлением. В `core` находятся общая инфраструктура, включая базу журнала на Drift и локализацию; в `shared` — повторно используемые прикладные помощники и элементы интерфейса.
+
+Доступ к Drift изолирован за `JournalRepository` в `core/data`, а геолокация устройства и поиск адресов — за `GeoRepository` в `features/traces/data`. FlutterMap используется в слое представления трасс. Провайдеры Riverpod, принадлежащие функциям, находятся рядом с ними; общеприложенческие провайдеры — в `core` или `shared`. Корневой виджет обёрнут в `ProviderScope`; зависимости приложения разрешаются через Riverpod, а не через глобальный объект `AppContext`.
+
+Тесты находятся в `test/`. Локально выполните `flutter analyze --no-fatal-infos` и `flutter test`. GitHub Actions запускает обе проверки при push и создании pull request.

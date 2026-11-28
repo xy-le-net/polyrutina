@@ -3,13 +3,13 @@ import 'package:flutter/gestures.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:polyrutina/core/localization/i18n.dart';
-import 'package:polyrutina/core/application/operational_layer.dart';
+import 'package:polyrutina/features/settings/application/operational_layer.dart';
 import 'package:polyrutina/shared/presentation/pickers/bort_date_picker.dart';
 import '../../support/provider_scope_helpers.dart';
 import 'package:polyrutina/shared/presentation/widgets/bort_field.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/control_row.dart';
-import 'package:polyrutina/shared/presentation/timer_text.dart';
+import 'package:polyrutina/features/routines/presentation/timer_text.dart';
 import 'package:polyrutina/shared/presentation/widgets/wheel_picker.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 

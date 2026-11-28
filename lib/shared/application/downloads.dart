@@ -38,17 +38,14 @@ Future<File> _availableTarget(Directory directory, String fileName) async {
 
 Future<SavedDownload> saveFileToDownloads(File source) async {
   if (Platform.isAndroid) {
-    final name = await _downloadsChannel.invokeMethod<String>(
-      'saveFile',
-      {'sourcePath': source.path, 'fileName': p.basename(source.path)},
-    );
+    final name = await _downloadsChannel.invokeMethod<String>('saveFile', {
+      'sourcePath': source.path,
+      'fileName': p.basename(source.path),
+    });
     if (name == null) {
       throw StateError('Android did not return the saved file name');
     }
-    return SavedDownload(
-      name: name,
-      location: 'Downloads/polyrutina/$name',
-    );
+    return SavedDownload(name: name, location: 'Downloads/polyrutina/$name');
   }
 
   final directory = await _polyrutinaDownloadsDirectory();

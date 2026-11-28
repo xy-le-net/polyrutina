@@ -1,6 +1,6 @@
 import 'package:path/path.dart' as p;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:polyrutina/core/data/trace_layer.dart';
+import 'package:polyrutina/features/traces/application/trace_layer.dart';
 
 void main() {
   test('only media attached to live routines or fields is retained', () {

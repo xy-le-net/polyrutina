@@ -2,33 +2,39 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:polyrutina/shared/application/navigation_provider.dart';
+import 'package:polyrutina/core/localization/providers.dart';
+import 'package:polyrutina/features/settings/application/providers.dart';
+import 'package:polyrutina/features/traces/application/providers.dart';
+import 'package:polyrutina/features/fields/application/providers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
-import 'package:polyrutina/core/data/field_layer.dart';
+import 'package:polyrutina/features/fields/application/field_layer.dart';
 import 'package:polyrutina/core/localization/i18n.dart';
 import 'package:polyrutina/core/data/journal_layer.dart';
 import 'package:polyrutina/core/domain/journal_types.dart';
-import 'package:polyrutina/core/application/operational_layer.dart';
+import 'package:polyrutina/features/settings/application/operational_layer.dart';
 import 'package:polyrutina/features/routines/domain/routine.dart';
 import 'package:polyrutina/features/routines/application/routine_layer.dart';
 import 'package:polyrutina/features/routines/application/providers.dart';
 import 'package:polyrutina/core/application/ticker.dart';
-import 'package:polyrutina/core/data/trace_layer.dart';
+import 'package:polyrutina/features/traces/application/trace_layer.dart';
 import 'package:polyrutina/core/application/providers.dart';
+import 'package:polyrutina/features/export_import/application/export_context.dart';
 import 'package:polyrutina/features/routines/presentation/routine_card.dart';
 import 'package:polyrutina/shared/presentation/app_layout.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
-import 'package:polyrutina/shared/application/app_context.dart';
+import 'package:polyrutina/shared/application/app_actions.dart';
 import 'package:polyrutina/shared/presentation/control_row.dart';
 import 'package:polyrutina/shared/application/format.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_sheet.dart';
 import 'package:polyrutina/shared/presentation/pults/root_pult.dart';
-import 'package:polyrutina/shared/application/notification_manager.dart';
+import 'package:polyrutina/features/routines/application/notification_manager.dart';
 import 'package:polyrutina/core/application/notification_service.dart';
 import 'package:polyrutina/features/days/presentation/days_tab.dart';
 import 'package:polyrutina/features/routines/presentation/routines_tab.dart';
@@ -219,7 +225,7 @@ class _PolyRutinaAppState extends ConsumerState<PolyRutinaApp>
         i18n: _i18n!,
       );
 
-      _publishAppContext();
+      _publishAppActions();
       await minimumSplashDuration;
       _bootDone = true;
     } catch (e, st) {
@@ -245,22 +251,14 @@ class _PolyRutinaAppState extends ConsumerState<PolyRutinaApp>
     if (mounted) setState(() {});
   }
 
-  void _publishAppContext() {
-    late final AppContext appContext;
-    appContext = AppContext(
-      bort: _bort,
-      routineLayer: _routineLayer,
-      traceLayer: _traceLayer,
-      fieldLayer: _fieldLayer,
-      journal: _journal,
-      ticker: _ticker,
-      i18n: _i18n!,
+  void _publishAppActions() {
+    final actions = AppActions(
       refresh: _refreshAll,
       reloadI18n: _reloadI18n,
       openRoutine: _openRoutine,
       exportRoutine: (routineId, context) async {
         await ReportBuilder.buildSingle(
-          appContext,
+          ref.read(exportContextProvider),
           _i18n!,
           routineId,
           uiContext: context,
@@ -268,7 +266,7 @@ class _PolyRutinaAppState extends ConsumerState<PolyRutinaApp>
       },
       afterJournalReset: _afterJournalReset,
     );
-    ref.read(appContextProvider.notifier).state = appContext;
+    ref.read(appActionsProvider.notifier).state = actions;
   }
 
   Future<void> _reloadI18n() async {
@@ -288,7 +286,7 @@ class _PolyRutinaAppState extends ConsumerState<PolyRutinaApp>
         _routineLayer.scheduler = _scheduler;
       });
       ref.read(i18nProvider.notifier).update(i18n);
-      _publishAppContext();
+      _publishAppActions();
     }
   }
 

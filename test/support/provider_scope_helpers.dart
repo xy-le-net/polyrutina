@@ -1,7 +1,8 @@
+import 'package:polyrutina/core/localization/providers.dart';
+import 'package:polyrutina/features/settings/application/providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:polyrutina/core/application/operational_layer.dart';
-import 'package:polyrutina/core/application/providers.dart';
+import 'package:polyrutina/features/settings/application/operational_layer.dart';
 import 'package:polyrutina/core/localization/i18n.dart';
 
 class BortScope extends StatelessWidget {
