@@ -24,9 +24,11 @@ class FieldLayer extends ChangeNotifier implements FieldAccess {
   int? activeFieldId;
 
   Timer? _saveTimer;
+  int _lastJournalId = 0;
 
   Future<void> init(JournalLayer journal) async {
     final cache = await _repository.load();
+    _lastJournalId = cache.needsJournalReplay ? 0 : cache.lastJournalId;
     activeFieldId = cache.activeFieldId;
     for (final node in cache.nodes) {
       nodes[node.id] = node;
@@ -38,6 +40,11 @@ class FieldLayer extends ChangeNotifier implements FieldAccess {
       types: [JournalType.fieldNode],
       apply: _applyEntry,
       reset: _resetMemory,
+      initialLastId: _lastJournalId,
+      onProgress: (id) {
+        _lastJournalId = id;
+        _scheduleSave();
+      },
     );
     if (cache.needsJournalReplay) {
       journal.clearMark('field');
@@ -62,6 +69,7 @@ class FieldLayer extends ChangeNotifier implements FieldAccess {
     await _repository.save(
       activeFieldId: activeFieldId,
       nodes: nodes.values.toList(),
+      lastJournalId: _lastJournalId,
     );
   }
 

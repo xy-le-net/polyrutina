@@ -9,6 +9,47 @@ import 'package:polyrutina/features/routines/domain/routine.dart';
 import '../../../support/memory_journal_repository.dart';
 
 void main() {
+  test(
+    'replays journal entries newer than the routine cache checkpoint',
+    () async {
+      final journalRepository = MemoryJournalRepository();
+      await journalRepository.insert(
+        type: JournalType.routine,
+        body: jsonEncode({'action': 'create', 'routine': 1}),
+      );
+      await journalRepository.insert(
+        type: JournalType.routine,
+        body: jsonEncode({'action': 'rename', 'routine': 1, 'name': 'Updated'}),
+      );
+      final journal = JournalLayer(journalRepository);
+      final cached = Routine.create(1, at: 100)..name = 'Cached';
+      final repository = _MemoryRoutineRepository(
+        RoutineCache(
+          routines: [cached],
+          lastActiveBlockKind: null,
+          needsJournalReplay: false,
+          lastJournalId: 1,
+        ),
+      );
+      final layer = RoutineLayer(
+        repository: repository,
+        fieldContext: () => (activeFieldId: null, rootId: null),
+        copyTraces: (journal, sourceId, targetId, slots) async {},
+      );
+      addTearDown(journal.dispose);
+      addTearDown(layer.dispose);
+
+      await layer.init(journal);
+      expect(layer.findRoutine(1)?.name, 'Cached');
+
+      await journal.pump();
+      await layer.saveNow();
+
+      expect(layer.findRoutine(1)?.name, 'Updated');
+      expect(repository.lastJournalId, 2);
+    },
+  );
+
   test('uses injected field context and trace-copy contract', () async {
     final journalRepository = MemoryJournalRepository();
     await journalRepository.insert(
@@ -49,13 +90,22 @@ void main() {
 }
 
 class _MemoryRoutineRepository implements RoutineRepository {
+  _MemoryRoutineRepository([
+    this.cache = const RoutineCache.empty(needsJournalReplay: true),
+  ]);
+
+  RoutineCache cache;
+  int? lastJournalId;
+
   @override
-  Future<RoutineCache> load() async =>
-      const RoutineCache.empty(needsJournalReplay: true);
+  Future<RoutineCache> load() async => cache;
 
   @override
   Future<void> save({
     required List<Routine> routines,
     required String? lastActiveBlockKind,
-  }) async {}
+    required int lastJournalId,
+  }) async {
+    this.lastJournalId = lastJournalId;
+  }
 }

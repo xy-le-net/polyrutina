@@ -32,11 +32,16 @@ void main() {
     final repository = JsonRoutineRepository(file: file);
     final routine = Routine.create(4, createdAt: 123)..name = 'Morning';
 
-    await repository.save(routines: [routine], lastActiveBlockKind: 'work');
+    await repository.save(
+      routines: [routine],
+      lastActiveBlockKind: 'work',
+      lastJournalId: 17,
+    );
     final raw = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
     final restored = await repository.load();
 
     expect(raw['schema'], 2);
+    expect(restored.lastJournalId, 17);
     expect(restored.needsJournalReplay, isFalse);
     expect(restored.lastActiveBlockKind, 'work');
     expect(restored.routines.single.toJson(), routine.toJson());

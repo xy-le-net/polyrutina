@@ -30,11 +30,12 @@ void main() {
     final repository = JsonTraceRepository(file: file);
     final trace = Trace(id: 5, slot: 'note', text: 'Observation');
 
-    await repository.save(traces: [trace]);
+    await repository.save(traces: [trace], lastJournalId: 17);
     final raw = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
     final restored = await repository.load();
 
     expect(raw['schema'], 1);
+    expect(restored.lastJournalId, 17);
     expect(restored.needsJournalReplay, isFalse);
     expect(restored.traces.single.id, 5);
     expect(restored.traces.single.text, 'Observation');

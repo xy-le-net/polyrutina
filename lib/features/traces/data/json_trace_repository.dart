@@ -49,7 +49,11 @@ class JsonTraceRepository implements TraceRepository {
           traces.add(Trace.fromJson(id, traceData));
         }
       }
-      return TraceCache(traces: traces, needsJournalReplay: false);
+      return TraceCache(
+        traces: traces,
+        needsJournalReplay: false,
+        lastJournalId: (decoded['last_journal_id'] as num?)?.toInt() ?? 0,
+      );
     } on FormatException catch (error) {
       return _invalidCache(error);
     } on TypeError catch (error) {
@@ -60,9 +64,13 @@ class JsonTraceRepository implements TraceRepository {
   }
 
   @override
-  Future<void> save({required List<Trace> traces}) async {
+  Future<void> save({
+    required List<Trace> traces,
+    required int lastJournalId,
+  }) async {
     final data = {
       'schema': _schemaVersion,
+      'last_journal_id': lastJournalId,
       'traces': traces
           .map((trace) => {'id': trace.id, ...trace.toJson()})
           .toList(),

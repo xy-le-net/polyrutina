@@ -29,6 +29,32 @@ void main() {
     expect(layer.traces.values.single.text, 'Restored');
     expect(layer.traces.values.single.parents, [42]);
   });
+
+  test('attaching media creates text trace and preserves the attached file',
+      () async {
+    final journalRepository = MemoryJournalRepository();
+    final journal = JournalLayer(journalRepository);
+    final layer = TraceLayer(_MissingTraceRepository());
+    addTearDown(journal.dispose);
+    addTearDown(layer.dispose);
+
+    await layer.init(journal);
+    await layer.attachFile(
+      journal,
+      objectId: 42,
+      slot: 'prep',
+      file: TraceFile(
+        kind: MediaKind.photo,
+        path: '/media/photo.jpg',
+        name: 'photo.jpg',
+      ),
+    );
+
+    final trace = layer.findFirstByKindSlot(42, TraceKind.text, 'prep');
+    expect(trace, isNotNull);
+    expect(trace!.files.single.kind, MediaKind.photo);
+    expect(trace.files.single.path, '/media/photo.jpg');
+  });
 }
 
 class _MissingTraceRepository implements TraceRepository {
@@ -37,5 +63,8 @@ class _MissingTraceRepository implements TraceRepository {
       const TraceCache.empty(needsJournalReplay: true);
 
   @override
-  Future<void> save({required List<Trace> traces}) async {}
+  Future<void> save({
+    required List<Trace> traces,
+    required int lastJournalId,
+  }) async {}
 }

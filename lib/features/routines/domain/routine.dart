@@ -157,6 +157,14 @@ class Routine {
     return null;
   }
 
+  bool get hasTicker =>
+      lastPulseAt != null ||
+      blocks.any(
+        (block) =>
+            block.isRunning ||
+            (block.accumulatorSeconds > 0 && !block.timeEdited),
+      );
+
   bool startBlockAt(String kind, int at) {
     final block = blockOf(kind);
     if (block == null || block.isRunning) return false;

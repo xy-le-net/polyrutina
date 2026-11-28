@@ -51,7 +51,8 @@ class JsonFieldRepository implements FieldRepository {
       return FieldCache(
         activeFieldId: (decoded['active_field_id'] as num?)?.toInt(),
         nodes: nodes,
-        needsJournalReplay: false,
+        needsJournalReplay: nodes.isEmpty || !nodes.any((node) => node.isRoot),
+        lastJournalId: (decoded['last_journal_id'] as num?)?.toInt() ?? 0,
       );
     } on FormatException catch (error) {
       return _invalidCache(error);
@@ -66,10 +67,12 @@ class JsonFieldRepository implements FieldRepository {
   Future<void> save({
     required int? activeFieldId,
     required List<FieldNode> nodes,
+    required int lastJournalId,
   }) async {
     final data = {
       'active_field_id': activeFieldId,
       'nodes': nodes.map((node) => node.toJson()).toList(),
+      'last_journal_id': lastJournalId,
     };
     final file = await _targetFile();
     await atomicWriteJson(file, data);

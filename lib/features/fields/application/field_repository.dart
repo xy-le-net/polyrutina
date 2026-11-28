@@ -4,16 +4,21 @@ class FieldCache {
   final int? activeFieldId;
   final List<FieldNode> nodes;
   final bool needsJournalReplay;
+  // The cache snapshot only covers journal entries through this ID.
+  final int lastJournalId;
 
   const FieldCache({
     required this.activeFieldId,
     required this.nodes,
     required this.needsJournalReplay,
+    this.lastJournalId = 0,
   });
 
-  const FieldCache.empty({this.needsJournalReplay = false})
-    : activeFieldId = null,
-      nodes = const [];
+  const FieldCache.empty({
+    this.needsJournalReplay = false,
+    this.lastJournalId = 0,
+  }) : activeFieldId = null,
+       nodes = const [];
 }
 
 abstract interface class FieldRepository {
@@ -21,5 +26,6 @@ abstract interface class FieldRepository {
   Future<void> save({
     required int? activeFieldId,
     required List<FieldNode> nodes,
+    required int lastJournalId,
   });
 }

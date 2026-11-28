@@ -347,7 +347,9 @@ class _GeoPickerScreenState extends ConsumerState<_GeoPickerScreen> {
           acc: _accuracy > 0 ? _accuracy : null,
         ),
       );
-    } catch (_) {}
+    } catch (error, stackTrace) {
+      debugPrint('Geo trace attachment failed: $error\n$stackTrace');
+    }
 
     if (mounted) Navigator.of(context).pop();
   }

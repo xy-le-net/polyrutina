@@ -440,7 +440,7 @@ class _RoutineCardState extends ConsumerState<RoutineCard> {
     }
 
     if (_shouldShowSlot(r, 'note')) {
-      blocks.add(blockOf('note', i18n.t('routine.block.note'), isNote: true));
+      blocks.add(blockOf('note', '', isNote: true));
     }
 
     for (final k in RoutineBlock.kinds) {

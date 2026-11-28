@@ -48,6 +48,7 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
   final Set<int> _runningRoutineIds = {};
 
   Timer? _saveTimer;
+  int _lastJournalId = 0;
 
   List<Routine> get routinesNewestFirst {
     final copy = List<Routine>.from(routines);
@@ -102,6 +103,7 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
 
   Future<void> init(JournalLayer journal) async {
     final cache = await _repository.load();
+    _lastJournalId = cache.needsJournalReplay ? 0 : cache.lastJournalId;
     routines = cache.routines.toList();
     lastActiveBlockKind = cache.lastActiveBlockKind;
     for (final routine in routines) {
@@ -117,6 +119,11 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
       types: [JournalType.routine],
       apply: _applyEntry,
       reset: _resetMemory,
+      initialLastId: _lastJournalId,
+      onProgress: (id) {
+        _lastJournalId = id;
+        _scheduleSave();
+      },
     );
 
     if (cache.needsJournalReplay) {
@@ -225,6 +232,7 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
     await _repository.save(
       routines: routines.toList(),
       lastActiveBlockKind: lastActiveBlockKind,
+      lastJournalId: _lastJournalId,
     );
   }
 

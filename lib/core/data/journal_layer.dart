@@ -12,17 +12,20 @@ import 'package:polyrutina/core/domain/journal_entry.dart';
 
 typedef ApplyFn = void Function(JournalEntry entry);
 typedef ResetFn = void Function();
+typedef ProgressFn = void Function(int lastId);
 
 class _LayerReg {
   final List<int> types;
   final ApplyFn apply;
   final ResetFn? reset;
+  final ProgressFn? onProgress;
   int lastId;
 
   _LayerReg({
     required this.types,
     required this.apply,
     this.reset,
+    this.onProgress,
     this.lastId = 0,
   });
 }
@@ -65,12 +68,15 @@ class JournalLayer extends ChangeNotifier {
     required List<int> types,
     required ApplyFn apply,
     ResetFn? reset,
+    ProgressFn? onProgress,
+    int? initialLastId,
   }) {
     _layers[name] = _LayerReg(
       types: types,
       apply: apply,
       reset: reset,
-      lastId: _savedIds[name] ?? 0,
+      onProgress: onProgress,
+      lastId: initialLastId ?? _savedIds[name] ?? 0,
     );
   }
 
@@ -82,7 +88,10 @@ class JournalLayer extends ChangeNotifier {
   void clearMark(String name) {
     _savedIds.remove(name);
     final l = _layers[name];
-    if (l != null) l.lastId = 0;
+    if (l != null) {
+      l.lastId = 0;
+      l.onProgress?.call(0);
+    }
     _stateDirty = true;
     _scheduleSave();
   }
@@ -117,6 +126,7 @@ class JournalLayer extends ChangeNotifier {
               } catch (_) {}
             }
             l.lastId = e.id;
+            l.onProgress?.call(e.id);
             _stateDirty = true;
           }
         }
@@ -132,6 +142,7 @@ class JournalLayer extends ChangeNotifier {
     for (final l in _layers.values) {
       l.reset?.call();
       l.lastId = 0;
+      l.onProgress?.call(0);
     }
     _savedIds.clear();
     _stateDirty = true;
@@ -164,6 +175,7 @@ class JournalLayer extends ChangeNotifier {
     for (final l in _layers.values) {
       l.reset?.call();
       l.lastId = 0;
+      l.onProgress?.call(0);
     }
     _savedIds.clear();
     _stateDirty = true;

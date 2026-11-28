@@ -16,6 +16,7 @@ import 'package:polyrutina/shared/presentation/frame.dart';
 import 'package:polyrutina/features/routines/presentation/routine_flags.dart';
 import 'package:polyrutina/features/routines/presentation/timer_text.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
+import 'package:polyrutina/shared/presentation/pults/pult_tick.dart';
 
 class RoutinePlate extends ConsumerWidget {
   final Routine routine;
@@ -77,6 +78,7 @@ class RoutinePlate extends ConsumerWidget {
     final strokeW = side * bort.kStroke;
     final radiusW = side * bort.kRadius;
     final framePad = side * bort.kFramePad * 0.6;
+    final hasTicker = routine.hasTicker;
 
     final frame = borderFor(
       parity: parity,
@@ -131,6 +133,20 @@ class RoutinePlate extends ConsumerWidget {
       bg: plateBg,
       signal: accent,
       overrideSize: pultSide,
+    );
+    final completionTick = PultTick(
+      id: 'list_complete_${routine.id}',
+      value: routine.completed,
+      binary: true,
+      fg: textMain,
+      bg: plateBg,
+      signal: accent,
+      overrideSize: pultSide,
+      onTap: () => routineLayer.setCompleted(
+        readProvider(context, journalLayerProvider),
+        routine.id,
+        !routine.completed,
+      ),
     );
 
     final Widget? flagsColumn = routine.flags == 0
@@ -230,7 +246,7 @@ class RoutinePlate extends ConsumerWidget {
               ),
             ),
           ),
-          if (routine.totalSeconds > 0) ...[
+          if (hasTicker) ...[
             SizedBox(width: side * 0.15),
             Center(
               child: TimerText(
@@ -244,9 +260,14 @@ class RoutinePlate extends ConsumerWidget {
                 ticker: ticker,
               ),
             ),
+          ] else ...[
+            SizedBox(width: side * 0.15),
+            Center(child: completionTick),
           ],
-          SizedBox(width: side * 0.15),
-          Center(child: rightControl),
+          if (!(routine.completed && !hasTicker)) ...[
+            SizedBox(width: side * 0.15),
+            Center(child: rightControl),
+          ],
         ],
       ),
     );

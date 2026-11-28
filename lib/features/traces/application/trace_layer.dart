@@ -24,9 +24,11 @@ class TraceLayer extends ChangeNotifier implements TraceAccess {
   final Map<int, Map<String, int>> _traceIndex = {};
 
   Timer? _saveTimer;
+  int _lastJournalId = 0;
 
   Future<void> init(JournalLayer journal) async {
     final cache = await _repository.load();
+    _lastJournalId = cache.needsJournalReplay ? 0 : cache.lastJournalId;
     for (final trace in cache.traces) {
       traces[trace.id] = trace;
     }
@@ -37,6 +39,11 @@ class TraceLayer extends ChangeNotifier implements TraceAccess {
       types: [JournalType.trace],
       apply: _applyEntry,
       reset: _resetMemory,
+      initialLastId: _lastJournalId,
+      onProgress: (id) {
+        _lastJournalId = id;
+        _scheduleSave();
+      },
     );
     if (cache.needsJournalReplay) {
       journal.clearMark('trace');
@@ -83,7 +90,10 @@ class TraceLayer extends ChangeNotifier implements TraceAccess {
   }
 
   Future<void> _saveToFile() async {
-    await _repository.save(traces: traces.values.toList());
+    await _repository.save(
+      traces: traces.values.toList(),
+      lastJournalId: _lastJournalId,
+    );
   }
 
   Future<void> saveNow() async {

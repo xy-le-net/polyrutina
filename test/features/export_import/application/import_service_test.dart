@@ -241,5 +241,6 @@ class _MemoryRoutineRepository implements RoutineRepository {
   Future<void> save({
     required List<Routine> routines,
     required String? lastActiveBlockKind,
+    required int lastJournalId,
   }) async {}
 }

@@ -33,14 +33,32 @@ void main() {
     final repository = JsonFieldRepository(file: file);
     final node = FieldNode(id: 8, name: 'Root', children: [9], isRoot: true);
 
-    await repository.save(activeFieldId: 8, nodes: [node]);
+    await repository.save(activeFieldId: 8, nodes: [node], lastJournalId: 17);
     final raw = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
     final restored = await repository.load();
 
-    expect(raw.keys, containsAll(['active_field_id', 'nodes']));
+    expect(
+      raw.keys,
+      containsAll(['active_field_id', 'nodes', 'last_journal_id']),
+    );
+    expect(restored.lastJournalId, 17);
     expect(restored.needsJournalReplay, isFalse);
     expect(restored.activeFieldId, 8);
     expect(restored.nodes.single.toJson(), node.toJson());
+  });
+
+  test('an empty cache requests replay to restore the default root', () async {
+    final file = File(p.join(directory.path, 'field_layer.json'));
+    final repository = JsonFieldRepository(file: file);
+    await file.writeAsString(
+      jsonEncode({
+        'active_field_id': null,
+        'nodes': <dynamic>[],
+        'last_journal_id': 99,
+      }),
+    );
+
+    expect((await repository.load()).needsJournalReplay, isTrue);
   });
 
   test(

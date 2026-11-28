@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:polyrutina/features/settings/application/time_series_repository.dart';
+import 'package:polyrutina/features/settings/domain/time_series_repository.dart';
 
 class TimeSeries {
   TimeSeries(this._repository);

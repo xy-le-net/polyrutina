@@ -60,6 +60,7 @@ class JsonRoutineRepository implements RoutineRepository {
         routines: routines,
         lastActiveBlockKind: decoded['last_active_block_kind'] as String?,
         needsJournalReplay: routines.isEmpty,
+        lastJournalId: (decoded['last_journal_id'] as num?)?.toInt() ?? 0,
       );
     } on FormatException catch (error) {
       return _invalidCache(error);
@@ -74,11 +75,13 @@ class JsonRoutineRepository implements RoutineRepository {
   Future<void> save({
     required List<Routine> routines,
     required String? lastActiveBlockKind,
+    required int lastJournalId,
   }) async {
     final data = {
       'schema': _schemaVersion,
       'routines': routines.map((routine) => routine.toJson()).toList(),
       'last_active_block_kind': lastActiveBlockKind,
+      'last_journal_id': lastJournalId,
     };
     final file = await _targetFile();
     await atomicWriteJson(file, data);

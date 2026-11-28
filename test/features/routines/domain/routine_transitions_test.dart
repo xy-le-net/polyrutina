@@ -2,6 +2,22 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:polyrutina/features/routines/domain/routine.dart';
 
 void main() {
+  test('shows ticker history only after a slot ran', () {
+    final routine = Routine.create(1, at: 100);
+
+    expect(routine.hasTicker, isFalse);
+
+    routine.blockOf(RoutineBlock.work)!.setEditedTime(30);
+    expect(routine.hasTicker, isFalse);
+
+    routine.startBlockAt(RoutineBlock.prep, 120);
+    expect(routine.hasTicker, isTrue);
+
+    routine.pauseBlockAt(RoutineBlock.prep, 150);
+    routine.blockOf(RoutineBlock.prep)!.setEditedTime(0);
+    expect(routine.hasTicker, isTrue);
+  });
+
   test('starts and pauses a block using supplied time', () {
     final routine = Routine.create(1, at: 100);
 

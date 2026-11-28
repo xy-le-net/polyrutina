@@ -5,7 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'package:polyrutina/core/data/atomic_json.dart';
-import 'package:polyrutina/features/settings/application/time_series_repository.dart';
+import 'package:polyrutina/features/settings/domain/time_series_repository.dart';
 
 class JsonTimeSeriesRepository implements TimeSeriesRepository {
   JsonTimeSeriesRepository(this.fileName);

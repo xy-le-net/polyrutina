@@ -65,5 +65,8 @@ class _MemoryTraceRepository implements TraceRepository {
   Future<TraceCache> load() async => const TraceCache.empty();
 
   @override
-  Future<void> save({required List<Trace> traces}) async {}
+  Future<void> save({
+    required List<Trace> traces,
+    required int lastJournalId,
+  }) async {}
 }

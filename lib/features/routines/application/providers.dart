@@ -10,8 +10,8 @@ final routineRepositoryProvider = Provider<RoutineRepository>(
 );
 
 final routineLayerProvider = ChangeNotifierProvider<RoutineLayer>((ref) {
-  final fields = ref.watch(fieldLayerProvider);
-  final traces = ref.watch(traceLayerProvider);
+  final fields = ref.read(fieldLayerProvider);
+  final traces = ref.read(traceLayerProvider);
   return RoutineLayer(
     repository: ref.watch(routineRepositoryProvider),
     fieldContext: () =>

@@ -116,14 +116,10 @@ class Pult extends ConsumerWidget {
 
   void _execute(BuildContext context, PultState state) {
     state.setConfirming(null);
+    spec.onTap?.call();
     final scope = PultSheetScope.maybeOf(context);
     if (scope != null && !spec.stayOpen) {
       scope.closeSheet();
-    }
-    try {
-      spec.onTap?.call();
-    } catch (_) {
-      // Ignore callback errors to prevent tree crash.
     }
   }
 
