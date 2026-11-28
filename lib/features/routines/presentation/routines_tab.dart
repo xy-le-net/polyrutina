@@ -421,16 +421,26 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
 
   void _showNodeActions(int id) {
     final i18n = readProvider(context, i18nProvider)!;
-    final node = readProvider(context, fieldLayerProvider).nodes[id];
+    final fieldLayer = readProvider(context, fieldLayerProvider);
+    final node = fieldLayer.nodes[id];
     if (node == null) return;
 
-    final subs = <PultSpec>[
-      PultSpec(
-        id: 'rename_$id',
-        icon: Icons.edit,
-        label: i18n.t('field.rename'),
-        onTap: () => _renameNodeDialog(id, node.name),
-      ),
+    final subs = <PultSpec>[];
+    if (id != fieldLayer.rootId) {
+      subs.add(
+        PultSpec(
+          id: 'rename_$id',
+          icon: Icons.edit,
+          label: i18n.t('field.rename'),
+          onTap: () {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _renameNodeDialog(id, node.name);
+            });
+          },
+        ),
+      );
+    }
+    subs.addAll([
       PultSpec(
         id: 'add_child_$id',
         icon: Icons.add,
@@ -443,7 +453,7 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
         label: i18n.t('field.attach_routine'),
         onTap: () => _attachRoutine(id),
       ),
-    ];
+    ]);
 
     if (node.id != readProvider(context, fieldLayerProvider).rootId) {
       final currentParentId = node.parents.isNotEmpty

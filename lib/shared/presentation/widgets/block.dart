@@ -92,44 +92,45 @@ class Block extends StatelessWidget {
         clipBehavior: Clip.none,
         children: [
           Padding(
-            padding: EdgeInsets.fromLTRB(
-              pad + markSize * 0.75,
-              pad,
-              pad,
-              pad + reserveBottom,
-            ),
+            padding: EdgeInsets.fromLTRB(pad, pad, pad, pad + reserveBottom),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Title — tappable to toggle collapse.
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: canCollapse ? onToggleCollapsed : null,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // The title is capped at a single line and
-                      // ellipsized: pults on the right can squeeze
-                      // the available width, and a two-line wrap
-                      // would break the uniform height of the block
-                      // header. If a custom widget is provided, it
-                      // takes the place of the text and manages its
-                      // own overflow.
-                      Expanded(
-                        child:
-                            titleWidget ??
-                            Text(
-                              title,
-                              style: TextStyle(color: dim, fontSize: titleSize),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                      ),
-                      if (cornerRightTop != null) ...[
-                        const SizedBox(width: 8),
-                        cornerRightTop!,
+                Padding(
+                  padding: EdgeInsets.only(left: markSize * 0.75),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: canCollapse ? onToggleCollapsed : null,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // The title is capped at a single line and
+                        // ellipsized: pults on the right can squeeze
+                        // the available width, and a two-line wrap
+                        // would break the uniform height of the block
+                        // header. If a custom widget is provided, it
+                        // takes the place of the text and manages its
+                        // own overflow.
+                        Expanded(
+                          child:
+                              titleWidget ??
+                              Text(
+                                title,
+                                style: TextStyle(
+                                  color: dim,
+                                  fontSize: titleSize,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                        ),
+                        if (cornerRightTop != null) ...[
+                          const SizedBox(width: 8),
+                          cornerRightTop!,
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
                 if (!isCollapsed && child != null) ...[
@@ -157,7 +158,7 @@ class Block extends StatelessWidget {
                   child: Icon(
                     collapsed ? Icons.unfold_more : Icons.unfold_less,
                     color: bg,
-                    size: markSize * 0.7,
+                    size: markSize * 0.35,
                   ),
                 ),
               ),

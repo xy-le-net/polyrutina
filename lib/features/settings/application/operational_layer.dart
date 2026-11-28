@@ -89,7 +89,7 @@ class OperationalLayer extends ChangeNotifier implements OperationalAccess {
 
   int mapScale = 40;
   bool mutexShift = true;
-  bool mutexRoutines = true;
+  bool mutexRoutines = false;
   bool mutexSlots = true;
 
   // Unified shift toggle. Off by default. When false, the shift has
@@ -668,7 +668,7 @@ class OperationalLayer extends ChangeNotifier implements OperationalAccess {
     collapsedBlocks = {};
     exportCounters = {};
     defaultSlots = {'work'};
-    mutexRoutines = true;
+    mutexRoutines = false;
     mutexSlots = true;
     shiftEnabled = false;
     blockControl = false;

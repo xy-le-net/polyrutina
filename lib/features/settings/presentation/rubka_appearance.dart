@@ -45,6 +45,29 @@ class RubkaAppearance extends ConsumerWidget {
 
     void set(String key, String value) => bort.set(key, value);
 
+    final scaleRow = Padding(
+      padding: EdgeInsets.symmetric(vertical: side * 0.1),
+      child: Row(
+        children: [
+          HelpLabel(
+            helpKey: 'bort.scale',
+            text: i18n.t('bort.scale'),
+            width: _labelW,
+            style: TextStyle(color: fg),
+          ),
+          Expanded(
+            child: BortField(
+              initial: bort.scale.toStringAsFixed(2),
+              fg: fg,
+              readOnly: false,
+              onChanged: (v) => bort.setDraft('scale', v),
+              onCommit: (v) async => set('scale', v),
+            ),
+          ),
+        ],
+      ),
+    );
+
     return Block(
       title: i18n.t('block.appearance'),
       collapsed: !bort.blockAppearance,
@@ -63,6 +86,7 @@ class RubkaAppearance extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          scaleRow,
           _themeRow(context, fg, mid, bg, fgsignal, side),
           if (bort.themeCustom) ...[
             _sectionTitle(context, i18n.t('theme.custom'), mid, side),

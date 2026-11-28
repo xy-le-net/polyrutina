@@ -27,25 +27,31 @@ class LinkText extends ConsumerWidget {
       onTap: onTap,
       child: Padding(
         padding: padding,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: bort.fgsignal,
-            borderRadius: BorderRadius.circular(linkSize * 0.22),
-          ),
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: linkSize * 0.3,
-              vertical: linkSize * 0.15,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: bort.fgsignal,
+              borderRadius: BorderRadius.circular(linkSize * 0.22),
             ),
-            child: Text(
-              text,
-              style: TextStyle(
-                color: bort.bgsignal,
-                fontSize: linkSize,
-                fontWeight: FontWeight.normal,
-                fontFamily: fontFamily,
-                height: 1.0,
-                decoration: TextDecoration.none,
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: linkSize * 0.3,
+                vertical: linkSize * 0.15,
+              ),
+              child: IntrinsicWidth(
+                child: Text(
+                  text,
+                  style: TextStyle(
+                    color: bort.bgsignal,
+                    fontSize: linkSize,
+                    fontWeight: FontWeight.normal,
+                    fontFamily: fontFamily,
+                    height: 1.0,
+                    decoration: TextDecoration.none,
+                  ),
+                  textWidthBasis: TextWidthBasis.longestLine,
+                ),
               ),
             ),
           ),

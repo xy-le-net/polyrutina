@@ -1,9 +1,9 @@
 {
   "ru": {
     "notice.days": "дни",
-    "notice.hours": "часы",
-    "notice.minutes": "минуты",
-    "notice.seconds": "секунды",
+    "notice.hours": "час",
+    "notice.minutes": "мин",
+    "notice.seconds": "сек",
     "month.1": "январь",
     "month.2": "февраль",
     "month.3": "март",
@@ -71,8 +71,8 @@
     "theme.night": "ночь",
     "theme.auto": "авто",
 
-    "lang.ru": "РУ",
-    "lang.en": "EN",
+    "lang.ru": "Русский",
+    "lang.en": "English",
 
     "bort.bg": "тьма",
     "bort.bgdim": "бумага",
@@ -260,14 +260,14 @@
     "help.bort.shake": "удалить файлы без привязок.",
     "help.bort.export": "собрать архив рутин и поделиться.",
     "help.bort.import": "принять архивы рутин.",
-    "help.bort.reset": "сбросить кэши и умолчания."
+    "help.bort.reset": "сбросить кэши и умолчания; не касается рабочих данных."
   },
 
   "en": {
-    "notice.days": "days",
-    "notice.hours": "hours",
-    "notice.minutes": "minutes",
-    "notice.seconds": "seconds",
+    "notice.days": "day",
+    "notice.hours": "hr",
+    "notice.minutes": "min",
+    "notice.seconds": "sec",
     "month.1": "January",
     "month.2": "February",
     "month.3": "March",
@@ -335,8 +335,8 @@
     "theme.night": "night",
     "theme.auto": "auto",
 
-    "lang.ru": "РУ",
-    "lang.en": "EN",
+    "lang.ru": "Русский",
+    "lang.en": "English",
 
     "bort.bg": "background",
     "bort.bgdim": "soft background",
@@ -524,6 +524,6 @@
     "help.bort.shake": "delete files not attached to anything.",
     "help.bort.export": "build a routines archive and share it.",
     "help.bort.import": "accept routines archives.",
-    "help.bort.reset": "reset caches and defaults."
+    "help.bort.reset": "reset caches and defaults; does not affect work data."
   }
 }

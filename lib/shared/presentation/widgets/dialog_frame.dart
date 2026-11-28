@@ -1,6 +1,8 @@
 import 'package:material_ui/material_ui.dart';
 
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
+import 'package:polyrutina/shared/presentation/control_row.dart';
+import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 import 'package:polyrutina/shared/presentation/widgets/link_text.dart';
 
 class DialogAction {
@@ -83,10 +85,17 @@ class DialogFrame extends StatelessWidget {
     final strokeW = metrics.stroke;
     final radius = metrics.radius * 1.15;
     final hMargin = margin ?? metrics.unit(1.2);
+    final controlReserve = ControlRow.reserve(PultScope.of(context).smallSide);
     final availableHeight =
-        MediaQuery.sizeOf(context).height -
-        MediaQuery.viewInsetsOf(context).bottom -
-        metrics.unit(1);
+        (MediaQuery.sizeOf(context).height -
+                MediaQuery.viewInsetsOf(context).bottom -
+                controlReserve -
+                metrics.unit(1))
+            .clamp(0.0, double.infinity)
+            .toDouble();
+    final frameMaxHeight = (maxHeight ?? availableHeight * 0.9)
+        .clamp(0.0, availableHeight)
+        .toDouble();
 
     // Clear composition underlines before showing the dialog.
     FocusManager.instance.primaryFocus?.unfocus();
@@ -98,27 +107,28 @@ class DialogFrame extends StatelessWidget {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: onDismiss,
-          child: Center(
-            child: GestureDetector(
-              onTap: () {},
-              child: Container(
-                margin: EdgeInsets.symmetric(horizontal: hMargin),
-                constraints: BoxConstraints(
-                  maxWidth: maxWidth ?? double.infinity,
-                  maxHeight:
-                      maxHeight ??
-                      (availableHeight * 0.9)
-                          .clamp(0.0, double.infinity)
-                          .toDouble(),
+          child: Padding(
+            padding: EdgeInsets.only(top: controlReserve),
+            child: Center(
+              child: GestureDetector(
+                onTap: () {},
+                child: Container(
+                  margin: EdgeInsets.symmetric(horizontal: hMargin),
+                  constraints: BoxConstraints(
+                    maxWidth: maxWidth ?? double.infinity,
+                    maxHeight: frameMaxHeight,
+                  ),
+                  decoration: BoxDecoration(
+                    color: bort.bg,
+                    border: Border.all(color: bort.fgsignal, width: strokeW),
+                    borderRadius: BorderRadius.circular(radius),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  padding: EdgeInsets.all(pad),
+                  child: scrollable
+                      ? SingleChildScrollView(child: child)
+                      : child,
                 ),
-                decoration: BoxDecoration(
-                  color: bort.bg,
-                  border: Border.all(color: bort.fgsignal, width: strokeW),
-                  borderRadius: BorderRadius.circular(radius),
-                ),
-                clipBehavior: Clip.antiAlias,
-                padding: EdgeInsets.all(pad),
-                child: scrollable ? SingleChildScrollView(child: child) : child,
               ),
             ),
           ),

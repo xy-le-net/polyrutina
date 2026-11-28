@@ -121,19 +121,6 @@ class RoutinePlate extends ConsumerWidget {
       };
     }
 
-    final rightControl = Pult(
-      spec: PultSpec(
-        id: 'routine_${routine.id}',
-        icon: pulseIcon,
-        selected: false,
-        onTap: pulseTap,
-        onLongPress: onLongPress,
-      ),
-      fg: textMain,
-      bg: plateBg,
-      signal: accent,
-      overrideSize: pultSide,
-    );
     final completionTick = PultTick(
       id: 'list_complete_${routine.id}',
       value: routine.completed,
@@ -148,6 +135,21 @@ class RoutinePlate extends ConsumerWidget {
         !routine.completed,
       ),
     );
+    final rightControl = hasTicker
+        ? Pult(
+            spec: PultSpec(
+              id: 'routine_${routine.id}',
+              icon: pulseIcon,
+              selected: false,
+              onTap: pulseTap,
+              onLongPress: onLongPress,
+            ),
+            fg: textMain,
+            bg: plateBg,
+            signal: accent,
+            overrideSize: pultSide,
+          )
+        : completionTick;
 
     final Widget? flagsColumn = routine.flags == 0
         ? null
@@ -260,14 +262,9 @@ class RoutinePlate extends ConsumerWidget {
                 ticker: ticker,
               ),
             ),
-          ] else ...[
-            SizedBox(width: side * 0.15),
-            Center(child: completionTick),
           ],
-          if (!(routine.completed && !hasTicker)) ...[
-            SizedBox(width: side * 0.15),
-            Center(child: rightControl),
-          ],
+          SizedBox(width: side * 0.15),
+          Center(child: rightControl),
         ],
       ),
     );

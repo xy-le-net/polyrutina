@@ -252,18 +252,6 @@ class RubkaControl extends ConsumerWidget {
       ),
     );
 
-    final scaleRow = row(
-      helpKey: 'bort.scale',
-      label: i18n.t('bort.scale'),
-      control: BortField(
-        initial: bort.scale.toStringAsFixed(2),
-        fg: fg,
-        readOnly: false,
-        onChanged: (v) => bort.setDraft('scale', v),
-        onCommit: (v) async => bort.set('scale', v),
-      ),
-    );
-
     return Block(
       title: i18n.t('block.control'),
       collapsed: !bort.blockControl,
@@ -289,7 +277,6 @@ class RubkaControl extends ConsumerWidget {
           mutexes,
           divider(),
           mapScaleRow,
-          scaleRow,
         ],
       ),
     );

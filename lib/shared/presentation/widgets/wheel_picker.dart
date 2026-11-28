@@ -50,7 +50,10 @@ class WheelValuePicker extends StatelessWidget {
                 ),
               ),
             ),
-          _WheelColumn(column: columns[i], side: side),
+          SizedBox(
+            width: side,
+            child: _WheelColumn(column: columns[i], side: side),
+          ),
         ],
       ],
     );
@@ -85,7 +88,6 @@ class WheelValuePicker extends StatelessWidget {
                   columns: [
                     WheelColumn(
                       label: i18n.t('notice.hours'),
-                      separator: ':',
                       value: hours,
                       itemCount: hours < 24000 ? 24000 : hours + 1,
                       onChanged: (value) => setState(() => hours = value),
@@ -93,7 +95,6 @@ class WheelValuePicker extends StatelessWidget {
                     ),
                     WheelColumn(
                       label: i18n.t('notice.minutes'),
-                      separator: ':',
                       value: minutes,
                       itemCount: 60,
                       onChanged: (value) => setState(() => minutes = value),
@@ -281,6 +282,7 @@ class _WheelColumnState extends State<_WheelColumn> {
             child: Text(
               column.label,
               maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: bort.mid,
                 fontSize: BortMetrics.of(

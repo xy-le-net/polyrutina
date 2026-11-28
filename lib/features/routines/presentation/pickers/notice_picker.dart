@@ -51,7 +51,6 @@ Future<int?> showNoticePicker(
                       ),
                       WheelColumn(
                         label: i18n.t('notice.hours'),
-                        separator: ':',
                         value: hours,
                         itemCount: 24,
                         onChanged: (v) => setState(() => hours = v),
@@ -75,12 +74,13 @@ Future<int?> showNoticePicker(
                       label: i18n.t('common.cancel'),
                       onTap: () => Navigator.of(ctx).pop(),
                     ),
-                    DialogAction(
-                      label: i18n.t('common.ok'),
-                      onTap: () => Navigator.of(
-                        ctx,
-                      ).pop(days * 86400 + hours * 3600 + minutes * 60),
-                    ),
+                    if (days * 86400 + hours * 3600 + minutes * 60 > 0)
+                      DialogAction(
+                        label: i18n.t('common.ok'),
+                        onTap: () => Navigator.of(
+                          ctx,
+                        ).pop(days * 86400 + hours * 3600 + minutes * 60),
+                      ),
                   ],
                 ),
               ],

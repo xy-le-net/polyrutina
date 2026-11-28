@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:polyrutina/core/localization/providers.dart';
 import 'package:polyrutina/shared/application/provider_read.dart';
 import 'package:polyrutina/features/settings/application/providers.dart';
@@ -156,7 +158,9 @@ class _TraceFieldState extends ConsumerState<TraceField>
 
   @override
   void didChangeMetrics() {
-    if (_focused) _ensureVisible();
+    if (!_focused) return;
+    setState(() {});
+    _ensureVisible();
   }
 
   Future<void> _autoSend() async {
@@ -323,31 +327,44 @@ class _TraceFieldState extends ConsumerState<TraceField>
     final viewMode = !_focused && !_editing && hasText;
 
     // Bound the editor height by the available viewport and text scale.
+    final bool editing = _focused || _editing;
     final int maxLines;
-    final int? minLines;
-    if (_focused) {
-      final viewInsets = MediaQuery.of(context).viewInsets.bottom;
+    final int minLines;
+    final double? editorMaxHeight;
+    if (editing) {
+      final mediaInsets = MediaQuery.of(context).viewInsets.bottom;
+      final viewInsets = MediaQueryData.fromView(
+        View.of(context),
+      ).viewInsets.bottom;
+      final keyboardInset = math.max(mediaInsets, viewInsets);
       final textScale = MediaQuery.textScalerOf(context).scale(1.0);
       final lineH = metrics.textSize(BortTextRole.edit) * 1.4 * textScale;
-      final availableH = MediaQuery.of(context).size.height - viewInsets;
+      final availableH = (MediaQuery.of(context).size.height - keyboardInset)
+          .clamp(0.0, double.infinity)
+          .toDouble();
       final reserved = widget.side * 4;
-      final budget = (availableH - reserved) * 0.55;
-      final keyboardLines = budget <= 0
-          ? _collapsedLines
-          : (budget / lineH).floor();
-      final limit = keyboardLines < _maxExpandedLines
-          ? keyboardLines
-          : _maxExpandedLines;
-      maxLines = limit < _collapsedLines ? _collapsedLines : limit;
-      minLines = maxLines;
+      final heightBudget = ((availableH - reserved) * 0.55)
+          .clamp(0.0, availableH)
+          .toDouble();
+      final inputChrome =
+          metrics.fieldPadding * 2 + metrics.fieldBorderWidth * 2;
+      final linesThatFit = ((heightBudget - inputChrome) / lineH).floor();
+      maxLines = linesThatFit < 1
+          ? 1
+          : linesThatFit > _maxExpandedLines
+          ? _maxExpandedLines
+          : linesThatFit;
+      minLines = maxLines < _collapsedLines ? maxLines : _collapsedLines;
+      editorMaxHeight = heightBudget;
     } else {
-      maxLines = _editing ? _collapsedLines : _emptyLines;
+      maxLines = _emptyLines;
       minLines = maxLines;
+      editorMaxHeight = null;
     }
 
     Widget fieldWidget;
     if (viewMode) {
-      final maxViewH = MediaQuery.of(context).size.height / 3;
+      final maxViewH = MediaQuery.of(context).size.height / 2;
       final viewPadding = metrics.fieldPadding;
       final borderWidth = metrics.fieldBorderWidth;
       fieldWidget = LayoutBuilder(
@@ -393,7 +410,7 @@ class _TraceFieldState extends ConsumerState<TraceField>
         },
       );
     } else {
-      fieldWidget = TextField(
+      final textField = TextField(
         controller: _ctrl,
         focusNode: _focus,
         maxLines: maxLines,
@@ -416,6 +433,12 @@ class _TraceFieldState extends ConsumerState<TraceField>
           _focus.unfocus();
         },
       );
+      fieldWidget = editorMaxHeight == null
+          ? textField
+          : ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: editorMaxHeight),
+              child: textField,
+            );
     }
 
     return Column(
