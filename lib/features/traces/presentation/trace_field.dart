@@ -12,7 +12,7 @@ import 'package:polyrutina/features/traces/application/trace_layer.dart';
 import 'package:polyrutina/shared/presentation/widgets/bort_field.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
-import 'package:polyrutina/features/routines/presentation/screens/checklist_screen.dart';
+import 'package:polyrutina/features/traces/presentation/screens/checklist_screen.dart';
 import 'package:polyrutina/features/traces/presentation/screens/media_viewer.dart';
 import 'package:polyrutina/features/traces/presentation/services/media_picker.dart';
 import 'package:polyrutina/features/traces/presentation/trace_media_row.dart';

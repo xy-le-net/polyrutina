@@ -1,10 +1,11 @@
 import 'package:path/path.dart' as p;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:polyrutina/features/traces/application/trace_repository.dart';
 import 'package:polyrutina/features/traces/application/trace_layer.dart';
 
 void main() {
   test('only media attached to live routines or fields is retained', () {
-    final layer = TraceLayer()
+    final layer = TraceLayer(_MemoryTraceRepository())
       ..traces[1] = Trace(
         id: 1,
         parents: [10],
@@ -57,4 +58,12 @@ void main() {
       'live-field.jpg',
     });
   });
+}
+
+class _MemoryTraceRepository implements TraceRepository {
+  @override
+  Future<TraceCache> load() async => const TraceCache.empty();
+
+  @override
+  Future<void> save({required List<Trace> traces}) async {}
 }

@@ -1,31 +1,33 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
-import 'package:polyrutina/core/data/atomic_json.dart';
 import 'package:polyrutina/core/data/journal_layer.dart';
 import 'package:polyrutina/core/domain/journal_entry.dart';
 import 'package:polyrutina/core/domain/journal_types.dart';
+import 'package:polyrutina/features/fields/application/field_repository.dart';
 import 'package:polyrutina/features/fields/domain/field_node.dart';
 
 export 'package:polyrutina/features/fields/domain/field_node.dart';
 
 class FieldLayer extends ChangeNotifier {
+  FieldLayer(this._repository);
+
+  final FieldRepository _repository;
   final Map<int, FieldNode> nodes = {};
   int? rootId;
   int? activeFieldId;
 
-  File? _file;
   Timer? _saveTimer;
 
   Future<void> init(JournalLayer journal) async {
-    final dir = await getApplicationDocumentsDirectory();
-    _file = File(p.join(dir.path, 'field_layer.json'));
-    await _loadFromFile();
+    final cache = await _repository.load();
+    activeFieldId = cache.activeFieldId;
+    for (final node in cache.nodes) {
+      nodes[node.id] = node;
+      if (node.isRoot && rootId == null) rootId = node.id;
+    }
 
     journal.register(
       name: 'field',
@@ -33,6 +35,10 @@ class FieldLayer extends ChangeNotifier {
       apply: _applyEntry,
       reset: _resetMemory,
     );
+    if (cache.needsJournalReplay) {
+      journal.clearMark('field');
+      await journal.pump();
+    }
 
     notifyListeners();
   }
@@ -43,42 +49,16 @@ class FieldLayer extends ChangeNotifier {
     super.dispose();
   }
 
-  Future<void> _loadFromFile() async {
-    if (_file == null || !await _file!.exists()) return;
-    try {
-      final raw = await _file!.readAsString();
-      final data = jsonDecode(raw) as Map<String, dynamic>;
-      activeFieldId = (data['active_field_id'] as num?)?.toInt();
-      final list = data['nodes'];
-      if (list is List) {
-        for (final e in list) {
-          if (e is! Map) continue;
-          try {
-            final n = FieldNode.fromJson(Map<String, dynamic>.from(e));
-            nodes[n.id] = n;
-            // Preserve the first root as the default.
-            if (n.isRoot && rootId == null) rootId = n.id;
-          } catch (_) {
-            // Skip a single malformed node; keep the rest.
-          }
-        }
-      }
-    } catch (_) {}
-  }
-
   void _scheduleSave() {
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 200), _saveToFile);
   }
 
   Future<void> _saveToFile() async {
-    final target = _file;
-    if (target == null) return;
-    final data = <String, dynamic>{
-      'active_field_id': activeFieldId,
-      'nodes': nodes.values.map((n) => n.toJson()).toList(),
-    };
-    await atomicWriteJson(target, data);
+    await _repository.save(
+      activeFieldId: activeFieldId,
+      nodes: nodes.values.toList(),
+    );
   }
 
   Future<void> saveNow() async {

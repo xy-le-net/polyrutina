@@ -204,7 +204,7 @@ class _PolyRutinaAppState extends ConsumerState<PolyRutinaApp>
         name: _i18n!.t('field.root'),
       );
 
-      await _routineLayer.init(_journal, _traceLayer, _fieldLayer);
+      await _routineLayer.init(_journal);
       _routineLayer.migrateFieldParents();
 
       _bort.attachJournal(_journal);
@@ -220,7 +220,7 @@ class _PolyRutinaAppState extends ConsumerState<PolyRutinaApp>
       _notificationManager = NotificationManager(
         bort: _bort,
         routineLayer: _routineLayer,
-        fieldLayer: _fieldLayer,
+        fieldNameForId: (id) => _fieldLayer.nodes[id]?.name,
         ticker: _ticker,
         i18n: _i18n!,
       );
@@ -278,7 +278,7 @@ class _PolyRutinaAppState extends ConsumerState<PolyRutinaApp>
         _notificationManager = NotificationManager(
           bort: _bort,
           routineLayer: _routineLayer,
-          fieldLayer: _fieldLayer,
+          fieldNameForId: (id) => _fieldLayer.nodes[id]?.name,
           ticker: _ticker,
           i18n: i18n,
         );

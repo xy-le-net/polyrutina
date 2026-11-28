@@ -1,19 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
-import 'package:polyrutina/core/data/atomic_json.dart';
-import 'package:polyrutina/features/fields/application/field_layer.dart';
 import 'package:polyrutina/core/data/journal_layer.dart';
 import 'package:polyrutina/core/domain/journal_types.dart';
 import 'package:polyrutina/core/domain/journal_entry.dart';
-import 'package:polyrutina/features/routines/domain/routine.dart';
 import 'package:polyrutina/features/routines/application/routine_access.dart';
-import 'package:polyrutina/features/traces/application/trace_layer.dart';
+import 'package:polyrutina/features/routines/application/routine_dependencies.dart';
+import 'package:polyrutina/features/routines/application/routine_repository.dart';
+import 'package:polyrutina/features/routines/domain/routine.dart';
 
 /// Refreshes or cancels a routine's deferred notice.
 abstract class OverdueScheduler {
@@ -22,7 +18,17 @@ abstract class OverdueScheduler {
 }
 
 class RoutineLayer extends ChangeNotifier implements RoutineAccess {
-  static const int _schemaVersion = 2;
+  RoutineLayer({
+    required RoutineRepository repository,
+    required RoutineFieldContextReader fieldContext,
+    required RoutineTraceCopier copyTraces,
+  }) : _repository = repository,
+       _fieldContext = fieldContext,
+       _copyTraces = copyTraces;
+
+  final RoutineRepository _repository;
+  final RoutineFieldContextReader _fieldContext;
+  final RoutineTraceCopier _copyTraces;
 
   @override
   List<Routine> routines = [];
@@ -41,10 +47,6 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
   final Map<int, Routine> _routineIndex = {};
   final Set<int> _runningRoutineIds = {};
 
-  TraceLayer? _traces;
-  FieldLayer? _field;
-
-  File? _file;
   Timer? _saveTimer;
 
   List<Routine> get routinesNewestFirst {
@@ -98,18 +100,17 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
     return (active: active, done: done);
   }
 
-  Future<void> init(
-    JournalLayer journal,
-    TraceLayer traces,
-    FieldLayer field,
-  ) async {
-    _traces = traces;
-    _field = field;
-    final dir = await getApplicationDocumentsDirectory();
-    _file = File(p.join(dir.path, 'routine_layer.json'));
-
-    // Rebuild this cache from the journal when it is invalid or empty.
-    final needsRebuild = await _loadFromFile();
+  Future<void> init(JournalLayer journal) async {
+    final cache = await _repository.load();
+    routines = cache.routines.toList();
+    lastActiveBlockKind = cache.lastActiveBlockKind;
+    for (final routine in routines) {
+      if (routine.runningBlock != null) {
+        currentRoutineId = routine.id;
+        break;
+      }
+    }
+    _rebuildIndices();
 
     journal.register(
       name: 'routine',
@@ -118,9 +119,8 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
       reset: _resetMemory,
     );
 
-    if (needsRebuild) {
+    if (cache.needsJournalReplay) {
       journal.clearMark('routine');
-      // Populate routines before the first build.
       await journal.pump();
     }
 
@@ -194,7 +194,7 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
   }
 
   void migrateFieldParents() {
-    final rootId = _field?.rootId;
+    final rootId = _fieldContext().rootId;
     if (rootId == null) return;
     var changed = false;
     for (final r in routines) {
@@ -216,61 +216,16 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
     super.dispose();
   }
 
-  // Empty caches must replay the journal too; otherwise a stale mark
-  // can leave routines missing after a failed start or import.
-  Future<bool> _loadFromFile() async {
-    if (_file == null || !await _file!.exists()) return false;
-    try {
-      final raw = await _file!.readAsString();
-      final data = jsonDecode(raw) as Map<String, dynamic>;
-
-      final schema = (data['schema'] as num?)?.toInt() ?? 0;
-      if (schema < _schemaVersion) {
-        return true;
-      }
-
-      final r = data['routines'];
-      if (r is List) {
-        final loaded = <Routine>[];
-        for (final e in r) {
-          if (e is! Map) continue;
-          try {
-            loaded.add(Routine.fromJson(Map<String, dynamic>.from(e)));
-          } catch (_) {}
-        }
-        routines = loaded;
-      }
-      lastActiveBlockKind = data['last_active_block_kind'] as String?;
-
-      for (final r in routines) {
-        if (r.runningBlock != null) {
-          currentRoutineId = r.id;
-          break;
-        }
-      }
-      _rebuildIndices();
-      // Empty cache: replay the journal.
-      return routines.isEmpty;
-    } catch (_) {
-      // Malformed cache: replay the journal.
-      return true;
-    }
-  }
-
   void _scheduleSave() {
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 200), _saveToFile);
   }
 
   Future<void> _saveToFile() async {
-    final target = _file;
-    if (target == null) return;
-    final data = <String, dynamic>{
-      'schema': _schemaVersion,
-      'routines': routines.map((r) => r.toJson()).toList(),
-      'last_active_block_kind': lastActiveBlockKind,
-    };
-    await atomicWriteJson(target, data);
+    await _repository.save(
+      routines: routines.toList(),
+      lastActiveBlockKind: lastActiveBlockKind,
+    );
   }
 
   Future<void> saveNow() async {
@@ -508,38 +463,11 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
         body: jsonEncode({'action': 'snapshot', 'routine': snapshot.toJson()}),
       );
 
-      final traces = _traces;
-      if (traces != null) {
-        const copySlots = ['note', 'prep', 'closeout'];
-        for (final slot in copySlots) {
-          final t = traces.findFirstBySlot(src.id, slot);
-          if (t == null) continue;
-
-          if (t.kind == TraceKind.text && t.text.isNotEmpty) {
-            await traces.createText(
-              journal,
-              slot: slot,
-              text: t.text,
-              parents: [r.id],
-            );
-          }
-
-          if (t.kind == TraceKind.checklist) {
-            final items = t.items
-                .where((e) => e.text.trim().isNotEmpty)
-                .map((e) => e.text)
-                .toList();
-            if (items.isNotEmpty) {
-              await traces.createChecklist(
-                journal,
-                slot: slot,
-                items: items,
-                parents: [r.id],
-              );
-            }
-          }
-        }
-      }
+      await _copyTraces(journal, src.id, r.id, const [
+        'note',
+        'prep',
+        'closeout',
+      ]);
     });
 
     if (newId == null) return null;
@@ -559,8 +487,9 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
 
     List<int> parentList = fieldParents ?? [];
     if (parentList.isEmpty) {
-      final active = _field?.activeFieldId;
-      final root = _field?.rootId;
+      final fieldContext = _fieldContext();
+      final active = fieldContext.activeFieldId;
+      final root = fieldContext.rootId;
       final target = active ?? root;
       if (target != null) parentList = [target];
     }
@@ -985,9 +914,6 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
   }
 
   Future<void> resetAll() async {
-    if (_file != null && await _file!.exists()) {
-      await _file!.delete();
-    }
     routines = [];
     currentRoutineId = null;
     lastActiveBlockKind = null;

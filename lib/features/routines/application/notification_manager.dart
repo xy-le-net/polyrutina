@@ -1,6 +1,6 @@
-import 'package:polyrutina/features/fields/application/field_layer.dart';
 import 'package:polyrutina/core/localization/i18n.dart';
 import 'package:polyrutina/features/settings/application/operational_layer.dart';
+import 'package:polyrutina/features/routines/application/routine_dependencies.dart';
 import 'package:polyrutina/features/routines/application/routine_access.dart';
 import 'package:polyrutina/core/application/ticker.dart';
 import 'package:polyrutina/shared/application/format.dart';
@@ -9,7 +9,7 @@ import 'package:polyrutina/core/application/notification_service.dart';
 class NotificationManager {
   final OperationalLayer bort;
   final RoutineAccess routineLayer;
-  final FieldLayer fieldLayer;
+  final RoutineFieldNameReader fieldNameForId;
   final AppTicker ticker;
   final I18n i18n;
 
@@ -26,7 +26,7 @@ class NotificationManager {
   NotificationManager({
     required this.bort,
     required this.routineLayer,
-    required this.fieldLayer,
+    required this.fieldNameForId,
     required this.ticker,
     required this.i18n,
   }) {
@@ -122,10 +122,8 @@ class NotificationManager {
     String fieldName;
     if (currentRoutine.fieldParents.isNotEmpty) {
       final fId = currentRoutine.fieldParents.first;
-      final node = fieldLayer.nodes[fId];
-      fieldName = (node != null && node.name.isNotEmpty)
-          ? node.name
-          : i18n.t('field.root');
+      final name = fieldNameForId(fId);
+      fieldName = name != null && name.isNotEmpty ? name : i18n.t('field.root');
     } else {
       fieldName = i18n.t('field.shared');
     }

@@ -1,34 +1,34 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
-import 'package:polyrutina/core/data/atomic_json.dart';
 import 'package:polyrutina/core/data/journal_layer.dart';
 import 'package:polyrutina/core/domain/journal_entry.dart';
 import 'package:polyrutina/core/domain/journal_types.dart';
+import 'package:polyrutina/features/traces/application/trace_repository.dart';
 import 'package:polyrutina/features/traces/domain/trace.dart';
 
 export 'package:polyrutina/features/traces/domain/trace.dart';
 
 class TraceLayer extends ChangeNotifier {
-  static const int _schemaVersion = 1;
+  TraceLayer(this._repository);
 
+  final TraceRepository _repository;
   final Map<int, Trace> traces = {};
 
   // Index: parentId -> "kind:slot" -> minimum trace ID
   final Map<int, Map<String, int>> _traceIndex = {};
 
-  File? _file;
   Timer? _saveTimer;
 
   Future<void> init(JournalLayer journal) async {
-    final dir = await getApplicationDocumentsDirectory();
-    _file = File(p.join(dir.path, 'trace_layer.json'));
-    final needsRebuild = await _loadFromFile();
+    final cache = await _repository.load();
+    for (final trace in cache.traces) {
+      traces[trace.id] = trace;
+    }
+    _rebuildIndices();
 
     journal.register(
       name: 'trace',
@@ -36,7 +36,7 @@ class TraceLayer extends ChangeNotifier {
       apply: _applyEntry,
       reset: _resetMemory,
     );
-    if (needsRebuild) {
+    if (cache.needsJournalReplay) {
       journal.clearMark('trace');
       await journal.pump();
     }
@@ -75,45 +75,13 @@ class TraceLayer extends ChangeNotifier {
     }
   }
 
-  Future<bool> _loadFromFile() async {
-    if (_file == null || !await _file!.exists()) return true;
-    try {
-      final raw = await _file!.readAsString();
-      final data = jsonDecode(raw) as Map<String, dynamic>;
-
-      final schema = (data['schema'] as num?)?.toInt() ?? 0;
-      if (schema < _schemaVersion) {
-        return true;
-      }
-
-      final list = data['traces'];
-      if (list is List) {
-        for (final e in list) {
-          final m = e as Map<String, dynamic>;
-          final id = (m['id'] as num).toInt();
-          traces[id] = Trace.fromJson(id, m);
-        }
-      }
-      _rebuildIndices();
-      return false;
-    } catch (_) {
-      return true;
-    }
-  }
-
   void _scheduleSave() {
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 200), _saveToFile);
   }
 
   Future<void> _saveToFile() async {
-    final target = _file;
-    if (target == null) return;
-    final data = <String, dynamic>{
-      'schema': _schemaVersion,
-      'traces': traces.values.map((t) => {'id': t.id, ...t.toJson()}).toList(),
-    };
-    await atomicWriteJson(target, data);
+    await _repository.save(traces: traces.values.toList());
   }
 
   Future<void> saveNow() async {
@@ -383,6 +351,42 @@ class TraceLayer extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> copyForParent(
+    JournalLayer journal, {
+    required int sourceId,
+    required int targetId,
+    required List<String> slots,
+  }) async {
+    for (final slot in slots) {
+      final trace = findFirstBySlot(sourceId, slot);
+      if (trace == null) continue;
+
+      if (trace.kind == TraceKind.text && trace.text.isNotEmpty) {
+        await createText(
+          journal,
+          slot: slot,
+          text: trace.text,
+          parents: [targetId],
+        );
+      }
+
+      if (trace.kind == TraceKind.checklist) {
+        final items = trace.items
+            .where((item) => item.text.trim().isNotEmpty)
+            .map((item) => item.text)
+            .toList();
+        if (items.isNotEmpty) {
+          await createChecklist(
+            journal,
+            slot: slot,
+            items: items,
+            parents: [targetId],
+          );
+        }
+      }
+    }
+  }
+
   Future<void> removeFile(JournalLayer journal, int traceId, int index) async {
     final t = traces[traceId];
     if (t == null) return;
@@ -442,9 +446,6 @@ class TraceLayer extends ChangeNotifier {
   }
 
   Future<void> resetAll() async {
-    if (_file != null && await _file!.exists()) {
-      await _file!.delete();
-    }
     traces.clear();
     _traceIndex.clear();
     await _saveToFile();
