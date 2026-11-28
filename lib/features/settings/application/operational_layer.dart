@@ -16,6 +16,7 @@ import 'package:polyrutina/core/domain/journal_types.dart';
 import 'package:polyrutina/features/settings/application/operational_access.dart';
 import 'package:polyrutina/features/settings/data/theme_store.dart';
 import 'package:polyrutina/features/settings/domain/time_series.dart';
+import 'package:polyrutina/features/settings/data/json_time_series_repository.dart';
 
 class OperationalLayer extends ChangeNotifier implements OperationalAccess {
   static const int _schemaVersion = 3;
@@ -135,10 +136,12 @@ class OperationalLayer extends ChangeNotifier implements OperationalAccess {
     await _file.init();
     await _install.init();
 
-    series['shift'] = TimeSeries();
-    await series['shift']!.init('shift_history.json');
-    series['bort'] = TimeSeries();
-    await series['bort']!.init('bort_history.json');
+    series['shift'] = TimeSeries(
+      JsonTimeSeriesRepository('shift_history.json'),
+    );
+    await series['shift']!.init();
+    series['bort'] = TimeSeries(JsonTimeSeriesRepository('bort_history.json'));
+    await series['bort']!.init();
 
     await _loadDefaults();
     await _loadFromFile();

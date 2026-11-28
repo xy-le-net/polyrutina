@@ -1,62 +1,51 @@
-import 'dart:convert';
-import 'dart:io';
 import 'dart:async';
 
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
-
-import 'package:polyrutina/core/data/atomic_json.dart';
+import 'package:polyrutina/features/settings/application/time_series_repository.dart';
 
 class TimeSeries {
+  TimeSeries(this._repository);
+
+  final TimeSeriesRepository _repository;
   // {fieldId: {year: {month: {day: seconds}}}}
   final Map<int, Map<int, Map<int, Map<int, int>>>> _data = {};
-  File? _file;
   Timer? _saveTimer;
 
-  Future<void> init(String fileName) async {
-    final dir = await getApplicationDocumentsDirectory();
-    _file = File(p.join(dir.path, fileName));
+  Future<void> init() async {
     await _load();
   }
 
   Future<void> _load() async {
-    if (_file == null || !await _file!.exists()) return;
-    try {
-      final raw = await _file!.readAsString();
-      final data = jsonDecode(raw) as Map<String, dynamic>;
-      for (final fKey in data.keys) {
-        final fId = int.tryParse(fKey) ?? 0;
-        final years = data[fKey];
-        if (years is! Map) continue;
-        for (final yKey in years.keys) {
-          final y = int.tryParse(yKey.toString());
-          if (y == null) continue;
-          final months = years[yKey];
-          if (months is! Map) continue;
-          for (final mKey in months.keys) {
-            final m = int.tryParse(mKey.toString());
-            if (m == null) continue;
-            final days = months[mKey];
-            if (days is! Map) continue;
-            final dayMap = <int, int>{};
-            for (final dKey in days.keys) {
-              final d = int.tryParse(dKey.toString());
-              if (d == null) continue;
-              final v = (days[dKey] as num?)?.toInt() ?? 0;
-              if (v > 0) dayMap[d] = v;
-            }
-            if (dayMap.isEmpty) continue;
-            _data.putIfAbsent(fId, () => {}).putIfAbsent(y, () => {})[m] =
-                dayMap;
+    final data = await _repository.load();
+    if (data == null) return;
+    for (final fKey in data.keys) {
+      final fId = int.tryParse(fKey) ?? 0;
+      final years = data[fKey];
+      if (years is! Map) continue;
+      for (final yKey in years.keys) {
+        final y = int.tryParse(yKey.toString());
+        if (y == null) continue;
+        final months = years[yKey];
+        if (months is! Map) continue;
+        for (final mKey in months.keys) {
+          final m = int.tryParse(mKey.toString());
+          if (m == null) continue;
+          final days = months[mKey];
+          if (days is! Map) continue;
+          final dayMap = <int, int>{};
+          for (final dKey in days.keys) {
+            final d = int.tryParse(dKey.toString());
+            if (d == null) continue;
+            final v = (days[dKey] as num?)?.toInt() ?? 0;
+            if (v > 0) dayMap[d] = v;
           }
+          if (dayMap.isEmpty) continue;
+          _data.putIfAbsent(fId, () => {}).putIfAbsent(y, () => {})[m] = dayMap;
         }
       }
-    } catch (_) {}
+    }
   }
 
   Future<void> _save() async {
-    final target = _file;
-    if (target == null) return;
     final out = <String, dynamic>{};
     for (final fe in _data.entries) {
       final fOut = <String, dynamic>{};
@@ -73,7 +62,7 @@ class TimeSeries {
       }
       if (fOut.isNotEmpty) out[fe.key.toString()] = fOut;
     }
-    await atomicWriteJson(target, out);
+    await _repository.save(out);
   }
 
   void addDay(
