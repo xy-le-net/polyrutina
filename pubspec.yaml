@@ -118,13 +118,3 @@ flutter_native_splash:
   android: true
   ios: false
   fullscreen: false
-
-msix_config:
-  display_name: "polyrutina"
-  publisher_display_name: "xy_le"
-  identity_name: "com.xy-le.polyrutina"
-  msix_version: 0.1.1.3
-  logo_path: "assets/icon.png"
-  certificate_path: "D:\\polyrutina\\polyrutina.pfx"
-  certificate_password: "panda14"
-  publisher: "CN=xy_le"
