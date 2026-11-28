@@ -276,8 +276,11 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
 
   void _showRoutineActions(Routine r) {
     final i18n = readProvider(context, i18nProvider)!;
+    final journal = readProvider(context, journalLayerProvider);
+    final routines = readProvider(context, routineLayerProvider);
+    final fields = readProvider(context, fieldLayerProvider);
     final running = r.runningBlock != null;
-    final rootId = readProvider(context, fieldLayerProvider).rootId;
+    final rootId = fields.rootId;
     final onlyInRoot =
         rootId != null &&
         r.fieldParents.length == 1 &&
@@ -288,10 +291,7 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
         icon: Icons.copy,
         label: i18n.t('bort.duplicate'),
         onTap: () async {
-          await readProvider(
-            context,
-            routineLayerProvider,
-          ).duplicateRoutine(readProvider(context, journalLayerProvider), r.id);
+          await routines.duplicateRoutine(journal, r.id);
           if (mounted) setState(() {});
         },
       ),
@@ -307,27 +307,13 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
           icon: Icons.link_off,
           label: i18n.t('field.detach_routine'),
           onTap: () async {
-            await readProvider(
-              context,
-              journalLayerProvider,
-            ).transaction(() async {
-              final root = readProvider(context, fieldLayerProvider).rootId;
+            await journal.transaction(() async {
+              final root = fields.rootId;
               for (final pId in List<int>.from(r.fieldParents)) {
-                await readProvider(
-                  context,
-                  routineLayerProvider,
-                ).detachFromField(
-                  readProvider(context, journalLayerProvider),
-                  r.id,
-                  pId,
-                );
+                await routines.detachFromField(journal, r.id, pId);
               }
               if (root != null) {
-                await readProvider(context, routineLayerProvider).attachToField(
-                  readProvider(context, journalLayerProvider),
-                  r.id,
-                  root,
-                );
+                await routines.attachToField(journal, r.id, root);
               }
             });
           },
@@ -376,7 +362,10 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
 
   void _moveRoutine(Routine r) {
     final i18n = readProvider(context, i18nProvider)!;
-    final rootId = readProvider(context, fieldLayerProvider).rootId;
+    final journal = readProvider(context, journalLayerProvider);
+    final fieldLayer = readProvider(context, fieldLayerProvider);
+    final routineLayer = readProvider(context, routineLayerProvider);
+    final rootId = fieldLayer.rootId;
     final onlyInRoot =
         rootId != null &&
         r.fieldParents.length == 1 &&
@@ -390,27 +379,13 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
           icon: Icons.link_off,
           label: i18n.t('field.detach_routine'),
           onTap: () async {
-            await readProvider(
-              context,
-              journalLayerProvider,
-            ).transaction(() async {
-              final root = readProvider(context, fieldLayerProvider).rootId;
+            await journal.transaction(() async {
+              final root = fieldLayer.rootId;
               for (final pId in List<int>.from(r.fieldParents)) {
-                await readProvider(
-                  context,
-                  routineLayerProvider,
-                ).detachFromField(
-                  readProvider(context, journalLayerProvider),
-                  r.id,
-                  pId,
-                );
+                await routineLayer.detachFromField(journal, r.id, pId);
               }
               if (root != null) {
-                await readProvider(context, routineLayerProvider).attachToField(
-                  readProvider(context, journalLayerProvider),
-                  r.id,
-                  root,
-                );
+                await routineLayer.attachToField(journal, r.id, root);
               }
             });
           },
@@ -421,19 +396,13 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
       subs,
       selectedIds: selectedFields,
       onTap: (n) async {
-        await readProvider(context, journalLayerProvider).transaction(() async {
+        final journal = readProvider(context, journalLayerProvider);
+        final routines = readProvider(context, routineLayerProvider);
+        await journal.transaction(() async {
           for (final pId in List<int>.from(r.fieldParents)) {
-            await readProvider(context, routineLayerProvider).detachFromField(
-              readProvider(context, journalLayerProvider),
-              r.id,
-              pId,
-            );
+            await routines.detachFromField(journal, r.id, pId);
           }
-          await readProvider(context, routineLayerProvider).attachToField(
-            readProvider(context, journalLayerProvider),
-            r.id,
-            n.id,
-          );
+          await routines.attachToField(journal, r.id, n.id);
         });
         if (mounted) setState(() => _expanded.add(n.id));
       },
@@ -504,19 +473,16 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
           label: i18n.t('field.burn'),
           confirm: true,
           onTap: () async {
+            final journal = readProvider(context, journalLayerProvider);
+            final fields = readProvider(context, fieldLayerProvider);
             final ok = await showConfirm(
               context,
               title: i18n.t('field.burn_confirm'),
               confirmLabel: i18n.t('bort.delete'),
               cancelLabel: i18n.t('common.cancel'),
             );
-            if (ok) {
-              await readProvider(context, fieldLayerProvider).deleteNode(
-                readProvider(context, journalLayerProvider),
-                id,
-                burn: true,
-              );
-            }
+            if (!ok || !mounted) return;
+            await fields.deleteNode(journal, id, burn: true);
           },
         ),
       );
@@ -534,60 +500,42 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
 
   // Reattach direct routine and trace links to the default root.
   Future<void> _shakeNode(int id) async {
-    final root = readProvider(context, fieldLayerProvider).rootId;
+    final journal = readProvider(context, journalLayerProvider);
+    final fields = readProvider(context, fieldLayerProvider);
+    final routines = readProvider(context, routineLayerProvider);
+    final traces = readProvider(context, traceLayerProvider);
+    final root = fields.rootId;
     if (root == null || root == id) return;
 
-    await readProvider(context, journalLayerProvider).transaction(() async {
+    await journal.transaction(() async {
       final affectedRoutines = <int>[];
-      for (final r in readProvider(context, routineLayerProvider).routines) {
+      for (final r in routines.routines) {
         if (r.fieldParents.contains(id)) affectedRoutines.add(r.id);
       }
       final affectedTraces = <int>[];
-      for (final t in readProvider(context, traceLayerProvider).traces.values) {
+      for (final t in traces.traces.values) {
         if (t.deleted) continue;
         if (t.fieldParents.contains(id)) affectedTraces.add(t.id);
       }
 
-      await readProvider(context, fieldLayerProvider).deleteNode(
-        readProvider(context, journalLayerProvider),
-        id,
-        burn: false,
-      );
+      await fields.deleteNode(journal, id, burn: false);
 
       for (final rId in affectedRoutines) {
-        await readProvider(
-          context,
-          routineLayerProvider,
-        ).detachFromField(readProvider(context, journalLayerProvider), rId, id);
-        await readProvider(
-          context,
-          routineLayerProvider,
-        ).attachToField(readProvider(context, journalLayerProvider), rId, root);
+        await routines.detachFromField(journal, rId, id);
+        await routines.attachToField(journal, rId, root);
       }
       for (final tId in affectedTraces) {
-        await readProvider(
-          context,
-          traceLayerProvider,
-        ).detachFromField(readProvider(context, journalLayerProvider), tId, id);
-        await readProvider(
-          context,
-          traceLayerProvider,
-        ).attachToField(readProvider(context, journalLayerProvider), tId, root);
+        await traces.detachFromField(journal, tId, id);
+        await traces.attachToField(journal, tId, root);
       }
     });
   }
 
   Future<void> _createChildNode(int parentId) async {
-    final node = await readProvider(context, fieldLayerProvider).createNode(
-      readProvider(context, journalLayerProvider),
-      name: '',
-      parentId: parentId,
-    );
-    await readProvider(context, fieldLayerProvider).renameNode(
-      readProvider(context, journalLayerProvider),
-      node.id,
-      _autoName(node.id),
-    );
+    final journal = readProvider(context, journalLayerProvider);
+    final fields = readProvider(context, fieldLayerProvider);
+    final node = await fields.createNode(journal, name: '', parentId: parentId);
+    await fields.renameNode(journal, node.id, _autoName(node.id));
     if (!mounted) return;
     setState(() => _expanded.add(parentId));
     _renameNodeDialog(node.id, '');
@@ -602,6 +550,8 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
   void _renameNodeDialog(int id, String currentName) {
     final i18n = readProvider(context, i18nProvider)!;
     final bort = readProvider(context, operationalLayerProvider);
+    final journal = readProvider(context, journalLayerProvider);
+    final fields = readProvider(context, fieldLayerProvider);
     final metrics = BortMetrics.of(context, compact: true);
     String currentText = currentName;
 
@@ -613,10 +563,7 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
           final trimmed = currentText.trim();
           final name = trimmed.isEmpty ? _autoName(id) : currentText;
           Navigator.of(ctx).pop();
-          await readProvider(
-            context,
-            fieldLayerProvider,
-          ).renameNode(readProvider(context, journalLayerProvider), id, name);
+          await fields.renameNode(journal, id, name);
           if (mounted) setState(() => _expanded.add(id));
         }
 
@@ -701,6 +648,8 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
   }
 
   void _pickNodeForBranch(int nodeId, int? currentParentId) {
+    final journal = readProvider(context, journalLayerProvider);
+    final fields = readProvider(context, fieldLayerProvider);
     final subs = <PultSpec>[];
     _collectAllRootsSubs(
       subs,
@@ -709,22 +658,12 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
       selectedIds: currentParentId == null ? null : {currentParentId},
       onTap: (n) async {
         if (n.id != currentParentId) {
-          await readProvider(context, journalLayerProvider).transaction(
-            () async {
-              if (currentParentId != null) {
-                await readProvider(context, fieldLayerProvider).detachNode(
-                  readProvider(context, journalLayerProvider),
-                  nodeId,
-                  currentParentId,
-                );
-              }
-              await readProvider(context, fieldLayerProvider).attachNode(
-                readProvider(context, journalLayerProvider),
-                nodeId,
-                n.id,
-              );
-            },
-          );
+          await journal.transaction(() async {
+            if (currentParentId != null) {
+              await fields.detachNode(journal, nodeId, currentParentId);
+            }
+            await fields.attachNode(journal, nodeId, n.id);
+          });
           if (mounted) setState(() => _expanded.add(n.id));
         }
       },
@@ -767,12 +706,10 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
 
   void _openFieldSwitcher(int currentId) {
     final i18n = readProvider(context, i18nProvider)!;
-    final fields =
-        readProvider(
-            context,
-            fieldLayerProvider,
-          ).nodes.values.where((n) => n.isRoot).toList()
-          ..sort((a, b) => a.id.compareTo(b.id));
+    final journal = readProvider(context, journalLayerProvider);
+    final fieldLayer = readProvider(context, fieldLayerProvider);
+    final fields = fieldLayer.nodes.values.where((n) => n.isRoot).toList()
+      ..sort((a, b) => a.id.compareTo(b.id));
     showPultSheet(
       context: context,
       subs: [
@@ -780,28 +717,18 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
           PultSpec(
             id: 'switch_${f.id}',
             icon: Icons.layers,
-            label: f.id == readProvider(context, fieldLayerProvider).rootId
-                ? i18n.t('field.root')
-                : f.name,
+            label: f.id == fieldLayer.rootId ? i18n.t('field.root') : f.name,
             selected: f.id == currentId,
-            onTap: () =>
-                readProvider(context, fieldLayerProvider).setActiveField(f.id),
+            onTap: () => fieldLayer.setActiveField(f.id),
           ),
         PultSpec(
           id: 'new_field',
           icon: Icons.add,
           label: i18n.t('field.new_field'),
           onTap: () async {
-            final f = await readProvider(
-              context,
-              fieldLayerProvider,
-            ).createField(readProvider(context, journalLayerProvider), '');
-            await readProvider(context, fieldLayerProvider).renameNode(
-              readProvider(context, journalLayerProvider),
-              f.id,
-              _autoName(f.id),
-            );
-            readProvider(context, fieldLayerProvider).setActiveField(f.id);
+            final f = await fieldLayer.createField(journal, '');
+            await fieldLayer.renameNode(journal, f.id, _autoName(f.id));
+            fieldLayer.setActiveField(f.id);
             if (mounted) {
               _renameNodeDialog(f.id, '');
             }

@@ -27,7 +27,7 @@ The codebase is organized feature-first under `lib/features`: each feature owns 
 
 Drift access is isolated behind `JournalRepository` in `core/data`, and device location and address search are isolated behind `GeoRepository` in `features/traces/data`. FlutterMap is used by the trace presentation layer. Feature-owned Riverpod providers live alongside their features, while app-wide providers live in `core` or `shared`. The root widget is wrapped in `ProviderScope`; application dependencies are accessed through Riverpod rather than a global `AppContext`.
 
-Tests live under `test/`. Run `flutter analyze --no-fatal-infos` and `flutter test` locally. GitHub Actions runs both checks on pushes and pull requests.
+Tests live under `test/`. Run `flutter analyze` and `flutter test` locally. GitHub Actions runs both checks on pushes and pull requests.
 
 ---
 
@@ -57,4 +57,4 @@ Tests live under `test/`. Run `flutter analyze --no-fatal-infos` and `flutter te
 
 Доступ к Drift изолирован за `JournalRepository` в `core/data`, а геолокация устройства и поиск адресов — за `GeoRepository` в `features/traces/data`. FlutterMap используется в слое представления трасс. Провайдеры Riverpod, принадлежащие функциям, находятся рядом с ними; общеприложенческие провайдеры — в `core` или `shared`. Корневой виджет обёрнут в `ProviderScope`; зависимости приложения разрешаются через Riverpod, а не через глобальный объект `AppContext`.
 
-Тесты находятся в `test/`. Локально выполните `flutter analyze --no-fatal-infos` и `flutter test`. GitHub Actions запускает обе проверки при push и создании pull request.
+Тесты находятся в `test/`. Локально выполните `flutter analyze` и `flutter test`. GitHub Actions запускает обе проверки при push и создании pull request.

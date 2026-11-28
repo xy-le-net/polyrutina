@@ -82,6 +82,8 @@ Future<void> _attach(
   required String ext,
 }) async {
   final bort = readProvider(context, operationalLayerProvider);
+  final traceLayer = readProvider(context, traceLayerProvider);
+  final journal = readProvider(context, journalLayerProvider);
 
   final idx = bort.nextMediaIndex();
   final base = '${kind}_${idx}_${bort.deviceId}_${bort.firstRunUnixSec}$ext';
@@ -108,8 +110,8 @@ Future<void> _attach(
     Error.throwWithStackTrace(error, stackTrace);
   }
 
-  await readProvider(context, traceLayerProvider).attachFile(
-    readProvider(context, journalLayerProvider),
+  await traceLayer.attachFile(
+    journal,
     objectId: objectId,
     slot: slot,
     file: TraceFile(kind: kind, path: target.path, name: name),
@@ -136,7 +138,7 @@ Future<bool> _pickOncePhoto(
     final x = Platform.isWindows
         ? await captureWindowsCamera(context, video: false)
         : await ImagePicker().pickImage(source: ImageSource.camera);
-    if (x == null) return false;
+    if (x == null || !context.mounted) return false;
     final ext = p.extension(x.path);
     await _attach(
       context,
@@ -173,7 +175,7 @@ Future<bool> _pickOnceVideo(
     final x = Platform.isWindows
         ? await captureWindowsCamera(context, video: true)
         : await ImagePicker().pickVideo(source: ImageSource.camera);
-    if (x == null) return false;
+    if (x == null || !context.mounted) return false;
     final ext = p.extension(x.path);
     await _attach(
       context,
@@ -209,7 +211,7 @@ void _showMediaError(
 Future<void> _addFile(BuildContext context, int objectId, String slot) async {
   try {
     final r = await FilePicker.platform.pickFiles();
-    if (r == null || r.files.isEmpty) return;
+    if (r == null || r.files.isEmpty || !context.mounted) return;
     final f = r.files.first;
     if (f.path == null) return;
     final ext = p.extension(f.path!);

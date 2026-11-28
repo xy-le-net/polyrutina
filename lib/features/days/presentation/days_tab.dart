@@ -1,6 +1,5 @@
 import 'package:polyrutina/core/localization/providers.dart';
 import 'package:polyrutina/shared/application/app_actions.dart';
-import 'package:polyrutina/shared/application/provider_read.dart';
 import 'package:polyrutina/features/settings/application/providers.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -602,26 +601,24 @@ class _DaysTabState extends ConsumerState<DaysTab> {
 
   Future<void> _createOnDay(DateTime month, int day) async {
     final routineLayer = ref.read(routineLayerProvider);
-    final r = await routineLayer.createRoutine(
-      readProvider(context, journalLayerProvider),
-    );
+    final journal = ref.read(journalLayerProvider);
+    final operational = ref.read(operationalLayerProvider);
+    final openRoutine = appActionsOf(context).openRoutine;
+    final r = await routineLayer.createRoutine(journal);
     final dt = DateTime(month.year, month.month, day);
 
-    final parts = readProvider(
-      context,
-      operationalLayerProvider,
-    ).midnight.split(':');
+    final parts = operational.midnight.split(':');
     final hh = int.tryParse(parts.isNotEmpty ? parts[0] : '0') ?? 0;
     final mm = int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0;
     final withMidnight = DateTime(dt.year, dt.month, dt.day, hh, mm);
 
     await routineLayer.setSchedule(
-      readProvider(context, journalLayerProvider),
+      journal,
       r.id,
       withMidnight.millisecondsSinceEpoch ~/ 1000,
     );
     if (!mounted) return;
-    await appActionsOf(context).openRoutine(r.id, autofocusName: true);
+    await openRoutine(r.id, autofocusName: true);
   }
 
   IconData _statusIcon(Routine r) {

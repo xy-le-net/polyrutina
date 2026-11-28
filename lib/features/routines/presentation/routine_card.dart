@@ -271,6 +271,8 @@ class _RoutineCardState extends ConsumerState<RoutineCard> {
   Future<void> _moveRoutine(Routine r) async {
     final i18n = readProvider(context, i18nProvider)!;
     final bort = readProvider(context, operationalLayerProvider);
+    final journal = readProvider(context, journalLayerProvider);
+    final routineLayer = readProvider(context, routineLayerProvider);
     final attached = r.fieldParents.isNotEmpty;
     final fieldLayer = readProvider(context, fieldLayerProvider);
     final selectedFields = <int>{};
@@ -292,20 +294,11 @@ class _RoutineCardState extends ConsumerState<RoutineCard> {
           icon: Icons.link_off,
           label: i18n.t('field.detach_routine'),
           onTap: () async {
-            await readProvider(context, journalLayerProvider).transaction(
-              () async {
-                for (final pId in List<int>.from(r.fieldParents)) {
-                  await readProvider(
-                    context,
-                    routineLayerProvider,
-                  ).detachFromField(
-                    readProvider(context, journalLayerProvider),
-                    r.id,
-                    pId,
-                  );
-                }
-              },
-            );
+            await journal.transaction(() async {
+              for (final pId in List<int>.from(r.fieldParents)) {
+                await routineLayer.detachFromField(journal, r.id, pId);
+              }
+            });
           },
         ),
     ];
@@ -323,25 +316,12 @@ class _RoutineCardState extends ConsumerState<RoutineCard> {
           selected: selectedFields.contains(node.id),
           indent: depth * 20,
           onTap: () async {
-            await readProvider(context, journalLayerProvider).transaction(
-              () async {
-                for (final parentId in List<int>.from(r.fieldParents)) {
-                  await readProvider(
-                    context,
-                    routineLayerProvider,
-                  ).detachFromField(
-                    readProvider(context, journalLayerProvider),
-                    r.id,
-                    parentId,
-                  );
-                }
-                await readProvider(context, routineLayerProvider).attachToField(
-                  readProvider(context, journalLayerProvider),
-                  r.id,
-                  node.id,
-                );
-              },
-            );
+            await journal.transaction(() async {
+              for (final parentId in List<int>.from(r.fieldParents)) {
+                await routineLayer.detachFromField(journal, r.id, parentId);
+              }
+              await routineLayer.attachToField(journal, r.id, node.id);
+            });
             var root = node;
             final visited = <int>{};
             while (!root.isRoot && root.parents.isNotEmpty) {

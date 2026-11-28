@@ -6,7 +6,6 @@ import 'package:polyrutina/features/fields/application/providers.dart';
 import 'package:polyrutina/features/export_import/application/export_context.dart';
 import 'package:polyrutina/shared/application/app_actions.dart';
 import 'package:polyrutina/features/routines/application/providers.dart';
-import 'package:polyrutina/shared/application/provider_read.dart';
 import 'package:polyrutina/features/settings/application/providers.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -66,22 +65,18 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
 
   Future<void> _showMediaList() async {
     final i18n = ref.read(i18nProvider)!;
+    final traces = ref.read(traceLayerProvider).traces.values.toList();
+    final routines = ref.read(routineLayerProvider);
     final entries = <_MediaListEntry>[];
     final seenPaths = <String>{};
 
     try {
-      for (final trace in readProvider(
-        context,
-        traceLayerProvider,
-      ).traces.values) {
+      for (final trace in traces) {
         if (trace.deleted) continue;
 
         Routine? routine;
         for (final parentId in trace.parents) {
-          routine = readProvider(
-            context,
-            routineLayerProvider,
-          ).findRoutine(parentId);
+          routine = routines.findRoutine(parentId);
           if (routine != null) break;
         }
         final owner = routine == null
@@ -248,17 +243,19 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
 
   Future<void> _reload() async {
     final bort = ref.read(operationalLayerProvider);
-    await readProvider(context, journalLayerProvider).reread();
-    bort.setLastRereadId(
-      await readProvider(context, journalLayerProvider).lastEntryId(),
-    );
-    await appActionsOf(context).reloadI18n();
+    final journal = ref.read(journalLayerProvider);
+    final reloadI18n = appActionsOf(context).reloadI18n;
+    await journal.reread();
+    bort.setLastRereadId(await journal.lastEntryId());
+    await reloadI18n();
     await _refreshSize();
     if (mounted) setState(() {});
   }
 
   Future<void> _deleteAll() async {
     final bort = ref.read(operationalLayerProvider);
+    final journal = ref.read(journalLayerProvider);
+    final afterJournalReset = appActionsOf(context).afterJournalReset;
     final i18n = ref.read(i18nProvider)!;
     FocusManager.instance.primaryFocus?.unfocus();
     final ok = await showConfirm(
@@ -276,11 +273,9 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
       builder: (_) =>
           ProgressDialog(token: token, title: i18n.t('bort.delete')),
     );
-    await readProvider(context, journalLayerProvider).clearAll();
-    bort.setLastRereadId(
-      await readProvider(context, journalLayerProvider).lastEntryId(),
-    );
-    await appActionsOf(context).afterJournalReset();
+    await journal.clearAll();
+    bort.setLastRereadId(await journal.lastEntryId());
+    await afterJournalReset();
     await _refreshSize();
     if (mounted) {
       Navigator.of(context, rootNavigator: true).pop();
@@ -291,6 +286,11 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
   Future<void> _compress() async {
     if (_compacting) return;
     final i18n = ref.read(i18nProvider)!;
+    final journal = ref.read(journalLayerProvider);
+    final routines = ref.read(routineLayerProvider);
+    final traces = ref.read(traceLayerProvider);
+    final fields = ref.read(fieldLayerProvider);
+    final bort = ref.read(operationalLayerProvider);
     FocusManager.instance.primaryFocus?.unfocus();
     final token = ProgressToken();
     setState(() => _compacting = true);
@@ -304,11 +304,11 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
     CompactResult? result;
     try {
       result = await JournalCompactor.compact(
-        journal: readProvider(context, journalLayerProvider),
-        routineLayer: readProvider(context, routineLayerProvider),
-        traceLayer: readProvider(context, traceLayerProvider),
-        fieldLayer: readProvider(context, fieldLayerProvider),
-        bort: readProvider(context, operationalLayerProvider),
+        journal: journal,
+        routineLayer: routines,
+        traceLayer: traces,
+        fieldLayer: fields,
+        bort: bort,
         onProgress: (v) {
           if (!token.cancelled) token.report(v);
         },
@@ -370,6 +370,7 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
 
   Future<void> _import() async {
     final i18n = ref.read(i18nProvider)!;
+    final actions = appActionsOf(context);
     FocusManager.instance.primaryFocus?.unfocus();
 
     final token = ProgressToken();
@@ -386,8 +387,8 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
       onProgress: token.report,
     );
 
-    await appActionsOf(context).afterJournalReset();
-    await appActionsOf(context).refresh();
+    await actions.afterJournalReset();
+    await actions.refresh();
     await _refreshSize();
 
     if (!mounted) return;
@@ -420,6 +421,8 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
 
   Future<void> _resetCache() async {
     final bort = ref.read(operationalLayerProvider);
+    final journal = ref.read(journalLayerProvider);
+    final afterJournalReset = appActionsOf(context).afterJournalReset;
     final i18n = ref.read(i18nProvider)!;
     FocusManager.instance.primaryFocus?.unfocus();
     final ok = await showConfirm(
@@ -446,12 +449,10 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
       token.report(0.05);
       await bort.resetCache();
       token.report(0.30);
-      await readProvider(context, journalLayerProvider).reread();
+      await journal.reread();
       token.report(0.55);
-      bort.setLastRereadId(
-        await readProvider(context, journalLayerProvider).lastEntryId(),
-      );
-      await appActionsOf(context).afterJournalReset();
+      bort.setLastRereadId(await journal.lastEntryId());
+      await afterJournalReset();
       token.report(0.80);
       await _refreshSize();
       token.report(1.0);
@@ -476,6 +477,9 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
 
   Future<void> _shakeOrphans() async {
     final i18n = ref.read(i18nProvider)!;
+    final traceLayer = ref.read(traceLayerProvider);
+    final routineLayer = ref.read(routineLayerProvider);
+    final fieldLayer = ref.read(fieldLayerProvider);
     final dir = await getApplicationDocumentsDirectory();
     final mediaDir = Directory(p.join(dir.path, 'media'));
     if (!await mediaDir.exists()) {
@@ -485,12 +489,9 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
       return;
     }
 
-    final used = readProvider(context, traceLayerProvider).attachedMediaNames(
-      parentIds: readProvider(
-        context,
-        routineLayerProvider,
-      ).routines.map((r) => r.id).toSet(),
-      fieldIds: readProvider(context, fieldLayerProvider).nodes.keys.toSet(),
+    final used = traceLayer.attachedMediaNames(
+      parentIds: routineLayer.routines.map((r) => r.id).toSet(),
+      fieldIds: fieldLayer.nodes.keys.toSet(),
     );
 
     final files = <File>[];

@@ -212,6 +212,8 @@ class _GeoPickerScreenState extends ConsumerState<_GeoPickerScreen> {
   Future<void> _searchAddress() async {
     final query = _addressController.text.trim();
     if (_searchingAddress || query.isEmpty) return;
+    final i18n = ref.read(i18nProvider)!;
+    final mid = ref.read(operationalLayerProvider).mid;
 
     setState(() {
       _searchingAddress = true;
@@ -221,19 +223,11 @@ class _GeoPickerScreenState extends ConsumerState<_GeoPickerScreen> {
     try {
       final results = await ref
           .read(geoRepositoryProvider)
-          .searchAddress(
-            query,
-            language: readProvider(context, i18nProvider)!.lang,
-          );
+          .searchAddress(query, language: i18n.lang);
 
       if (results.isEmpty) {
         if (mounted) {
-          setState(() {
-            _addressMessage = readProvider(
-              context,
-              i18nProvider,
-            )!.t('media.address_not_found');
-          });
+          setState(() => _addressMessage = i18n.t('media.address_not_found'));
         }
         return;
       }
@@ -256,19 +250,10 @@ class _GeoPickerScreenState extends ConsumerState<_GeoPickerScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              DialogTitle(
-                text: readProvider(
-                  context,
-                  i18nProvider,
-                )!.t('media.search_address'),
-              ),
+              DialogTitle(text: i18n.t('media.search_address')),
               SizedBox(height: metrics.unit(0.4)),
               for (var index = 0; index < results.length; index++) ...[
-                if (index > 0)
-                  Divider(
-                    height: metrics.unit(0.5),
-                    color: readProvider(context, operationalLayerProvider).mid,
-                  ),
+                if (index > 0) Divider(height: metrics.unit(0.5), color: mid),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(results[index].name),
@@ -298,12 +283,7 @@ class _GeoPickerScreenState extends ConsumerState<_GeoPickerScreen> {
     } catch (error, stackTrace) {
       debugPrint('Address search failed: $error\n$stackTrace');
       if (mounted) {
-        setState(() {
-          _addressMessage = readProvider(
-            context,
-            i18nProvider,
-          )!.t('media.address_search_failed');
-        });
+        setState(() => _addressMessage = i18n.t('media.address_search_failed'));
       }
     } finally {
       if (mounted) setState(() => _searchingAddress = false);
@@ -326,6 +306,9 @@ class _GeoPickerScreenState extends ConsumerState<_GeoPickerScreen> {
     if (_busy) return;
     final latLng = _picked;
     if (latLng == null) return;
+    final operational = ref.read(operationalLayerProvider);
+    final traces = ref.read(traceLayerProvider);
+    final journal = ref.read(journalLayerProvider);
 
     setState(() => _busy = true);
 
@@ -337,14 +320,11 @@ class _GeoPickerScreenState extends ConsumerState<_GeoPickerScreen> {
       if (img != null) {
         final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
         if (byteData != null) {
-          final idx = readProvider(
-            context,
-            operationalLayerProvider,
-          ).nextMediaIndex();
+          final idx = operational.nextMediaIndex();
           name =
               'geo_$idx'
-              '_${readProvider(context, operationalLayerProvider).deviceId}'
-              '_${readProvider(context, operationalLayerProvider).firstRunUnixSec}.png';
+              '_${operational.deviceId}'
+              '_${operational.firstRunUnixSec}.png';
           final dir = await getApplicationDocumentsDirectory();
           final media = Directory(p.join(dir.path, 'media'));
           if (!await media.exists()) await media.create(recursive: true);
@@ -354,8 +334,8 @@ class _GeoPickerScreenState extends ConsumerState<_GeoPickerScreen> {
         }
       }
 
-      await readProvider(context, traceLayerProvider).attachFile(
-        readProvider(context, journalLayerProvider),
+      await traces.attachFile(
+        journal,
         objectId: widget.objectId,
         slot: widget.slot,
         file: TraceFile(
