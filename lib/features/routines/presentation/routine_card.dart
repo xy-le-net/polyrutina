@@ -190,16 +190,14 @@ class _RoutineCardState extends ConsumerState<RoutineCard> {
     final b = r.blockOf(kind);
     if (b == null) return;
 
-    if (b.isRunning) {
-      await routineLayer.pauseBlock(journal, r.id, kind);
-    }
-    if (!mounted) return;
-    final seconds = r.blockOf(kind)?.accumulatorSeconds ?? 0;
+    final initialSeconds = b.secondsNowAt(
+      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+    );
     final edited = await WheelValuePicker.showDurationWheelPicker(
       context,
-      initialSeconds: seconds,
+      initialSeconds: initialSeconds,
     );
-    if (edited == null || !mounted || edited == seconds) return;
+    if (edited == null || !mounted || edited == initialSeconds) return;
     await routineLayer.setBlockTime(journal, r.id, kind, edited);
   }
 

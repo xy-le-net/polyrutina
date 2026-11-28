@@ -44,10 +44,48 @@ void main() {
     expect(routine.blockOf(RoutineBlock.work)!.accumulatorSeconds, 20);
     expect(routine.runningBlock, isNull);
 
-    routine.reopenAt(170);
+    routine.reopenAt();
 
     expect(routine.completed, isFalse);
     expect(routine.completedAt, isNull);
-    expect(routine.lastActionAt, 170);
+    expect(routine.lastActionAt, 150);
   });
+
+  test(
+    'editing a running slot preserves its ticker without changing activity',
+    () {
+      final routine = Routine.create(1, at: 100);
+      routine.startBlockAt(RoutineBlock.work, 120);
+
+      routine.blockOf(RoutineBlock.work)!.setEditedTime(70, at: 150);
+
+      final block = routine.blockOf(RoutineBlock.work)!;
+      expect(block.isRunning, isTrue);
+      expect(block.accumulatorSeconds, 70);
+      expect(block.startedAt, 150);
+      expect(block.secondsNowAt(160), 80);
+      expect(block.timeEdited, isFalse);
+      expect(routine.lastActionAt, 120);
+    },
+  );
+
+  test(
+    'legacy last action timestamps normalize to creation or last ticker',
+    () {
+      final created = Routine.fromJson({
+        'id': 1,
+        'created_at': 100,
+        'last_action_at': 900,
+      });
+      final ticked = Routine.fromJson({
+        'id': 2,
+        'created_at': 100,
+        'last_action_at': 900,
+        'last_pulse_at': 150,
+      });
+
+      expect(created.lastActionAt, 100);
+      expect(ticked.lastActionAt, 150);
+    },
+  );
 }

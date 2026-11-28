@@ -49,10 +49,16 @@ class RoutineBlock {
   }
 
   // Manual time edit. Zero — erasure, the mark is cleared.
-  void setEditedTime(int seconds) {
+  void setEditedTime(int seconds, {int? at}) {
+    final wasRunning = isRunning;
     accumulatorSeconds = seconds < 0 ? 0 : seconds;
-    startedAt = null;
-    timeEdited = accumulatorSeconds > 0;
+    if (wasRunning) {
+      startedAt = at ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      timeEdited = false;
+    } else {
+      startedAt = null;
+      timeEdited = accumulatorSeconds > 0;
+    }
   }
 
   Map<String, dynamic> toJson() => {
@@ -82,7 +88,6 @@ class Routine {
   final int createdAt;
   final List<RoutineBlock> blocks;
 
-  int lastActionAt;
   int? lastPulseAt;
   int? completedAt;
   int? scheduledAt;
@@ -105,7 +110,6 @@ class Routine {
     this.name = '',
     required this.createdAt,
     required this.blocks,
-    int? lastActionAt,
     this.lastPulseAt,
     this.completedAt,
     this.scheduledAt,
@@ -116,8 +120,12 @@ class Routine {
     this.sourceKey = '',
     List<int>? fieldParents,
     this.lastBlockKind,
-  }) : lastActionAt = lastActionAt ?? createdAt,
-       fieldParents = fieldParents ?? [];
+  }) : fieldParents = fieldParents ?? [];
+
+  int get lastActionAt {
+    final lastPulse = lastPulseAt;
+    return lastPulse != null && lastPulse > createdAt ? lastPulse : createdAt;
+  }
 
   factory Routine.create(
     int id, {
@@ -131,7 +139,6 @@ class Routine {
       id: id,
       name: '',
       createdAt: createdAt ?? t,
-      lastActionAt: t,
       blocks: RoutineBlock.kinds.map((k) => RoutineBlock(kind: k)).toList(),
       sourceKey: sourceKey,
       fieldParents: fieldParents,
@@ -169,7 +176,6 @@ class Routine {
     final block = blockOf(kind);
     if (block == null || block.isRunning) return false;
     block.start(at: at);
-    lastActionAt = at;
     lastPulseAt = at;
     lastBlockKind = kind;
     completed = false;
@@ -181,7 +187,6 @@ class Routine {
     final block = blockOf(kind);
     if (block == null || !block.isRunning) return false;
     block.pause(at: at);
-    lastActionAt = at;
     lastPulseAt = at;
     return true;
   }
@@ -198,14 +203,12 @@ class Routine {
     final paused = pauseRunningBlocksAt(at);
     completed = true;
     completedAt = at;
-    lastActionAt = at;
     return paused;
   }
 
-  void reopenAt(int at) {
+  void reopenAt() {
     completed = false;
     completedAt = null;
-    lastActionAt = at;
   }
 
   // Whether this routine is presently overdue. See the header for
@@ -290,7 +293,6 @@ class Routine {
       id: id,
       name: j['name'] as String? ?? '',
       createdAt: createdAt,
-      lastActionAt: (j['last_action_at'] as num?)?.toInt(),
       lastPulseAt: (j['last_pulse_at'] as num?)?.toInt(),
       completedAt: (j['completed_at'] as num?)?.toInt(),
       scheduledAt: (j['scheduled_at'] as num?)?.toInt(),

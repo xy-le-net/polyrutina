@@ -87,14 +87,14 @@ class OperationalLayer extends ChangeNotifier implements OperationalAccess {
   bool blockControl = false;
   bool blockPermissions = false;
 
-  int mapScale = 40;
+  int mapScale = 64;
   bool mutexShift = true;
   bool mutexRoutines = false;
   bool mutexSlots = true;
 
-  // Unified shift toggle. Off by default. When false, the shift has
+  // Unified shift toggle. When false, the shift has
   // no state, no history, no start/stop and no mutex.
-  bool shiftEnabled = false;
+  bool shiftEnabled = true;
 
   int selectedType = 4;
   int selectedFlags = 0;
@@ -663,14 +663,14 @@ class OperationalLayer extends ChangeNotifier implements OperationalAccess {
     shiftHistory.reset();
     bortHistory.reset();
     shifts.clear();
-    mapScale = 40;
+    mapScale = 64;
     mutexShift = true;
     collapsedBlocks = {};
     exportCounters = {};
     defaultSlots = {'work'};
     mutexRoutines = false;
     mutexSlots = true;
-    shiftEnabled = false;
+    shiftEnabled = true;
     blockControl = false;
     lastExportId = 0;
     lastRereadId = 0;

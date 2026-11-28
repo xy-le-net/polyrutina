@@ -12,6 +12,7 @@ import 'package:polyrutina/shared/presentation/control_row.dart';
 import 'package:polyrutina/features/routines/presentation/timer_text.dart';
 import 'package:polyrutina/shared/presentation/widgets/wheel_picker.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
+import 'package:polyrutina/shared/presentation/pults/pulse.dart';
 
 void main() {
   test('layout scale is bounded and shared by text and controls', () {
@@ -214,6 +215,49 @@ void main() {
 
     expect(find.text('0'), findsNothing);
     expect(find.text('s'), findsNothing);
+  });
+
+  testWidgets('pulse can hide its time and retain long-press editing', (
+    tester,
+  ) async {
+    final bort = OperationalLayer();
+    final pultState = PultState();
+    addTearDown(pultState.dispose);
+    var edited = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: BortScope(
+          bort: bort,
+          child: PultScope(
+            state: pultState,
+            child: Scaffold(
+              body: Pulse(
+                spec: PultSpec(
+                  id: 'shift',
+                  icon: Icons.play_arrow,
+                  onLongPress: () => edited = true,
+                ),
+                seconds: 360,
+                running: true,
+                fg: Colors.black,
+                dim: Colors.grey,
+                bg: Colors.white,
+                signal: Colors.blue,
+                side: 32,
+                t: (key) => key,
+                showTimer: false,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(TimerText), findsNothing);
+    expect(find.byType(Pult), findsOneWidget);
+    await tester.longPress(find.byType(Pult));
+    expect(edited, isTrue);
   });
 
   testWidgets('transparent app icon asset renders', (tester) async {

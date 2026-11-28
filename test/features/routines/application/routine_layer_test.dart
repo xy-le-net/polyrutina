@@ -87,6 +87,40 @@ void main() {
     expect(copiedTo, duplicate!.id);
     expect(copiedSlots, ['note', 'prep', 'closeout']);
   });
+
+  test(
+    'editing routine details leaves activity to creation and tickers',
+    () async {
+      final journal = JournalLayer(MemoryJournalRepository());
+      final layer = RoutineLayer(
+        repository: _MemoryRoutineRepository(),
+        fieldContext: () => (activeFieldId: null, rootId: null),
+        copyTraces: (journal, sourceId, targetId, slots) async {},
+      );
+      addTearDown(journal.dispose);
+      addTearDown(layer.dispose);
+
+      await layer.init(journal);
+      final routine = await layer.createRoutine(journal);
+      final createdAt = routine.lastActionAt;
+      await layer.renameRoutine(journal, routine.id, 'Renamed');
+      expect(routine.lastActionAt, createdAt);
+
+      await layer.startBlock(
+        journal,
+        routine.id,
+        RoutineBlock.work,
+        mutex: false,
+        mutexSlots: false,
+      );
+      final lastPulseAt = routine.lastPulseAt;
+      await layer.setBlockTime(journal, routine.id, RoutineBlock.work, 50);
+
+      expect(routine.blockOf(RoutineBlock.work)!.isRunning, isTrue);
+      expect(routine.lastPulseAt, lastPulseAt);
+      expect(routine.lastActionAt, lastPulseAt);
+    },
+  );
 }
 
 class _MemoryRoutineRepository implements RoutineRepository {

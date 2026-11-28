@@ -301,7 +301,6 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
           final r = findRoutine(id);
           if (r != null) {
             r.name = data['name'] as String? ?? '';
-            r.lastActionAt = e.time;
           }
           break;
         case 'delete':
@@ -316,7 +315,6 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
           final r = findRoutine(id);
           if (r != null) {
             r.flags = (data['value'] as num?)?.toInt() ?? r.flags;
-            r.lastActionAt = e.time;
           }
           break;
         case 'complete':
@@ -327,7 +325,7 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
             if (v) {
               r.completeAt(e.time);
             } else {
-              r.reopenAt(e.time);
+              r.reopenAt();
             }
             if (v) _runningRoutineIds.remove(id);
           }
@@ -342,7 +340,6 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
               r.noticeBeforeSec = 0;
               r.noticeSet = false;
             }
-            r.lastActionAt = e.time;
           }
           break;
         case 'set_notice':
@@ -351,7 +348,6 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
           if (r != null) {
             r.noticeBeforeSec = (data['seconds'] as num?)?.toInt() ?? 0;
             r.noticeSet = true;
-            r.lastActionAt = e.time;
           }
           break;
         case 'clear_notice':
@@ -360,7 +356,6 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
           if (r != null) {
             r.noticeBeforeSec = 0;
             r.noticeSet = false;
-            r.lastActionAt = e.time;
           }
           break;
         case 'attach_field':
@@ -370,7 +365,6 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
           if (r != null && !r.fieldParents.contains(nodeId)) {
             r.fieldParents.add(nodeId);
             _nodeRoutinesIndex.putIfAbsent(nodeId, () => {}).add(id);
-            r.lastActionAt = e.time;
           }
           break;
         case 'detach_field':
@@ -384,7 +378,6 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
               set.remove(id);
               if (set.isEmpty) _nodeRoutinesIndex.remove(nodeId);
             }
-            r.lastActionAt = e.time;
           }
           break;
         case 'start_block':
@@ -416,10 +409,10 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
           final id = (data['routine'] as num).toInt();
           final kind = data['block'] as String?;
           final secs = (data['seconds'] as num?)?.toInt();
+          final at = (data['at'] as num?)?.toInt() ?? e.time;
           final r = findRoutine(id);
           if (r != null && kind != null && secs != null) {
-            r.blockOf(kind)?.setEditedTime(secs);
-            r.lastActionAt = e.time;
+            r.blockOf(kind)?.setEditedTime(secs, at: at);
           }
           break;
       }
@@ -452,7 +445,6 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
         id: r.id,
         name: src.name,
         createdAt: now,
-        lastActionAt: now,
         blocks: RoutineBlock.kinds.map((k) => RoutineBlock(kind: k)).toList(),
         flags: src.flags,
         scheduledAt: src.scheduledAt,
@@ -486,8 +478,6 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
     int? createdAt,
     List<int>? fieldParents,
   }) async {
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-
     List<int> parentList = fieldParents ?? [];
     if (parentList.isEmpty) {
       final fieldContext = _fieldContext();
@@ -514,7 +504,6 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
         createdAt: createdAt,
         fieldParents: parentList,
       );
-      r.lastActionAt = now;
       routines.add(r);
       _indexAdd(r);
     }
@@ -535,11 +524,9 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
 
   @override
   Future<void> renameRoutine(JournalLayer journal, int id, String name) async {
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final r = findRoutine(id);
     if (r == null) return;
     r.name = name;
-    r.lastActionAt = now;
     await journal.log(
       type: JournalType.routine,
       body: '{"action":"rename","routine":$id,"name":${jsonEncode(name)}}',
@@ -568,7 +555,6 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
     final r = findRoutine(id);
     if (r == null) return;
     r.flags = flags;
-    r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     await journal.log(
       type: JournalType.routine,
       body: '{"action":"flags","routine":$id,"value":$flags}',
@@ -588,7 +574,6 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
 
     await journal.transaction(() async {
       r.scheduledAt = at;
-      r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       await journal.log(
         type: JournalType.routine,
         body: '{"action":"set_schedule","routine":$id,"at":${at ?? 'null'}}',
@@ -623,7 +608,6 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
     }
     r.noticeBeforeSec = seconds;
     r.noticeSet = true;
-    r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     await journal.log(
       type: JournalType.routine,
       body: '{"action":"set_notice","routine":$id,"seconds":$seconds}',
@@ -640,7 +624,6 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
     if (!r.noticeSet) return;
     r.noticeBeforeSec = 0;
     r.noticeSet = false;
-    r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     await journal.log(
       type: JournalType.routine,
       body: '{"action":"clear_notice","routine":$id}',
@@ -661,7 +644,6 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
     if (r.fieldParents.contains(nodeId)) return;
     r.fieldParents.add(nodeId);
     _nodeRoutinesIndex.putIfAbsent(nodeId, () => {}).add(routineId);
-    r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     await journal.log(
       type: JournalType.routine,
       body: '{"action":"attach_field","routine":$routineId,"node":$nodeId}',
@@ -685,7 +667,6 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
       set.remove(routineId);
       if (set.isEmpty) _nodeRoutinesIndex.remove(nodeId);
     }
-    r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     await journal.log(
       type: JournalType.routine,
       body: '{"action":"detach_field","routine":$routineId,"node":$nodeId}',
@@ -721,7 +702,7 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
         );
       });
     } else {
-      r.reopenAt(DateTime.now().millisecondsSinceEpoch ~/ 1000);
+      r.reopenAt();
       await journal.log(
         type: JournalType.routine,
         body: '{"action":"complete","routine":$id,"value":false}',
@@ -742,14 +723,14 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
     final r = findRoutine(routineId);
     if (r == null) return;
     final b = r.blockOf(kind);
-    if (b == null || b.isRunning) return;
-    b.setEditedTime(seconds);
-    r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (b == null) return;
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    b.setEditedTime(seconds, at: now);
     await journal.log(
       type: JournalType.routine,
       body:
           '{"action":"set_block_time","routine":$routineId,'
-          '"block":"$kind","seconds":$seconds}',
+          '"block":"$kind","seconds":$seconds,"at":$now}',
     );
     _scheduleSave();
     notifyListeners();

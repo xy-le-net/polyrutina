@@ -8,6 +8,8 @@ void main() {
   test('routine mutual exclusion is off by default', () {
     final bort = OperationalLayer();
     expect(bort.mutexRoutines, isFalse);
+    expect(bort.shiftEnabled, isTrue);
+    expect(bort.mapScale, 64);
     bort.dispose();
   });
 
@@ -27,6 +29,8 @@ void main() {
     expect(ru.t('lang.en'), 'English');
     expect(en.t('lang.ru'), 'Русский');
     expect(en.t('lang.en'), 'English');
+    expect(ru.t('bort.default_slots'), 'слоты по умолчанию');
+    expect(en.t('bort.default_slots'), 'default slots');
     expect(ru.t('help.bort.reset'), contains('не касается рабочих данных'));
     expect(en.t('help.bort.reset'), contains('does not affect work data'));
   });

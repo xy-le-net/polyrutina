@@ -19,6 +19,7 @@ class Pulse extends StatelessWidget {
   final double? pultSize;
   final Translate t;
   final AppTicker? ticker;
+  final bool showTimer;
 
   const Pulse({
     super.key,
@@ -35,6 +36,7 @@ class Pulse extends StatelessWidget {
     this.colonVisible = true,
     this.pultSize,
     this.ticker,
+    this.showTimer = true,
   });
 
   @override
@@ -46,17 +48,19 @@ class Pulse extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        TimerText(
-          seconds: seconds,
-          running: running,
-          fg: fg,
-          dim: dim,
-          numberSize: timerSize,
-          colonVisible: colonVisible,
-          t: t,
-          ticker: ticker,
-        ),
-        if (seconds > 0) SizedBox(width: side * 0.15),
+        if (showTimer) ...[
+          TimerText(
+            seconds: seconds,
+            running: running,
+            fg: fg,
+            dim: dim,
+            numberSize: timerSize,
+            colonVisible: colonVisible,
+            t: t,
+            ticker: ticker,
+          ),
+          if (seconds > 0) SizedBox(width: side * 0.15),
+        ],
         Pult(
           spec: spec,
           fg: fg,

@@ -88,6 +88,7 @@ class _ShiftRowState extends ConsumerState<ShiftRow> {
       pultSize: side * 0.95,
       t: i18n.t,
       ticker: ticker,
+      showTimer: false,
     );
 
     if (bort.shiftEdited(_fieldId)) {

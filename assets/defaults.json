@@ -39,12 +39,12 @@
   "block_data": false,
   "block_permissions": false,
 
-  "shift_enabled": false,
+  "shift_enabled": true,
 
   "default_slots": ["work"],
 
   "midnight": "00:00",
-  "map_scale": 40,
+  "map_scale": 64,
   "mutex_shift": true,
   "mutex_routines": false,
   "mutex_slots": true,

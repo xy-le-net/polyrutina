@@ -240,18 +240,6 @@ class RubkaControl extends ConsumerWidget {
       ],
     );
 
-    final mapScaleRow = row(
-      helpKey: 'bort.map_scale',
-      label: i18n.t('bort.map_scale'),
-      control: BortField(
-        initial: bort.mapScale.toString(),
-        fg: fg,
-        readOnly: false,
-        onChanged: (v) => bort.setDraft('map_scale', v),
-        onCommit: (v) async => bort.set('map_scale', v),
-      ),
-    );
-
     return Block(
       title: i18n.t('block.control'),
       collapsed: !bort.blockControl,
@@ -269,15 +257,7 @@ class RubkaControl extends ConsumerWidget {
       parity: parity,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          midnightRow,
-          bortRow,
-          shiftRow,
-          divider(),
-          mutexes,
-          divider(),
-          mapScaleRow,
-        ],
+        children: [midnightRow, bortRow, shiftRow, divider(), mutexes],
       ),
     );
   }

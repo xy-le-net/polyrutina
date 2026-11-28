@@ -145,46 +145,6 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
     });
   }
 
-  void _expandAllBranches() {
-    final fieldLayer = ref.read(fieldLayerProvider);
-    setState(() {
-      _expanded.addAll(
-        fieldLayer.nodes.values
-            .where((node) => !node.isRoot)
-            .map((node) => node.id),
-      );
-      _expandedAllFields.addAll(
-        fieldLayer.nodes.values
-            .where((node) => node.isRoot)
-            .map((node) => node.id),
-      );
-      _orphansExpanded = true;
-    });
-  }
-
-  void _collapseAllBranches() {
-    setState(() {
-      _expanded.clear();
-      _expandedAllFields.clear();
-      _orphansExpanded = false;
-    });
-  }
-
-  void _expandAllDone() {
-    final fieldLayer = ref.read(fieldLayerProvider);
-    setState(() {
-      _expandedDone.addAll(fieldLayer.nodes.keys);
-      _orphansDoneExpanded = true;
-    });
-  }
-
-  void _collapseAllDone() {
-    setState(() {
-      _expandedDone.clear();
-      _orphansDoneExpanded = false;
-    });
-  }
-
   Set<int> _routineFieldPathIds(Routine routine) {
     final nodes = ref.read(fieldLayerProvider).nodes;
     final selected = <int>{};
@@ -1310,46 +1270,6 @@ class _RoutinesTabState extends ConsumerState<RoutinesTab> {
                           onChanged: () {
                             if (mounted) setState(() {});
                           },
-                        ),
-                        SizedBox(width: side * 0.1),
-                        Pult(
-                          spec: PultSpec(
-                            id: 'expand_all_branches',
-                            icon: Icons.unfold_more,
-                            onTap: _expandAllBranches,
-                            longSubs: () => [
-                              PultSpec(
-                                id: 'expand_all_done',
-                                icon: Icons.done_all,
-                                label: i18n.t('routine.expand_done'),
-                                onTap: _expandAllDone,
-                              ),
-                            ],
-                          ),
-                          fg: fg,
-                          bg: bg,
-                          signal: signal,
-                          overrideSize: side * bort.kPultSmall,
-                        ),
-                        SizedBox(width: side * 0.1),
-                        Pult(
-                          spec: PultSpec(
-                            id: 'collapse_all_branches',
-                            icon: Icons.unfold_less,
-                            onTap: _collapseAllBranches,
-                            longSubs: () => [
-                              PultSpec(
-                                id: 'collapse_all_done',
-                                icon: Icons.check_box_outline_blank,
-                                label: i18n.t('routine.collapse_done'),
-                                onTap: _collapseAllDone,
-                              ),
-                            ],
-                          ),
-                          fg: fg,
-                          bg: bg,
-                          signal: signal,
-                          overrideSize: side * bort.kPultSmall,
                         ),
                       ],
                     ),
