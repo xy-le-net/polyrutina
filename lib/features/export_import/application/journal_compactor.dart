@@ -5,12 +5,12 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import 'package:polyrutina/features/fields/application/field_layer.dart';
+import 'package:polyrutina/features/fields/application/field_access.dart';
 import 'package:polyrutina/core/data/journal_layer.dart';
 import 'package:polyrutina/core/domain/journal_types.dart';
-import 'package:polyrutina/features/settings/application/operational_layer.dart';
+import 'package:polyrutina/features/settings/application/operational_access.dart';
 import 'package:polyrutina/features/routines/application/routine_access.dart';
-import 'package:polyrutina/features/traces/application/trace_layer.dart';
+import 'package:polyrutina/features/traces/application/trace_access.dart';
 
 class CompactResult {
   final int entriesBefore;
@@ -35,9 +35,9 @@ class JournalCompactor {
   static Future<CompactResult> compact({
     required JournalLayer journal,
     required RoutineAccess routineLayer,
-    required TraceLayer traceLayer,
-    required FieldLayer fieldLayer,
-    required OperationalLayer bort,
+    required TraceAccess traceLayer,
+    required FieldAccess fieldLayer,
+    required OperationalAccess bort,
     ValueChanged<double>? onProgress,
   }) async {
     onProgress?.call(0.02);

@@ -7,15 +7,19 @@ import 'package:polyrutina/core/data/journal_layer.dart';
 import 'package:polyrutina/core/domain/journal_entry.dart';
 import 'package:polyrutina/core/domain/journal_types.dart';
 import 'package:polyrutina/features/fields/application/field_repository.dart';
+import 'package:polyrutina/features/fields/application/field_access.dart';
 import 'package:polyrutina/features/fields/domain/field_node.dart';
+import 'package:polyrutina/features/fields/domain/field_tree.dart';
 
 export 'package:polyrutina/features/fields/domain/field_node.dart';
 
-class FieldLayer extends ChangeNotifier {
+class FieldLayer extends ChangeNotifier implements FieldAccess {
   FieldLayer(this._repository);
 
   final FieldRepository _repository;
+  @override
   final Map<int, FieldNode> nodes = {};
+  @override
   int? rootId;
   int? activeFieldId;
 
@@ -244,12 +248,11 @@ class FieldLayer extends ChangeNotifier {
   ) async {
     final child = nodes[childId];
     final parent = nodes[parentId];
-    if (child == null || parent == null) return;
-    if (child.parents.contains(parentId)) return;
-    if (isDescendant(parentId, childId)) return;
-
-    child.parents.add(parentId);
-    parent.children.add(childId);
+    if (child == null ||
+        parent == null ||
+        !FieldTree.attach(nodes, childId, parentId)) {
+      return;
+    }
     await journal.log(
       type: JournalType.fieldNode,
       body: jsonEncode({'action': 'attach', 'id': childId, 'parent': parentId}),
@@ -265,11 +268,11 @@ class FieldLayer extends ChangeNotifier {
   ) async {
     final child = nodes[childId];
     final parent = nodes[parentId];
-    if (child == null || parent == null) return;
-    if (!child.parents.contains(parentId)) return;
-
-    child.parents.remove(parentId);
-    parent.children.remove(childId);
+    if (child == null ||
+        parent == null ||
+        !FieldTree.detach(nodes, childId, parentId)) {
+      return;
+    }
     await journal.log(
       type: JournalType.fieldNode,
       body: jsonEncode({'action': 'detach', 'id': childId, 'parent': parentId}),
@@ -279,13 +282,7 @@ class FieldLayer extends ChangeNotifier {
   }
 
   bool isDescendant(int potentialDescendant, int ancestor) {
-    if (potentialDescendant == ancestor) return true;
-    final node = nodes[potentialDescendant];
-    if (node == null) return false;
-    for (final p in node.parents) {
-      if (isDescendant(p, ancestor)) return true;
-    }
-    return false;
+    return FieldTree.isDescendant(nodes, potentialDescendant, ancestor);
   }
 
   Future<void> deleteNode(
@@ -314,13 +311,7 @@ class FieldLayer extends ChangeNotifier {
         }
       }
 
-      nodes.remove(id);
-      for (final pId in node.parents) {
-        nodes[pId]?.children.remove(id);
-      }
-      for (final cId in node.children) {
-        nodes[cId]?.parents.remove(id);
-      }
+      FieldTree.remove(nodes, id);
 
       await journal.log(
         type: JournalType.fieldNode,

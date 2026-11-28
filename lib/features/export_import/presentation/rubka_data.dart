@@ -1,9 +1,11 @@
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:polyrutina/core/localization/providers.dart';
 import 'package:polyrutina/features/traces/application/providers.dart';
 import 'package:polyrutina/features/fields/application/providers.dart';
 import 'package:polyrutina/features/export_import/application/export_context.dart';
+import 'package:polyrutina/features/export_import/application/providers.dart';
 import 'package:polyrutina/shared/application/app_actions.dart';
 import 'package:polyrutina/features/routines/application/providers.dart';
 import 'package:polyrutina/features/settings/application/providers.dart';
@@ -25,7 +27,6 @@ import 'package:polyrutina/shared/presentation/widgets/notice_dialog.dart';
 import 'package:polyrutina/shared/presentation/widgets/progress_dialog.dart';
 import 'package:polyrutina/shared/presentation/pults/pult_core.dart';
 import 'package:polyrutina/features/traces/presentation/screens/media_viewer.dart';
-import 'package:polyrutina/features/export_import/application/import_service.dart';
 import 'package:polyrutina/features/export_import/application/journal_compactor.dart';
 import 'package:polyrutina/features/export_import/presentation/report.dart';
 
@@ -373,6 +374,26 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
     final actions = appActionsOf(context);
     FocusManager.instance.primaryFocus?.unfocus();
 
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['zip'],
+      allowMultiple: true,
+    );
+    if (!mounted) return;
+    if (picked == null || picked.files.isEmpty) {
+      await showNotice(context, title: i18n.t('import.cancelled'));
+      return;
+    }
+
+    final paths = picked.files
+        .map((file) => file.path)
+        .whereType<String>()
+        .toList();
+    if (paths.isEmpty) {
+      await showNotice(context, title: i18n.t('import.empty'));
+      return;
+    }
+
     final token = ProgressToken();
     showDialog<void>(
       context: context,
@@ -382,10 +403,13 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
           ProgressDialog(token: token, title: i18n.t('bort.import')),
     );
 
-    final result = await importFromPicker(
-      app: ref.read(exportContextProvider),
-      onProgress: token.report,
-    );
+    final result = await ref
+        .read(archiveImportServiceProvider)
+        .importArchives(
+          app: ref.read(exportContextProvider),
+          paths: paths,
+          onProgress: token.report,
+        );
 
     await actions.afterJournalReset();
     await actions.refresh();
@@ -394,10 +418,6 @@ class _RubkaDataState extends ConsumerState<RubkaData> {
     if (!mounted) return;
     Navigator.of(context, rootNavigator: true).pop();
 
-    if (result.cancelled) {
-      await showNotice(context, title: i18n.t('import.cancelled'));
-      return;
-    }
     if (result.routines == 0 && result.media == 0) {
       final title = i18n.t('import.empty');
       final subtitle = result.skipped > 0

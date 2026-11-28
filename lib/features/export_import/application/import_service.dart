@@ -1,35 +1,30 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:developer' as developer;
 
-import 'package:archive/archive_io.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import 'package:polyrutina/core/data/journal_layer.dart';
 import 'package:polyrutina/core/domain/journal_types.dart';
+import 'package:polyrutina/features/export_import/application/import_archive_reader.dart';
+import 'package:polyrutina/features/export_import/application/import_media_repository.dart';
 import 'package:polyrutina/features/routines/application/routine_access.dart';
-import 'package:polyrutina/features/traces/application/trace_layer.dart';
+import 'package:polyrutina/features/traces/application/trace_access.dart';
+import 'package:polyrutina/features/traces/domain/trace.dart';
 import 'package:polyrutina/features/export_import/application/export_context.dart';
+import 'package:polyrutina/features/export_import/domain/import_manifest.dart';
 import 'package:polyrutina/shared/application/format.dart';
-import 'package:polyrutina/features/export_import/application/report_json.dart';
 
 class ImportResult {
   final int routines;
   final int media;
   final int bytes;
   final int skipped;
-  final bool cancelled;
-  final bool empty;
 
   const ImportResult({
     this.routines = 0,
     this.media = 0,
     this.bytes = 0,
     this.skipped = 0,
-    this.cancelled = false,
-    this.empty = false,
   });
 
   ImportResult merge(ImportResult other) => ImportResult(
@@ -37,255 +32,263 @@ class ImportResult {
     media: media + other.media,
     bytes: bytes + other.bytes,
     skipped: skipped + other.skipped,
-    cancelled: cancelled || other.cancelled,
-    empty: routines + other.routines + media + other.media == 0,
   );
 }
 
-Future<ImportResult> importFromPicker({
-  required ExportContext app,
-  ValueChanged<double>? onProgress,
-}) async {
-  final picked = await FilePicker.platform.pickFiles(
-    type: FileType.custom,
-    allowedExtensions: ['zip'],
-    allowMultiple: true,
-  );
-  if (picked == null || picked.files.isEmpty) {
-    return const ImportResult(cancelled: true);
+class ArchiveImportService {
+  const ArchiveImportService({
+    required ImportArchiveReader archiveReader,
+    required ImportMediaRepository mediaRepository,
+  }) : _archiveReader = archiveReader,
+       _mediaRepository = mediaRepository;
+
+  final ImportArchiveReader _archiveReader;
+  final ImportMediaRepository _mediaRepository;
+
+  Future<ImportResult> importArchives({
+    required ExportContext app,
+    required List<String> paths,
+    void Function(double)? onProgress,
+  }) async {
+    var total = const ImportResult();
+    for (var i = 0; i < paths.length; i++) {
+      final path = paths[i];
+      onProgress?.call(i / paths.length);
+      try {
+        total = total.merge(await _importZip(app, path));
+      } catch (error, stackTrace) {
+        developer.log(
+          'Archive import skipped for $path',
+          name: 'export_import',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        total = total.merge(const ImportResult(skipped: 1));
+      }
+    }
+    if (paths.isNotEmpty) onProgress?.call(1.0);
+    return total;
   }
 
-  var total = const ImportResult();
-  for (var i = 0; i < picked.files.length; i++) {
-    final f = picked.files[i];
-    if (f.path == null) continue;
-    onProgress?.call(i / picked.files.length);
+  Future<ImportResult> _importZip(ExportContext app, String path) async {
+    final archive = await _archiveReader.read(path);
+
+    ImportArchiveEntry? dataFile;
+    for (final entry in archive) {
+      if (entry.name == 'data.json') {
+        dataFile = entry;
+        break;
+      }
+    }
+    if (dataFile == null) {
+      return const ImportResult(skipped: 1);
+    }
+
+    final dataStr = utf8.decode(dataFile.content);
+    final Object? decoded = jsonDecode(dataStr);
+
+    final list = <Map<String, dynamic>>[];
+    List<dynamic>? fieldList;
+    List<ParsedMonth> months = const [];
+    if (decoded is Map) {
+      final routines = decoded['routines'];
+      if (routines is List) {
+        for (final Object? e in routines) {
+          if (e is Map) list.add(Map<String, dynamic>.from(e));
+        }
+      }
+      if (decoded['fields'] is List) {
+        fieldList = decoded['fields'] as List;
+      }
+      months = ImportManifest.parseSeries(Map<String, dynamic>.from(decoded));
+    }
+    if (list.isEmpty && months.isEmpty) {
+      return const ImportResult(skipped: 1);
+    }
+
+    // Phase 1: parse and skip already-present routines.
+    final toImport = <ParsedRoutine>[];
+    var skipped = 0;
+    for (final raw in list) {
+      final parsed = ImportManifest.parseRoutine(raw);
+      if (parsed == null) continue;
+      if (app.routineLayer.findRoutineBySourceKey(parsed.key) != null) {
+        skipped++;
+        continue;
+      }
+      toImport.add(parsed);
+    }
+
+    // Phase 2: extract media — only the files referenced by the
+    // routines we are about to import.
+    final needed = <String>{};
+    for (final r in toImport) {
+      for (final t in r.traces) {
+        for (final f in t.files) {
+          if (f.kind == MediaKind.geo) continue;
+          if (f.name.isNotEmpty) needed.add(f.name);
+        }
+      }
+    }
+
+    final written = <String>[];
+    final extracted = <String, String>{};
+    var mediaBytes = 0;
     try {
-      total = total.merge(await _importZip(app, f.path!));
+      for (final file in archive) {
+        if (!file.isFile) continue;
+        if (!file.name.startsWith('media/')) continue;
+        final rel = file.name.substring('media/'.length);
+        final baseName = p.basename(rel);
+        if (!needed.contains(baseName)) continue;
+
+        final idx = app.settings.nextMediaIndex();
+        final ext = p.extension(baseName);
+        final safe = safeFileName(
+          'media_${idx}_${app.settings.deviceId}_${app.settings.firstRunUnixSec}$ext',
+        );
+        final savedPath = await _mediaRepository.save(safe, file.content);
+        written.add(savedPath);
+        extracted[baseName] = savedPath;
+        mediaBytes += file.content.length;
+      }
     } catch (error, stackTrace) {
-      debugPrint('archive import skipped for ${f.path}: $error\n$stackTrace');
-      total = total.merge(const ImportResult(skipped: 1));
-    }
-  }
-  onProgress?.call(1.0);
-  return total;
-}
-
-Future<ImportResult> _importZip(ExportContext app, String path) async {
-  final inputStream = InputFileStream(path);
-  late final Archive archive;
-  try {
-    archive = ZipDecoder().decodeBuffer(inputStream);
-  } catch (_) {
-    await inputStream.close();
-    rethrow;
-  }
-  await inputStream.close();
-
-  final dataFile = archive.findFile('data.json');
-  if (dataFile == null) {
-    return const ImportResult(skipped: 1);
-  }
-
-  final dataStr = utf8.decode(dataFile.content as List<int>);
-  final Object? decoded = jsonDecode(dataStr);
-
-  final list = <Map<String, dynamic>>[];
-  List<dynamic>? fieldList;
-  List<ParsedMonth> months = const [];
-  if (decoded is Map) {
-    final routines = decoded['routines'];
-    if (routines is List) {
-      for (final Object? e in routines) {
-        if (e is Map) list.add(Map<String, dynamic>.from(e));
-      }
-    }
-    if (decoded['fields'] is List) {
-      fieldList = decoded['fields'] as List;
-    }
-    months = ReportJson.parseSeries(Map<String, dynamic>.from(decoded));
-  }
-  if (list.isEmpty && months.isEmpty) {
-    return const ImportResult(skipped: 1);
-  }
-
-  // Phase 1: parse and skip already-present routines.
-  final toImport = <ParsedRoutine>[];
-  var skipped = 0;
-  for (final raw in list) {
-    final parsed = ReportJson.parseRoutine(raw);
-    if (parsed == null) continue;
-    if (app.routineLayer.findRoutineBySourceKey(parsed.key) != null) {
-      skipped++;
-      continue;
-    }
-    toImport.add(parsed);
-  }
-
-  // Phase 2: extract media — only the files referenced by the
-  // routines we are about to import.
-  final needed = <String>{};
-  for (final r in toImport) {
-    for (final t in r.traces) {
-      for (final f in t.files) {
-        if (f.kind == MediaKind.geo) continue;
-        if (f.name.isNotEmpty) needed.add(f.name);
-      }
-    }
-  }
-
-  final dir = await getApplicationDocumentsDirectory();
-  final mediaDir = Directory(p.join(dir.path, 'media'));
-  if (!await mediaDir.exists()) await mediaDir.create(recursive: true);
-
-  final written = <String>[];
-  final extracted = <String, String>{};
-  var mediaBytes = 0;
-  try {
-    for (final file in archive.files) {
-      if (!file.isFile) continue;
-      if (!file.name.startsWith('media/')) continue;
-      final rel = file.name.substring('media/'.length);
-      final baseName = p.basename(rel);
-      if (!needed.contains(baseName)) continue;
-
-      final idx = app.settings.nextMediaIndex();
-      final ext = p.extension(baseName);
-      final safe = safeFileName(
-        'media_${idx}_${app.settings.deviceId}_${app.settings.firstRunUnixSec}$ext',
+      developer.log(
+        'Archive media extraction failed',
+        name: 'export_import',
+        error: error,
+        stackTrace: stackTrace,
       );
-      final target = File(p.join(mediaDir.path, safe));
-
-      final outputStream = OutputFileStream(target.path);
-      file.writeContent(outputStream);
-      outputStream.closeSync();
-
-      written.add(target.path);
-      extracted[baseName] = target.path;
-      mediaBytes += await target.length();
+      await _rollback(written);
+      return ImportResult(skipped: skipped + 1);
     }
-  } catch (error, stackTrace) {
-    debugPrint('archive media extraction failed: $error\n$stackTrace');
-    await _rollback(written);
-    return ImportResult(skipped: skipped + 1);
-  }
 
-  // Phase 3: apply in a single transaction; roll back media on
-  // failure so that no orphan file survives.
-  var imported = 0;
-  try {
-    await app.journal.transaction(() async {
-      final fieldIdMap = <int, int>{};
+    // Phase 3: apply in a single transaction; roll back media on
+    // failure so that no orphan file survives.
+    var imported = 0;
+    try {
+      await app.journal.transaction(() async {
+        final fieldIdMap = <int, int>{};
 
-      // 3a. Restore field tree topology, if present.
-      if (fieldList != null && toImport.isNotEmpty) {
-        final fields = fieldList;
-        int? defaultRootOldId;
-        for (final f in fields) {
-          if (f is! Map || f['is_root'] != true) continue;
-          final oldId = (f['id'] as num?)?.toInt();
-          if (oldId == null) continue;
-          if (f['default_root'] == true) {
-            defaultRootOldId = oldId;
-            break;
+        // 3a. Restore field tree topology, if present.
+        if (fieldList != null && toImport.isNotEmpty) {
+          final fields = fieldList;
+          int? defaultRootOldId;
+          for (final f in fields) {
+            if (f is! Map || f['is_root'] != true) continue;
+            final oldId = (f['id'] as num?)?.toInt();
+            if (oldId == null) continue;
+            if (f['default_root'] == true) {
+              defaultRootOldId = oldId;
+              break;
+            }
+            defaultRootOldId ??= oldId;
           }
-          defaultRootOldId ??= oldId;
-        }
 
-        for (final f in fields) {
-          if (f is! Map) continue;
-          final oldId = (f['id'] as num?)?.toInt();
-          if (oldId == null) continue;
-          if (oldId == defaultRootOldId && app.fieldLayer.rootId != null) {
-            fieldIdMap[oldId] = app.fieldLayer.rootId!;
-            continue;
+          for (final f in fields) {
+            if (f is! Map) continue;
+            final oldId = (f['id'] as num?)?.toInt();
+            if (oldId == null) continue;
+            if (oldId == defaultRootOldId && app.fieldLayer.rootId != null) {
+              fieldIdMap[oldId] = app.fieldLayer.rootId!;
+              continue;
+            }
+            final name = f['name'] as String? ?? '';
+            final isRoot = f['is_root'] as bool? ?? false;
+
+            final newId = await app.journal.log(
+              type: JournalType.fieldNode,
+              body: jsonEncode({
+                'action': 'create',
+                'name': name,
+                'is_root': isRoot,
+              }),
+            );
+            fieldIdMap[oldId] = newId;
           }
-          final name = f['name'] as String? ?? '';
-          final isRoot = f['is_root'] as bool? ?? false;
 
-          final newId = await app.journal.log(
-            type: JournalType.fieldNode,
-            body: jsonEncode({
-              'action': 'create',
-              'name': name,
-              'is_root': isRoot,
-            }),
-          );
-          fieldIdMap[oldId] = newId;
-        }
+          for (final f in fields) {
+            if (f is! Map) continue;
+            final oldId = (f['id'] as num?)?.toInt();
+            final newId = fieldIdMap[oldId];
+            if (oldId == null || newId == null) continue;
 
-        for (final f in fields) {
-          if (f is! Map) continue;
-          final oldId = (f['id'] as num?)?.toInt();
-          final newId = fieldIdMap[oldId];
-          if (oldId == null || newId == null) continue;
-
-          final oldParents =
-              (f['parents'] as List?)
-                  ?.map((e) => (e as num).toInt())
-                  .toList() ??
-              [];
-          for (final oldParentId in oldParents) {
-            final newParentId = fieldIdMap[oldParentId];
-            if (newParentId != null) {
-              await app.journal.log(
-                type: JournalType.fieldNode,
-                body: jsonEncode({
-                  'action': 'attach',
-                  'id': newId,
-                  'parent': newParentId,
-                }),
-              );
+            final oldParents =
+                (f['parents'] as List?)
+                    ?.map((e) => (e as num).toInt())
+                    .toList() ??
+                [];
+            for (final oldParentId in oldParents) {
+              final newParentId = fieldIdMap[oldParentId];
+              if (newParentId != null) {
+                await app.journal.log(
+                  type: JournalType.fieldNode,
+                  body: jsonEncode({
+                    'action': 'attach',
+                    'id': newId,
+                    'parent': newParentId,
+                  }),
+                );
+              }
             }
           }
         }
-      }
 
-      // 3b. Apply series months.
-      // The unified shift lives under field 0; the bort series too.
-      // collapsed under 0 here — the last entry for a (year, month)
-      // wins, which mirrors the single-state semantics of the
-      // unified shift. A non-zero field id from the archive is
-      // ignored for shift and bort kinds alike.
-      for (final m in months) {
-        final isUnified = m.kind == 'shift' || m.kind == 'bort';
-        final targetFieldId = isUnified ? 0 : m.fieldId;
-        app.settings.applySeriesMonth(
-          m.kind,
-          targetFieldId,
-          m.year,
-          m.month,
-          m.days,
-        );
-      }
+        // 3b. Apply series months.
+        // The unified shift lives under field 0; the bort series too.
+        // collapsed under 0 here — the last entry for a (year, month)
+        // wins, which mirrors the single-state semantics of the
+        // unified shift. A non-zero field id from the archive is
+        // ignored for shift and bort kinds alike.
+        for (final m in months) {
+          final isUnified = m.kind == 'shift' || m.kind == 'bort';
+          final targetFieldId = isUnified ? 0 : m.fieldId;
+          app.settings.applySeriesMonth(
+            m.kind,
+            targetFieldId,
+            m.year,
+            m.month,
+            m.days,
+          );
+        }
 
-      // 3c. Apply routines, binding them to the new field IDs.
-      for (final parsed in toImport) {
-        await _applyParsed(app, parsed, extracted, fieldIdMap);
-      }
-    });
-    imported = toImport.length;
-  } catch (error, stackTrace) {
-    debugPrint('archive journal import failed: $error\n$stackTrace');
-    await _rollback(written);
-    return ImportResult(skipped: skipped + 1);
+        // 3c. Apply routines, binding them to the new field IDs.
+        for (final parsed in toImport) {
+          await _applyParsed(app, parsed, extracted, fieldIdMap);
+        }
+      });
+      imported = toImport.length;
+    } catch (error, stackTrace) {
+      developer.log(
+        'Archive journal import failed',
+        name: 'export_import',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      await _rollback(written);
+      return ImportResult(skipped: skipped + 1);
+    }
+
+    return ImportResult(
+      routines: imported,
+      media: extracted.length,
+      bytes: mediaBytes,
+      skipped: skipped,
+    );
   }
 
-  return ImportResult(
-    routines: imported,
-    media: extracted.length,
-    bytes: mediaBytes,
-    skipped: skipped,
-  );
-}
-
-Future<void> _rollback(List<String> written) async {
-  for (final w in written) {
-    try {
-      final f = File(w);
-      if (await f.exists()) await f.delete();
-    } catch (error, stackTrace) {
-      debugPrint('failed to roll back imported media $w: $error\n$stackTrace');
+  Future<void> _rollback(List<String> written) async {
+    for (final path in written) {
+      try {
+        await _mediaRepository.delete(path);
+      } catch (error, stackTrace) {
+        developer.log(
+          'Failed to roll back imported media at $path',
+          name: 'export_import',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
     }
   }
 }
@@ -297,7 +300,7 @@ Future<void> _applyParsed(
   Map<int, int> fieldIdMap,
 ) async {
   final RoutineAccess routineLayer = app.routineLayer;
-  final TraceLayer traceLayer = app.traceLayer;
+  final TraceAccess traceLayer = app.traceLayer;
   final JournalLayer journal = app.journal;
 
   final newFieldParents = <int>[];

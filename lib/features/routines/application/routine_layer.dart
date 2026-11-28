@@ -316,9 +316,11 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
           final v = data['value'] as bool? ?? true;
           final r = findRoutine(id);
           if (r != null) {
-            r.completed = v;
-            r.completedAt = v ? e.time : null;
-            r.lastActionAt = e.time;
+            if (v) {
+              r.completeAt(e.time);
+            } else {
+              r.reopenAt(e.time);
+            }
             if (v) _runningRoutineIds.remove(id);
           }
           break;
@@ -383,15 +385,11 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
           final at = (data['at'] as num?)?.toInt() ?? e.time;
           final r = findRoutine(id);
           if (r != null && kind != null) {
-            r.blockOf(kind)?.start(at: at);
-            r.lastActionAt = at;
-            r.lastPulseAt = at;
-            r.lastBlockKind = kind;
-            r.completed = false;
-            r.completedAt = null;
-            currentRoutineId = id;
-            lastActiveBlockKind = kind;
-            _runningRoutineIds.add(id);
+            if (r.startBlockAt(kind, at)) {
+              currentRoutineId = id;
+              lastActiveBlockKind = kind;
+              _runningRoutineIds.add(id);
+            }
           }
           break;
         case 'pause_block':
@@ -400,10 +398,7 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
           final at = (data['at'] as num?)?.toInt() ?? e.time;
           final r = findRoutine(id);
           if (r != null && kind != null) {
-            r.blockOf(kind)?.pause(at: at);
-            r.lastActionAt = at;
-            r.lastPulseAt = at;
-            if (r.runningBlock == null) {
+            if (r.pauseBlockAt(kind, at) && r.runningBlock == null) {
               _runningRoutineIds.remove(id);
               if (currentRoutineId == id) currentRoutineId = null;
             }
@@ -700,31 +695,25 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
     if (value) {
       await journal.transaction(() async {
         final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-        for (final b in r.blocks) {
-          if (b.isRunning) {
-            b.pause(at: now);
-            await journal.log(
-              type: JournalType.routine,
-              body:
-                  '{"action":"pause_block","routine":$id,'
-                  '"block":"${b.kind}","at":$now}',
-            );
-          }
+        final pausedBlocks = r.pauseRunningBlocksAt(now);
+        for (final kind in pausedBlocks) {
+          await journal.log(
+            type: JournalType.routine,
+            body:
+                '{"action":"pause_block","routine":$id,'
+                '"block":"$kind","at":$now}',
+          );
         }
         if (currentRoutineId == id) currentRoutineId = null;
         _runningRoutineIds.remove(id);
-        r.completed = true;
-        r.completedAt = now;
-        r.lastActionAt = now;
+        r.completeAt(now);
         await journal.log(
           type: JournalType.routine,
           body: '{"action":"complete","routine":$id,"value":true}',
         );
       });
     } else {
-      r.completed = false;
-      r.completedAt = null;
-      r.lastActionAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      r.reopenAt(DateTime.now().millisecondsSinceEpoch ~/ 1000);
       await journal.log(
         type: JournalType.routine,
         body: '{"action":"complete","routine":$id,"value":false}',
@@ -792,6 +781,8 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
   }) async {
     final r = findRoutine(routineId);
     if (r == null) return;
+    final target = r.blockOf(kind);
+    if (target == null || target.isRunning) return;
 
     await journal.transaction(() async {
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -803,7 +794,7 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
           if (other == null) continue;
           for (final b in other.blocks) {
             if (b.isRunning) {
-              b.pause(at: now);
+              other.pauseBlockAt(b.kind, now);
               await journal.log(
                 type: JournalType.routine,
                 body:
@@ -817,7 +808,7 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
       } else if (mutexSlots) {
         for (final b in r.blocks) {
           if (b.kind != kind && b.isRunning) {
-            b.pause(at: now);
+            r.pauseBlockAt(b.kind, now);
             await journal.log(
               type: JournalType.routine,
               body:
@@ -831,9 +822,7 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
         }
       }
 
-      final target = r.blockOf(kind);
-      if (target != null && !target.isRunning) {
-        target.start(at: now);
+      if (r.startBlockAt(kind, now)) {
         await journal.log(
           type: JournalType.routine,
           body:
@@ -841,11 +830,6 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
               '"block":"$kind","at":$now}',
         );
       }
-      r.lastActionAt = now;
-      r.lastPulseAt = now;
-      r.lastBlockKind = kind;
-      r.completed = false;
-      r.completedAt = null;
       currentRoutineId = routineId;
       lastActiveBlockKind = kind;
       _runningRoutineIds.add(routineId);
@@ -865,9 +849,7 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final b = r.blockOf(kind);
     if (b == null || !b.isRunning) return;
-    b.pause(at: now);
-    r.lastActionAt = now;
-    r.lastPulseAt = now;
+    r.pauseBlockAt(kind, now);
     if (r.runningBlock == null) {
       _runningRoutineIds.remove(routineId);
       if (currentRoutineId == routineId) currentRoutineId = null;

@@ -8,14 +8,16 @@ import 'package:polyrutina/features/settings/data/bort_file.dart';
 import 'package:polyrutina/features/settings/domain/bort_time.dart';
 import 'package:polyrutina/features/settings/data/drafts_store.dart';
 import 'package:polyrutina/features/settings/domain/field_shift_state.dart';
+import 'package:polyrutina/features/settings/domain/shift_accounting.dart';
 import 'package:polyrutina/core/domain/journal_entry.dart';
 import 'package:polyrutina/features/settings/data/install_store.dart';
 import 'package:polyrutina/core/data/journal_layer.dart';
 import 'package:polyrutina/core/domain/journal_types.dart';
+import 'package:polyrutina/features/settings/application/operational_access.dart';
 import 'package:polyrutina/features/settings/data/theme_store.dart';
 import 'package:polyrutina/features/settings/domain/time_series.dart';
 
-class OperationalLayer extends ChangeNotifier {
+class OperationalLayer extends ChangeNotifier implements OperationalAccess {
   static const int _schemaVersion = 3;
 
   final ThemeStore _themes = ThemeStore();
@@ -27,6 +29,7 @@ class OperationalLayer extends ChangeNotifier {
   JournalLayer? _journal;
 
   // Registry of registered time series (shift, bort).
+  @override
   final Map<String, TimeSeries> series = {};
 
   // State of the unified shift. Serialized under the zero-field key
@@ -54,12 +57,15 @@ class OperationalLayer extends ChangeNotifier {
   String draft(String key) => _draftsStore.draft(key);
   bool isTraceSent(String key) => _draftsStore.isSent(key);
 
+  @override
   int get firstRunUnixSec => _install.firstRunUnixSec;
+  @override
   String get deviceId => _install.deviceId;
 
   TimeSeries get shiftHistory => series['shift']!;
   TimeSeries get bortHistory => series['bort']!;
 
+  @override
   int nextMediaIndex() => _install.nextMediaIndex();
 
   static const double minScale = 0.5;
@@ -200,6 +206,7 @@ class OperationalLayer extends ChangeNotifier {
     }
   }
 
+  @override
   void applySeriesMonth(
     String kind,
     int fieldId,
@@ -251,38 +258,17 @@ class OperationalLayer extends ChangeNotifier {
 
   void _recordShiftDay(int fieldId, int curMid, int oldPrev) {
     final s = shiftFor(0);
-    final prevDayStart = curMid - 86400;
-    int running = 0;
-    if (s.onShift && s.shiftStartedAt != null) {
-      final start = s.shiftStartedAt! > prevDayStart
-          ? s.shiftStartedAt!
-          : prevDayStart;
-      if (start < curMid) running = curMid - start;
-    }
-    final skipped = oldPrev > 0 && curMid - oldPrev > 86400;
-    if (!skipped) {
-      running += s.totalShiftSeconds;
-      if (running > 86400) running = 86400;
-      if (running > 0) {
-        final dt = DateTime.fromMillisecondsSinceEpoch(prevDayStart * 1000);
-        shiftHistory.addDay(0, dt.year, dt.month, dt.day, running);
-        _logSeriesMonth('shift', 0, dt.year, dt.month);
-      }
-    } else {
-      if (s.totalShiftSeconds > 0 && oldPrev > 0) {
-        final capped = s.totalShiftSeconds > 86400
-            ? 86400
-            : s.totalShiftSeconds;
-        final dt = DateTime.fromMillisecondsSinceEpoch(oldPrev * 1000);
-        shiftHistory.addDay(0, dt.year, dt.month, dt.day, capped);
-        _logSeriesMonth('shift', 0, dt.year, dt.month);
-      }
-      if (running > 0) {
-        final capped = running > 86400 ? 86400 : running;
-        final dt = DateTime.fromMillisecondsSinceEpoch(prevDayStart * 1000);
-        shiftHistory.addDay(0, dt.year, dt.month, dt.day, capped);
-        _logSeriesMonth('shift', 0, dt.year, dt.month);
-      }
+    final totals = ShiftAccounting.closeDay(
+      currentMidnight: curMid,
+      previousMidnight: oldPrev,
+      onShift: s.onShift,
+      startedAt: s.shiftStartedAt,
+      accumulatedSeconds: s.totalShiftSeconds,
+    );
+    for (final total in totals) {
+      final dt = DateTime.fromMillisecondsSinceEpoch(total.dayStart * 1000);
+      shiftHistory.addDay(0, dt.year, dt.month, dt.day, total.seconds);
+      _logSeriesMonth('shift', 0, dt.year, dt.month);
     }
   }
 
@@ -590,18 +576,21 @@ class OperationalLayer extends ChangeNotifier {
     notifyListeners();
   }
 
+  @override
   void setLastExportId(int id) {
     lastExportId = id;
     _scheduleSave();
     notifyListeners();
   }
 
+  @override
   void setLastRereadId(int id) {
     lastRereadId = id;
     _scheduleSave();
     notifyListeners();
   }
 
+  @override
   int nextExportIndex(String objectKey) {
     final n = DateTime.now();
     final day =
@@ -762,13 +751,14 @@ class OperationalLayer extends ChangeNotifier {
 
   int shiftSecondsNow(int fieldId) {
     final s = shiftFor(0);
-    final base = s.totalShiftSeconds;
-    if (s.shiftStartedAt == null) return base;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final dayStart = _bortTime.lastMidnightBefore(DateTime.now());
-    final start = s.shiftStartedAt! > dayStart ? s.shiftStartedAt! : dayStart;
-    if (start >= now) return base;
-    return base + (now - start);
+    return ShiftAccounting.secondsAt(
+      accumulatedSeconds: s.totalShiftSeconds,
+      startedAt: s.shiftStartedAt,
+      now: now,
+      dayStart: dayStart,
+    );
   }
 
   void _apply(String key, String value) {

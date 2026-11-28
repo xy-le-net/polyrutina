@@ -8,14 +8,16 @@ import 'package:polyrutina/core/data/journal_layer.dart';
 import 'package:polyrutina/core/domain/journal_entry.dart';
 import 'package:polyrutina/core/domain/journal_types.dart';
 import 'package:polyrutina/features/traces/application/trace_repository.dart';
+import 'package:polyrutina/features/traces/application/trace_access.dart';
 import 'package:polyrutina/features/traces/domain/trace.dart';
 
 export 'package:polyrutina/features/traces/domain/trace.dart';
 
-class TraceLayer extends ChangeNotifier {
+class TraceLayer extends ChangeNotifier implements TraceAccess {
   TraceLayer(this._repository);
 
   final TraceRepository _repository;
+  @override
   final Map<int, Trace> traces = {};
 
   // Index: parentId -> "kind:slot" -> minimum trace ID
@@ -218,6 +220,7 @@ class TraceLayer extends ChangeNotifier {
     return found;
   }
 
+  @override
   Future<int> createText(
     JournalLayer journal, {
     String slot = '',
@@ -251,6 +254,7 @@ class TraceLayer extends ChangeNotifier {
     return id;
   }
 
+  @override
   Future<int> createChecklist(
     JournalLayer journal, {
     String slot = '',
@@ -318,6 +322,7 @@ class TraceLayer extends ChangeNotifier {
     await _updateBody(journal, traceId, t);
   }
 
+  @override
   Future<void> updateItems(
     JournalLayer journal,
     int traceId,
@@ -329,6 +334,7 @@ class TraceLayer extends ChangeNotifier {
     await _updateBody(journal, traceId, t);
   }
 
+  @override
   Future<void> attachFile(
     JournalLayer journal, {
     required int objectId,

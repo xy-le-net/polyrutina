@@ -157,6 +157,49 @@ class Routine {
     return null;
   }
 
+  bool startBlockAt(String kind, int at) {
+    final block = blockOf(kind);
+    if (block == null || block.isRunning) return false;
+    block.start(at: at);
+    lastActionAt = at;
+    lastPulseAt = at;
+    lastBlockKind = kind;
+    completed = false;
+    completedAt = null;
+    return true;
+  }
+
+  bool pauseBlockAt(String kind, int at) {
+    final block = blockOf(kind);
+    if (block == null || !block.isRunning) return false;
+    block.pause(at: at);
+    lastActionAt = at;
+    lastPulseAt = at;
+    return true;
+  }
+
+  List<String> pauseRunningBlocksAt(int at) {
+    final paused = <String>[];
+    for (final block in blocks) {
+      if (pauseBlockAt(block.kind, at)) paused.add(block.kind);
+    }
+    return paused;
+  }
+
+  List<String> completeAt(int at) {
+    final paused = pauseRunningBlocksAt(at);
+    completed = true;
+    completedAt = at;
+    lastActionAt = at;
+    return paused;
+  }
+
+  void reopenAt(int at) {
+    completed = false;
+    completedAt = null;
+    lastActionAt = at;
+  }
+
   // Whether this routine is presently overdue. See the header for
   // the rule: due date passed, not completed, notice was set.
   bool isOverdueAt(int now) {
