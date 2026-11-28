@@ -2,16 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'package:polyrutina/core/data/atomic_json.dart';
-import 'package:polyrutina/core/data/database.dart';
-import 'package:polyrutina/core/domain/journal_types.dart';
+import 'package:polyrutina/core/data/journal_repository.dart';
+import 'package:polyrutina/core/domain/journal_entry.dart';
 
-typedef ApplyFn = void Function(JournalData entry);
+typedef ApplyFn = void Function(JournalEntry entry);
 typedef ResetFn = void Function();
 
 class _LayerReg {
@@ -29,8 +28,8 @@ class _LayerReg {
 }
 
 class JournalLayer extends ChangeNotifier {
-  final AppDb db;
-  JournalLayer(this.db);
+  final JournalRepository repository;
+  JournalLayer(this.repository);
 
   final Map<String, _LayerReg> _layers = {};
   final Map<String, int> _savedIds = {};
@@ -42,7 +41,7 @@ class JournalLayer extends ChangeNotifier {
   bool _pumping = false;
   int _txDepth = 0;
 
-  StreamSubscription<List<JournalData>>? _sub;
+  StreamSubscription<List<JournalEntry>>? _sub;
 
   Future<void> init() async {
     final dir = await getApplicationDocumentsDirectory();
@@ -91,7 +90,7 @@ class JournalLayer extends ChangeNotifier {
   Future<T> transaction<T>(Future<T> Function() action) async {
     _txDepth++;
     try {
-      return await db.transaction(action);
+      return await repository.transaction(action);
     } finally {
       _txDepth--;
       if (_txDepth == 0) await pump();
@@ -145,44 +144,23 @@ class JournalLayer extends ChangeNotifier {
     String body = '{}',
     int flags = 0,
   }) async {
-    final id = await db
-        .into(db.journal)
-        .insert(
-          JournalCompanion.insert(
-            time: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-            flags: Value(flags),
-            type: type,
-            body: body,
-          ),
-        );
+    final id = await repository.insert(type: type, body: body, flags: flags);
     if (_txDepth == 0) await pump();
     return id;
   }
 
-  Stream<List<JournalData>> watchAll() {
-    return (db.select(
-      db.journal,
-    )..orderBy([(t) => OrderingTerm.asc(t.id)])).watch();
+  Stream<List<JournalEntry>> watchAll() {
+    return repository.watchAll();
   }
 
-  Future<List<JournalData>> entriesAfter(int fromId, {int? type}) {
-    return (db.select(db.journal)
-          ..where((t) {
-            if (type == null) return t.id.isBiggerThanValue(fromId);
-            return t.id.isBiggerThanValue(fromId) & t.type.equals(type);
-          })
-          ..orderBy([(t) => OrderingTerm.asc(t.id)]))
-        .get();
+  Future<List<JournalEntry>> entriesAfter(int fromId, {int? type}) {
+    return repository.entriesAfter(fromId, type: type);
   }
 
-  Future<List<JournalData>> all() {
-    return (db.select(
-      db.journal,
-    )..orderBy([(t) => OrderingTerm.asc(t.id)])).get();
-  }
+  Future<List<JournalEntry>> all() => repository.all();
 
   Future<void> clearAll() async {
-    await db.delete(db.journal).go();
+    await repository.clearEntries();
     for (final l in _layers.values) {
       l.reset?.call();
       l.lastId = 0;
@@ -191,57 +169,25 @@ class JournalLayer extends ChangeNotifier {
     _stateDirty = true;
     await _saveStateNow();
     try {
-      await db.customStatement('VACUUM');
+      await repository.reclaimSpace();
     } catch (_) {}
     notifyListeners();
   }
 
   Future<void> deleteSynced() async {
-    final n = await db.customUpdate(
-      'DELETE FROM journal WHERE (flags & ?1) != 0',
-      variables: [const Variable<int>(JournalFlag.synced)],
-      updates: {db.journal},
-    );
+    final n = await repository.deleteSynced();
     if (n > 0) notifyListeners();
   }
 
-  Future<int> countSynced() async {
-    final count = db.journal.id.count();
-    final q = db.selectOnly(db.journal)
-      ..addColumns([count])
-      ..where(
-        db.journal.flags
-            .bitwiseAnd(const Constant(JournalFlag.synced))
-            .equals(JournalFlag.synced),
-      );
-    final row = await q.getSingle();
-    return row.read(count) ?? 0;
-  }
+  Future<int> countSynced() => repository.countSynced();
 
-  Future<void> markSynced(int id) async {
-    await db.customUpdate(
-      'UPDATE journal SET flags = flags | ?1 '
-      'WHERE id = ?2 AND (flags & ?1) = 0',
-      variables: [const Variable<int>(JournalFlag.synced), Variable<int>(id)],
-      updates: {db.journal},
-    );
-  }
+  Future<void> markSynced(int id) => repository.markSynced(id);
 
-  Future<int> countEntries() async {
-    final count = db.journal.id.count();
-    final q = db.selectOnly(db.journal)..addColumns([count]);
-    final row = await q.getSingle();
-    return row.read(count) ?? 0;
-  }
+  Future<int> countEntries() => repository.countEntries();
 
-  Future<int> lastEntryId() async {
-    final rows =
-        await (db.select(db.journal)
-              ..orderBy([(t) => OrderingTerm.desc(t.id)])
-              ..limit(1))
-            .get();
-    return rows.isEmpty ? 0 : rows.first.id;
-  }
+  Future<int> lastEntryId() => repository.lastEntryId();
+
+  Future<void> reclaimSpace() => repository.reclaimSpace();
 
   void _scheduleSave() {
     _saveTimer?.cancel();

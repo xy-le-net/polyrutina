@@ -6,9 +6,9 @@ import 'package:flutter/services.dart';
 
 import 'package:polyrutina/core/data/bort_file.dart';
 import 'package:polyrutina/core/domain/bort_time.dart';
-import 'package:polyrutina/core/data/database.dart';
 import 'package:polyrutina/core/data/drafts_store.dart';
 import 'package:polyrutina/core/domain/field_shift_state.dart';
+import 'package:polyrutina/core/domain/journal_entry.dart';
 import 'package:polyrutina/core/data/install_store.dart';
 import 'package:polyrutina/core/data/journal_layer.dart';
 import 'package:polyrutina/core/domain/journal_types.dart';
@@ -171,7 +171,7 @@ class OperationalLayer extends ChangeNotifier {
     );
   }
 
-  void _applySeriesEntry(JournalData e) {
+  void _applySeriesEntry(JournalEntry e) {
     try {
       final data = jsonDecode(e.body) as Map<String, dynamic>;
       if (data['action'] != 'period_month') return;

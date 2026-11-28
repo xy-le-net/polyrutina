@@ -7,8 +7,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'package:polyrutina/core/data/atomic_json.dart';
-import 'package:polyrutina/core/data/database.dart';
 import 'package:polyrutina/core/data/journal_layer.dart';
+import 'package:polyrutina/core/domain/journal_entry.dart';
 import 'package:polyrutina/core/domain/journal_types.dart';
 
 class FieldNode {
@@ -54,8 +54,8 @@ class FieldNode {
 
 class FieldLayer extends ChangeNotifier {
   final Map<int, FieldNode> nodes = {};
-  int? rootId; // The ID of the default buffer root (field).
-  int? activeFieldId; // The currently active field (root node ID).
+  int? rootId;
+  int? activeFieldId;
 
   File? _file;
   Timer? _saveTimer;
@@ -132,7 +132,7 @@ class FieldLayer extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _applyEntry(JournalData e) {
+  void _applyEntry(JournalEntry e) {
     try {
       final data = jsonDecode(e.body) as Map<String, dynamic>;
       final action = data['action'] as String?;

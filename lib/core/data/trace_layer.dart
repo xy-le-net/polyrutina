@@ -7,8 +7,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'package:polyrutina/core/data/atomic_json.dart';
-import 'package:polyrutina/core/data/database.dart';
 import 'package:polyrutina/core/data/journal_layer.dart';
+import 'package:polyrutina/core/domain/journal_entry.dart';
 import 'package:polyrutina/core/domain/journal_types.dart';
 
 class TraceKind {
@@ -271,7 +271,7 @@ class TraceLayer extends ChangeNotifier {
     await _saveToFile();
   }
 
-  void _applyEntry(JournalData e) {
+  void _applyEntry(JournalEntry e) {
     try {
       final data = jsonDecode(e.body) as Map<String, dynamic>;
       final isCorrection = (e.flags & JournalFlag.correction) != 0;

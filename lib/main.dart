@@ -4,10 +4,10 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
-import 'package:polyrutina/core/data/database.dart';
 import 'package:polyrutina/core/data/field_layer.dart';
 import 'package:polyrutina/core/localization/i18n.dart';
 import 'package:polyrutina/core/data/journal_layer.dart';
@@ -17,6 +17,7 @@ import 'package:polyrutina/shared/models/routine.dart';
 import 'package:polyrutina/features/routines/application/routine_layer.dart';
 import 'package:polyrutina/core/application/ticker.dart';
 import 'package:polyrutina/core/data/trace_layer.dart';
+import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/features/routines/presentation/routine_card.dart';
 import 'package:polyrutina/shared/presentation/app_layout.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
@@ -33,12 +34,12 @@ import 'package:polyrutina/features/routines/presentation/routines_tab.dart';
 import 'package:polyrutina/features/export_import/presentation/rubka_tab.dart';
 import 'package:polyrutina/features/export_import/presentation/report.dart';
 
-void main() => runApp(const PolyRutinaApp());
+void main() => runApp(const ProviderScope(child: PolyRutinaApp()));
 
-class PolyRutinaApp extends StatefulWidget {
+class PolyRutinaApp extends ConsumerStatefulWidget {
   const PolyRutinaApp({super.key});
   @override
-  State<PolyRutinaApp> createState() => _PolyRutinaAppState();
+  ConsumerState<PolyRutinaApp> createState() => _PolyRutinaAppState();
 }
 
 class _AlwaysScrollbarBehavior extends MaterialScrollBehavior {
@@ -59,9 +60,8 @@ class _AlwaysScrollbarBehavior extends MaterialScrollBehavior {
   }
 }
 
-class _PolyRutinaAppState extends State<PolyRutinaApp>
+class _PolyRutinaAppState extends ConsumerState<PolyRutinaApp>
     with WidgetsBindingObserver {
-  late final AppDb _db;
   late final JournalLayer _journal;
   late final OperationalLayer _bort;
   late final RoutineLayer _routineLayer;
@@ -83,7 +83,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
   // Keep the waiting screen in the loaded palette.
   Color get _splashBg => _bort.bg;
 
-  int _tab = 0;
+  int get _tab => ref.read(selectedTabProvider);
   int? _openedRoutineId;
   bool _sheetOpen = false;
 
@@ -118,13 +118,12 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       (_) => _handlePendingNotificationAction(),
     );
 
-    _db = AppDb();
-    _journal = JournalLayer(_db);
-    _bort = OperationalLayer();
-    _traceLayer = TraceLayer();
-    _fieldLayer = FieldLayer();
-    _routineLayer = RoutineLayer();
-    _ticker = AppTicker();
+    _journal = ref.read(journalLayerProvider);
+    _bort = ref.read(operationalLayerProvider);
+    _traceLayer = ref.read(traceLayerProvider);
+    _fieldLayer = ref.read(fieldLayerProvider);
+    _routineLayer = ref.read(routineLayerProvider);
+    _ticker = ref.read(tickerProvider);
 
     _onTickerTick = () => _bort.tickBort();
     _ticker.addListener(_onTickerTick!);
@@ -202,7 +201,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       _bort.attachJournal(_journal);
       _journal.start();
       _bort.setLastRereadId(await _journal.lastEntryId());
-      _tab = 0;
       _bortSignature = _computeBortSignature();
 
       // Configure and reconcile scheduled notifications.
@@ -353,13 +351,6 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     }
     _notificationManager?.dispose();
     _bort.removeListener(_onBortChanged);
-    _bort.dispose();
-    _routineLayer.dispose();
-    _traceLayer.dispose();
-    _fieldLayer.dispose();
-    _journal.dispose();
-    _ticker.dispose();
-    _db.close();
     _pultState.dispose();
     super.dispose();
   }
@@ -402,7 +393,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     if (navigator != null && navigator.canPop()) {
       navigator.popUntil((r) => r.isFirst);
     }
-    if (_tab != i) setState(() => _tab = i);
+    if (_tab != i) ref.read(selectedTabProvider.notifier).select(i);
   }
 
   Future<void> _openRoutine(int id, {bool autofocusName = false}) async {
@@ -490,7 +481,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
       return;
     }
     if (_tab != 0) {
-      setState(() => _tab = 0);
+      ref.read(selectedTabProvider.notifier).select(0);
       return;
     }
   }
@@ -583,6 +574,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(selectedTabProvider);
     if (!_bootDone) {
       if (_initError != null) return _errorScreen();
       return _waitingScreen();
@@ -596,7 +588,7 @@ class _PolyRutinaAppState extends State<PolyRutinaApp>
     if (!_tabVisible(_tab)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !_tabVisible(_tab)) {
-          setState(() => _tab = 0);
+          ref.read(selectedTabProvider.notifier).select(0);
         }
       });
     }

@@ -7,10 +7,10 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'package:polyrutina/core/data/atomic_json.dart';
-import 'package:polyrutina/core/data/database.dart';
 import 'package:polyrutina/core/data/field_layer.dart';
 import 'package:polyrutina/core/data/journal_layer.dart';
 import 'package:polyrutina/core/domain/journal_types.dart';
+import 'package:polyrutina/core/domain/journal_entry.dart';
 import 'package:polyrutina/shared/models/routine.dart';
 import 'package:polyrutina/shared/application/routine_access.dart';
 import 'package:polyrutina/core/data/trace_layer.dart';
@@ -279,7 +279,7 @@ class RoutineLayer extends ChangeNotifier implements RoutineAccess {
     await _saveToFile();
   }
 
-  void _applyEntry(JournalData e) {
+  void _applyEntry(JournalEntry e) {
     try {
       final data = jsonDecode(e.body) as Map<String, dynamic>;
       final action = data['action'] as String?;

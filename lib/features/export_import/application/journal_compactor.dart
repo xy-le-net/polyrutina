@@ -96,7 +96,7 @@ class JournalCompactor {
 
     // 5. Single transaction.
     await journal.transaction(() async {
-      await journal.db.delete(journal.db.journal).go();
+      await journal.repository.clearEntries();
 
       // Write routine snapshots. Notice pair is inside the snapshot
       // body; no separate set_notice entries are emitted, and none
@@ -190,11 +190,9 @@ class JournalCompactor {
 
     // 8. Reclaim space.
     try {
-      await journal.db.customSelect('PRAGMA wal_checkpoint(TRUNCATE)').get();
       onProgress?.call(0.90);
-      await journal.db.customStatement('VACUUM');
+      await journal.reclaimSpace();
       onProgress?.call(0.96);
-      await journal.db.customStatement('PRAGMA optimize');
     } catch (_) {}
 
     onProgress?.call(1.0);

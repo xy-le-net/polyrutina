@@ -33,9 +33,27 @@ class Journal extends Table {
 class AppDb extends _$AppDb {
   AppDb() : super(_openConnection());
 
+  // ignore: use_super_parameters
+  AppDb.forTesting(QueryExecutor executor) : super(executor);
+
   // Increment when the database schema changes.
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onCreate: (m) async {
+      await m.createAll();
+      await _createTypeIndex();
+    },
+    onUpgrade: (m, from, to) async {
+      if (from < 2) await _createTypeIndex();
+    },
+  );
+
+  Future<void> _createTypeIndex() => customStatement(
+    'CREATE INDEX IF NOT EXISTS journal_type_id_idx ON journal (type, id)',
+  );
 }
 
 // Open the database lazily in the application documents directory.

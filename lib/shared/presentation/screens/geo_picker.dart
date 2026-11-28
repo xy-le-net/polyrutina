@@ -1,19 +1,19 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'package:polyrutina/core/data/trace_layer.dart';
+import 'package:polyrutina/core/data/geo_repository.dart';
+import 'package:polyrutina/core/application/providers.dart';
 import 'package:polyrutina/shared/presentation/app_scope.dart';
 import 'package:polyrutina/shared/presentation/widgets/bort_field.dart';
 import 'package:polyrutina/shared/presentation/bort_metrics.dart';
@@ -43,13 +43,6 @@ class _TileSource {
     required this.urlTemplate,
     this.subdomains = const [],
   });
-}
-
-class _AddressResult {
-  final String name;
-  final LatLng point;
-
-  const _AddressResult({required this.name, required this.point});
 }
 
 List<PultSpec> _tileSourceSpecs(
@@ -107,18 +100,16 @@ const List<_TileSource> _tileSources = [
   ),
 ];
 
-class _GeoPickerScreen extends StatefulWidget {
+class _GeoPickerScreen extends ConsumerStatefulWidget {
   final int objectId;
   final String slot;
   const _GeoPickerScreen({required this.objectId, required this.slot});
 
   @override
-  State<_GeoPickerScreen> createState() => _GeoPickerScreenState();
+  ConsumerState<_GeoPickerScreen> createState() => _GeoPickerScreenState();
 }
 
-class _GeoPickerScreenState extends State<_GeoPickerScreen> {
-  static DateTime? _lastAddressRequest;
-
+class _GeoPickerScreenState extends ConsumerState<_GeoPickerScreen> {
   final _boundaryKey = GlobalKey();
   final _addressController = TextEditingController();
   final _addressFocus = FocusNode();
@@ -126,7 +117,8 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
   bool _searchingAddress = false;
   String? _addressMessage;
 
-  LatLng _center = const LatLng(55.753994, 37.620060); // Moscow fallback
+  // Use Moscow when location is unavailable.
+  LatLng _center = const LatLng(55.753994, 37.620060);
   LatLng? _picked;
   double _accuracy = 0;
 
@@ -139,7 +131,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
   bool _userSwitched = false;
 
   final _mapController = MapController();
-  StreamSubscription<Position>? _positionStream;
+  StreamSubscription<GeoCoordinates>? _positionStream;
 
   @override
   void initState() {
@@ -160,68 +152,34 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
 
   void _startTracking() {
     setState(() => _locating = true);
+    _positionStream = ref
+        .read(geoRepositoryProvider)
+        .watchPosition()
+        .listen(
+          (position) {
+            if (!mounted || _userTouched) return;
 
-    // Request permission before subscribing to location updates.
-    Geolocator.checkPermission()
-        .then((perm) async {
-          if (perm == LocationPermission.denied) {
-            perm = await Geolocator.requestPermission();
-          }
-          if (perm == LocationPermission.denied ||
-              perm == LocationPermission.deniedForever) {
-            setState(() => _locating = false);
-            return;
-          }
+            final point = LatLng(position.latitude, position.longitude);
+            setState(() {
+              _center = point;
+              _picked = point;
+              _accuracy = position.accuracy;
+              _locating = false;
+            });
 
-          const locationSettings = LocationSettings(
-            accuracy: LocationAccuracy.high,
-            distanceFilter: 2,
-          );
-
-          _positionStream =
-              Geolocator.getPositionStream(
-                locationSettings: locationSettings,
-              ).listen(
-                (Position pos) {
-                  if (!mounted || _userTouched) return;
-
-                  final newPos = LatLng(pos.latitude, pos.longitude);
-                  setState(() {
-                    _center = newPos;
-                    _picked = newPos;
-                    _accuracy = pos.accuracy;
-                    _locating = false;
-                  });
-
-                  _mapController.move(newPos, _mapController.camera.zoom);
-                },
-                onError: (e) {
-                  if (mounted) setState(() => _locating = false);
-                },
-              );
-        })
-        .catchError((_) {
-          if (mounted) setState(() => _locating = false);
-        });
+            _mapController.move(point, _mapController.camera.zoom);
+          },
+          onError: (Object error) {
+            if (mounted) setState(() => _locating = false);
+          },
+        );
   }
 
   Future<void> _locateCurrentPosition() async {
     if (_locating) return;
     setState(() => _locating = true);
     try {
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        throw StateError('Location permission was denied');
-      }
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
-      ).timeout(const Duration(seconds: 15));
+      final position = await ref.read(geoRepositoryProvider).currentPosition();
       if (!mounted) return;
       final point = LatLng(position.latitude, position.longitude);
       _positionStream?.cancel();
@@ -257,57 +215,9 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
     });
 
     try {
-      final previousRequest = _lastAddressRequest;
-      if (previousRequest != null) {
-        final elapsed = DateTime.now().difference(previousRequest);
-        if (elapsed < const Duration(seconds: 1)) {
-          await Future<void>.delayed(const Duration(seconds: 1) - elapsed);
-        }
-      }
-      _lastAddressRequest = DateTime.now();
-
-      final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
-        'format': 'jsonv2',
-        'limit': '5',
-        'q': query,
-        'accept-language': app.i18n.lang,
-      });
-      final response = await http
-          .get(
-            uri,
-            headers: {
-              'User-Agent':
-                  'polyrutina/0.1.1 (https://github.com/xy-le-net/polyrutina)',
-            },
-          )
-          .timeout(const Duration(seconds: 12));
-      if (response.statusCode != 200) {
-        throw HttpException(
-          'Address search returned HTTP ${response.statusCode}',
-        );
-      }
-
-      final data = jsonDecode(response.body);
-      if (data is! List) {
-        throw const FormatException('Invalid address search response');
-      }
-      final results = <_AddressResult>[];
-      for (final item in data) {
-        if (item is! Map<String, dynamic>) continue;
-        final lat = double.tryParse(item['lat']?.toString() ?? '');
-        final lon = double.tryParse(item['lon']?.toString() ?? '');
-        final name = item['display_name'];
-        if (lat == null ||
-            lon == null ||
-            lat < -90 ||
-            lat > 90 ||
-            lon < -180 ||
-            lon > 180 ||
-            name is! String) {
-          continue;
-        }
-        results.add(_AddressResult(name: name, point: LatLng(lat, lon)));
-      }
+      final results = await ref
+          .read(geoRepositoryProvider)
+          .searchAddress(query, language: app.i18n.lang);
 
       if (results.isEmpty) {
         if (mounted) {
@@ -327,7 +237,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
           )
           .clamp(0.0, double.infinity)
           .toDouble();
-      final result = await showDialog<_AddressResult>(
+      final result = await showDialog<GeoAddress>(
         context: context,
         builder: (ctx) => DialogFrame(
           onDismiss: () => Navigator.of(ctx).pop(),
@@ -354,14 +264,18 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
       if (result != null && mounted) {
         _positionStream?.cancel();
         final zoom = _mapController.camera.zoom.clamp(15.0, 19.0).toDouble();
+        final point = LatLng(
+          result.coordinates.latitude,
+          result.coordinates.longitude,
+        );
         setState(() {
-          _center = result.point;
-          _picked = result.point;
+          _center = point;
+          _picked = point;
           _accuracy = 0;
           _userTouched = true;
           _addressController.text = result.name;
         });
-        _mapController.move(result.point, zoom);
+        _mapController.move(point, zoom);
       }
     } catch (error, stackTrace) {
       debugPrint('Address search failed: $error\n$stackTrace');
@@ -701,7 +615,7 @@ class _GeoPickerScreenState extends State<_GeoPickerScreen> {
   }
 }
 
-class GeoMapPreview extends StatefulWidget {
+class GeoMapPreview extends ConsumerStatefulWidget {
   final double latitude;
   final double longitude;
   final String? fallbackImagePath;
@@ -714,10 +628,10 @@ class GeoMapPreview extends StatefulWidget {
   });
 
   @override
-  State<GeoMapPreview> createState() => _GeoMapPreviewState();
+  ConsumerState<GeoMapPreview> createState() => _GeoMapPreviewState();
 }
 
-class _GeoMapPreviewState extends State<GeoMapPreview> {
+class _GeoMapPreviewState extends ConsumerState<GeoMapPreview> {
   final _mapController = MapController();
   final Set<int> _triedSources = {0};
   int _tileSourceIndex = 0;
@@ -770,19 +684,7 @@ class _GeoMapPreviewState extends State<GeoMapPreview> {
     if (_locating) return;
     setState(() => _locating = true);
     try {
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        throw StateError('Location permission was denied');
-      }
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
-      ).timeout(const Duration(seconds: 15));
+      final position = await ref.read(geoRepositoryProvider).currentPosition();
       if (!mounted) return;
       _mapController.move(
         LatLng(position.latitude, position.longitude),

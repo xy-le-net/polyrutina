@@ -21,6 +21,10 @@ being conceived as a «place journal», polyrituna can potentially serve as a to
 
 further steps will be connected with testing server interaction and with determining scenarios of joint work, which at present remain **at the stage of comprehending the artel (cooperative) approach**.
 
+## Architecture
+
+The application separates core domain models and rules (`lib/core/domain`), infrastructure and repositories (`lib/core/data`), and feature workflows and widgets (`lib/features`). Shared UI and application helpers live in `lib/shared`. Drift access is isolated behind `JournalRepository`; `GeoRepository` owns device-location and address-search operations, while FlutterMap remains a presentation component. `ProviderScope` initializes the Riverpod container, which owns application services and the selected-tab state. Tests live under `test/`; run `flutter analyze` and `flutter test` locally. GitHub Actions runs both checks on pushes and pull requests.
+
 ---
 
 <a name="russian">полирутина</a>,— приложение для ведения «бортового журнала», исполненное на Flutter и приспособленное к работе в Android, Windows, Linux, Macos, iOS и web.
@@ -42,3 +46,7 @@ further steps will be connected with testing server interaction and with determi
 будучи задуманным как «журнал места», polyrituna потенциально может служить инструментом **сохранения локального знания**,— например, для ремонта, строительства или сельскохозяйственных работ, где опыт предшественников зачастую утрачивается: в этом смысле приложение сродни полевым записям натуралистов или инженерным журналам, а его **ценность возрастает по мере накопления данных**.
 
 дальнейшие шаги будут связаны с обкаткой серверного взаимодействия и с определением сценариев совместной работы, которые ныне пребывают **в стадии осмысления артельного подхода**.
+
+## Архитектура
+
+Приложение разделяет доменные модели и правила (`lib/core/domain`), инфраструктуру и репозитории (`lib/core/data`), а также сценарии и виджеты функций (`lib/features`). Общие элементы интерфейса и приложения находятся в `lib/shared`. Доступ к Drift изолирован за `JournalRepository`; `GeoRepository` отвечает за геолокацию устройства и поиск адресов, а FlutterMap остаётся компонентом представления. `ProviderScope` создаёт контейнер Riverpod, который управляет жизненным циклом сервисов приложения и состоянием выбранной вкладки. Тесты находятся в `test/`; локально их можно запустить командами `flutter analyze` и `flutter test`. GitHub Actions выполняет обе проверки при push и создании pull request.

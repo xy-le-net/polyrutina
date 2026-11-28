@@ -1,9 +1,14 @@
 class RoutineBlock {
-  static const String prep = 'prep'; // preparation
-  static const String transit = 'transit'; // transit
-  static const String work = 'work'; // execution
-  static const String idle = 'idle'; // idle
-  static const String closeout = 'closeout'; // closeout
+  // Preparation phase.
+  static const String prep = 'prep';
+  // Transit phase.
+  static const String transit = 'transit';
+  // Work phase.
+  static const String work = 'work';
+  // Idle phase.
+  static const String idle = 'idle';
+  // Closeout phase.
+  static const String closeout = 'closeout';
 
   static const List<String> kinds = [prep, transit, work, idle, closeout];
 
